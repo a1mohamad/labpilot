@@ -264,7 +264,7 @@ Keep these three layers distinct; do not mix their responsibilities:
 ```
 LangGraph      →  decides which steps run, and in what order   (Step 2)
     ↓
-LLMClient      →  sends one prompt, returns one answer         (Step 0)
+LLMClient      →  one prompt in, one answer + its model out    (Step 0)
     ↓
 requests       →  the actual HTTP call to a provider
 ```
@@ -279,9 +279,19 @@ chain, which is the core of this design.
 ## LLM Serving — Fallback Chain
 
 All model access goes through a single `LLMClient` interface (one method,
-`generate(prompt) -> text`). **Nothing else in the codebase talks to a provider
-directly.** This is deliberate: free endpoints appear and disappear constantly,
-so a provider change must be a one-file edit, not a refactor.
+`generate(prompt) -> LLMResult`). **Nothing else in the codebase talks to a
+provider directly.** This is deliberate: free endpoints appear and disappear
+constantly, so a provider change must be a one-file edit, not a refactor.
+
+`LLMResult` carries four fields: `text` (never empty — an empty answer is a
+*failure*, not an answer), `model`, `tier`, and `attempts` (what each failed
+tier returned). Decided 2026-08-09: the frontend must show which model answered
+and which ones failed first, so model identity has to cross the seam — reaching
+the log file is not enough.
+
+**The test for anything new in this interface: it must be true for all six
+providers.** Model identity and failure reasons pass — every provider reports
+them. Streaming does not, so it stays out.
 
 Order of attempt (fall through on failure or 429):
 
@@ -299,11 +309,23 @@ automatically. Tier 6 does not. When tier 5 fails, the chain **stops**, tells
 the user that every free provider is exhausted and that continuing spends Modal
 credit, and waits for a clear yes. No yes, no call.
 
-Design consequence: `generate(prompt) -> text` cannot always return text. It
-must be able to report *"all free tiers exhausted"* instead. **The permission
-prompt belongs above `LLMClient`, not inside it** — `LLMClient` reports the
-state, the caller asks the user and may then re-call it with tier 6 enabled.
-Keep this boundary clean; `LLMClient` never talks to the user.
+Design consequence: `generate` cannot always return an `LLMResult`. It must be
+able to report *"all free tiers exhausted"* instead — as a distinct exception,
+`AllFreeTiersExhausted`, separate from the per-tier `LLMError` that the fallback
+loop swallows. **The permission prompt belongs above `LLMClient`, not inside
+it** — `LLMClient` reports the state, the caller asks the user and may then
+re-call it with tier 6 enabled. Keep this boundary clean; `LLMClient` never
+talks to the user.
+
+**Live progress events — Step 3, not Step 0.** For the UI trace ("Asking
+Nemotron 3 Ultra… failed 429 → asking Gemini 3.6 Flash"), `LLMClient` takes an
+optional callback and emits one small fixed event before and after each tier.
+FastAPI forwards them to the browser over SSE. This does not break the rule
+above: *emitting a fact is not talking to the user.* `LLMClient` reports; the
+caller decides what to display, and the caller is the only place that may *ask*
+anything. Keep the event shape small and provider-neutral, for the same reason
+as `LLMResult`. Word the trace honestly — at that moment the code is waiting on
+HTTP, so "Asking Nemotron…" is true and "Nemotron is thinking…" is not.
 
 **Modal's real job is the fine-tuned model** (Gemma 4 open weights + our LoRA
 adapter). Tier 6 is a borrowed side-use of the same $30, not what the credit is
@@ -353,7 +375,12 @@ later is optional, and would be a change *inside* `LLMClient` only.
   the chain simply ends at tier 5 with a clean "all providers failed" error.
 - **Log which model actually served each request**, for debugging and evaluation.
   With six tiers this stops being a nice-to-have: without it there is no way to
-  tell a healthy chain from one silently burning Modal credit.
+  tell a healthy chain from one silently burning Modal credit. The same fact is
+  also *returned* in `LLMResult.model` — the log is for us, the return value is
+  for the UI.
+- **Log `finish_reason` too.** `stop` means the model ended on its own; `length`
+  means our `max_tokens` cut the answer mid-sentence. Without this field a
+  truncated comparison looks like a complete one.
 - Implement retry/backoff on 429 before falling through to the next provider.
 - Disclose the data-handling implications in the README.
 
