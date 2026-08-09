@@ -128,17 +128,64 @@ MCP), and **LLM fine-tuning**.
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. Not started yet.**
+**Phase: Step 0 — walking skeleton. In progress.**
+**Last updated 2026-08-09. Working branch: `feat/llm-client`.**
 
 Setup is complete:
-- Git repository connected to `https://github.com/a1mohamad/labpilot` (branch `main`)
+- Git repository connected to `https://github.com/a1mohamad/labpilot`
 - Virtual environment on Python 3.13
 - Four dependencies installed and pinned
 - API keys stored in `.env` (git-ignored), template committed as `.env.example`
 - All platform accounts for Steps 0–4 created and verified
   (see [Platform Accounts](#platform-accounts--verified-august-2026))
 
-Next piece to build: the `LLMClient` — see [LLM Serving](#llm-serving--fallback-chain).
+Package layout is created and pushed — one folder per layer: `labpilot/llm/`,
+`ingest/`, `retrieval/`, `agent/`, `prompts/`, `api/`, plus `data/samples/`,
+`notebooks/`, `tests/`, `docker/`. All `__init__.py` files exist and are empty.
+Flat layout, **not** `src/` — both give the identical import path
+(`from labpilot.llm import LLMClient`), so moving to `src/` later is one
+`git mv` that changes no imports. Not a decision worth making now.
+
+### Where to pick up — Step 0, slice 1 of 5
+
+Step 0 is split into five slices. Finish one before starting the next; a
+six-provider client written in one go has six places to be wrong at once.
+
+1. **Tier 1 alone returns text** ← *in progress*
+2. The fallback loop + 429 backoff, adding tiers 2–5
+3. Dumb retrieval — read one hardcoded paper + code pair from `data/samples/`
+4. The single-pass comparison prompt
+5. A bare FastAPI endpoint
+
+Two files exist but are **empty**, waiting to be written by hand:
+- `labpilot/llm/errors.py` — `LLMError`, and `AllFreeTiersExhausted(LLMError)`
+- `labpilot/llm/client.py` — `LLMResult` dataclass, `LLMClient`, `__main__` smoke test
+
+`labpilot/llm/__init__.py` is deliberately empty for now. Add
+`from .client import LLMClient, LLMResult` **only after** `client.py` exists —
+added first, every import fails.
+
+Slice 1 spec — OpenRouter tier 1 only, plain `requests`:
+- `__init__` reads `OPENROUTER_API_KEY` and raises immediately if it is missing
+  or empty. A setup mistake must not survive until the middle of a comparison.
+- `generate(prompt) -> LLMResult`. POST to
+  `https://openrouter.ai/api/v1/chat/completions`, header
+  `Authorization: Bearer <key>`, body = `model` + `messages` + `temperature: 0`
+  + `max_tokens`. Answer is at `choices[0].message.content`.
+- **Verify the exact Nemotron 3 Ultra `:free` slug** on openrouter.ai/models.
+  Never guess it — a wrong slug is a 404.
+- Handle five failure modes, in this order: (1) missing key, (2)
+  `RequestException` — timeout/DNS/dropped, (3) non-200 status, (4) HTTP 200 but
+  the body has an `error` key — OpenRouter does this, (5) HTTP 200 with empty
+  `choices` or null/empty `content`. **(5) matters most:** an empty answer is a
+  *failure*, and returning it makes a dead tier look healthy.
+- Log the served model, the token counts, and `finish_reason`.
+- In slice 1, `LLMResult.tier` is always `1` and `attempts` is empty. The fields
+  exist now so slice 2 does not change the shape for callers.
+
+**Done when** `python -m labpilot.llm.client` prints `OK` and logs
+`finish_reason: stop` — *and* when a deliberately broken model slug raises a
+clear `LLMError` mentioning 404, not a `KeyError`.
 
 ---
 
@@ -217,9 +264,18 @@ chore: add project dependencies
 Types in use: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`.
 
 ### Branching
-Solo project — commit directly to `main`. No pull-request workflow for now.
-Revisit if the project gains collaborators, or if a PR is needed to run a
-multi-agent code review.
+**Branch per slice, not per commit.** *(Changed 2026-08-09 — this file used to
+say "commit directly to `main`".)* Nobody is waiting to review, but this is a
+portfolio repo, and a PR is also the only way to run a multi-agent code review.
+
+- One branch per slice of work: `feat/llm-client`, `feat/fallback-chain`,
+  `feat/retrieval`, `docs/readme`. Commit freely on the branch, however messy.
+- **Squash on merge**, so `main` gets one clean commit per slice. Delete the
+  branch after.
+- Stay on `main` for small things with nothing to review — doc edits, folder
+  creation, `requirements.txt`.
+- Do not let a branch live for weeks. One slice, a few days, merge, delete. A
+  long branch drifts from `main` and merging becomes painful.
 
 ### Dependencies
 `requirements.txt` holds **direct dependencies only**, with pinned versions —
@@ -382,6 +438,23 @@ later is optional, and would be a change *inside* `LLMClient` only.
   means our `max_tokens` cut the answer mid-sentence. Without this field a
   truncated comparison looks like a complete one.
 - Implement retry/backoff on 429 before falling through to the next provider.
+- **`temperature: 0` on every call.** Comparison output must be repeatable, or a
+  real finding cannot be told apart from sampling noise. Caveat: this gives
+  greedy decoding, not bit-identical text — Nemotron is MoE on shared hosted
+  inference, so expert routing and float reduction order shift with batching.
+  Never write an evaluation that assumes exact string equality across runs.
+- **Token budget — the real wall is not the context window.** *(Decided
+  2026-08-09.)* Cerebras (tier 5) offers 131K context but only **30K tokens per
+  minute**, so one call above ~30K tokens can never pass there. The chain must be
+  sized for its *tightest* tier, not its largest. Working numbers: **prompt
+  budget ~20K tokens** (instructions + paper + retrieved code) and **`max_tokens`
+  ~4K** — about 24K total, safe on every tier including tier 5.
+  - The prompt budget is **our** rule, not the server's. Nothing enforces it but
+    our own code: retrieval adds chunks, counts tokens, and stops at the budget.
+  - It is an **accuracy** decision as much as a capacity one. A 100K prompt gives
+    worse answers than a focused 20K one — attention spreads, and the important
+    lines get buried. This is the real reason RAG exists here, not just the wall.
+  - Rough sizing without a tokenizer: ~4 characters per token.
 - Disclose the data-handling implications in the README.
 
 ### Build order — do not wire all six at once
