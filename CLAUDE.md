@@ -335,6 +335,13 @@ datacenter hardware. Calling it through someone else's API is a different thing
 and is not affected by that.)*
 
 **Still not in the chain:**
+- **Lightning AI Model APIs** — *an option only. Not a tier. Do not research
+  further until the chain works.* Found 2026-08-09. A separate product from
+  Studios, and unrelated to Lightning's GPU credits: a hosted per-token API over
+  open and closed models. Their wording: *"Pay by the token. No credit card. Get
+  30M free tokens."* Free tier: 15 req/min, 120,000 tokens/min. If a free tier
+  is ever needed above Modal, this is the first place to look — but the six-tier
+  chain must exist and work before anything is added to it.
 - **Nebius Token Factory** — OpenAI-compatible, free credits. Only worth adding
   if yet another separate quota is ever needed. *(Card required for Nebius AI
   Cloud, and the Token Factory signup also asks for a card — treat as blocked.)*
@@ -352,35 +359,57 @@ required a credit or debit card.
 | **Google AI Studio** | Chain tiers 2 + 3 | ~1,500 RPD | No |
 | **Cerebras Cloud** | Chain tier 5, development workhorse, evaluation baseline | 5 RPM / 2,400 per day | No |
 | **Kaggle** | Fine-tuning (Step 4) | ~30 GPU-hrs/week, 2×T4 or P100, 12h sessions | No (phone verification) |
-| **Lightning AI** | Escape hatch for bigger GPUs (see note below) | 15 credits/month; 1 Studio free 24/7 | No (phone verification) |
+| **Lightning AI** | One-shot escape hatch for a bigger GPU (see note below) | **5 credits, one-time** (~2 A100-hrs); 1 CPU Studio free with 4-hr restarts | No (phone verification) |
+| **Lightning Model APIs** | Chain candidate — not yet added | 30M free tokens (one-time), 15 RPM / 120K tok-min | No |
 | **Hugging Face** | LoRA adapter hosting + **the public demo** | ZeroGPU: max 2 Spaces, small daily GPU-seconds quota | No |
 | **Modal** | Chain tier 6 (last resort) + custom-weights API endpoint | $30 credit (Starter) | No |
 
 ### Lightning AI — read the credit maths before using it
 
-The advertised **"up to 80 free GPU hours"** is not 80 hours. It is **15 credits
-per month** (~$1 each). 80 hours is what those credits buy on the *cheapest*
-interruptible machine. On a large GPU they vanish quickly:
+*Re-verified 2026-08-09 against lightning.ai/pricing. An earlier version of this
+file said "15 credits per month" and "~3 hrs on A100" — **both were wrong.**
+Corrected below. If your account balance disagrees with this, trust the account
+and update this section again.*
 
-| GPU | Free hours from the same 15 credits |
-|---|---|
-| T4 / L4 | ~22–80 hrs |
-| A100 | ~3 hrs |
-| H100 | ~3 hrs |
-| H200 | ~2 hrs |
+The advertised **"up to 80 free GPU hours"** is not 80 hours, and not monthly.
+Their FAQ, exact wording:
+
+> "You get 5 free Lightning credits upon registration. Add a card for 25 more.
+> If you don't use them, they expire in 12 months."
+
+So under this project's no-card rule the real allowance is **5 credits, once,
+ever** (~$1 each). The 80-hour headline assumes 30 credits — i.e. a card — on
+the *cheapest interruptible* machine. Every figure on that page is worded
+*"to start"*: nothing here refills each month.
+
+Official rates (per GPU/hr, billed by the second) and what 5 credits actually buy:
+
+| GPU | VRAM | $/hr | Hours from 5 credits |
+|---|---|---|---|
+| T4 | 16 GB | $0.42 | ~12 hrs |
+| L4 | 24 GB | $0.48 | ~10 hrs |
+| L40S | 48 GB | $2.14 | ~2.3 hrs |
+| A100 | 40 GB | $2.19 | **~2.3 hrs** |
+| A100 | 80 GB | $2.71 | ~1.8 hrs |
+| H100 | 80 GB | $4.50 | ~1.1 hrs |
+| H200 | 141 GB | $6.53 | ~0.8 hrs |
+
+Free-tier caps that also matter: **A100/H100/H200 sessions are limited to 4
+hours**, max **1 GPU per Studio**, max 2 concurrent GPUs, 50GB persistent
+storage. T4/L4/L40S sessions are uncapped in length.
 
 **What it is:** a cloud development environment (browser VS Code, Jupyter, SSH
-from a local IDE), with 100GB persistent storage. One Studio runs free 24/7, but
-it is **free for the first 4 hours and then switches to billed** — restart it to
-continue for free. GPU time always costs credits.
+from a local IDE). The free Studio is **CPU-only** and must be restarted every
+4 hours. GPU time always costs credits.
 
-**Use it for:** the 26B OOM test (see [Fine-Tuning](#fine-tuning-plan)), and any
-one-off experiment that needs more VRAM than Kaggle's 16GB.
+**Use it for:** the 26B OOM test (see [Fine-Tuning](#fine-tuning-plan)) — and
+understand this is a **single ~2-hour shot on an A100**, not a resource to come
+back to. Plan the run completely on the free CPU Studio first, then switch that
+same Studio to A100 only when the code is ready to execute.
 
-**Do not use it for:** routine training — Kaggle gives ~30 GPU-hrs *per week*
-for free, which is far more. And **not for serving the demo** — a Studio is a
-machine you open and close, not a hosted service. There is no permanent public
-URL, and the credits would drain while it idles.
+**Do not use it for:** routine training — Kaggle gives ~30 GPU-hrs *per week*,
+which is vastly more. And **not for serving the demo** — see the correction
+below.
 
 **Habit to keep:** always stop the machine when finishing work. Credit platforms
 charge for the time the machine is *on*, not the time spent typing. This is the
@@ -458,9 +487,10 @@ responses (not part of the fine-tune).
   Loading it in 4-bit plausibly fits 16GB, but QLoRA training adds activations,
   gradients, and optimizer state on top — it may OOM. **Test with a tiny toy run
   early**; if it OOMs, drop to E4B rather than fighting it.
-  **Escape hatch:** Lightning AI gives ~3 free hours on an A100 (40–80GB). Use it
-  to check whether the 26B trains *at all*, separately from whether it fits
-  Kaggle's 16GB. Three hours is very little — do not spend any of it exploring
+  **Escape hatch:** Lightning AI gives **~2 hours on an A100 40GB — once, not
+  monthly** (5 one-time credits; corrected 2026-08-09). Use it to check whether
+  the 26B trains *at all*, separately from whether it fits Kaggle's 16GB. Two
+  hours is very little and does not come back — do not spend any of it exploring
   the interface. Start a **CPU** Studio first, install and prepare everything,
   then switch that same Studio to the A100 only when the code is ready to run.
   See [Lightning AI credit maths](#lightning-ai--read-the-credit-maths-before-using-it).
@@ -530,10 +560,25 @@ planned, on a GPU large enough for the 26B.
   actually been exercised.
 - Always confirm the app has scaled back to zero after testing.
 
-**Considered and rejected for serving — Lightning AI.** It has free GPU credits
-and no card, but a Studio is a development machine, not a host: no permanent
-public URL, the free Studio switches to billed after 4 hours, and credits drain
-while it idles. It stays a *training* escape hatch only.
+**Considered and rejected for serving — Lightning AI.** *(Reason corrected
+2026-08-09.)*
+
+The earlier reason written here — "a Studio is a development machine, not a
+host" — was **wrong**. Lightning's own free-tier feature table ticks *"Deploy
+no-code model endpoints"* and *"Deploy full control model endpoints"*, and their
+inference product (LitServe, containers as autoscaling APIs) is built exactly
+for this. It **can** host a fine-tuned model with a real endpoint.
+
+The real reason it is rejected is **arithmetic, not capability**: there is no
+recurring free GPU allowance. 5 one-time credits ≈ **~2 hours on an A100**. A
+served endpoint bills for every hour it is *up*, so the demo would die within a
+day and never come back — and the credits never refill.
+
+ZeroGPU wins because it bills nothing while idle: the GPU is only attached
+*during* a call. That is the property serving needs, and Lightning's Studio
+credits do not have it.
+
+Lightning stays a **one-shot training escape hatch** only.
 
 **Fallback — Kaggle notebook + Cloudflare Tunnel.** Still works for recording a
 demo video with 2×T4. Non-permanent URL, 12h sessions, and Kaggle's AUP forbids
