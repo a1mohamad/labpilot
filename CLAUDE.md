@@ -6,8 +6,9 @@ Read the two rule sections first — they change *how* everything below is done.
 **Contents:** [Working Rules](#working-rules-read-first) · [Overview](#project-overview) ·
 [Status](#current-status) · [Environment](#development-environment) ·
 [Conventions](#conventions) · [Architecture](#architecture--stack) ·
-[LLM Serving](#llm-serving--fallback-chain) · [Build Plan](#build-plan--walking-skeleton) ·
-[Fine-Tuning](#fine-tuning-plan) · [Risks](#open-risks--revisit-before-or-during-the-build) ·
+[LLM Serving](#llm-serving--fallback-chain) · [Platform Accounts](#platform-accounts--verified-august-2026) ·
+[Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
+[Risks](#open-risks--revisit-before-or-during-the-build) ·
 [Out of Scope](#explicitly-out-of-scope-for-v1)
 
 ---
@@ -34,6 +35,20 @@ English proficiency is between B1 and B2, not a native speaker.
 - Use clear, simple English words and short sentences.
 - Simplify the *language*, not the *concepts*.
 - Avoid idioms, slang, and heavily casual phrasing.
+
+### Sources — verify before trusting
+When checking whether a platform or service is free, **only two sources count**:
+the provider's own pricing page, and the actual signup or deploy flow.
+
+Blog posts, "best free GPU" lists, and credit-aggregator sites are frequently
+wrong or out of date. This was proven on 2026-08-08: three platforms
+(Beam, Cerebrium, Saturn Cloud) were reported as "free, no card" by such sites
+and all three required a card when tested. Every claim sourced from official
+documentation held true.
+
+Also watch the wording. **"No charge" is not the same as "no card needed."**
+Several platforms perform a "$0 authorization" — they take no money, but a card
+is still required, so the account is still blocked.
 
 ---
 
@@ -83,6 +98,8 @@ Setup is complete:
 - Virtual environment on Python 3.13
 - Four dependencies installed and pinned
 - API keys stored in `.env` (git-ignored), template committed as `.env.example`
+- All platform accounts for Steps 0–4 created and verified
+  (see [Platform Accounts](#platform-accounts--verified-august-2026))
 
 Next piece to build: the `LLMClient` — see [LLM Serving](#llm-serving--fallback-chain).
 
@@ -92,6 +109,20 @@ Next piece to build: the `LLMClient` — see [LLM Serving](#llm-serving--fallbac
 
 Windows 11. **Git Bash** is the preferred shell (PowerShell also works, but the
 commands below assume Git Bash).
+
+### Hardware limits — important
+This machine has **4–6GB VRAM and 8GB or less system RAM**.
+
+Consequences, decided 2026-08-08:
+- **Running any model locally is ruled out.** A 4B model in 4-bit needs ~3GB for
+  weights alone, and the KV cache grows with prompt length. LabPilot sends long
+  prompts (retrieved code chunks + paper text), which is the worst case. Windows
+  itself uses 3–4GB of the system RAM before anything else starts.
+- **Docker Desktop (Step 3) will feel heavy.** It runs through WSL2, which takes
+  a large share of 8GB. It will work, but expect slow image builds. Close other
+  programs while building.
+- All model inference — base models and the fine-tuned model — happens on hosted
+  platforms. Nothing runs on this machine.
 
 ### Activate the virtual environment
 ```bash
@@ -116,12 +147,14 @@ pip install -r requirements.txt
 ```
 
 ### Environment variables
-Copy `.env.example` to `.env` and fill in real values. Two keys are needed:
+Copy `.env.example` to `.env` and fill in real values.
 
 | Variable | Used for | Where to get it |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Fallback models 1–2 + the reranker | openrouter.ai/keys |
-| `GOOGLE_API_KEY` | Fallback models 3–4 (Gemini) | aistudio.google.com/api-keys |
+| `OPENROUTER_API_KEY` | Chain tiers 1 + 4, and the reranker | openrouter.ai/keys |
+| `GOOGLE_API_KEY` | Chain tiers 2 + 3 (Gemini) | aistudio.google.com/api-keys |
+| `CEREBRAS_API_KEY` | Chain tier 5, and the development workhorse | cloud.cerebras.ai |
+| `MODAL_API_KEY` | Chain tier 6 (paid — last resort). Not yet obtained. | modal.com |
 
 `GOOGLE_API_KEY` is deliberately named to match what the official
 `google-genai` SDK reads automatically, in case we migrate off `requests` later.
@@ -181,7 +214,8 @@ Never commit `.env`. Never put keys in code or in this file. Verify with
   to LangGraph. Not CrewAI for v1.
 - **Vector DB**: Supabase Postgres + pgvector
 - **Experiment/observability tracking**: MLflow — both fine-tuning experiments
-  and agent/RAG observability
+  and agent/RAG observability. Self-hosted or in-notebook; do **not** pay for a
+  managed MLflow service.
 - **Batch/offline jobs**: Airflow (offline only — never on the live request path)
 - **Deployment**: Docker + Render or Fly.io
 - **Session behavior**: chat continues within a case/session with persisted
@@ -214,21 +248,49 @@ so a provider change must be a one-file edit, not a refactor.
 
 Order of attempt (fall through on failure or 429):
 
-| # | Model | Why |
-|---|---|---|
-| 1 | **NVIDIA Nemotron 3 Ultra** (`:free`, OpenRouter) | Primary. 1M context, MoE (55B active / 550B total). Strong on programming and long agentic workflows — best fit for the hard comparison reasoning. |
-| 2 | **Ling 3.0 Flash** (`:free`, OpenRouter, by inclusionai) | Second free OpenRouter option. |
-| 3 | **Gemini 3.6 Flash** | High-volume workhorse (~1,500 RPD), free context caching, 128K+ context. Used for development and routine comparisons. |
-| 4 | **Gemini 3.5 Flash** | Final fallback. Also free tier with free context caching. |
+| # | Model | Provider | Why |
+|---|---|---|---|
+| 1 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | Primary. 1M context, MoE (55B active / 550B total). Strong on programming and long agentic workflows — best fit for the hard comparison reasoning. |
+| 2 | **Gemini 3.6 Flash** | Google AI Studio | High-volume workhorse (~1,500 RPD), free context caching, 128K+ context. Carries development and routine comparisons. |
+| 3 | **Gemini 3.5 Flash** | Google AI Studio | Same free tier and context caching. Note it shares Google's quota with #2. |
+| 4 | **Ling 3.0 Flash** (`:free`, by inclusionai) | OpenRouter | Second free OpenRouter option. Shares OpenRouter's ~50/day pool with #1 — see the note below. |
+| 5 | **`gpt-oss-120b`** (Production) | Cerebras Cloud | 2,400 req/day — by far the largest free daily allowance. The binding limit is **5 RPM**, not the daily total. |
+| 6 | Kimi K3 · Nemotron Ultra · DeepSeek V4 Pro · DeepSeek V4 Flash | Modal | **Opt-in only — never automatic.** Costs credit. Reached only when tiers 1–5 have all failed, *and* the user says yes. |
+
+**Tier 6 is gated by the user — this is a hard rule.** Tiers 1→5 fall through
+automatically. Tier 6 does not. When tier 5 fails, the chain **stops**, tells
+the user that every free provider is exhausted and that continuing spends Modal
+credit, and waits for a clear yes. No yes, no call.
+
+Design consequence: `generate(prompt) -> text` cannot always return text. It
+must be able to report *"all free tiers exhausted"* instead. **The permission
+prompt belongs above `LLMClient`, not inside it** — `LLMClient` reports the
+state, the caller asks the user and may then re-call it with tier 6 enabled.
+Keep this boundary clean; `LLMClient` never talks to the user.
+
+**Modal's real job is the fine-tuned model** (Gemma 4 open weights + our LoRA
+adapter). Tier 6 is a borrowed side-use of the same $30, not what the credit is
+for. If the two ever compete, the fine-tuned demo wins.
+
+**Two notes on quota sharing — these decide whether a fallback actually helps:**
+- Tiers 1 and 4 both draw on the *same* OpenRouter daily pool, and tiers 2 and 3
+  both draw on the *same* Google pool. If tier 1 fails because a single model is
+  down or rate-limited, tier 4 saves the request. If it fails because the
+  OpenRouter **account** daily cap is spent, tier 4 fails too — and the chain
+  really starts at tier 2. The same logic applies to 2 → 3.
+- This is why Cerebras sits at tier 5 and not lower: it is the first genuinely
+  independent quota after the OpenRouter and Google pools are gone.
 
 **Reranking**: NVIDIA Llama Nemotron Rerank VL 1B V2 (`:free`, OpenRouter) —
 used in the RAG layer to rerank retrieved candidates before sending them to the
 LLM. Retrieve broadly, rerank, then send only the top results.
 
-**Transport**: plain `requests` for all four models in Step 0 — one uniform
-style, and it keeps the underlying HTTP call visible for learning. Migrating
-Gemini to the `google-genai` SDK later is optional, and would be a change
-*inside* `LLMClient` only.
+**Transport**: plain `requests` for every tier in Step 0 — one uniform style,
+and it keeps the underlying HTTP call visible for learning. Three of the four
+providers (OpenRouter, Cerebras, Modal) speak the **OpenAI-compatible**
+`/chat/completions` shape, so they differ only in base URL, API key, and model
+name. Google is the one odd shape. Migrating Gemini to the `google-genai` SDK
+later is optional, and would be a change *inside* `LLMClient` only.
 
 ### Constraints
 - OpenRouter free tier is roughly **50 requests/day** without purchased credits
@@ -240,9 +302,110 @@ Gemini to the `google-genai` SDK later is optional, and would be a change
   own code instead.
 - Do **not** use `openrouter/free` (the auto-router) — it varies the model
   between calls, which breaks repeatable comparison output.
+- **Cerebras (tier 5)**: verified limits (2026-08-08) are **5 RPM, 2,400/day,
+  30K tokens/min, 1M tokens/day, 131K context** — the same quota on every model.
+  5 RPM is tight; the backoff must respect it. Other models offered are
+  `gemma-4-31b` and `zai-glm-4.7`, both **Preview** — Preview models can change
+  or disappear, so the chain depends on the Production one only.
+- **Modal (tier 6) costs money and requires user consent.** Every call is billed
+  against the $30 Starter credit (shared infrastructure by token). It is the
+  only paid tier, it is never entered automatically, and the chain must not
+  reach it during routine work — if the logs show tier 6 being offered often,
+  something above it is misconfigured.
+- **Default tier 6 to off.** A missing `MODAL_API_KEY` must not crash anything;
+  the chain simply ends at tier 5 with a clean "all providers failed" error.
 - **Log which model actually served each request**, for debugging and evaluation.
+  With six tiers this stops being a nice-to-have: without it there is no way to
+  tell a healthy chain from one silently burning Modal credit.
 - Implement retry/backoff on 429 before falling through to the next provider.
 - Disclose the data-handling implications in the README.
+
+### Build order — do not wire all six at once
+
+Adding a provider is a small edit once the structure exists — that is the entire
+point of `LLMClient`. Get **tier 1 alone** returning text first, then add the
+fallback loop, then the remaining tiers. A six-provider client written in one
+go has six places to be wrong at the same time.
+
+Also unverified, and worth confirming against Modal's own model list before
+wiring tier 6: that Kimi K3, Nemotron Ultra, DeepSeek V4 Pro, and DeepSeek V4
+Flash are all currently served, and their exact model IDs. *(Separate point:
+CLAUDE.md rules out Kimi K3 as a **fine-tune target** because 2.8T params need
+datacenter hardware. Calling it through someone else's API is a different thing
+and is not affected by that.)*
+
+**Still not in the chain:**
+- **Nebius Token Factory** — OpenAI-compatible, free credits. Only worth adding
+  if yet another separate quota is ever needed. *(Card required for Nebius AI
+  Cloud, and the Token Factory signup also asks for a card — treat as blocked.)*
+
+---
+
+## Platform Accounts — Verified August 2026
+
+All accounts below were created and confirmed working on 2026-08-08. None
+required a credit or debit card.
+
+| Platform | Role in this project | Limits | Card? |
+|---|---|---|---|
+| **OpenRouter** | Chain tiers 1 + 4, reranker | ~50 req/day | No |
+| **Google AI Studio** | Chain tiers 2 + 3 | ~1,500 RPD | No |
+| **Cerebras Cloud** | Chain tier 5, development workhorse, evaluation baseline | 5 RPM / 2,400 per day | No |
+| **Kaggle** | Fine-tuning (Step 4) | ~30 GPU-hrs/week, 2×T4 or P100, 12h sessions | No (phone verification) |
+| **Lightning AI** | Escape hatch for bigger GPUs (see note below) | 15 credits/month; 1 Studio free 24/7 | No (phone verification) |
+| **Hugging Face** | LoRA adapter hosting + **the public demo** | ZeroGPU: max 2 Spaces, small daily GPU-seconds quota | No |
+| **Modal** | Chain tier 6 (last resort) + custom-weights API endpoint | $30 credit (Starter) | No |
+
+### Lightning AI — read the credit maths before using it
+
+The advertised **"up to 80 free GPU hours"** is not 80 hours. It is **15 credits
+per month** (~$1 each). 80 hours is what those credits buy on the *cheapest*
+interruptible machine. On a large GPU they vanish quickly:
+
+| GPU | Free hours from the same 15 credits |
+|---|---|
+| T4 / L4 | ~22–80 hrs |
+| A100 | ~3 hrs |
+| H100 | ~3 hrs |
+| H200 | ~2 hrs |
+
+**What it is:** a cloud development environment (browser VS Code, Jupyter, SSH
+from a local IDE), with 100GB persistent storage. One Studio runs free 24/7, but
+it is **free for the first 4 hours and then switches to billed** — restart it to
+continue for free. GPU time always costs credits.
+
+**Use it for:** the 26B OOM test (see [Fine-Tuning](#fine-tuning-plan)), and any
+one-off experiment that needs more VRAM than Kaggle's 16GB.
+
+**Do not use it for:** routine training — Kaggle gives ~30 GPU-hrs *per week*
+for free, which is far more. And **not for serving the demo** — a Studio is a
+machine you open and close, not a hosted service. There is no permanent public
+URL, and the credits would drain while it idles.
+
+**Habit to keep:** always stop the machine when finishing work. Credit platforms
+charge for the time the machine is *on*, not the time spent typing. This is the
+most common way free credits are lost.
+
+### Checked and rejected — do not revisit
+All of these require a card, or are the wrong category. Recorded so this
+research is never repeated.
+
+| Platform | Reason |
+|---|---|
+| Nebius AI Cloud | Card required; charges $25 on signup |
+| Nebius Token Factory | Card required at signup form |
+| Beam Cloud | Only $1 free; card required to unlock the rest |
+| Cerebrium | "Add a payment method to deploy apps" |
+| Saturn Cloud | Pricing page shows only pay-as-you-go and Enterprise |
+| RunPod | Card + $10 deposit required |
+| Oracle Cloud Always Free | Card required at signup (virtual cards rejected) |
+| Koyeb | Free tier closed to new users after the Mistral acquisition |
+| Northflank, Intel Tiber | Card or coupon required |
+| GCP / AWS / Azure trial credits | Card required; GPU quota often refused |
+| SageMaker Studio Lab | Closed to new signups on 2026-07-30 |
+| Google Colab | Terms forbid serving a notebook as a web service |
+| Incus | Not a hosting service — it organises a Linux machine you already own. No GPU, no server, no public URL. Would also need WSL2 on this 8GB machine. Genuinely useful only for sandboxing agents that *execute* code — a v2 concern, since v1 only reads code. |
+| Octopus Deploy | A deployment orchestration tool, not a host. Provides no compute. |
 
 ---
 
@@ -267,6 +430,10 @@ that every layer actually connects — before investing time in any one layer.
 Rules for the sequence:
 - **Never let one layer race far ahead of the others.** Run integration/smoke
   tests against the existing skeleton as each layer grows.
+- **This rule applies to research too.** Investigating Step 4 infrastructure
+  while Step 0 is unwritten is the same mistake in a different form. The
+  platform question is now closed — see
+  [Platform Accounts](#platform-accounts--verified-august-2026).
 - **Fine-tuning stays last** — it depends on the core approach already being
   validated end-to-end.
 - **MCP is a stretch goal**, not part of the initial skeleton (see Open Risks).
@@ -291,13 +458,22 @@ responses (not part of the fine-tune).
   Loading it in 4-bit plausibly fits 16GB, but QLoRA training adds activations,
   gradients, and optimizer state on top — it may OOM. **Test with a tiny toy run
   early**; if it OOMs, drop to E4B rather than fighting it.
+  **Escape hatch:** Lightning AI gives ~3 free hours on an A100 (40–80GB). Use it
+  to check whether the 26B trains *at all*, separately from whether it fits
+  Kaggle's 16GB. Three hours is very little — do not spend any of it exploring
+  the interface. Start a **CPU** Studio first, install and prepare everything,
+  then switch that same Studio to the A100 only when the code is ready to run.
+  See [Lightning AI credit maths](#lightning-ai--read-the-credit-maths-before-using-it).
 - **Ruled out**: Gemma-4-31B dense (does not fit a single free-tier GPU;
   multi-GPU is fragile and not worth it for a ~150–300 example dataset) and
   Kimi K3 (2.8T params, needs datacenter-scale infrastructure).
 - Also comparing **Qwen3-4B** against the Gemma candidates.
-- **Evaluation**: fine-tuned model vs. base model, and vs.
-  `google/gemma-4-31b-it:free` and `google/gemma-4-26b-a4b-it:free` on
-  OpenRouter — both free, so no hosting needed for the comparison.
+- **Evaluation**: fine-tuned model vs. base model, and vs. `gemma-4-31b`.
+  **Run the baseline on Cerebras**, not OpenRouter — 2,400 requests/day instead
+  of ~50 makes a real evaluation possible in one sitting. Run the fine-tuned
+  model on Modal or ZeroGPU. Where a like-for-like comparison matters, run both
+  the fine-tuned model *and* the base model on Modal, on the same GPU with the
+  same settings, so differences come from the fine-tuning and not the hardware.
 - **Dataset**: ~150–300 examples, built from ~100 existing notebooks across
   projects, Kaggle competition write-ups, real papers where they genuinely
   exist, and notebook-vs-notebook pairs (one side rewritten as a paper-style
@@ -309,22 +485,63 @@ responses (not part of the fine-tune).
   merge into a full model only at final deployment.
 
 ### Serving the fine-tuned model — demo only
-The fine-tuned model is **not** part of the live application path. No free host
-can serve a 4B+ model: Hugging Face now requires a paid plan for Gradio/Docker
-Spaces, and free app hosts (Render, Koyeb) cap at ~512MB RAM.
 
-- **The live app always uses the hosted fallback chain.** It must keep working
-  whether or not the fine-tuned model is running.
-- **For demonstration**: load base model + LoRA adapter in a notebook (Kaggle or
-  Colab), serve it behind a small FastAPI endpoint, expose it with a Cloudflare
-  Tunnel. Record a video and put it in the README.
-- *Caution*: demo-only, run interactively while present. Colab's terms disallow
-  using managed runtimes as a web service for something else, and the tunnel URL
-  changes on every restart. **Never point the deployed website at it.**
-- **The portfolio artifact** is: LoRA adapter on the Hugging Face Hub + training
-  notebook + evaluation results + the recorded demo. That demonstrates the
-  fine-tuning skill without depending on infrastructure that does not exist for
-  free.
+**The live app always uses the hosted fallback chain.** It must keep working
+whether or not the fine-tuned model is running. The fine-tuned model is a
+portfolio artifact, never part of the live reasoning path.
+
+Two serving paths, both free and both verified 2026-08-08:
+
+**Primary — Hugging Face Space on ZeroGPU.** Permanent `*.hf.space` URL, works
+without the user being present. This replaces the earlier Kaggle-tunnel plan.
+- ZeroGPU allocates a shared GPU only *during* a decorated function call, then
+  takes it back. The "large" slice is ~48GB VRAM — enough for the 26B MoE in
+  4-bit, and far more than E4B needs.
+- **Gradio SDK only.** Docker and CPU Basic Spaces now require a paid plan;
+  Static Spaces are free but have no server, so they cannot run a model.
+  A FastAPI server therefore cannot be written directly on a Space — but Gradio
+  runs *on* FastAPI and exposes an HTTP API automatically, so the endpoint is
+  still callable from code (`gradio_client` or the `/api/predict` route).
+- Free accounts: max 2 ZeroGPU Spaces, account must be >30 days old with a
+  verified email. Daily quota is measured in **GPU-seconds and is small**; a
+  call reserves the full requested `duration` up front, so set a realistic small
+  value rather than leaving the default.
+- **Known unknown, test early:** Unsloth alters CUDA behaviour and ZeroGPU
+  allocates the GPU unusually. For *serving*, prefer plain `transformers` +
+  `peft` to load base + adapter, and keep Unsloth for *training* only. Also note
+  the model cannot simply be loaded once at startup — the GPU only exists inside
+  the decorated function. This is the most common place people get stuck.
+
+**Secondary — Modal, "Custom weights".** Gives a real HTTPS endpoint on a
+container you define, so a FastAPI-shaped API is possible exactly as originally
+planned, on a GPU large enough for the 26B.
+- Everything on Modal is billed from the $30 Starter credit — dedicated
+  infrastructure by GPU-second, shared infrastructure by token.
+- **Spend free quota first.** Modal is chain **tier 6** — reached only after
+  OpenRouter, Google, and Cerebras have all failed. Never call it as a general
+  provider for base models while those three still have quota, and never point
+  development or bulk testing at it.
+- **The $30 now has two jobs**, and they compete: serving the fine-tuned model
+  demo, *and* backstopping the fallback chain. Serving the demo is the job
+  nothing free can do, so it has priority. If chain tier 6 starts eating the
+  credit, remove tier 6 rather than lose the demo.
+- **Unverified:** whether the $30 renews monthly. Check the balance in early
+  September 2026 before planning around it — and check it again once tier 6 has
+  actually been exercised.
+- Always confirm the app has scaled back to zero after testing.
+
+**Considered and rejected for serving — Lightning AI.** It has free GPU credits
+and no card, but a Studio is a development machine, not a host: no permanent
+public URL, the free Studio switches to billed after 4 hours, and credits drain
+while it idles. It stays a *training* escape hatch only.
+
+**Fallback — Kaggle notebook + Cloudflare Tunnel.** Still works for recording a
+demo video with 2×T4. Non-permanent URL, 12h sessions, and Kaggle's AUP forbids
+"server farming" — acceptable for a short recorded demo, never as a hosted
+service. Do not point the deployed website at it.
+
+**The portfolio artifact** is: LoRA adapter on the Hugging Face Hub + training
+notebook + evaluation results + the live ZeroGPU Space (and a recorded video).
 
 ---
 
@@ -343,6 +560,11 @@ Spaces, and free app hosts (Render, Koyeb) cap at ~512MB RAM.
 - **Risk sequencing**: fine-tuning is the least-familiar skill and is scheduled
   last. Consider a small early de-risking experiment (tiny toy fine-tune) before
   committing the full week-4 timeline.
+- **Research can substitute for building.** Searching feels productive and
+  produces visible output, but only writing code moves the project. If a session
+  ends with more browser tabs than commits, that is the signal.
+- **Free tiers change constantly.** Every number in this file was true on
+  2026-08-08. Re-check against official pages before depending on any of them.
 
 ---
 
@@ -351,10 +573,14 @@ Spaces, and free app hosts (Render, Koyeb) cap at ~512MB RAM.
 - Full (non-adapter) fine-tuning of any candidate model
 - Gemma-4-31B and Kimi K3 as fine-tune targets
 - Serving the fine-tuned model in the live application path
+- Running any model on the local machine (hardware cannot support it)
+- Any platform requiring a credit or debit card
 - CrewAI (LangGraph is the v1 orchestrator)
 - **v2 idea, not v1**: an autonomous "co-scientist" loop — agents that design,
   run, and critique experiments in a closed loop with no human involved. Same
-  RAG/agent core as v1, extended after v1 ships.
+  RAG/agent core as v1, extended after v1 ships. *Note:* v2 would execute
+  untrusted code, so sandboxing (Incus, containers, VMs) becomes a real design
+  question there — it is not needed in v1, which only reads code.
 
 ### Considered and rejected project ideas
 MedAssist, DataPilot, DocDesk, CareTimeline/RepoMedic — considered before
