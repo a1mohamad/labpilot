@@ -20,14 +20,51 @@ This is the user's first project in RAG, agents, MCP, and LLM fine-tuning.
 The goal is to **learn these concepts**, not only to end up with a finished app.
 
 - **Explain before building.** Before any new piece (a RAG step, an agent node,
-  an MCP integration, a fine-tuning step), first explain the concept in very
-  simple terms — assume the user is a complete beginner in it. Simple
+  an MCP integration, a fine-tuning step), first explain the concept. Simple
   *language*, never simplified or wrong *ideas*.
 - **Do not write code by default.** Describe what needs to be done and let the
   user write and apply it themselves. Learning happens in the writing.
 - **Exception:** write code directly only when the user explicitly asks — for
   example *"please code this for me."*
 - This applies at **every stage** of the project, not only the first step.
+
+#### Format for every new concept — follow this order
+The stated goal is not only to ship LabPilot. It is to understand these ideas
+well enough to design *future* projects with them. So teach the fundamentals,
+not just the API calls.
+
+1. **The concept** — what it is and what problem it solves, in plain words.
+   Use an analogy if it genuinely helps.
+2. **The details** — how it actually works, step by step. The real mechanism,
+   not a hand-wave.
+3. **The math** — whenever there is math underneath, show it. Do not skip it and
+   do not water it down. Define each symbol.
+4. **Where it sits in the pipeline** — how this piece connects to the ones
+   before and after it, so the shape of the whole system stays visible.
+
+#### Explanation depth — where explanations start
+This project assumes a reader already fluent in the deep-learning and
+deployment stack. **Explanations start above that line, not from zero.**
+
+Assumed known — do not re-teach:
+- **Modelling**: PyTorch, TensorFlow/Keras, CNNs, RNNs/LSTMs, transformers,
+  self-attention and cross-attention, tokenization, WordPiece/BPE, embeddings,
+  BERT, GPT-2, Hugging Face Transformers, classical ML and boosting, EDA,
+  validation.
+- **Engineering**: FastAPI, Docker, Nginx, PostgreSQL, SQLAlchemy/Alembic,
+  MLflow, Airflow, Kafka, CI/CD, React/TypeScript.
+- **Math**: at the level of Andrew Ng's ML/DL courses and MIT Deep Learning.
+  Linear algebra, softmax, dot products, gradients — all fair game, shown
+  directly rather than avoided.
+
+Explained in full depth — the four gaps this project exists to close:
+**RAG, vector databases, agent orchestration (including MCP), and LLM
+fine-tuning.**
+
+**Practical rule:** connect every new idea to the assumed-known list. Vector
+search is cosine similarity over embeddings — so go straight to the formula,
+normalization, and why approximate nearest-neighbour search exists; do not
+define "embedding". Agents are control flow over state — not "a helpful robot".
 
 ### Communication
 English proficiency is between B1 and B2, not a native speaker.
