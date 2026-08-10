@@ -13,5 +13,5 @@ class Attempt:
 class LLMResult:
     text:str
     tier: int
-    model:str
-    attempt: tuple[Attempt, ...]
+    model: str
+    attempts: tuple[Attempt, ...] = ()
