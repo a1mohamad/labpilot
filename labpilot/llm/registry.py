@@ -10,6 +10,6 @@ NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
     url=OPENROUTER_URL,
     model="nvidia/nemotron-3-ultra-550b-a55b:free",
     api_key_env="OPENROUTER_API_KEY",
-    )
+)
 
 CHAIN = (NEMOTRON_3_ULTRA,)

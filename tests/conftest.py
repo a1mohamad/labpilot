@@ -9,6 +9,7 @@ def pytest_addoption(parser):
         help="run tests that call real providers and spend API quota",
     )
 
+
 def pytest_collection_modifyitems(config, items):
     if config.getoption("--run-smoke"):
         return

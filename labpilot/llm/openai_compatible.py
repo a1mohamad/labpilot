@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 import os
+from dataclasses import dataclass
 
 import requests
 
@@ -17,24 +17,24 @@ from labpilot.llm.errors import LLMError
 
 logger = logging.getLogger(__name__)
 
+
 def _extract_message(body: dict, source: str) -> tuple[str, str, str]:
     try:
         choice = body["choices"][0]
         text = choice["message"]["content"]
         finish_reason = choice.get("finish_reason", "unknown")
 
-    except(KeyError, IndexError, TypeError) as exc:
+    except (KeyError, IndexError, TypeError) as exc:
         raise LLMError(
             f"{source}: unexpected response shape: {truncate(str(body))}"
         ) from exc
 
     text = (text or "").strip()
     if not text:
-        raise LLMError(
-            f"{source}: returned an empty answer"
-        )
+        raise LLMError(f"{source}: returned an empty answer")
 
     return text, body.get("model") or source, finish_reason
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class OpenAICompatibleProvider:
@@ -60,9 +60,7 @@ class OpenAICompatibleProvider:
                 timeout=self.timeout,
             )
         except requests.exceptions.RequestException as exc:
-            raise LLMError(
-                f"{self.name}: request failed: {exc}"
-            ) from exc
+            raise LLMError(f"{self.name}: request failed: {exc}") from exc
 
         if response.status_code != 200:
             raise LLMError(
@@ -94,9 +92,7 @@ class OpenAICompatibleProvider:
     def _api_key(self) -> str:
         key = os.environ.get(self.api_key_env, "").strip()
         if not key:
-            raise LLMError(
-                f"{self.name}: {self.api_key_env} is not set"
-            )
+            raise LLMError(f"{self.name}: {self.api_key_env} is not set")
         return key
 
     def _headers(self) -> dict[str, str]:
