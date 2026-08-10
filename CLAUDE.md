@@ -128,8 +128,13 @@ MCP), and **LLM fine-tuning**.
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. In progress.**
-**Last updated 2026-08-10. Working branch: `feat/llm-client`.**
+**Phase: Step 0 — walking skeleton. In progress — roughly 40% of Step 0 done.**
+**Last updated 2026-08-11. Working branch: `main`.**
+
+`feat/llm-client` was squash-merged into `main` on 2026-08-11 and **kept, not
+deleted** (user's choice). It is now 2 commits behind `main` and still contains
+`LEARNED.txt`, which `main` deleted — that 202-line file is the entire diff the
+editor shows. If work resumes on that branch, run `git merge main` on it first.
 
 Setup is complete:
 - Git repository connected to `https://github.com/a1mohamad/labpilot`
@@ -152,7 +157,7 @@ Step 0 is split into five slices. Finish one before starting the next; a
 six-provider client written in one go has six places to be wrong at once.
 
 1. ~~**Tier 1 alone returns text**~~ ✅ **done 2026-08-10**
-2. The fallback loop + 429 backoff, adding tiers 2–5 ← *next*
+2. The fallback loop + 429 backoff, adding tiers 2–5 ← *in progress, ~45%*
 3. Dumb retrieval — read one hardcoded paper + code pair from `data/samples/`
 4. The single-pass comparison prompt
 5. A bare FastAPI endpoint
@@ -198,23 +203,67 @@ push, and a separate **smoke** workflow that is manual + weekly only.
   "HTTP 200 with an `error` key" case **did not occur**, so no extra branch was
   added for it. Re-check if a future provider behaves differently.
 
-### Where to pick up — slice 2, the fallback loop
+### Slice 2 — in progress (2026-08-11)
 
-Write `gemini.py` **first**, then `chain.py`. Gemini is the only provider with a
-different request shape, so writing it reveals what a shared interface should
-actually look like instead of guessing.
+**What has landed.** The providers, not the loop. `gemini.py` was written first
+on purpose: it is the only provider with a different request *and* response
+shape, so writing it showed where a shared interface really belongs instead of
+guessing one.
 
-- Gemini's response is `candidates[0].content.parts[0].text` and `finishReason`
-  — different nesting *and* different casing. It gets its own parser; do not add
-  a condition to the OpenAI one.
-- `defaults.py` and `_text.py` gain their second consumer here, which is exactly
-  why they already exist as separate modules.
-- Then `chain.py`: iterate `CHAIN`, catch `LLMError`, record each failure into
-  `Attempt`, back off on 429. `AllFreeTiersExhausted` must **not** subclass
-  `LLMError`, or the loop's own `except LLMError` would swallow the signal it
-  needs to report.
-- Add `context_window` to the provider dataclass **in the same commit** as the
-  pre-flight validator that reads it — not before.
+| Module | Added |
+|---|---|
+| `gemini.py` | `GeminiProvider` — its own `_extract_message`, plus `_endpoint()` |
+| `registry.py` | `GOOGLE_URL`, `GEMINI_3_6_FLASH` (tier 2), `GEMINI_3_5_FLASH` (tier 3), `NORTH_MINI_CODE` (tier 4) |
+| `__init__.py` | re-exports all of the above — the package's public API |
+
+`GeminiProvider` deliberately mirrors `OpenAICompatibleProvider` field for field.
+Only three methods differ: `_endpoint()`, `_headers()`, `_payload()`. **That is
+where `base.py` will cut** when it is finally written.
+
+Four differences from the OpenAI shape, all now pinned by a test:
+- model name lives in the **URL** (`{base}/{model}:generateContent`), not the body
+- auth is `x-goog-api-key`, never `Authorization: Bearer`, and never `?key=`
+- `contents: [{parts: [{text}]}]` instead of `messages`, and `maxOutputTokens`
+  lives inside `generationConfig`
+- response is `candidates[0].content.parts[*].text` + `finishReason` +
+  `usageMetadata` — different nesting **and** camelCase
+
+Extra failure branches Gemini has and OpenAI does not: a **blocked prompt**
+(`promptFeedback.blockReason`, no `candidates`) and a candidate whose `content`
+is an empty `{}` with no `parts` at all. `AttributeError` is in the caught tuple
+here because `.get()` on a non-dict raises it where `[...]` raises `TypeError`.
+
+Tests added: 12 unit for `gemini.py`, 1 for the `CHAIN` tier invariant, and
+smoke tests for tiers 2, 3, 4. Suite is **27 passed, 4 skipped**, ruff clean.
+
+**Verified live 2026-08-11:** tiers 2, 3 and 4 all answer. Tier 1 was already
+proven on 2026-08-10.
+
+### Where to pick up — the rest of slice 2
+
+**1. Cerebras (tier 5) — do this first, before any other code.** It has never
+returned a single token, and neither has Modal. After Google's restriction (see
+below) Cerebras is the only free quota that is independent of OpenRouter, so the
+whole chain rests on it. It is OpenAI-compatible, so it is one more instance of
+`OpenAICompatibleProvider` plus one smoke test — one request out of 2,400.
+
+**2. Then `chain.py`.** Iterate `CHAIN`, catch `LLMError`, record each failure
+into `Attempt`, back off on 429 honouring `Retry-After`. `AllFreeTiersExhausted`
+must **not** subclass `LLMError`, or the loop's own `except LLMError` would
+swallow the signal it needs to report.
+
+**3. `base.py`, once Cerebras is in.** Three providers will then exist and the
+shared part is proven: post → check status → parse JSON → reject an empty
+answer → log → return `LLMResult`. The varying part is exactly
+`_endpoint` / `_headers` / `_payload` / `_extract_message`.
+
+**4. `context_window` + the pre-flight budget validator**, in the same commit.
+Never the field alone.
+
+**Tier order must change if Google is ever lost again.** As written, tiers 1 and
+4 share one OpenRouter pool of 50/day. If Google goes down, move Cerebras up to
+tier 2 so the chain does not spend both OpenRouter attempts before reaching an
+independent quota.
 
 ---
 
@@ -265,7 +314,7 @@ Copy `.env.example` to `.env` and fill in real values.
 | Variable | Used for | Where to get it |
 |---|---|---|
 | `OPENROUTER_API_KEY` | Chain tiers 1 + 4, and the reranker | openrouter.ai/keys |
-| `GOOGLE_API_KEY` | Chain tiers 2 + 3 (Gemini) | aistudio.google.com/api-keys |
+| `GOOGLE_API_KEY` | Chain tiers 2 + 3 (Gemini) | aistudio.google.com/api-keys — **from the second Google account**; the first is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
 | `CEREBRAS_API_KEY` | Chain tier 5, and the development workhorse | cloud.cerebras.ai |
 | `MODAL_API_KEY` | Chain tier 6 (paid — last resort). Not yet obtained. | modal.com |
 
@@ -511,6 +560,20 @@ warning**. Better to get an email on Monday than to find out mid-session. Secret
 come from GitHub Actions secrets, never from the YAML — which is why the provider
 reads its key at call time rather than storing it.
 
+*Updated 2026-08-11:* the smoke run now costs **4 requests a week** — 2 on
+OpenRouter (tiers 1 and 4), 2 on Google (tiers 2 and 3). Both
+`OPENROUTER_API_KEY` and `GOOGLE_API_KEY` must exist as repository secrets.
+
+**A bug worth remembering:** the workflow originally set the env var as
+`OPENROUTE_API_KEY` — missing the `R` — while mapping it from the correctly
+named secret. The secret reference was right; the *variable name* was wrong, so
+every scheduled run failed with `OPENROUTER_API_KEY is not set`. A typo on the
+left of the colon is invisible to YAML validation and to CI, because the only
+thing that notices is the code reading `os.environ`.
+
+**Scheduled workflows run from the default branch only.** A fix living on a
+feature branch does not affect Monday's run until it reaches `main`.
+
 **CD is deferred to Step 3.** There is nothing to deploy until Docker exists.
 
 ### Secrets
@@ -587,9 +650,9 @@ Order of attempt (fall through on failure or 429):
 | # | Model | Provider | Why |
 |---|---|---|---|
 | 1 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | Primary. 1M context, MoE (55B active / 550B total). Strong on programming and long agentic workflows — best fit for the hard comparison reasoning. Exact slug, verified 2026-08-10: `nvidia/nemotron-3-ultra-550b-a55b:free` |
-| 2 | **Gemini 3.6 Flash** | Google AI Studio | High-volume workhorse (~1,500 RPD), free context caching, 128K+ context. Carries development and routine comparisons. |
-| 3 | **Gemini 3.5 Flash** | Google AI Studio | Same free tier and context caching. Note it shares Google's quota with #2. |
-| 4 | **Ling 3.0 — free variant TBD** | OpenRouter | ⚠️ **Corrected 2026-08-10:** `inclusionai/ling-3.0-flash` has **no `:free` variant** — only `inclusionai/ling-3.0-tiny:free` (262K context) is free. Pick the replacement from the live model list when slice 2 reaches this tier. Shares OpenRouter's 50/day pool with #1 — see the note below. |
+| 2 | **Gemini 3.6 Flash** | Google AI Studio | High-volume workhorse (~1,500 RPD), free context caching, 128K+ context. Slug verified live 2026-08-11: `gemini-3.6-flash`. |
+| 3 | **Gemini 3.5 Flash** | Google AI Studio | Same free tier and context caching. Shares Google's quota with #2. Slug: `gemini-3.5-flash`. **It is a thinking model — see the thinking-token note below.** |
+| 4 | **Cohere North Mini Code** (`:free`) | OpenRouter | *Changed 2026-08-11 — replaces Ling 3.0, which has no usable `:free` variant.* Slug verified live: `cohere/north-mini-code:free`, **256K context**. MoE, 30B total / 3B active, built for code generation and agentic software engineering. Shares OpenRouter's 50/day pool with #1 — see the note below. Caveat: it is tuned to *write* code, while LabPilot *reasons about* code, so expect its output to read more like a fix than an explanation. Acceptable at tier 4. |
 | 5 | **`gpt-oss-120b`** (Production) | Cerebras Cloud | 2,400 req/day — by far the largest free daily allowance. The binding limit is **5 RPM**, not the daily total. |
 | 6 | Kimi K3 · Nemotron Ultra · DeepSeek V4 Pro · DeepSeek V4 Flash | Modal | **Opt-in only — never automatic.** Costs credit. Reached only when tiers 1–5 have all failed, *and* the user says yes. |
 
@@ -773,6 +836,28 @@ reads it exists** — a field nobody reads is dead code.
 - Gemini free tier: prompts may be used to improve Google's products. Grounding
   with Google Search is **not available** on the free tier — fetch papers in our
   own code instead.
+- **Gemini thinking tokens — verified 2026-08-11, and this will bite.**
+  `maxOutputTokens` budgets **thoughts + answer**, not the answer alone:
+
+  $$
+  T_{\text{out}} = T_{\text{think}} + T_{\text{answer}}
+  $$
+
+  `gemini-3.5-flash` spent **60 of 64** output tokens thinking, returned
+  `content: {}` with no `parts`, and `finishReason: MAX_TOKENS`. Our code
+  correctly raised `LLMError: returned an empty answer (MAX_TOKENS)` — but in
+  `chain.py` that would fall through to the next tier for no real reason.
+  `gemini-3.6-flash` passed on the *same* 64 tokens, so behaviour differs
+  **within one model family**. Never assume siblings behave alike.
+  Two possible handlings, to be decided in slice 4 when real `max_tokens` values
+  are chosen: a minimum floor on Gemini tiers, or
+  `generationConfig.thinkingConfig.thinkingBudget` to cap or disable thinking.
+  Disabling costs reasoning quality on the hard comparison, which is the one
+  thing LabPilot must not lose. Google reports `usageMetadata.thoughtsTokenCount`
+  — already in our log line.
+- **CLAUDE.md's planned ~200-token "do these even correspond?" call is unsafe on
+  a thinking tier.** 200 tokens would be swallowed by thoughts and return
+  nothing. Revisit when that call is written.
 - Do **not** use `openrouter/free` (the auto-router) — it varies the model
   between calls, which breaks repeatable comparison output.
 - **Cerebras (tier 5)**: verified limits (2026-08-08) are **5 RPM, 2,400/day,
@@ -851,13 +936,51 @@ required a credit or debit card.
 | Platform | Role in this project | Limits | Card? |
 |---|---|---|---|
 | **OpenRouter** | Chain tiers 1 + 4, reranker | ~50 req/day | No |
-| **Google AI Studio** | Chain tiers 2 + 3 | ~1,500 RPD | No |
+| **Google AI Studio** | Chain tiers 2 + 3 | ~1,500 RPD | No — but see the restriction note below |
 | **Cerebras Cloud** | Chain tier 5, development workhorse, evaluation baseline | 5 RPM / 2,400 per day | No |
 | **Kaggle** | Fine-tuning (Step 4) | ~30 GPU-hrs/week, 2×T4 or P100, 12h sessions | No (phone verification) |
 | **Lightning AI** | One-shot escape hatch for a bigger GPU (see note below) | **5 credits, one-time** (~2 A100-hrs); 1 CPU Studio free with 4-hr restarts | No (phone verification) |
 | **Lightning Model APIs** | Chain candidate — not yet added | 30M free tokens (one-time), 15 RPM / 120K tok-min | No |
 | **Hugging Face** | LoRA adapter hosting + **the public demo** | ZeroGPU: max 2 Spaces, small daily GPU-seconds quota | No |
 | **Modal** | Chain tier 6 (last resort) + custom-weights API endpoint | $30 credit (Starter) | No |
+
+### Google AI Studio — the account restriction of 2026-08-11
+
+**What happened.** Every `generateContent` call returned
+`403 PERMISSION_DENIED — "Your project has been denied access. Please contact
+support."` The key itself was fine: `ListModels` returned `200 OK` with the same
+key. A brand-new project created minutes later was marked `Restricted`
+immediately, before it had ever made a request, with the tooltip *"This
+Project's API access is restricted. Please set up billing to continue."*
+
+**What it was not.** Not billing — Google's own pricing page says AI Studio is
+free in all available regions. Not the region — Google's available-regions page
+lists Germany, which is what the billing dialog showed. Not the model slugs —
+they were verified against the live model list.
+
+**How the two refusals differ, and why that identified the cause:**
+
+| What fires | Error | Meaning |
+|---|---|---|
+| Request comes from an unsupported country | `400 FAILED_PRECONDITION` — *"User location is not supported"* | checked **per request** |
+| Project or account is flagged | `403 PERMISSION_DENIED` — *"project has been denied access"* | applied **before** any request is judged |
+
+A per-request check cannot restrict a project that has made no requests. So the
+flag was on the **Google account**, and every project it created inherited it.
+
+**The fix: a different Google account.** Tiers 2 and 3 then passed on the first
+try. `GOOGLE_API_KEY` in `.env` now belongs to that second account.
+
+**Rule going forward: do not use this account through a VPN or a location-
+switcher extension.** The flagged account was being used with one; the working
+account was not. A mismatch between account country and connection country is a
+standard anti-fraud trigger. Losing this account too would cost two tiers.
+
+**And the general lesson, which cost an afternoon:** an issued API key is not a
+working API. Google was recorded as "created and verified" on 2026-08-08 and had
+never once returned a token. **Cerebras and Modal are still in exactly that
+state** — accounts exist, nothing has ever been called. Prove Cerebras before
+`chain.py` is built on top of it.
 
 ### Lightning AI — read the credit maths before using it
 
@@ -993,6 +1116,15 @@ responses (not part of the fine-tune).
   multi-GPU is fragile and not worth it for a ~150–300 example dataset) and
   Kimi K3 (2.8T params, needs datacenter-scale infrastructure).
 - Also comparing **Qwen3-4B** against the Gemma candidates.
+- **Gemma 4 is also served free on the Google API** — noted 2026-08-11 while
+  verifying the Gemini slugs: `gemma-4-31b-it` and `gemma-4-26b-a4b-it` both
+  appear in `GET /v1beta/models` on the free key. This does **not** change the
+  plan — fine-tuning downloads weights from Hugging Face and the like-for-like
+  comparison runs on Modal, neither of which touches Google. It matters for one
+  case only: Cerebras serves `gemma-4-31b` but **not** `gemma-4-26b-a4b`, which
+  is the actual fine-tune target. Google is currently the only free place to run
+  that exact base model as an evaluation baseline. Also useful as a backup,
+  because the Cerebras `gemma-4-31b` is a **Preview** model and may vanish.
 - **Evaluation**: fine-tuned model vs. base model, and vs. `gemma-4-31b`.
   **Run the baseline on Cerebras**, not OpenRouter — 2,400 requests/day instead
   of ~50 makes a real evaluation possible in one sitting. Run the fine-tuned
