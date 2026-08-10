@@ -501,6 +501,19 @@ tier returned). Decided 2026-08-09: the frontend must show which model answered
 and which ones failed first, so model identity has to cross the seam — reaching
 the log file is not enough.
 
+**Token usage — logged now, returned later.** *(Decided 2026-08-10.)* Every
+provider reports it (`usage.prompt_tokens` on the OpenAI shape,
+`usageMetadata.promptTokenCount` on Gemini), so it passes the six-provider test
+and belongs in `LLMResult` **eventually**. Today it goes only to `logger.info`,
+because nothing reads it yet and a returned field nobody reads is dead code.
+Logging it already buys two things: real token counts to check the `chars / 3`
+estimate against, and visibility on Cerebras's 30K-tokens-per-minute cap, where
+tokens bind before request count does.
+
+Promote it to `prompt_tokens` / `completion_tokens` on `LLMResult` the moment
+the UI or the budget validator needs the number — the log cannot cross the seam
+to the frontend, only the return value can.
+
 **The test for anything new in this interface: it must be true for all six
 providers.** Model identity and failure reasons pass — every provider reports
 them. Streaming does not, so it stays out.
