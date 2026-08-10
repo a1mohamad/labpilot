@@ -1,7 +1,7 @@
 import pytest
 from dotenv import load_dotenv
 
-from labpilot.llm import NEMOTRON_3_ULTRA
+from labpilot.llm import NEMOTRON_3_ULTRA, NORTH_MINI_CODE
 
 load_dotenv()
 
@@ -15,3 +15,14 @@ def test_tier1_answers_a_real_prompt():
     assert result.text
     assert result.tier == 1
     assert "nemotron" in result.model.lower()
+
+
+@pytest.mark.smoke
+def test_tier4_answers_a_real_prompt():
+    result = NORTH_MINI_CODE.complete(
+        "Reply with one short sentence: you are online.", max_tokens=64
+    )
+
+    assert result.text
+    assert result.tier == 4
+    assert "cohere" in result.model.lower()
