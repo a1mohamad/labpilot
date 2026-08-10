@@ -238,8 +238,110 @@ Rules that override the table:
   at call time.
 - Private helpers get a leading underscore. Public names carry no underscore and
   are the file's real interface.
-- Docstrings say *why*, not *what* — the signature already says what.
 - No dead code, no commented-out code, no `TODO` without a follow-up decision.
+
+**Docstrings and inline comments are added in a separate later pass**, with the
+documentation skill — not while the logic is being written. So code is drafted
+**raw**: names, types, and structure carry the meaning on their own. If a raw
+function is unreadable without a comment, the fix is a better name or a smaller
+function, not a comment. When the doc pass runs, docstrings say *why*, not
+*what* — the signature already says what.
+
+**Claude posts code in the chat; the user types it into the file.** Do not write
+project source files directly unless asked to. Learning happens in the typing.
+
+### Tests and error handling — written with the code, never after
+Both are part of "done". A feature is not finished when it returns the right
+answer once; it is finished when its failures are handled and its behaviour is
+pinned by tests. Both land in the **same commit** as the code they cover.
+
+**The standard is sufficient, not maximal.** Bad test suites fail in two
+opposite ways, and both are rejected here:
+
+| Too little | Too much |
+|---|---|
+| Only the happy path | A test per line, restating the implementation |
+| Bare `except Exception: pass` | A `try` around code that cannot fail |
+| Errors that lose the cause | Five tests for one behaviour with different values |
+| A crash with no context | Mocks so deep the test proves nothing about reality |
+
+**Rules for error handling:**
+- Handle a failure only where you can *do* something about it. Otherwise let it
+  travel up to a layer that can.
+- Every `except` either recovers, or re-raises as this layer's own error type
+  with `from exc`. Never swallow.
+- Error messages name the source and carry the provider's own words. `HTTP 400`
+  alone is not a message.
+- Distinguish *their* failure from *our* bug — see the `LLMError` vs
+  `ValueError` rule above.
+
+**Rules for tests:**
+- One test asserts one behaviour, and its name says which: `test_<what>_<when>`.
+- Cover: the happy path, each distinct **failure branch** written in the code,
+  and the **contract** with the outside world (the exact request shape sent).
+- Do not test the language or the standard library. A frozen dataclass being
+  frozen is not our behaviour.
+- Use `pytest.mark.parametrize` when several inputs exercise the *same* branch;
+  write separate tests when the branches differ.
+- **Unit tests never touch the network.** Mock at the HTTP boundary, not at our
+  own function boundary — mocking our own code makes the test prove nothing.
+- **Smoke tests do touch the network, and never run by default.** Mark them
+  `@pytest.mark.smoke` and require an opt-in flag. OpenRouter's free pool is
+  ~50 requests/day; a test suite must not spend it.
+- Test layers arrive when the layer they test arrives: unit now, API tests with
+  FastAPI, integration tests with retrieval, end-to-end at Step 3. Do not write
+  a test for a layer that does not exist yet.
+
+**Review pass:** after a section is finished, re-read its tests and error paths
+once and ask only *"which real failure is still unprotected?"* Add what is
+genuinely missing. Do not add tests to raise a number.
+
+### Layout — plan the shape early, create files late
+Reorganising a project is cheap on day one and expensive in month three, because
+by then imports, tests, and habits all point at the old shape. So the **map** is
+decided up front. But there is a line, and it matters:
+
+> **Planning where a file will live costs nothing. Writing an abstraction before
+> its second case costs a rewrite.** Decide the folders early. Create each module
+> the day it has real content — never as an empty placeholder.
+
+**How to split — one module, one reason to change.** Not by line count.
+Ask: *"when X changes, how many files do I touch?"* If one change edits five
+files, the split is wrong. If five unrelated changes all edit one file, it is a
+god-file.
+
+Line count is only a **symptom to investigate**, never the rule:
+
+| Signal | What it usually means |
+|---|---|
+| Module past ~400 lines | Probably holds more than one responsibility — look for the seam |
+| Module under ~30 lines | Probably belongs inside its neighbour |
+| Two modules always edited together | They are one module |
+| A module imported by everything | It holds contracts — good, keep it dependency-free |
+
+**Contracts live alone.** Value objects and exception types (`LLMResult`,
+`Attempt`, `LLMError`) go in their own modules that import nothing from the
+package. Every layer imports them; they import no one. This is what prevents
+circular imports — the failure that forces a real reorganisation.
+
+**Each package's `__init__.py` is its public API.** Re-export the names the rest
+of LabPilot may use. Outside code imports `from labpilot.llm import LLMClient`,
+never `from labpilot.llm.openai_compatible import ...`. Internal files can then
+be renamed or split freely without breaking a single caller. The `LLMClient`
+seam rule is enforced by this, not by good intentions.
+
+**Tests mirror the source tree, and are split by kind — not all in one folder:**
+
+```
+tests/
+    conftest.py           shared fixtures and the --run-smoke flag
+    unit/                 no I/O, no network; mirrors labpilot/ structure
+    integration/          real Supabase / real pgvector, no live LLM
+    api/                  FastAPI TestClient against the endpoints
+    smoke/                real providers over the network; opt-in only
+```
+
+Folders are created when their first real test exists, not before.
 
 ### Commits
 **Conventional Commits** — `<type>: <short imperative description>`, lowercase,
@@ -268,8 +370,8 @@ Planned progression (climb only when the project earns it):
 
 | Stage | Setup | Trigger |
 |---|---|---|
-| Now | one `requirements.txt` | 4 packages, no tests |
-| Steps 1–2 | `+ requirements-dev.txt` | when `pytest` is added |
+| ~~Now~~ | ~~one `requirements.txt`~~ | ~~4 packages, no tests~~ |
+| **Now (Step 0)** | `requirements.txt` + `requirements-dev.txt` | reached early — tests are written alongside the code, so `pytest` arrives in Step 0, not Step 1 |
 | Step 3 | `pyproject.toml` + lock file | Docker needs reproducible builds |
 
 Note: `requirements.txt` is generated on Windows and may contain Windows-only
@@ -388,6 +490,82 @@ providers (OpenRouter, Cerebras, Modal) speak the **OpenAI-compatible**
 `/chat/completions` shape, so they differ only in base URL, API key, and model
 name. Google is the one odd shape. Migrating Gemini to the `google-genai` SDK
 later is optional, and would be a change *inside* `LLMClient` only.
+
+### Token budget — decided 2026-08-10
+
+**Decision: static input budget, dynamic output budget, per-tier validation.**
+Recorded now; **built with `chain.py`**, not before. Full design discussion
+happens when that section is reached.
+
+Every provider enforces one inequality — output tokens are reserved *before*
+generation starts, so they eat the same window as the prompt:
+
+$$
+t_{\text{in}} + T_{\text{out}} \le C
+\qquad\Longrightarrow\qquad
+B_{\text{in}} = C - T_{\text{out}} - M
+$$
+
+`t_in` prompt tokens · `T_out` our `max_tokens` · `C` the model's context window ·
+`B_in` the input budget we may fill · `M` a safety margin.
+
+`M` is not optional, because token counts are **estimates**. Each provider has
+its own tokenizer and we do not have it:
+
+$$
+\hat{t} \approx \frac{\text{chars}}{k},
+\qquad k \approx 4 \ \text{(English prose)},
+\qquad k \approx 3 \ \text{(code)}
+$$
+
+Use `k = 3` for LabPilot — prompts are code-heavy, and code is denser than prose.
+Underestimating shows up as a wasted request and a vague `400`, so be pessimistic.
+
+**Why the input budget is static.** The context windows in the chain are
+1M (tier 1) · ~128K (tiers 2–3) · 262K (tier 4) · 131K (tier 5). The floor is
+Gemini at ~128K — but we should not want more than ~100K anyway:
+
+- **Retrieval quality collapses long before the window does.** Facts placed in
+  the middle of a very long context get lost. Sending 400 chunks does not make
+  LabPilot smarter; it buries the relevant one. Being near 128K means retrieval
+  is doing its job badly.
+- **Prefill latency** on a free tier will time out before it answers.
+
+So a fixed **~100,000 token input budget fits under every tier's floor**, and a
+per-tier input budget would buy nothing real. It would also cost the one property
+LabPilot cannot lose: if tier 1 sees 40 chunks and tier 5 sees 8, the two answers
+differ for reasons unrelated to the models, and a wrong comparison can no longer
+be diagnosed. **One prompt, every tier.**
+
+**Why the output budget is dynamic.** "Do these two even correspond?" needs ~200
+tokens; a full divergence report needs ~4,000. One global value gives either
+truncated reports (`finish_reason: length`) or thousands of reserved tokens
+wasted on a one-line answer. So `max_tokens` is a **parameter of the call**, not
+a field on the provider.
+
+**Where each number lives** — one home each, never a literal in a function:
+
+| Number | Home | Reason |
+|---|---|---|
+| `context_window` per model | a field on each provider, filled in `registry.py` | provider data; changes when a free model is swapped |
+| `INPUT_BUDGET` ≈ 100,000 | one shared constants module | must be identical for every tier — that is what keeps comparisons comparable |
+| `SAFETY_MARGIN`, `CHARS_PER_TOKEN` (3) | same shared module | estimation policy, not provider data |
+| `max_tokens` | argument to `complete()` / `generate()` | depends on the task, not the model |
+
+**Pre-flight validation (the one genuinely per-tier piece).** Before the HTTP
+call, check `estimate + max_tokens + M ≤ context_window` and raise `LLMError`
+immediately if it fails. This gives *"prompt ~140K, tier 5 holds 131K"* instead
+of a provider's vague `400`, and spends no request from a 50/day pool.
+
+**Rejected: a fully dynamic per-tier prompt.** It would require `generate` to
+take a *builder* (`Callable[[int], str]`) instead of a string, so the chain could
+say "rebuild at 120K" on fallback. Clean in principle, but it breaks
+comparability, forces retrieval to re-run inside the fallback loop, and changes
+the locked `generate(prompt) -> LLMResult` signature. Revisit only if a real
+prompt is ever proven to need more than 100K.
+
+**Add `context_window` to the provider dataclass only when the validator that
+reads it exists** — a field nobody reads is dead code.
 
 ### Constraints
 - OpenRouter free tier is roughly **50 requests/day** without purchased credits
