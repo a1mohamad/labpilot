@@ -17,15 +17,15 @@ from labpilot.llm.errors import LLMError
 
 logger = logging.getLogger(__name__)
 
-def extract_message(body: dict, source: str) -> tuple[str, str, str]:
+def _extract_message(body: dict, source: str) -> tuple[str, str, str]:
     try:
         choice = body["choices"][0]
-        text = body["message"]["content"]
+        text = choice["message"]["content"]
         finish_reason = choice.get("finish_reason", "unknown")
 
     except(KeyError, IndexError, TypeError) as exc:
         raise LLMError(
-            f"{source}: unexpected response body: {truncate(str(body))}"
+            f"{source}: unexpected response shape: {truncate(str(body))}"
         ) from exc
 
     text = (text or "").strip()
@@ -46,8 +46,8 @@ class OpenAICompatibleProvider:
     timeout: tuple[float, float] = DEFAULT_TIMEOUT
     temperature: float = DEFAULT_TEMPERATURE
 
-    def compelte(
-        self, prompt: str, max_tokens: int = DEFAULT_MAX_TOKENS
+    def complete(
+        self, prompt: str, *, max_tokens: int = DEFAULT_MAX_TOKENS
     ) -> LLMResult:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
@@ -62,7 +62,7 @@ class OpenAICompatibleProvider:
         except requests.exceptions.RequestException as exc:
             raise LLMError(
                 f"{self.name}: request failed: {exc}"
-            )
+            ) from exc
 
         if response.status_code != 200:
             raise LLMError(
@@ -73,10 +73,10 @@ class OpenAICompatibleProvider:
             body = response.json()
         except ValueError as exc:
             raise LLMError(
-                f"{self.name}: response was not in JSON: {truncate(response.text)}"
+                f"{self.name}: response was not JSON: {truncate(response.text)}"
             ) from exc
 
-        text, served_model, finish_reason = extract_message(body, self.name)
+        text, served_model, finish_reason = _extract_message(body, self.name)
         usage = body.get("usage", {})
 
         logger.info(
@@ -85,14 +85,14 @@ class OpenAICompatibleProvider:
             served_model,
             finish_reason,
             len(text),
-            usage.get("prompt_tokens"),
-            usage.get("completion_tokens"),
+            usage.get("prompt_tokens", "?"),
+            usage.get("completion_tokens", "?"),
         )
 
         return LLMResult(text=text, model=served_model, tier=self.tier)
 
     def _api_key(self) -> str:
-        key = os.environ.get(self.api_key_env)
+        key = os.environ.get(self.api_key_env).strip()
         if not key:
             raise LLMError(
                 f"{self.name}: {self.api_key_env} is not set"
@@ -105,7 +105,7 @@ class OpenAICompatibleProvider:
             "Content-Type": "application/json",
         }
 
-    def _payload(self, prompt: str, max_tokens: int) -> dict[str, object]:
+    def _payload(self, prompt: str, max_tokens: int = DEFAULT_MAX_TOKENS) -> dict[str, object]:
         return {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
