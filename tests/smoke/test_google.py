@@ -14,7 +14,7 @@ load_dotenv()
 )
 def test_gemini_tier_answers_a_real_prompt(provider):
     result = provider.complete(
-        "Reply with one short sentence: you are online.", max_tokens=64
+        "Reply with one short sentence: you are online.", max_tokens=512
     )
 
     assert result.text
