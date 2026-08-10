@@ -305,6 +305,22 @@ decided up front. But there is a line, and it matters:
 > its second case costs a rewrite.** Decide the folders early. Create each module
 > the day it has real content — never as an empty placeholder.
 
+**"Wait for the second case" is not one rule — it depends on the cost of being
+wrong.** Split it in two:
+
+| Kind of thing | When to give it its own module |
+|---|---|
+| **Constants and pure helpers** (timeouts, budgets, a `truncate` function) | As soon as a second consumer is **known and scheduled** — not after it is written. Moving a constant later is a rename the tests catch in seconds. |
+| **Abstractions** (base classes, `Protocol`s, plugin interfaces) | Only after the second implementation **exists** and its real differences are visible. Guessing the shape costs a rewrite. |
+
+So a `defaults.py` may be created for the provider that is next in the plan.
+A `base.py` may not be created until that provider is actually written.
+
+**Design against the roadmap, not against today.** When proposing structure,
+assume the next two steps in the build plan already exist and ask where each
+piece would sit then. Structure that is correct only for the current file is
+not correct.
+
 **How to split — one module, one reason to change.** Not by line count.
 Ask: *"when X changes, how many files do I touch?"* If one change edits five
 files, the split is wrong. If five unrelated changes all edit one file, it is a
