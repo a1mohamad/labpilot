@@ -92,7 +92,7 @@ class OpenAICompatibleProvider:
         return LLMResult(text=text, model=served_model, tier=self.tier)
 
     def _api_key(self) -> str:
-        key = os.environ.get(self.api_key_env).strip()
+        key = os.environ.get(self.api_key_env, "").strip()
         if not key:
             raise LLMError(
                 f"{self.name}: {self.api_key_env} is not set"
