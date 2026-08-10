@@ -30,4 +30,12 @@ GEMINI_3_5_FLASH = GeminiProvider(
     api_key_env="GOOGLE_API_KEY",
 )
 
-CHAIN = (NEMOTRON_3_ULTRA, GEMINI_3_6_FLASH, GEMINI_3_5_FLASH)
+NORTH_MINI_CODE = OpenAICompatibleProvider(
+    name="North Mini Code",
+    tier=4,
+    url=OPENROUTER_URL,
+    model="cohere/north-mini-code:free",
+    api_key_env="OPENROUTER_API_KEY",
+)
+
+CHAIN = (NEMOTRON_3_ULTRA, GEMINI_3_6_FLASH, GEMINI_3_5_FLASH, NORTH_MINI_CODE)
