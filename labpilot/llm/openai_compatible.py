@@ -31,7 +31,7 @@ def _extract_message(body: dict, source: str) -> tuple[str, str, str]:
     text = (text or "").strip()
     if not text:
         raise LLMError(
-            f"{source}: return an empty answer"
+            f"{source}: returned an empty answer"
         )
 
     return text, body.get("model") or source, finish_reason
@@ -80,7 +80,7 @@ class OpenAICompatibleProvider:
         usage = body.get("usage", {})
 
         logger.info(
-            "tier %d served by %s (finish reason=%s, %d chars, %s in / %s out tokens)",
+            "tier %d served by %s (finish_reason=%s, %d chars, %s in / %s out tokens)",
             self.tier,
             served_model,
             finish_reason,
@@ -105,7 +105,7 @@ class OpenAICompatibleProvider:
             "Content-Type": "application/json",
         }
 
-    def _payload(self, prompt: str, max_tokens: int = DEFAULT_MAX_TOKENS) -> dict[str, object]:
+    def _payload(self, prompt: str, max_tokens: int) -> dict[str, object]:
         return {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
