@@ -129,7 +129,7 @@ MCP), and **LLM fine-tuning**.
 ## Current Status
 
 **Phase: Step 0 — walking skeleton. In progress.**
-**Last updated 2026-08-09. Working branch: `feat/llm-client`.**
+**Last updated 2026-08-10. Working branch: `feat/llm-client`.**
 
 Setup is complete:
 - Git repository connected to `https://github.com/a1mohamad/labpilot`
@@ -146,46 +146,75 @@ Flat layout, **not** `src/` — both give the identical import path
 (`from labpilot.llm import LLMClient`), so moving to `src/` later is one
 `git mv` that changes no imports. Not a decision worth making now.
 
-### Where to pick up — Step 0, slice 1 of 5
+### Slice 1 — DONE 2026-08-10
 
 Step 0 is split into five slices. Finish one before starting the next; a
 six-provider client written in one go has six places to be wrong at once.
 
-1. **Tier 1 alone returns text** ← *in progress*
-2. The fallback loop + 429 backoff, adding tiers 2–5
+1. ~~**Tier 1 alone returns text**~~ ✅ **done 2026-08-10**
+2. The fallback loop + 429 backoff, adding tiers 2–5 ← *next*
 3. Dumb retrieval — read one hardcoded paper + code pair from `data/samples/`
 4. The single-pass comparison prompt
 5. A bare FastAPI endpoint
 
-Two files exist but are **empty**, waiting to be written by hand:
-- `labpilot/llm/errors.py` — `LLMError`, and `AllFreeTiersExhausted(LLMError)`
-- `labpilot/llm/client.py` — `LLMResult` dataclass, `LLMClient`, `__main__` smoke test
+**What slice 1 shipped.** `labpilot/llm/` split by reason-to-change, not by size:
 
-`labpilot/llm/__init__.py` is deliberately empty for now. Add
-`from .client import LLMClient, LLMResult` **only after** `client.py` exists —
-added first, every import fails.
+| Module | Holds |
+|---|---|
+| `__init__.py` | the package's public API — the only door other packages use |
+| `errors.py` | `LLMError` |
+| `contracts.py` | `Attempt`, `LLMResult` — imported by everything, imports nothing |
+| `defaults.py` | `DEFAULT_TIMEOUT`, `DEFAULT_MAX_TOKENS`, `DEFAULT_TEMPERATURE`, `ERROR_BODY_CHARS` |
+| `_text.py` | `truncate` — package-internal helper |
+| `openai_compatible.py` | `OpenAICompatibleProvider` — the shared wire format for tiers 1, 4, 5, 6 |
+| `registry.py` | `OPENROUTER_URL`, `NEMOTRON_3_ULTRA`, `CHAIN` — provider data and order |
 
-Slice 1 spec — OpenRouter tier 1 only, plain `requests`:
-- `__init__` reads `OPENROUTER_API_KEY` and raises immediately if it is missing
-  or empty. A setup mistake must not survive until the middle of a comparison.
-- `generate(prompt) -> LLMResult`. POST to
-  `https://openrouter.ai/api/v1/chat/completions`, header
-  `Authorization: Bearer <key>`, body = `model` + `messages` + `temperature: 0`
-  + `max_tokens`. Answer is at `choices[0].message.content`.
-- **Verify the exact Nemotron 3 Ultra `:free` slug** on openrouter.ai/models.
-  Never guess it — a wrong slug is a 404.
-- Handle five failure modes, in this order: (1) missing key, (2)
-  `RequestException` — timeout/DNS/dropped, (3) non-200 status, (4) HTTP 200 but
-  the body has an `error` key — OpenRouter does this, (5) HTTP 200 with empty
-  `choices` or null/empty `content`. **(5) matters most:** an empty answer is a
-  *failure*, and returning it makes a dead tier look healthy.
-- Log the served model, the token counts, and `finish_reason`.
-- In slice 1, `LLMResult.tier` is always `1` and `attempts` is empty. The fields
-  exist now so slice 2 does not change the shape for callers.
+Design decisions worth keeping:
+- **Providers are instances, not subclasses.** OpenRouter, Cerebras and Modal
+  differ only in data (URL, model, key name), so they are three instances of one
+  class. Only Gemini differs in *behaviour*, and it gets its own module.
+- **No `base.py` yet.** An interface designed before the second implementation
+  exists is a guess. It arrives with `gemini.py`, when the real difference is
+  visible.
+- **`max_tokens` is an argument of `complete()`**, not a provider field — answer
+  length belongs to the task, not the model.
+- **The provider stores the *name* of the env var**, never the key. The value is
+  read at call time, so no log or `repr` can leak it, and CI can inject it.
 
-**Done when** `python -m labpilot.llm.client` prints `OK` and logs
-`finish_reason: stop` — *and* when a deliberately broken model slug raises a
-clear `LLMError` mentioning 404, not a `KeyError`.
+Seven failure paths handled, each with a test: missing key · `RequestException`
+· non-200 status · 200 with a non-JSON body · missing or empty `choices` ·
+empty/`null` `content` · empty prompt. The last one raises **`ValueError`**, not
+`LLMError` — a caller's bug must never be swallowed by the fallback loop.
+
+Tooling landed with it: `pytest.ini`, `ruff.toml` (`E,F,I,UP,B`, line 88),
+`.pre-commit-config.yaml`, `requirements-dev.txt`, GitHub Actions **CI** on every
+push, and a separate **smoke** workflow that is manual + weekly only.
+
+**Verified live on 2026-08-10** (3 requests spent of 50):
+- `pytest -q` → 13 passed, 1 skipped, ruff clean.
+- `pytest -m smoke --run-smoke -q` → 1 passed against the real endpoint.
+- A deliberately broken slug returns **HTTP 400**, not 404 — and the error reads
+  `Nemotron 3 Ultra: HTTP 400: ... is not a valid model ID`. The feared
+  "HTTP 200 with an `error` key" case **did not occur**, so no extra branch was
+  added for it. Re-check if a future provider behaves differently.
+
+### Where to pick up — slice 2, the fallback loop
+
+Write `gemini.py` **first**, then `chain.py`. Gemini is the only provider with a
+different request shape, so writing it reveals what a shared interface should
+actually look like instead of guessing.
+
+- Gemini's response is `candidates[0].content.parts[0].text` and `finishReason`
+  — different nesting *and* different casing. It gets its own parser; do not add
+  a condition to the OpenAI one.
+- `defaults.py` and `_text.py` gain their second consumer here, which is exactly
+  why they already exist as separate modules.
+- Then `chain.py`: iterate `CHAIN`, catch `LLMError`, record each failure into
+  `Attempt`, back off on 429. `AllFreeTiersExhausted` must **not** subclass
+  `LLMError`, or the loop's own `except LLMError` would swallow the signal it
+  needs to report.
+- Add `context_window` to the provider dataclass **in the same commit** as the
+  pre-flight validator that reads it — not before.
 
 ---
 
@@ -449,6 +478,41 @@ Planned progression (climb only when the project earns it):
 Note: `requirements.txt` is generated on Windows and may contain Windows-only
 packages (e.g. `colorama`). Watch for this when the Docker image is built.
 
+### Linting, hooks, and CI — added 2026-08-10
+
+**One tool, one pinned version, three places.** `ruff` runs in the editor, in the
+pre-commit hook, and in CI. If the versions drift, a commit that is green locally
+fails in CI for no real reason — so `ruff.toml`, `requirements-dev.txt`, and
+`.pre-commit-config.yaml` (`rev:`) must all name the **same** version.
+
+- `ruff.toml` — line length 88, rules `E,F,I,UP,B` (style · unused/undefined ·
+  import order · outdated syntax · common bugs).
+- `.pre-commit-config.yaml` — `ruff-check --fix` and `ruff-format` on staged
+  files. Needs `pre-commit install` **once per clone**: hooks live in `.git/`,
+  which is never cloned or committed.
+- `.vscode/settings.json` — format on save, fix and sort imports on save,
+  `ruff.importStrategy: fromEnvironment` so the editor uses the venv's ruff and
+  not the extension's bundled copy. Committed, because it holds project settings
+  only — never a machine path.
+
+**CI verifies; it never fixes.** Auto-fixing in CI means the pipeline pushes
+commits to your branch, which needs write access and hides the problem instead of
+showing it. So CI runs `ruff check .`, `ruff format --check .`, `pytest -q`.
+
+**Two workflows, and the split is about quota:**
+
+| Workflow | Trigger | Runs | Cost |
+|---|---|---|---|
+| `ci.yml` | every push and PR | lint + unit tests | **zero** — every test is mocked |
+| `smoke.yml` | manual button + Mondays 06:00 UTC | smoke only | ~1 request/week |
+
+The weekly smoke run exists for one reason: **free models disappear without
+warning**. Better to get an email on Monday than to find out mid-session. Secrets
+come from GitHub Actions secrets, never from the YAML — which is why the provider
+reads its key at call time rather than storing it.
+
+**CD is deferred to Step 3.** There is nothing to deploy until Docker exists.
+
 ### Secrets
 Never commit `.env`. Never put keys in code or in this file. Verify with
 `git status` before every commit.
@@ -522,10 +586,10 @@ Order of attempt (fall through on failure or 429):
 
 | # | Model | Provider | Why |
 |---|---|---|---|
-| 1 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | Primary. 1M context, MoE (55B active / 550B total). Strong on programming and long agentic workflows — best fit for the hard comparison reasoning. |
+| 1 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | Primary. 1M context, MoE (55B active / 550B total). Strong on programming and long agentic workflows — best fit for the hard comparison reasoning. Exact slug, verified 2026-08-10: `nvidia/nemotron-3-ultra-550b-a55b:free` |
 | 2 | **Gemini 3.6 Flash** | Google AI Studio | High-volume workhorse (~1,500 RPD), free context caching, 128K+ context. Carries development and routine comparisons. |
 | 3 | **Gemini 3.5 Flash** | Google AI Studio | Same free tier and context caching. Note it shares Google's quota with #2. |
-| 4 | **Ling 3.0 Flash** (`:free`, by inclusionai) | OpenRouter | Second free OpenRouter option. Shares OpenRouter's ~50/day pool with #1 — see the note below. |
+| 4 | **Ling 3.0 — free variant TBD** | OpenRouter | ⚠️ **Corrected 2026-08-10:** `inclusionai/ling-3.0-flash` has **no `:free` variant** — only `inclusionai/ling-3.0-tiny:free` (262K context) is free. Pick the replacement from the live model list when slice 2 reaches this tier. Shares OpenRouter's 50/day pool with #1 — see the note below. |
 | 5 | **`gpt-oss-120b`** (Production) | Cerebras Cloud | 2,400 req/day — by far the largest free daily allowance. The binding limit is **5 RPM**, not the daily total. |
 | 6 | Kimi K3 · Nemotron Ultra · DeepSeek V4 Pro · DeepSeek V4 Flash | Modal | **Opt-in only — never automatic.** Costs credit. Reached only when tiers 1–5 have all failed, *and* the user says yes. |
 
@@ -565,9 +629,34 @@ for. If the two ever compete, the fine-tuned demo wins.
 - This is why Cerebras sits at tier 5 and not lower: it is the first genuinely
   independent quota after the OpenRouter and Google pools are gone.
 
-**Reranking**: NVIDIA Llama Nemotron Rerank VL 1B V2 (`:free`, OpenRouter) —
-used in the RAG layer to rerank retrieved candidates before sending them to the
-LLM. Retrieve broadly, rerank, then send only the top results.
+**Reranking**: retrieve broadly, rerank, then send only the top results. A
+reranker is a **cross-encoder** — query and document pass through the model
+*together*, so it scores far better than the bi-encoder cosine similarity used
+for vector search, and far too slowly to run over a whole database.
+
+Candidate: **NVIDIA Llama Nemotron Rerank VL 1B V2** (`:free`, OpenRouter).
+Confirmed to exist 2026-08-10 — OpenRouter has a dedicated **Rerank** category
+(6 models). Note it does **not** appear in `GET /api/v1/models`, which lists only
+text-generation models; check the site's Rerank tab instead.
+
+Details that decide whether to use it, verified 2026-08-10:
+- **10K context** — plenty for one `(query, code chunk)` pair, but chunks must
+  stay well under it.
+- **1.7B, multimodal, built for "vision RAG"** — its speciality is document
+  *images* (charts, tables, infographics). LabPilot reranks code and paper text,
+  so a text-only reranker may score better.
+- **It shares the same OpenRouter 50/day pool** as tiers 1 and 4. Reranking is
+  the most frequent call in a RAG pipeline, so this is the real risk: spending
+  the pool on reranking and having nothing left to answer with. **Unverified:**
+  whether one call carries N documents (1 request) or costs N requests. Check
+  this before adopting it.
+
+**Alternative, probably better: a local CPU cross-encoder** (`bge-reranker-base`,
+~278M). The hardware rule bans local *LLMs* for VRAM reasons; a reranker is two
+orders of magnitude smaller and scoring 50 short chunks on CPU takes seconds. No
+quota, no rate limit, no network, works offline in tests. Cost: it pulls in
+`torch` — a few hundred MB on an 8GB machine and a fatter Docker image at Step 3.
+Decide with real numbers at Step 1; do not research it before then.
 
 **Transport**: plain `requests` for every tier in Step 0 — one uniform style,
 and it keeps the underlying HTTP call visible for learning. Three of the four
@@ -653,8 +742,32 @@ prompt is ever proven to need more than 100K.
 reads it exists** — a field nobody reads is dead code.
 
 ### Constraints
-- OpenRouter free tier is roughly **50 requests/day** without purchased credits
-  — reserve it for hard cases and evaluation, not bulk testing.
+- **OpenRouter free limits — verified 2026-08-10** from their own docs constants
+  and from `GET /api/v1/key` on this account (`is_free_tier: true`, $0 spent):
+
+  | Credits purchased, all time | Requests/min | Requests/day |
+  |---|---|---|
+  | **Less than $10 — us** | **20** | **50** |
+  | At least $10 | 20 | 1,000 |
+
+  Three consequences the earlier note missed:
+  - **There is also a 20 RPM cap**, not only the daily 50. The backoff must
+    respect both.
+  - **Limits are global per account.** OpenRouter's docs state plainly that extra
+    accounts or API keys do not raise them. Do not try.
+  - A **negative credit balance blocks free models too**.
+
+  A single $10 purchase raises the daily cap to 1,000 *permanently* — recorded as
+  a fact only; it needs a card, which the no-card rule forbids.
+- **You cannot check remaining free quota in advance.** `GET /api/v1/key` reports
+  credits *spent*, not free-model requests left, and successful responses carry
+  no rate-limit headers. Only a **429** response carries `X-RateLimit-Limit`,
+  `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and sometimes `Retry-After`. So
+  `chain.py` must be built for *detection*, not prediction — honour `Retry-After`
+  when present instead of guessing a delay.
+- **A wrong model slug returns HTTP 400**, not 404 (verified 2026-08-10), with a
+  readable body: `"... is not a valid model ID"`. That body also contains a
+  `user_id` — fine in logs, but the frontend must show a cleaned message.
 - OpenRouter free models require the *"Allow free endpoints that train on
   request data"* privacy setting.
 - Gemini free tier: prompts may be used to improve Google's products. Grounding
