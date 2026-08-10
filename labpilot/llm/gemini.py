@@ -85,13 +85,15 @@ class GeminiProvider:
         usage = body.get("usageMetadata", {})
 
         logger.info(
-            "tier %d served by %s (finish_reason=%s, %d chars, %s in / %s out tokens)",
+            "tier %d served by %s (finish_reason=%s, %d chars, "
+            "%s in / %s out / %s thought tokens)",
             self.tier,
             served_model,
             finish_reason,
             len(text),
             usage.get("promptTokenCount", "?"),
             usage.get("candidatesTokenCount", "?"),
+            usage.get("thoughtsTokenCount", "?"),
         )
 
         return LLMResult(text=text, model=served_model, tier=self.tier)
