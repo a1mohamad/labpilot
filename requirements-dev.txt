@@ -1,4 +1,4 @@
 -r requirements.txt
 
 pytest==9.1.1
-reponses==0.26.2
+responses==0.26.2
