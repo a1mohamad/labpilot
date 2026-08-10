@@ -203,6 +203,44 @@ request data"*, or every `:free` model returns an error.
 
 ## Conventions
 
+### Code style — write it the way a senior engineer would
+Every piece of code in this repo should look like production code written by
+someone experienced, not like a tutorial snippet. Concretely:
+
+**Choose OOP or plain functions deliberately — never by habit.**
+Both are used in this project. Pick per case, and be able to say why.
+
+| Use a **class** when | Use a **plain function** when |
+|---|---|
+| State and behaviour belong together (config a method set shares) | The output depends only on the arguments — a pure transformation |
+| Several variants share one interface and are swapped at runtime (the six providers) | There is one way to do it and no state to carry |
+| The object is a value worth naming (`LLMResult`, `Attempt`) — use a frozen `@dataclass` | A helper is small, private, and used in one place |
+
+Rules that override the table:
+- **Never create an abstract base class with only one implementation.** Write
+  the second one first, see where they actually differ, then extract the base.
+  Abstraction invented before the second case is almost always the wrong shape.
+- **A class with one method and no state is a function.** Write the function.
+- **Do not use a class purely to group functions.** That is what a module is.
+
+**The rest of the bar:**
+- Full type hints on every public function, method, and dataclass field.
+- Value objects are `@dataclass(frozen=True, slots=True)`; mutable default
+  values never appear in a signature.
+- Keyword-only arguments (`*` or `kw_only=True`) for anything with more than
+  two parameters — call sites must be readable without checking the definition.
+- One error vocabulary per layer. Wrap foreign exceptions in our own type and
+  keep the cause with `raise ... from exc`.
+- **A caller's bug and a provider's failure are different exceptions.** An empty
+  prompt is `ValueError` and must crash; a dead endpoint is `LLMError` and must
+  be caught by the fallback loop. Never let one hide the other.
+- Never log or `repr` a secret. Store the *name* of the env var, read the value
+  at call time.
+- Private helpers get a leading underscore. Public names carry no underscore and
+  are the file's real interface.
+- Docstrings say *why*, not *what* — the signature already says what.
+- No dead code, no commented-out code, no `TODO` without a follow-up decision.
+
 ### Commits
 **Conventional Commits** — `<type>: <short imperative description>`, lowercase,
 no full stop at the end.
