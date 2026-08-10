@@ -13,6 +13,6 @@ class Attempt:
 @dataclass(frozen=True, slots=True)
 class LLMResult:
     text: str
-    tier: int
     model: str
+    tier: int
     attempts: tuple[Attempt, ...] = ()
