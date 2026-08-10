@@ -17,4 +17,5 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest -m smoke --run-smoke -q
         env:
-          OPENROUTE_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
