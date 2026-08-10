@@ -1,0 +1,20 @@
+name: Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Every Monday at 6:00 AM UTC
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -m smoke --run-smoke -q
+        env:
+          OPENROUTE_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
