@@ -6,7 +6,9 @@ Read the two rule sections first — they change *how* everything below is done.
 **Contents:** [Working Rules](#working-rules-read-first) · [Overview](#project-overview) ·
 [Status](#current-status) · [Environment](#development-environment) ·
 [Conventions](#conventions) · [Architecture](#architecture--stack) ·
-[LLM Serving](#llm-serving--fallback-chain) · [Platform Accounts](#platform-accounts--verified-august-2026) ·
+[LLM Serving](#llm-serving--fallback-chain) · [The Three Chains](#the-three-chains--restructured-2026-08-11) ·
+[Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
+[Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
 [Out of Scope](#explicitly-out-of-scope-for-v1)
@@ -129,7 +131,14 @@ MCP), and **LLM fine-tuning**.
 ## Current Status
 
 **Phase: Step 0 — walking skeleton. In progress — roughly 40% of Step 0 done.**
-**Last updated 2026-08-11. Working branch: `main`.**
+**Last updated 2026-08-11 (second session). Working branch: `main`.**
+
+> **2026-08-11, session 2 — the provider landscape was re-verified end to end and
+> much of it changed.** Cerebras died (`402`, card now required). Modal left the
+> chain. Mistral joined and became central. The generator chain was re-ordered on
+> two independent benchmark sources, which **demoted Nemotron 3 Ultra from tier 1
+> to tier 4**. Embedder and reranker chains were designed for the first time.
+> No code changed — `chain.py` is still unwritten, and that remains the next task.
 
 `feat/llm-client` was squash-merged into `main` on 2026-08-11 and **kept, not
 deleted** (user's choice). It is now 2 commits behind `main` and still contains
@@ -175,8 +184,8 @@ six-provider client written in one go has six places to be wrong at once.
 | `registry.py` | `OPENROUTER_URL`, `NEMOTRON_3_ULTRA`, `CHAIN` — provider data and order |
 
 Design decisions worth keeping:
-- **Providers are instances, not subclasses.** OpenRouter, Cerebras and Modal
-  differ only in data (URL, model, key name), so they are three instances of one
+- **Providers are instances, not subclasses.** OpenRouter, Mistral and Cloudflare
+  differ only in data (URL, model, key name), so they are instances of one
   class. Only Gemini differs in *behaviour*, and it gets its own module.
 - **No `base.py` yet.** An interface designed before the second implementation
   exists is a guess. It arrives with `gemini.py`, when the real difference is
@@ -236,34 +245,60 @@ here because `.get()` on a non-dict raises it where `[...]` raises `TypeError`.
 Tests added: 12 unit for `gemini.py`, 1 for the `CHAIN` tier invariant, and
 smoke tests for tiers 2, 3, 4. Suite is **27 passed, 4 skipped**, ruff clean.
 
-**Verified live 2026-08-11:** tiers 2, 3 and 4 all answer. Tier 1 was already
-proven on 2026-08-10.
+**Verified live 2026-08-11:** all four models in `CHAIN` answer. Tier 1 was
+already proven on 2026-08-10.
+
+**Note — `registry.py` tier numbers are now stale.** The second session of
+2026-08-11 re-ordered the chain on measured benchmarks, so the four existing
+providers keep working but sit at different positions:
+
+| Model | Old tier | **New tier** |
+|---|---|---|
+| Gemini 3.6 Flash | 2 | **1** |
+| Gemini 3.5 Flash | 3 | **3** |
+| Nemotron 3 Ultra | 1 | **4** |
+| North Mini Code | 4 | **5** |
+
+Renumbering plus the two new Mistral providers is the first task of the remaining
+slice-2 work.
 
 ### Where to pick up — the rest of slice 2
 
-**1. Cerebras (tier 5) — do this first, before any other code.** It has never
-returned a single token, and neither has Modal. After Google's restriction (see
-below) Cerebras is the only free quota that is independent of OpenRouter, so the
-whole chain rests on it. It is OpenAI-compatible, so it is one more instance of
-`OpenAICompatibleProvider` plus one smoke test — one request out of 2,400.
+*Rewritten 2026-08-11. Cerebras is dead; Mistral replaces it and the chain was
+re-ordered on measured benchmarks — see [The three chains](#the-three-chains--restructured-2026-08-11).*
+
+**1. Reorder `registry.py` and add the Mistral provider.** Mistral is
+OpenAI-compatible, so it is two more instances of `OpenAICompatibleProvider`
+(`glm-5-2` at tier 2, `devstral-2512` at tier 6) plus a re-ordered `CHAIN`.
+Both models are already proven live, so this is data, not new behaviour. Update
+the tier-invariant test — it asserts tiers are 1..N in order.
 
 **2. Then `chain.py`.** Iterate `CHAIN`, catch `LLMError`, record each failure
 into `Attempt`, back off on 429 honouring `Retry-After`. `AllFreeTiersExhausted`
 must **not** subclass `LLMError`, or the loop's own `except LLMError` would
-swallow the signal it needs to report.
+swallow the signal it needs to report. With Modal gone, this exception is now a
+plain terminal error — no user-consent gate to build.
 
-**3. `base.py`, once Cerebras is in.** Three providers will then exist and the
-shared part is proven: post → check status → parse JSON → reject an empty
-answer → log → return `LLMResult`. The varying part is exactly
+Add **pool-aware skipping**: when a 429 signals the *account* cap rather than the
+model, mark that whole pool dead for the request and skip every tier using it.
+Otherwise the chain wastes two attempts on a spent OpenRouter.
+
+**3. `base.py`, once Mistral is in.** Three provider *shapes* will then exist
+(OpenAI-compatible, Gemini, and soon Cohere's own) and the shared part is proven:
+post → check status → parse JSON → reject an empty answer → log → return
+`LLMResult`. The varying part is exactly
 `_endpoint` / `_headers` / `_payload` / `_extract_message`.
 
 **4. `context_window` + the pre-flight budget validator**, in the same commit.
-Never the field alone.
+Never the field alone. Note the validator must check **tokens-per-minute** too,
+not only context — TPM is what actually excluded Groq.
 
-**Tier order must change if Google is ever lost again.** As written, tiers 1 and
-4 share one OpenRouter pool of 50/day. If Google goes down, move Cerebras up to
-tier 2 so the chain does not spend both OpenRouter attempts before reaching an
-independent quota.
+**Chains 2 and 3 (embedder, reranker) are Step 1 work.** They are designed and
+recorded above, but retrieval does not exist yet. Do not build them now.
+
+**Tier order must change if Google is ever lost again.** Tiers 1 and 3 share the
+Google pool. If Google goes down, promote Mistral so the chain does not spend
+both Google attempts before reaching an independent quota.
 
 ---
 
@@ -313,10 +348,13 @@ Copy `.env.example` to `.env` and fill in real values.
 
 | Variable | Used for | Where to get it |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Chain tiers 1 + 4, and the reranker | openrouter.ai/keys |
-| `GOOGLE_API_KEY` | Chain tiers 2 + 3 (Gemini) | aistudio.google.com/api-keys — **from the second Google account**; the first is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
-| `CEREBRAS_API_KEY` | Chain tier 5, and the development workhorse | cloud.cerebras.ai |
-| `MODAL_API_KEY` | Chain tier 6 (paid — last resort). Not yet obtained. | modal.com |
+| `GOOGLE_API_KEY` | Generator tiers 1 + 3, embedder backup | aistudio.google.com/api-keys — **from the second Google account**; the first is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
+| `MISTRAL_API_KEY` | Generator tiers 2 + 6, **embedder primary** | console.mistral.ai — phone verification, no card |
+| `OPENROUTER_API_KEY` | Generator tiers 4 + 5 | openrouter.ai/keys |
+| `COHERE_API_KEY` | **Reranker tier 1** — not yet obtained | dashboard.cohere.com |
+| `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | Reranker t2, embedder t4, generator t7 — not yet obtained | dash.cloudflare.com — token needs `Workers AI - Read` **and** `Workers AI - Edit` |
+| ~~`CEREBRAS_API_KEY`~~ | **Dead** — the API now requires a card (`402`) | — |
+| ~~`MODAL_API_KEY`~~ | No longer a chain tier. Step 4 only, for serving the fine-tuned model | modal.com |
 
 `GOOGLE_API_KEY` is deliberately named to match what the official
 `google-genai` SDK reads automatically, in case we migrate off `requests` later.
@@ -338,7 +376,7 @@ Both are used in this project. Pick per case, and be able to say why.
 | Use a **class** when | Use a **plain function** when |
 |---|---|
 | State and behaviour belong together (config a method set shares) | The output depends only on the arguments — a pure transformation |
-| Several variants share one interface and are swapped at runtime (the six providers) | There is one way to do it and no state to carry |
+| Several variants share one interface and are swapped at runtime (the chain's providers) | There is one way to do it and no state to carry |
 | The object is a value worth naming (`LLMResult`, `Attempt`) — use a frozen `@dataclass` | A helper is small, private, and used in one place |
 
 Rules that override the table:
@@ -634,40 +672,145 @@ provider reports it (`usage.prompt_tokens` on the OpenAI shape,
 and belongs in `LLMResult` **eventually**. Today it goes only to `logger.info`,
 because nothing reads it yet and a returned field nobody reads is dead code.
 Logging it already buys two things: real token counts to check the `chars / 3`
-estimate against, and visibility on Cerebras's 30K-tokens-per-minute cap, where
-tokens bind before request count does.
+estimate against, and visibility on per-minute token caps, where tokens bind
+before request count does — the limit that excluded Groq entirely.
 
 Promote it to `prompt_tokens` / `completion_tokens` on `LLMResult` the moment
 the UI or the budget validator needs the number — the log cannot cross the seam
 to the frontend, only the return value can.
 
-**The test for anything new in this interface: it must be true for all six
-providers.** Model identity and failure reasons pass — every provider reports
-them. Streaming does not, so it stays out.
+**The test for anything new in this interface: it must be true for every
+provider in the chain.** Model identity and failure reasons pass — every provider
+reports them. Streaming does not, so it stays out.
 
-Order of attempt (fall through on failure or 429):
+### The three chains — restructured 2026-08-11
 
-| # | Model | Provider | Why |
+LabPilot needs **three** model stages, and they are not the same kind of chain.
+The difference comes from one question: *does this stage write state that later
+calls must match?*
+
+| Stage | Writes state? | Kind of chain | Failure is |
 |---|---|---|---|
-| 1 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | Primary. 1M context, MoE (55B active / 550B total). Strong on programming and long agentic workflows — best fit for the hard comparison reasoning. Exact slug, verified 2026-08-10: `nvidia/nemotron-3-ultra-550b-a55b:free` |
-| 2 | **Gemini 3.6 Flash** | Google AI Studio | High-volume workhorse (~1,500 RPD), free context caching, 128K+ context. Slug verified live 2026-08-11: `gemini-3.6-flash`. |
-| 3 | **Gemini 3.5 Flash** | Google AI Studio | Same free tier and context caching. Shares Google's quota with #2. Slug: `gemini-3.5-flash`. **It is a thinking model — see the thinking-token note below.** |
-| 4 | **Cohere North Mini Code** (`:free`) | OpenRouter | *Changed 2026-08-11 — replaces Ling 3.0, which has no usable `:free` variant.* Slug verified live: `cohere/north-mini-code:free`, **256K context**. MoE, 30B total / 3B active, built for code generation and agentic software engineering. Shares OpenRouter's 50/day pool with #1 — see the note below. Caveat: it is tuned to *write* code, while LabPilot *reasons about* code, so expect its output to read more like a fix than an explanation. Acceptable at tier 4. |
-| 5 | **`gpt-oss-120b`** (Production) | Cerebras Cloud | 2,400 req/day — by far the largest free daily allowance. The binding limit is **5 RPM**, not the daily total. |
-| 6 | Kimi K3 · Nemotron Ultra · DeepSeek V4 Pro · DeepSeek V4 Flash | Modal | **Opt-in only — never automatic.** Costs credit. Reached only when tiers 1–5 have all failed, *and* the user says yes. |
+| **Generator** | No — text is text | true fallback chain | **fatal** |
+| **Reranker** | No — scores sort one list, then are discarded | true fallback chain | **degraded**, not fatal |
+| **Embedder** | **Yes — vectors live in pgvector** | **migration, not fallback** | **fatal** |
 
-**Tier 6 is gated by the user — this is a hard rule.** Tiers 1→5 fall through
-automatically. Tier 6 does not. When tier 5 fails, the chain **stops**, tells
-the user that every free provider is exhausted and that continuing spends Modal
-credit, and waits for a clear yes. No yes, no call.
+Two embedders never mix. A query vector and a stored vector must come from the
+same model, or cosine similarity is noise:
 
-Design consequence: `generate` cannot always return an `LLMResult`. It must be
-able to report *"all free tiers exhausted"* instead — as a distinct exception,
+$$
+\cos\big(E_A(q),\, E_B(d)\big) = \text{meaningless}
+$$
+
+A reranker's scores never meet across models — each request sorts its own 50
+chunks and forgets them — so switching is free. That asymmetry is the whole
+reason the three chains are shaped differently.
+
+### Chain 1 — Generator (true fallback)
+
+Ordered by **measured capability**, not by quota and not by vendor claims.
+Two independent sources were used (see [Model ranking](#model-ranking--how-the-order-was-decided-2026-08-11)).
+
+| # | Model | Provider | Evidence / why |
+|---|---|---|---|
+| 1 | **Gemini 3.6 Flash** | Google AI Studio | AA Index **52** · LMArena **#15 (1484)** · **1M context** · **multimodal** (can read paper figures) · ~1,500 RPD · 235 tok/s. Slug `gemini-3.6-flash`, verified live 2026-08-11. |
+| 2 | **GLM-5.2** | **Mistral** | AA Index **53** (highest tested) · LMArena #33 (1470) · 1M context · text-only. Slug `glm-5-2`, **verified live 2026-08-11** on the Mistral key. Replaces Z.ai — same family, stronger model, account already exists. |
+| 3 | **Gemini 3.5 Flash** | Google AI Studio | AA Index **47** · LMArena #19 (1477). Shares Google's quota with #1. Slug `gemini-3.5-flash`. **Thinking model — see the thinking-token note below.** |
+| 4 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | AA Index **38** · LMArena **#96**. 550B MoE (55B active), **up to 1M context** per NVIDIA's model card. Slug `nvidia/nemotron-3-ultra-550b-a55b:free`. *Demoted from tier 1 — see the correction below.* |
+| 5 | **Cohere North Mini Code** (`:free`) | OpenRouter | AA Index 27.6 but **Coding Index 33.4** — beats Devstral 2 (123B) and Nemotron 3 Super despite 30B total / 3B active. 256K context. Slug `cohere/north-mini-code:free`. Shares OpenRouter's pool with #4. |
+| 6 | **Devstral 2** | Mistral | AA Index 19, but **72.2% SWE-bench Verified** (Mistral's own). A patch-writing specialist. Slug `devstral-2512`. |
+| 7 | **`@cf/openai/gpt-oss-120b`** | Cloudflare Workers AI | Outage insurance only — ~11 calls/day at our prompt size. Reached only if Google, Mistral *and* OpenRouter are all down. |
+
+**Modal is no longer in the chain.** *(Decided 2026-08-11.)* Its $30 is reserved
+entirely for serving the fine-tuned model. That removes the user-consent gate:
+`AllFreeTiersExhausted` is now a plain terminal error, and `LLMClient` never
+needs to ask the user anything.
+
+Design consequence, unchanged: `generate` cannot always return an `LLMResult`.
+It reports *"all free tiers exhausted"* as a distinct exception,
 `AllFreeTiersExhausted`, separate from the per-tier `LLMError` that the fallback
-loop swallows. **The permission prompt belongs above `LLMClient`, not inside
-it** — `LLMClient` reports the state, the caller asks the user and may then
-re-call it with tier 6 enabled. Keep this boundary clean; `LLMClient` never
-talks to the user.
+loop swallows — or the loop's own `except LLMError` would swallow the signal it
+needs to report.
+
+**Tiers 5 and 6 are the code-*writing* specialists.** They rank low for general
+reasoning, which is LabPilot's main job, but they are the right models when the
+user asks for a snippet. Neither appears on LMArena at all — because LMArena
+measures conversational preference and these are agentic coding models, not chat
+models. At Step 2, LangGraph should **route** that sub-task to them directly
+rather than walking the chain.
+
+### Chain 2 — Embedder (migration, not fallback)
+
+**One model per corpus, pinned. Never mixed.** The list below is a *migration
+order*, used when the primary is dead — not a per-request fallback.
+
+| # | Model | Provider | Dim | Note |
+|---|---|---|---|---|
+| 1 | **`codestral-embed`** | Mistral | **1536** | The only **code-specific** embedder found. 50K TPM ≈ 20 min per 1M-token repo — fine, ingest is offline. **Verified live 2026-08-11.** |
+| 2 | `mistral-embed` | Mistral | **1024** | **20M TPM** — same repo in ~3 seconds. Same platform, so swapping is easy. **Verified live 2026-08-11.** |
+| 3 | `gemini-embedding-001` | Google | 128–3072 | The real *cross-platform* backup. Max input **2,048 tokens**, so chunks must stay small. |
+| 4 | `@cf/baai/bge-*` | Cloudflare | 384 / 768 / 1024 | Open weights — **also runs locally via ONNX**, the only true two-runtime option. |
+| 5 | `embed-v4.0` | Cohere | — | Last. Competes with rerank for Cohere's single 1,000-calls/month bucket. |
+
+**Dimension changes are schema changes.** `codestral-embed` is 1536 and
+`mistral-embed` is 1024, so migrating between them alters the pgvector column
+type (`vector(1536)` → `vector(1024)`), not just the rows.
+
+**Store `embedding_model` and `dim` on every row.** Then a model mismatch is
+*detected* instead of silently poisoning search.
+
+**Two gotchas, verified 2026-08-11:**
+- Google's batch call returns **one aggregated vector** when several inputs are
+  passed directly. Each input must be wrapped in its own `Content` object.
+- Mistral has **no reranker at all** — `GET /v1/models` returns zero matches.
+
+#### Retry vs re-embed — the rule
+
+Re-embedding is the answer to a *dead* provider, not a busy one:
+
+| Failure | Response |
+|---|---|
+| 429 / timeout — **transient** | **Retry.** Quota resets; retrying is far cheaper than re-embedding |
+| 403 / dead account — **permanent**, or retries exhausted | **Migrate:** re-embed the whole corpus with the next model |
+
+**Never continue a half-finished corpus with a different model.** If ingest dies
+at chunk 1,200 of 2,000, delete the 1,200 and redo all 2,000 — do not embed the
+remaining 800 with the new model. Re-embedding is cheap (~1M tokens ≈ 2 cents,
+or free); *mixing* is unrecoverable.
+
+**Budget before starting.** Chunk count is known before the first call, so check
+it against remaining quota and refuse to *start* rather than dying halfway. Same
+idea as the pre-flight token validator for generation.
+
+**The model is a property of the corpus, not a global setting.** Repo X on
+Mistral and Repo Y on Google can coexist; each queries with its own model. When
+the primary recovers it is used for **new** corpora automatically — old ones stay
+put until deliberately re-embedded, which is optional and usually not worth it.
+
+### Chain 3 — Reranker (true fallback)
+
+| # | Model | Provider | Limit |
+|---|---|---|---|
+| 1 | **`rerank-v4.0-fast`** / `rerank-v4.0-pro` | Cohere | 10 req/min, 32K context. Purpose-built cross-encoder |
+| 2 | `@cf/baai/bge-reranker-base` | Cloudflare | Confirmed to exist — outputs a [0,1] relevance score |
+| 3 | **`ms-marco-MiniLM-L-6-v2`** | **local (ONNX)** | **Unlimited — the floor** |
+
+**A local model is an infinite-quota tier, so it is always the correct last
+tier.** Anything placed below it is unreachable dead code. This is why
+**LLM-as-reranker was rejected**: it would spend a generation call — the scarcest
+resource — on an optional step, and a 22M-param cross-encoder trained for
+relevance ranking beats a general LLM at the job anyway.
+
+`ms-marco-MiniLM-L-6-v2` is ~22M params (~22MB int8) — 25× smaller than
+`bge-reranker-base` and comfortably inside Render's 512MB.
+
+**"Local" does not mean baked into the image.** `fastembed`/`sentence-transformers`
+download the weights from HF Hub at *runtime* into the container cache. The image
+carries only ONNX Runtime (~50MB). Shipping `torch` (~800MB) is what would bloat
+it — so do not.
+
+**Cohere auto-chunks documents longer than 510 tokens**, which silently multiplies
+the billed document count. Keep chunks under that.
 
 **Live progress events — Step 3, not Step 0.** For the UI trace ("Asking
 Nemotron 3 Ultra… failed 429 → asking Gemini 3.6 Flash"), `LLMClient` takes an
@@ -683,50 +826,89 @@ HTTP, so "Asking Nemotron…" is true and "Nemotron is thinking…" is not.
 adapter). Tier 6 is a borrowed side-use of the same $30, not what the credit is
 for. If the two ever compete, the fine-tuned demo wins.
 
-**Two notes on quota sharing — these decide whether a fallback actually helps:**
-- Tiers 1 and 4 both draw on the *same* OpenRouter daily pool, and tiers 2 and 3
-  both draw on the *same* Google pool. If tier 1 fails because a single model is
-  down or rate-limited, tier 4 saves the request. If it fails because the
-  OpenRouter **account** daily cap is spent, tier 4 fails too — and the chain
-  really starts at tier 2. The same logic applies to 2 → 3.
-- This is why Cerebras sits at tier 5 and not lower: it is the first genuinely
-  independent quota after the OpenRouter and Google pools are gone.
+### Quota allocation — one platform, one job
 
-**Reranking**: retrieve broadly, rerank, then send only the top results. A
-reranker is a **cross-encoder** — query and document pass through the model
-*together*, so it scores far better than the bi-encoder cosine similarity used
-for vector search, and far too slowly to run over a whole database.
+Two kinds of limit exist, and they behave differently:
 
-Candidate: **NVIDIA Llama Nemotron Rerank VL 1B V2** (`:free`, OpenRouter).
-Confirmed to exist 2026-08-10 — OpenRouter has a dedicated **Rerank** category
-(6 models). Note it does **not** appear in `GET /api/v1/models`, which lists only
-text-generation models; check the site's Rerank tab instead.
+| Type | Behaviour | Platforms |
+|---|---|---|
+| **Quota** | Runs out. Dead until reset | OpenRouter (50/day), Google (~1,500 RPD), Cohere (1,000/**month**), Cloudflare (10,000 neurons/day) |
+| **Rate limit** | Never runs out — only throttles | Mistral (per-model TPM/RPS) |
 
-Details that decide whether to use it, verified 2026-08-10:
-- **10K context** — plenty for one `(query, code chunk)` pair, but chunks must
-  stay well under it.
-- **1.7B, multimodal, built for "vision RAG"** — its speciality is document
-  *images* (charts, tables, infographics). LabPilot reranks code and paper text,
-  so a text-only reranker may score better.
-- **It shares the same OpenRouter 50/day pool** as tiers 1 and 4. Reranking is
-  the most frequent call in a RAG pipeline, so this is the real risk: spending
-  the pool on reranking and having nothing left to answer with. **Unverified:**
-  whether one call carries N documents (1 request) or costs N requests. Check
-  this before adopting it.
+**Mistral also has a monthly consumption cap**, so it is not truly unlimited —
+their docs state API access "can be suspended until the next month begins" if the
+organization cap is reached. It resets monthly rather than daily, which is far
+better, but it is still a ceiling. *The exact number is on the account's own
+Limits page, not in public docs — record it here once read.*
 
-**Alternative, probably better: a local CPU cross-encoder** (`bge-reranker-base`,
-~278M). The hardware rule bans local *LLMs* for VRAM reasons; a reranker is two
-orders of magnitude smaller and scoring 50 short chunks on CPU takes seconds. No
-quota, no rate limit, no network, works offline in tests. Cost: it pulls in
-`torch` — a few hundred MB on an 8GB machine and a fatter Docker image at Step 3.
-Decide with real numbers at Step 1; do not research it before then.
+Assignments, so no pool funds two jobs:
+
+| Pool | Assigned to | Reason |
+|---|---|---|
+| **OpenRouter** (50/day) | **Generation only** | Scarcest pool. Never spend it on embedding or reranking |
+| **Google** | Generation t1/t3 **+ embedding backup** | Chat and embedding are **separate quotas**, so no conflict |
+| **Mistral** | Generation t2/t6 **+ embedder primary** | Rate-limited, largest headroom |
+| **Cohere** | **Rerank only** | 1,000/month is one shared bucket across chat, embed and rerank — too small to split |
+| **Cloudflare** | Rerank t2 · embedder t4 · generation t7 | Neurons are shared, so keep every user light |
+
+**Same-pool tiers must not sit adjacent.** Tiers 1+3 share Google and tiers 4+5
+share OpenRouter. If tier 4 fails because the OpenRouter *account* cap is spent,
+tier 5 fails too — so an independent pool is placed between them.
+
+**Worth building into `chain.py`:** when a 429 indicates the *account* cap rather
+than the model, mark that whole **pool** dead for this request and skip every tier
+using it. Otherwise the chain wastes two attempts on a spent OpenRouter.
 
 **Transport**: plain `requests` for every tier in Step 0 — one uniform style,
-and it keeps the underlying HTTP call visible for learning. Three of the four
-providers (OpenRouter, Cerebras, Modal) speak the **OpenAI-compatible**
+and it keeps the underlying HTTP call visible for learning. OpenRouter, Mistral,
+Cloudflare and Cohere's chat endpoint all speak the **OpenAI-compatible**
 `/chat/completions` shape, so they differ only in base URL, API key, and model
-name. Google is the one odd shape. Migrating Gemini to the `google-genai` SDK
-later is optional, and would be a change *inside* `LLMClient` only.
+name. Google is the one odd shape, and Cohere's rerank/embed endpoints are their
+own. Migrating Gemini to the `google-genai` SDK later is optional, and would be a
+change *inside* `LLMClient` only.
+
+### Model ranking — how the order was decided (2026-08-11)
+
+**Vendor benchmarks were wrong twice.** NVIDIA's blog claims Nemotron 3 Ultra
+scores 86.7% GPQA Diamond and 71.9% SWE-bench; Mistral calls Large 3
+"state-of-the-art, frontier-class". Two independent sources contradict both.
+
+| Model | AA Intelligence Index | LMArena Elo / rank |
+|---|---|---|
+| GLM-5.2 | **53** | 1470 / #33 |
+| Gemini 3.6 Flash | **52** | **1484 / #15** |
+| Gemini 3.5 Flash | 47 | 1477 / #19 |
+| Nemotron 3 Ultra | 38 | 1426 / **#96** |
+| North Mini Code | 27.6 (**coding 33.4**) | not listed |
+| Devstral 2 | 19 (SWE-bench 72.2%) | not listed |
+| Mistral Large 3 | 16 | 1415 / **#118** |
+
+The two sources measure different things and LabPilot needs both:
+- **Artificial Analysis** — 9 benchmarks, pass@1, weighted **agents 34% · coding
+  24% · scientific reasoning 24% · general 18%**. That weighting is unusually well
+  matched to LabPilot: 82% of the index is agents + code + science reasoning.
+- **LMArena** — blind human A/B votes. Measures **explanation quality**, which is
+  what LabPilot actually shows the user.
+
+$$
+I = \sum_{i=1}^{9} w_i \, s_i , \qquad \sum_i w_i = 1
+$$
+
+Reading rule: AA's confidence interval is **±1%**, so 53 vs 52 is a *tie* and
+52 vs 38 is a *real gap*. Gemini 3.6 Flash takes tier 1 over GLM-5.2 on the
+LMArena tiebreak (#15 vs #33) plus multimodality and verified availability.
+
+**Corrections this produced:**
+- **Nemotron 3 Ultra is not the primary.** It is mid-pack — LMArena #96. It moves
+  from tier 1 to tier 4. Its **1M context is real** (NVIDIA's model card:
+  "Context Length: Up to 1 million tokens"); Artificial Analysis's 262K figure is
+  a deployment default, not the model's limit.
+- **Mistral Large 3 is excluded entirely** — AA 16 (below its class median of 18),
+  LMArena #118, 41 tok/s, released December 2025.
+- **Codestral is excluded** — 52% SWE-bench vs Devstral's 72.2%, and it is a
+  **fill-in-the-middle autocomplete** model, not a conversational one. It would be
+  the right choice only if LabPilot ever adds in-editor gap completion.
+- **Groq is excluded on TPM, not quality** — see Constraints.
 
 ### Token budget — decided 2026-08-10
 
@@ -860,23 +1042,37 @@ reads it exists** — a field nobody reads is dead code.
   nothing. Revisit when that call is written.
 - Do **not** use `openrouter/free` (the auto-router) — it varies the model
   between calls, which breaks repeatable comparison output.
-- **Cerebras (tier 5)**: verified limits (2026-08-08) are **5 RPM, 2,400/day,
-  30K tokens/min, 1M tokens/day, 131K context** — the same quota on every model.
-  5 RPM is tight; the backoff must respect it. Other models offered are
-  `gemma-4-31b` and `zai-glm-4.7`, both **Preview** — Preview models can change
-  or disappear, so the chain depends on the Production one only.
-- **Modal (tier 6) costs money and requires user consent.** Every call is billed
-  against the $30 Starter credit (shared infrastructure by token). It is the
-  only paid tier, it is never entered automatically, and the chain must not
-  reach it during routine work — if the logs show tier 6 being offered often,
-  something above it is misconfigured.
-- **Default tier 6 to off.** A missing `MODAL_API_KEY` must not crash anything;
-  the chain simply ends at tier 5 with a clean "all providers failed" error.
+- **Cerebras is DEAD — verified 2026-08-11.** The API now requires a payment
+  method, which the no-card rule forbids. Two sources agree: the dashboard banner
+  (*"API access isn't active yet. Add a payment method to start running requests
+  and claim $5 in free credits"*) and the API itself:
+
+  ```
+  HTTP 402
+  {"message":"Payment required to access this resource. Visit your billing tab.",
+   "type":"payment_required_error","param":"quota","code":"payment_required"}
+  ```
+
+  The key was `ACTIVE` on the dashboard — but that is the *key's* state, not the
+  *account's* API access. The 2026-08-08 "no card" note was true for **signup**
+  and was never true for the API, because the API had never been called. This is
+  the same blind spot as the Google restriction: **an issued API key is not a
+  working API.**
+- **Groq is excluded — on tokens-per-minute, not on quality.** Its daily counts
+  are excellent (30 RPM, up to 14,400 RPD) but the free TPM is smaller than one
+  LabPilot prompt: `llama-3.1-8b-instant` **6K**, `gpt-oss-120b` **8K**,
+  `llama-3.3-70b-versatile` **12K**, against our ~24K total. A single request can
+  never pass. Groq also offers **no embedding models at all**. Revisit only if the
+  prompt budget ever drops below ~8K.
+- **Modal is out of the chain entirely.** *(Decided 2026-08-11.)* The $30 is
+  reserved for serving the fine-tuned model, which is the job nothing free can do.
+  `MODAL_API_KEY` is therefore not needed by `chain.py`, and the chain ends at
+  tier 7 with a clean `AllFreeTiersExhausted`.
 - **Log which model actually served each request**, for debugging and evaluation.
-  With six tiers this stops being a nice-to-have: without it there is no way to
-  tell a healthy chain from one silently burning Modal credit. The same fact is
-  also *returned* in `LLMResult.model` — the log is for us, the return value is
-  for the UI.
+  With seven tiers this stops being a nice-to-have: without it there is no way to
+  tell a healthy chain from one quietly running on tier 6 every time. The same
+  fact is also *returned* in `LLMResult.model` — the log is for us, the return
+  value is for the UI.
 - **Log `finish_reason` too.** `stop` means the model ended on its own; `length`
   means our `max_tokens` cut the answer mid-sentence. Without this field a
   truncated comparison looks like a complete one.
@@ -887,11 +1083,13 @@ reads it exists** — a field nobody reads is dead code.
   inference, so expert routing and float reduction order shift with batching.
   Never write an evaluation that assumes exact string equality across runs.
 - **Token budget — the real wall is not the context window.** *(Decided
-  2026-08-09.)* Cerebras (tier 5) offers 131K context but only **30K tokens per
-  minute**, so one call above ~30K tokens can never pass there. The chain must be
-  sized for its *tightest* tier, not its largest. Working numbers: **prompt
-  budget ~20K tokens** (instructions + paper + retrieved code) and **`max_tokens`
-  ~4K** — about 24K total, safe on every tier including tier 5.
+  2026-08-09; the example was updated 2026-08-11 after Cerebras died.)* The
+  binding limit is often **tokens per minute**, not context. Groq proves it: 8K
+  TPM on a model with a large context window means a 24K-token call can never
+  pass, no matter how big the window is. The chain must be sized for its
+  *tightest* tier, not its largest. Working numbers: **prompt budget ~20K tokens**
+  (instructions + paper + retrieved code) and **`max_tokens` ~4K** — about 24K
+  total, which every tier in the current chain accepts.
   - The prompt budget is **our** rule, not the server's. Nothing enforces it but
     our own code: retrieval adds chunks, counts tokens, and stops at the budget.
   - It is an **accuracy** decision as much as a capacity one. A 100K prompt gives
@@ -904,15 +1102,14 @@ reads it exists** — a field nobody reads is dead code.
 
 Adding a provider is a small edit once the structure exists — that is the entire
 point of `LLMClient`. Get **tier 1 alone** returning text first, then add the
-fallback loop, then the remaining tiers. A six-provider client written in one
-go has six places to be wrong at the same time.
+fallback loop, then the remaining tiers. A seven-provider client written in one
+go has seven places to be wrong at the same time.
 
-Also unverified, and worth confirming against Modal's own model list before
-wiring tier 6: that Kimi K3, Nemotron Ultra, DeepSeek V4 Pro, and DeepSeek V4
-Flash are all currently served, and their exact model IDs. *(Separate point:
-CLAUDE.md rules out Kimi K3 as a **fine-tune target** because 2.8T params need
-datacenter hardware. Calling it through someone else's API is a different thing
-and is not affected by that.)*
+**This session proved the rule the hard way.** On 2026-08-11 an entire session
+went to provider research and produced **zero commits** — exactly the failure
+CLAUDE.md warns about under Open Risks. The research was necessary (Cerebras had
+genuinely died and would have broken `chain.py`), but the lesson stands: verify
+what blocks the next commit, then write the commit.
 
 **Still not in the chain:**
 - **Lightning AI Model APIs** — *an option only. Not a tier. Do not research
@@ -930,19 +1127,52 @@ and is not affected by that.)*
 
 ## Platform Accounts — Verified August 2026
 
-All accounts below were created and confirmed working on 2026-08-08. None
-required a credit or debit card.
+*Table rewritten 2026-08-11 after Cerebras died and Mistral was added.*
+**"Verified" now means a request returned a token — not that an account exists.**
 
-| Platform | Role in this project | Limits | Card? |
-|---|---|---|---|
-| **OpenRouter** | Chain tiers 1 + 4, reranker | ~50 req/day | No |
-| **Google AI Studio** | Chain tiers 2 + 3 | ~1,500 RPD | No — but see the restriction note below |
-| **Cerebras Cloud** | Chain tier 5, development workhorse, evaluation baseline | 5 RPM / 2,400 per day | No |
-| **Kaggle** | Fine-tuning (Step 4) | ~30 GPU-hrs/week, 2×T4 or P100, 12h sessions | No (phone verification) |
-| **Lightning AI** | One-shot escape hatch for a bigger GPU (see note below) | **5 credits, one-time** (~2 A100-hrs); 1 CPU Studio free with 4-hr restarts | No (phone verification) |
-| **Lightning Model APIs** | Chain candidate — not yet added | 30M free tokens (one-time), 15 RPM / 120K tok-min | No |
-| **Hugging Face** | LoRA adapter hosting + **the public demo** | ZeroGPU: max 2 Spaces, small daily GPU-seconds quota | No |
-| **Modal** | Chain tier 6 (last resort) + custom-weights API endpoint | $30 credit (Starter) | No |
+| Platform | Role | Limits | Card? | Proven live? |
+|---|---|---|---|---|
+| **OpenRouter** | Generator t4 + t5 | 50/day, 20 RPM | No | ✅ 2026-08-10 |
+| **Google AI Studio** | Generator t1 + t3, embedder backup | ~1,500 RPD | No — see restriction note | ✅ 2026-08-11 |
+| **Mistral** | Generator t2 + t6, **embedder primary** | per-model TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-11 |
+| **Cloudflare Workers AI** | Reranker t2, embedder t4, generator t7 | 10,000 neurons/day | ❓ untested | ❌ |
+| **Cohere** | **Reranker t1** | 10 req/min rerank, **1,000 calls/month total** | ❓ untested | ❌ |
+| ~~**Cerebras Cloud**~~ | ~~tier 5~~ | — | **YES — blocked** | ❌ `402` |
+| **Kaggle** | Fine-tuning (Step 4) | ~30 GPU-hrs/week, 2×T4 or P100, 12h sessions | No (phone verification) | — |
+| **Lightning AI** | One-shot escape hatch for a bigger GPU | **5 credits, one-time** (~2 A100-hrs) | No (phone verification) | — |
+| **Hugging Face** | LoRA adapter hosting + **the public demo** | ZeroGPU: max 2 Spaces, small daily GPU-seconds quota | No | — |
+| **Modal** | **Fine-tuned model serving only** — no longer a chain tier | $30 credit (Starter) | No | ❌ |
+
+**Rejected after testing, 2026-08-11:**
+- **Groq** — free TPM (6K–12K) is smaller than one LabPilot prompt; no embeddings.
+- **Z.ai** — made redundant: GLM-5.2 (stronger than their free GLM-4.7-Flash) is
+  already reachable on the Mistral key, so the signup was never needed.
+- **llm7.io** — the largest free allowance found (100 req/hr, 1M tokens/24h, email
+  only, no card) but it resells frontier models with **no stated data-logging
+  policy**, and LabPilot sends users' code. Acceptable as a *development
+  workhorse*; never in the shipped chain.
+
+**Mistral needs phone verification.** That is stricter than this project's
+preferred "no card, no phone" rule, but the account already exists and Mistral is
+now central — it holds the embedder primary and two generator tiers.
+
+### What was verified live on 2026-08-11 (Mistral)
+
+`GET /v1/models` → **HTTP 200**, 55 models. Then actual calls:
+
+| Model | Result |
+|---|---|
+| `glm-5-2` | ✅ **HTTP 200**, returned text |
+| `codestral-embed` | ✅ **HTTP 200**, **1536 dimensions** |
+| `mistral-embed` | ✅ **HTTP 200**, **1024 dimensions** |
+| any reranker | ❌ **none exist** — zero matches in the model list |
+
+Also present: `zai-glm-5-2`, `codestral-embed-2505`, `devstral-2512`,
+`devstral-medium-latest`, `mistral-large-2512`, `codestral-2508`.
+
+**Still unconfirmed:** whether the account is on Free mode, and the exact monthly
+token cap. Both are on the account's own `Subscription` / `Limits` pages. Record
+them here once read — the cap decides how much of the chain rests on Mistral.
 
 ### Google AI Studio — the account restriction of 2026-08-11
 
@@ -978,9 +1208,17 @@ standard anti-fraud trigger. Losing this account too would cost two tiers.
 
 **And the general lesson, which cost an afternoon:** an issued API key is not a
 working API. Google was recorded as "created and verified" on 2026-08-08 and had
-never once returned a token. **Cerebras and Modal are still in exactly that
-state** — accounts exist, nothing has ever been called. Prove Cerebras before
-`chain.py` is built on top of it.
+never once returned a token.
+
+**Confirmed again on 2026-08-11, and this time it cost a whole tier.** Cerebras
+was recorded as "verified, no card" on 2026-08-08 on the strength of a signup
+alone. Its first ever request returned `402 Payment Required`. The plan had made
+it the chain's only independent quota.
+
+**Rule: a platform is "verified" only when a request has returned a token.** The
+Platform Accounts table now carries a *"Proven live?"* column for exactly this
+reason. Cloudflare and Cohere are currently in the unproven state — do not build
+on either until one call has succeeded.
 
 ### Lightning AI — read the credit maths before using it
 
@@ -1120,17 +1358,20 @@ responses (not part of the fine-tune).
   verifying the Gemini slugs: `gemma-4-31b-it` and `gemma-4-26b-a4b-it` both
   appear in `GET /v1beta/models` on the free key. This does **not** change the
   plan — fine-tuning downloads weights from Hugging Face and the like-for-like
-  comparison runs on Modal, neither of which touches Google. It matters for one
-  case only: Cerebras serves `gemma-4-31b` but **not** `gemma-4-26b-a4b`, which
-  is the actual fine-tune target. Google is currently the only free place to run
-  that exact base model as an evaluation baseline. Also useful as a backup,
-  because the Cerebras `gemma-4-31b` is a **Preview** model and may vanish.
+  comparison runs on Modal, neither of which touches Google.
+  **This became critical on 2026-08-11**: Cerebras was going to serve the
+  evaluation baseline and is now dead (`402`, card required). **Google is now the
+  only free place to run `gemma-4-26b-a4b-it`**, the actual fine-tune target, as
+  a baseline. Losing that Google account would cost the evaluation as well as two
+  generator tiers.
 - **Evaluation**: fine-tuned model vs. base model, and vs. `gemma-4-31b`.
-  **Run the baseline on Cerebras**, not OpenRouter — 2,400 requests/day instead
-  of ~50 makes a real evaluation possible in one sitting. Run the fine-tuned
-  model on Modal or ZeroGPU. Where a like-for-like comparison matters, run both
-  the fine-tuned model *and* the base model on Modal, on the same GPU with the
-  same settings, so differences come from the fine-tuning and not the hardware.
+  **Run the baseline on Google** — *changed 2026-08-11; the earlier plan said
+  Cerebras, which now requires a card.* Google's ~1,500 RPD makes a real
+  evaluation possible in one sitting, where OpenRouter's ~50/day does not. Run
+  the fine-tuned model on Modal or ZeroGPU. Where a like-for-like comparison
+  matters, run both the fine-tuned model *and* the base model on Modal, on the
+  same GPU with the same settings, so differences come from the fine-tuning and
+  not the hardware.
 - **Dataset**: ~150–300 examples, built from ~100 existing notebooks across
   projects, Kaggle competition write-ups, real papers where they genuinely
   exist, and notebook-vs-notebook pairs (one side rewritten as a paper-style
@@ -1174,14 +1415,12 @@ container you define, so a FastAPI-shaped API is possible exactly as originally
 planned, on a GPU large enough for the 26B.
 - Everything on Modal is billed from the $30 Starter credit — dedicated
   infrastructure by GPU-second, shared infrastructure by token.
-- **Spend free quota first.** Modal is chain **tier 6** — reached only after
-  OpenRouter, Google, and Cerebras have all failed. Never call it as a general
-  provider for base models while those three still have quota, and never point
-  development or bulk testing at it.
-- **The $30 now has two jobs**, and they compete: serving the fine-tuned model
-  demo, *and* backstopping the fallback chain. Serving the demo is the job
-  nothing free can do, so it has priority. If chain tier 6 starts eating the
-  credit, remove tier 6 rather than lose the demo.
+- **The $30 now has exactly one job.** *(Settled 2026-08-11 — Modal was removed
+  from the generator chain.)* It serves the fine-tuned model demo, which is the
+  job nothing free can do. The old conflict between "backstop the chain" and
+  "serve the demo" no longer exists, and the chain never spends credit.
+- **Never point development or bulk testing at Modal.** Use llm7.io or a
+  low-tier free provider as the development workhorse instead.
 - **Unverified:** whether the $30 renews monthly. Check the balance in early
   September 2026 before planning around it — and check it again once tier 6 has
   actually been exercised.
