@@ -469,11 +469,25 @@ slice-2 work.
 *Rewritten 2026-08-11. Cerebras is dead; Mistral replaces it and the chain was
 re-ordered on measured benchmarks — see [The three chains](#the-three-chains--restructured-2026-08-11).*
 
-**1. Reorder `registry.py` and add the Mistral provider.** Mistral is
-OpenAI-compatible, so it is two more instances of `OpenAICompatibleProvider`
-(`glm-5-2` at tier 2, `devstral-2512` at tier 6) plus a re-ordered `CHAIN`.
-Both models are already proven live, so this is data, not new behaviour. Update
-the tier-invariant test — it asserts tiers are 1..N in order.
+**1. ~~Reorder `registry.py` and add the Mistral and Cloudflare providers.~~**
+**DONE 2026-08-11.** `CHAIN` now holds all seven tiers, every one proven live.
+Two invariants are pinned by tests: tiers run 1..N in order, and no two adjacent
+tiers share an `api_key_env`.
+
+**`account_env` — how Cloudflare's account ID reaches the URL.** Cloudflare is the
+only provider whose account ID sits *in the path*:
+
+```
+https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions
+```
+
+`OpenAICompatibleProvider` gained one optional field, `account_env`, and an
+`_endpoint()` method that interpolates it. **A subclass was rejected** — CLAUDE.md's
+rule is *variants that differ only in data are instances, not subclasses*, and a
+missing path segment is data. The template also generalises free to Azure OpenAI
+and AWS Bedrock, which put account or region in the path the same way. And
+`account_env` stores the **name**, read inside `_endpoint()` at call time — the
+same discipline as `api_key_env`, so no log can leak it.
 
 **2. Then `chain.py`.** Iterate `CHAIN`, catch `LLMError`, record each failure
 into `Attempt`, back off on 429 honouring `Retry-After`. `AllFreeTiersExhausted`
@@ -922,7 +936,7 @@ Two independent sources were used (see [Model ranking](#model-ranking--how-the-o
 | 4 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | AA Index **38** · LMArena **#96**. 550B MoE (55B active), **up to 1M context** per NVIDIA's model card. Slug `nvidia/nemotron-3-ultra-550b-a55b:free`. *Demoted from tier 1 — see the correction below.* |
 | 5 | **Devstral 2** | Mistral | AA Index 19, but **72.2% SWE-bench Verified** (Mistral's own). A patch-writing specialist. Slug `devstral-2512`. *Placed above North Mini Code despite scoring lower — see the note below.* |
 | 6 | **Cohere North Mini Code** (`:free`) | OpenRouter | AA Index 27.6 but **Coding Index 33.4** — beats Devstral 2 (123B) and Nemotron 3 Super despite 30B total / 3B active. 256K context. Slug `cohere/north-mini-code:free`. |
-| 7 | **`@cf/openai/gpt-oss-120b`** | Cloudflare Workers AI | Outage insurance only — ~11 calls/day at our prompt size. Reached only if Google, Mistral *and* OpenRouter are all down. |
+| 7 | **`@cf/openai/gpt-oss-120b`** | Cloudflare Workers AI | Outage insurance only — ~11 calls/day at our prompt size. Reached only if Google, Mistral *and* OpenRouter are all down. **Verified live 2026-08-11.** A **thinking model** — needs `max_tokens` ≥ ~500 or it returns `content: null`. |
 
 **Modal is no longer in the chain.** *(Decided 2026-08-11.)* Its $30 is reserved
 entirely for serving the fine-tuned model. That removes the user-consent gate:

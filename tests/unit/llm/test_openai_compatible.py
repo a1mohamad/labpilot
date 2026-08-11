@@ -109,3 +109,39 @@ def test_complete_raises_llm_error_when_key_missing(provider, monkeypatch):
 def test_complete_rejects_empty_prompt_as_caller_bug(provider):
     with pytest.raises(ValueError):
         provider.complete("   ")
+
+
+ACCOUNT_URL = "https://provider.test/accounts/{account_id}/v1/chat/completions"
+
+
+@pytest.fixture
+def account_provider(monkeypatch):
+    monkeypatch.setenv("TEST_API_KEY", "secret-key")
+    monkeypatch.setenv("TEST_ACCOUNT_ID", "acc-123")
+    return OpenAICompatibleProvider(
+        name="Account Provider",
+        tier=1,
+        url=ACCOUNT_URL,
+        model="test/model",
+        api_key_env="TEST_API_KEY",
+        account_env="TEST_ACCOUNT_ID",
+    )
+
+
+@responses.activate
+def test_complete_posts_to_url_with_account_id_substituted(account_provider):
+    resolved = "https://provider.test/accounts/acc-123/v1/chat/completions"
+    responses.post(resolved, json=ok_body())
+
+    account_provider.complete("hi")
+
+    assert responses.calls[0].request.url == resolved
+
+
+def test_complete_raises_llm_error_when_account_id_missing(
+    account_provider, monkeypatch
+):
+    monkeypatch.delenv("TEST_ACCOUNT_ID")
+
+    with pytest.raises(LLMError, match="TEST_ACCOUNT_ID"):
+        account_provider.complete("hi")
