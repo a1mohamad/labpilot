@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import requests
 
+from labpilot.llm._http import error_from_response
 from labpilot.llm._text import truncate
 from labpilot.llm.contracts import LLMResult
 from labpilot.llm.defaults import (
@@ -14,7 +15,6 @@ from labpilot.llm.defaults import (
     DEFAULT_TIMEOUT,
 )
 from labpilot.llm.errors import LLMError
-from labpilot.lm._http import error_from_response
 
 logger = logging.getLogger(__name__)
 
