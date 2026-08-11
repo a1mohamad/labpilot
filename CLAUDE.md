@@ -124,12 +124,12 @@ asymmetry drives the whole design:
 
 | | Artifacts | Prompt |
 |---|---|---|
-| When | **Once**, at session start | **Every turn** |
-| Required | Yes | Optional on turn 1 (a default is supplied), required after |
+| When | **Whenever the user adds one** | **Every turn** |
+| Required | Not up front — see preconditions below | Optional on turn 1 (a default is supplied), required after |
 | Cost | Expensive — chunk + embed everything | Cheap — one small embed |
 
-The artifacts are **state** living in pgvector, not input. After turn 1 the only
-thing crossing the wire is a prompt.
+The artifacts are **state** living in pgvector, not input. After an artifact is
+ingested the only thing crossing the wire each turn is a prompt.
 
 **The prompt does two jobs, and the second is the one people miss:**
 1. It steers what the answer covers.
@@ -146,9 +146,90 @@ retrieved. Three rules follow:
   stop being comparable.
 - After turn 1 the box empties — the artifacts are already ingested.
 
-**This is why the embedder is a migration and not a fallback.** Turn 1 embedded
+**This is why the embedder is a migration and not a fallback.** Ingest embedded
 the artifacts with one model, so every later prompt must use that *same* model
 forever. The two schedules create the lock-in.
+
+### Artifact count — flexible input, focused identity
+
+*(Decided 2026-08-11.)* Artifacts are **not** a fixed pair collected up front.
+They accumulate in the session, and each capability declares how many it needs:
+
+| Artifacts in session | What becomes possible |
+|---|---|
+| **0** | answer coding questions from the prompt alone |
+| **1** | `summarize`, `find_bugs`, explain this repo |
+| **2** | **+ `align`, `verify`, `explain_divergence`** — the flagship |
+
+So the planner filters capabilities by what the session actually holds. A user
+can chat for three turns, add a repo at turn 4, add the paper at turn 6, and
+`compare` simply becomes reachable. **The change this needs is one precondition
+field per capability — nothing else.**
+
+**But the product identity does not become "a chatbot that reads files."** That
+was considered and rejected, for three reasons:
+
+1. **The pitch.** *"Explains why your reimplementation gives different numbers"*
+   is specific and memorable. "Chat about your code" is every other AI tool.
+2. **The forcing function.** The alignment map, the correspondence gate and the
+   verify loop exist *only because* two artifacts must be reconciled. Remove the
+   constraint and the three things this project exists to teach disappear with it.
+3. **Focus beats generality on the specific task.** Retrieval strategy, prompts
+   and output template are all tuned for divergence analysis.
+
+Also practical: the fine-tune dataset is ~150–300 divergence explanations. If the
+app does anything, there is nothing coherent to fine-tune on.
+
+**So: 0- and 1-artifact modes are supporting features that come free once the
+capability library exists. Two artifacts stay the headline.**
+
+**Cap at 2 for now.** A third slot (the paper's official implementation, found by
+[web search](#web-search--step-25-opt-in-and-where-mcp-finally-fits)) is a
+Step 2.5 addition and does not change the layout.
+
+**Build order is unchanged.** Step 0 slice 4 still hardcodes exactly two
+artifacts and one prompt. That is the *hardest* path, so building it first proves
+the architecture; "chat about code" would work on day one and teach nothing.
+Preconditions arrive with LangGraph at Step 2, where they are nearly free.
+
+### UI shape — Step 3, recorded now
+
+Two **named** slots, not a generic file list. The names make the comparison
+direction visible: "compare A to B" is clear, "compare these 3 files" is not.
+
+```
+┌──────────────────────────┬──────────────────────────────┐
+│  A — the reference       │  B — the implementation      │
+│  📄 paper.pdf · 42 chunks│   + add file / folder / link │
+└──────────────────────────┴──────────────────────────────┘
+        (chat history)
+┌─────────────────────────────────────────────────────────┐
+│ Compare these and explain why the results diverge.      │ ← prefilled
+└─────────────────────────────────────────────────────────┘
+```
+
+- **Both slots start empty.** Files are the user's data — never guess them. Only
+  the *prompt* is prefilled.
+- **The default prompt changes with state** — three fixed, versioned strings:
+  0 artifacts → *"Ask a question, or add files to compare."* ·
+  1 → *"Summarize this and find likely bugs."* ·
+  2 → *"Compare these and explain why the results diverge."*
+- **After the first turn the slots collapse to a thin bar** and stay visible all
+  session. The empty slot is a permanent, passive invitation.
+- **Show the chunk count** after ingest (`✓ 42 chunks`) — it proves the file was
+  really read.
+- **Show which model answered** under each reply — required by the `LLMResult`
+  rule, so the user can tell tier 1 from tier 6.
+- **Every finding shows its source** (`train.py:42`, `§4.2`) — the citation rule.
+
+**The agent asks for what it is missing.** This is the active half of the design,
+and it means the user never has to read instructions first:
+
+> **you:** now compare it with my code
+> **LabPilot:** I need a second file to compare. Add your code in slot B ↑
+
+Because each capability declares its artifact precondition, the agent knows
+exactly what is absent. It never fails silently and never pretends.
 
 ### Edge cases to handle explicitly
 - **Mismatched domains** (e.g. a psychology paper + an ML repo): detect and
@@ -1451,18 +1532,26 @@ every capability. Narrow questions run a subset, through the same machinery.
 
 ### The capability library
 
-Each is a node that reads graph state and writes back into it:
+Each is a node that reads graph state and writes back into it. **Each also
+declares how many artifacts it needs** — the planner filters on that field, which
+is what makes 0-, 1- and 2-artifact sessions work through one mechanism:
 
-| Capability | Produces |
-|---|---|
-| `summarize(artifact)` | what this side does, and its purpose |
-| `align(A, B)` | a **map**: paper claim ↔ code location |
-| `verify(claim, code)` | does the code actually do what the claim says? |
-| `find_missing(A, B)` | hyperparameters / seeds / versions the code had to invent |
-| `diff_choices(A, B)` | deliberate design differences |
-| `explain_divergence(findings)` | the causal story — **the actual product** |
-| `propose_next(findings)` | the experiment to run next |
-| `write_code(spec)` | a snippet — **routed to Devstral / North Mini Code** |
+| Capability | Needs | Produces |
+|---|---|---|
+| `answer_question(prompt)` | **0** | a direct answer, no retrieval |
+| `summarize(artifact)` | **1** | what this side does, and its purpose |
+| `find_bugs(artifact)` | **1** | suspect code, without a reference to compare to |
+| `write_code(spec)` | **0–1** | a snippet — **routed to Devstral / North Mini Code** |
+| `align(A, B)` | **2** | a **map**: paper claim ↔ code location |
+| `verify(claim, code)` | **2** | does the code actually do what the claim says? |
+| `find_missing(A, B)` | **2** | hyperparameters / seeds / versions the code had to invent |
+| `diff_choices(A, B)` | **2** | deliberate design differences |
+| `explain_divergence(findings)` | **2** | the causal story — **the actual product** |
+| `propose_next(findings)` | **1–2** | the experiment to run next |
+
+When a requested capability's precondition is unmet, the agent **says what is
+missing** rather than failing or improvising — see
+[UI shape](#ui-shape--step-3-recorded-now).
 
 ### Why this is an agent and not one LLM call
 
