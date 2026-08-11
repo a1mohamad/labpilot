@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import requests
 
+from labpilot.llm._http import error_from_response
 from labpilot.llm._text import truncate
 from labpilot.llm.contracts import LLMResult
 from labpilot.llm.defaults import (
@@ -64,9 +65,7 @@ class OpenAICompatibleProvider:
             raise LLMError(f"{self.name}: request failed: {exc}") from exc
 
         if response.status_code != 200:
-            raise LLMError(
-                f"{self.name}: HTTP {response.status_code}: {truncate(response.text)}"
-            )
+            raise error_from_response(response, self.name)
 
         try:
             body = response.json()
