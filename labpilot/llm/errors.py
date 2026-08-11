@@ -8,8 +8,8 @@ class LLMError(Exception):
         self,
         message: str,
         *,
-        status: str | None = None,
-        retry_after: int | None = None,
+        status: int | None = None,
+        retry_after: float | None = None,
         reset_at: float | None = None,
     ) -> None:
         super().__init__(message)
