@@ -6,6 +6,9 @@ from labpilot.llm.openai_compatible import OpenAICompatibleProvider
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+CLOUDFLARE_URL = (
+    "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
+)
 
 
 GEMINI_3_6_FLASH = GeminiProvider(
@@ -57,6 +60,15 @@ NORTH_MINI_CODE = OpenAICompatibleProvider(
     api_key_env="OPENROUTER_API_KEY",
 )
 
+GPT_OSS_120B = OpenAICompatibleProvider(
+    name="GPT-OSS 120B",
+    tier=7,
+    url=CLOUDFLARE_URL,
+    model="@cf/openai/gpt-oss-120b",
+    api_key_env="CLOUDFLARE_API_KEY",
+    account_env="CLOUDFLARE_ACCOUNT_ID",
+)
+
 CHAIN = (
     GEMINI_3_6_FLASH,
     GLM_5_2,
@@ -64,4 +76,5 @@ CHAIN = (
     NEMOTRON_3_ULTRA,
     DEVSTRAL_2,
     NORTH_MINI_CODE,
+    GPT_OSS_120B,
 )

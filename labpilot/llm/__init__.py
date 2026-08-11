@@ -8,6 +8,7 @@ from labpilot.llm.registry import (
     GEMINI_3_5_FLASH,
     GEMINI_3_6_FLASH,
     GLM_5_2,
+    GPT_OSS_120B,
     NEMOTRON_3_ULTRA,
     NORTH_MINI_CODE,
 )
@@ -15,9 +16,10 @@ from labpilot.llm.registry import (
 __all__ = [
     "CHAIN",
     "DEVSTRAL_2",
-    "GLM_5_2",
     "GEMINI_3_5_FLASH",
     "GEMINI_3_6_FLASH",
+    "GLM_5_2",
+    "GPT_OSS_120B",
     "NEMOTRON_3_ULTRA",
     "NORTH_MINI_CODE",
     "Attempt",

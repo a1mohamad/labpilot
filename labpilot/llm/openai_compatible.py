@@ -43,6 +43,7 @@ class OpenAICompatibleProvider:
     url: str
     model: str
     api_key_env: str
+    account_env: str | None = None
     timeout: tuple[float, float] = DEFAULT_TIMEOUT
     temperature: float = DEFAULT_TEMPERATURE
 
@@ -54,7 +55,7 @@ class OpenAICompatibleProvider:
 
         try:
             response = requests.post(
-                self.url,
+                self._endpoint(),
                 headers=self._headers(),
                 json=self._payload(prompt, max_tokens),
                 timeout=self.timeout,
@@ -88,6 +89,15 @@ class OpenAICompatibleProvider:
         )
 
         return LLMResult(text=text, model=served_model, tier=self.tier)
+
+    def _endpoint(self) -> str:
+        if self.account_env is None:
+            return self.url
+
+        account_id = os.environ.get(self.account_env, "").strip()
+        if not account_id:
+            raise LLMError(f"{self.name}: {self.account_env} is not set")
+        return self.url.format(account_id=account_id)
 
     def _api_key(self) -> str:
         key = os.environ.get(self.api_key_env, "").strip()
