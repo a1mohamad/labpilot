@@ -9,6 +9,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [LLM Serving](#llm-serving--fallback-chain) · [The Three Chains](#the-three-chains--restructured-2026-08-11) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
+[Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
 [Out of Scope](#explicitly-out-of-scope-for-v1)
@@ -116,15 +117,57 @@ MCP), and **LLM fine-tuning**.
    "these differ"
 5. A concrete suggestion for the next experiment to run
 
+### Input shape — artifacts are state, the prompt is per-turn
+
+*(Clarified 2026-08-11.)* The two arrive on different schedules, and that
+asymmetry drives the whole design:
+
+| | Artifacts | Prompt |
+|---|---|---|
+| When | **Once**, at session start | **Every turn** |
+| Required | Yes | Optional on turn 1 (a default is supplied), required after |
+| Cost | Expensive — chunk + embed everything | Cheap — one small embed |
+
+The artifacts are **state** living in pgvector, not input. After turn 1 the only
+thing crossing the wire is a prompt.
+
+**The prompt does two jobs, and the second is the one people miss:**
+1. It steers what the answer covers.
+2. **It *is* the retrieval query** — the thing that gets embedded and matched
+   against stored chunks. No prompt, no query vector.
+
+So the UI shows a **prefilled, editable** chat box — never a grey placeholder.
+The user must see what will be asked, because it also decides what gets
+retrieved. Three rules follow:
+- **Never send empty.** A cleared box falls back to the default, or retrieval has
+  nothing to search with.
+- **Version the default prompt.** It is a retrieval query, so re-wording it
+  changes which chunks return. Log which version produced each report or reports
+  stop being comparable.
+- After turn 1 the box empties — the artifacts are already ingested.
+
+**This is why the embedder is a migration and not a fallback.** Turn 1 embedded
+the artifacts with one model, so every later prompt must use that *same* model
+forever. The two schedules create the lock-in.
+
 ### Edge cases to handle explicitly
-- **Mismatched domains** (e.g. an unrelated paper + repo): detect and report
-  "no meaningful correspondence found" — never hallucinate a comparison.
+- **Mismatched domains** (e.g. a psychology paper + an ML repo): detect and
+  report "no meaningful correspondence found" — never hallucinate a comparison.
+  **This needs its own gate step, not an instruction inside the main prompt** —
+  see [The correspondence gate](#the-correspondence-gate--step-2).
 - **Notebook vs. large repo**: rely on the RAG retrieval layer to narrow the
   repo down to relevant files. Never dump a whole repo into context.
-- **Cross-language comparisons** (e.g. Python vs. C++): route the harder
-  abstract/algorithmic reasoning to the top of the fallback chain
-  (Nemotron 3 Ultra), not to the fine-tuned small model. The fine-tuned model
-  is a demo artifact, never part of the live reasoning path.
+- **Cross-language comparisons** (e.g. Python vs. C++): a **legitimate**
+  comparison, not a mismatch — but the gate can falsely reject it, because
+  embeddings score surface similarity and the same algorithm looks different in
+  two languages. Fix: summarise each code unit to natural language **first**,
+  then embed the summary. That collapses `for i in range(n)` and
+  `for(int i=0;i<n;i++)` to the same description. Route the alignment reasoning
+  to the **top** of the generator chain, never to a weak tier, and never to the
+  fine-tuned model — that is a demo artifact, never on the live reasoning path.
+- **Partial correspondence** — a repo implementing only half a paper. This is the
+  common real case and the one most designs forget. Correspondence is a
+  **spectrum, not a boolean**.
 
 ---
 
@@ -138,6 +181,8 @@ MCP), and **LLM fine-tuning**.
 > chain. Mistral joined and became central. The generator chain was re-ordered on
 > two independent benchmark sources, which **demoted Nemotron 3 Ultra from tier 1
 > to tier 4**. Embedder and reranker chains were designed for the first time.
+> The Step 2 [agent design](#agent-design--step-2-recorded-2026-08-11) was also
+> recorded — intent→plan, the correspondence gate, and the citation rule.
 > No code changed — `chain.py` is still unwritten, and that remains the next task.
 
 `feat/llm-client` was squash-merged into `main` on 2026-08-11 and **kept, not
@@ -986,6 +1031,89 @@ prompt is ever proven to need more than 100K.
 **Add `context_window` to the provider dataclass only when the validator that
 reads it exists** — a field nobody reads is dead code.
 
+### Budgeting all three chains — added 2026-08-11
+
+The generator budget above is about **one call**. This is about **how many calls
+a real session costs**, which is what actually exhausts a quota. Working
+assumptions: a repo of `N ≈ 2,000` chunks at `t̄ ≈ 500` tokens ≈ **1M tokens**;
+retrieval fetches 50 candidates and reranks to 10.
+
+**The universal rule: cost is knowable before the first call, so check it and
+refuse to *start* rather than dying halfway.** True for all three chains.
+
+#### Embedder — the bursty one, but offline
+
+Ingest time is bounded by whichever limit binds first, tokens or requests:
+
+$$
+T_{\text{ingest}} \;=\; \max\!\left(\frac{N\,\bar{t}}{\text{TPM}}\times 60,\;
+\frac{\lceil N/B \rceil}{\text{RPS}}\right)\ \text{seconds}
+$$
+
+`B` = batch size (texts per request). With `N=2,000`, `t̄=500`, `B=100`:
+
+| Model | TPM | Bound by | Ingest time |
+|---|---|---|---|
+| `codestral-embed` | 50,000 | tokens | **~20 min** |
+| `mistral-embed` | 20,000,000 | requests (1 RPS) | **~20 s** |
+
+20 minutes is acceptable — **ingest is offline and queued**, nobody is watching.
+Query-time embedding is ~20 tokens per turn and is effectively free.
+
+#### Reranker — one call per retrieval, and a monthly ceiling
+
+50 chunks × 500 tokens = **25,000 tokens per call**, inside Cohere's 32K window.
+
+$$
+\text{turns per month} \le \frac{1{,}000}{r}
+$$
+
+where `r` = rerank calls per turn. At `r = 1` that is 1,000 turns/month (~33/day);
+a full report doing ~5 retrievals costs `r = 5`, so **~200 reports/month**.
+
+**The 510-token trap:** Cohere auto-chunks any document longer than 510 tokens,
+which silently multiplies the billed document count. Keep chunks under 510 or
+the arithmetic above is wrong by a factor of 3.
+
+#### Generator — the binding constraint
+
+One **full** report is not one call. Under the default plan with 14 extracted
+claims, batching `verify` 5 claims per call:
+
+| Step | Calls |
+|---|---|
+| `summarize` A and B | 2 |
+| `align` | 1 |
+| `verify` (14 claims ÷ 5) | 3 |
+| `find_missing`, `diff_choices` | 2 |
+| `explain_divergence`, `propose_next` | 2 |
+| **Total** | **~10** |
+
+$$
+\text{reports per day} \;=\; \Big\lfloor \frac{\text{daily quota}}{10} \Big\rfloor
+$$
+
+| Pool | Daily quota | Full reports/day |
+|---|---|---|
+| Google (tiers 1+3) | ~1,500 | **~150** |
+| OpenRouter (tiers 4+5) | 50 | **~5** |
+| Cloudflare (tier 7) | ~11 calls | **~1** |
+
+**This is the number that matters.** It confirms tier 1 must be Google: at ~5
+reports/day, OpenRouter alone could not run a demo session. It also means a
+naive un-batched 14-call loop would burn OpenRouter's entire day on one report.
+
+#### Consequences to build in
+
+- **Batch the verify loop.** 5 claims per call turns 14 calls into 3.
+- **Plan with rules before spending an LLM call on classification** — never burn
+  a generation call to decide how to spend generation calls.
+- **Cheap steps to cheap tiers.** `summarize` and `verify` are easy; reserve
+  tier 1 for `explain_divergence`, which is the actual product.
+- **Emit a cost estimate before executing a plan**, and refuse plans that exceed
+  the remaining budget. Same discipline as the pre-flight token validator and the
+  ingest budget check.
+
 ### Constraints
 - **OpenRouter free limits — verified 2026-08-10** from their own docs constants
   and from `GET /api/v1/key` on this account (`is_free_tier: true`, $0 spent):
@@ -1291,6 +1419,126 @@ research is never repeated.
 | Google Colab | Terms forbid serving a notebook as a web service |
 | Incus | Not a hosting service — it organises a Linux machine you already own. No GPU, no server, no public URL. Would also need WSL2 on this 8GB machine. Genuinely useful only for sandboxing agents that *execute* code — a v2 concern, since v1 only reads code. |
 | Octopus Deploy | A deployment orchestration tool, not a host. Provides no compute. |
+
+---
+
+## Agent Design — Step 2, recorded 2026-08-11
+
+*Designed now, built at Step 2 when LangGraph exists. Step 0 slice 4 stays
+deliberately crude: one prompt, all sections, no branching.*
+
+### Intent → plan, not intent → template
+
+**Flexibility does not come from one clever prompt that handles every case.** It
+comes from many small capabilities and a decision about which ones run. The
+prompt selects a *path through a graph*, not a section list in a template.
+
+```
+user prompt
+    │
+    ▼
+┌─────────┐   "find bugs"      → [align, verify_claims, rank_findings]
+│ planner │   "explain idea"   → [summarize_A]
+└─────────┘   "write snippet"  → [retrieve_target, write_code]
+    │         "what next?"     → [load_findings, propose_next]
+    │         (default)        → every capability, in order
+    ▼
+ execute plan
+```
+
+The full report is **not a special mode** — it is simply the plan that runs
+every capability. Narrow questions run a subset, through the same machinery.
+
+### The capability library
+
+Each is a node that reads graph state and writes back into it:
+
+| Capability | Produces |
+|---|---|
+| `summarize(artifact)` | what this side does, and its purpose |
+| `align(A, B)` | a **map**: paper claim ↔ code location |
+| `verify(claim, code)` | does the code actually do what the claim says? |
+| `find_missing(A, B)` | hyperparameters / seeds / versions the code had to invent |
+| `diff_choices(A, B)` | deliberate design differences |
+| `explain_divergence(findings)` | the causal story — **the actual product** |
+| `propose_next(findings)` | the experiment to run next |
+| `write_code(spec)` | a snippet — **routed to Devstral / North Mini Code** |
+
+### Why this is an agent and not one LLM call
+
+Worked example — *"find bugs in my code based on the paper"*:
+
+```
+1. extract paper claims  → ["lr 3e-4 cosine", "batch 256",
+                            "layernorm pre-attention", ...]     N = 14
+2. for each claim:                                    ← THE LOOP
+     retrieve code chunks for that claim
+     verify(claim, chunks) → match | mismatch | absent
+3. collect mismatches → 3 found
+4. rank by likely impact on results
+5. write up
+```
+
+**Step 2 is the agent.** It runs 14 *targeted* retrievals and 14 *focused*
+checks, each seeing ~200 lines instead of the whole repo. A single prompt cannot
+loop, cannot retrieve per claim, and cannot guarantee every claim was examined.
+**The difference between LabPilot and a weak LLM is the control flow, not the
+model.**
+
+Three more things only the graph can do:
+- **Re-retrieve.** If `verify` reports "code for this claim not found", refine the
+  query and search again. One call gets one shot.
+- **Route by capability.** `write_code` → Devstral (72.2% SWE-bench);
+  `explain_divergence` → tier 1. Same request, different models per sub-job.
+- **Carry state forward.** "What next?" at turn 5 reads findings produced at
+  turn 1. Graph state is the memory.
+
+### The correspondence gate — Step 2
+
+**Never put "tell me if they don't correspond" inside the main prompt.** The
+model will find *something* — being unhelpful is against its training. The check
+must be a **separate step that can halt the graph**.
+
+**It costs zero extra LLM calls.** Retrieval already measures correspondence. For
+each claim `c_i` extracted from side A, take its best match in side B's corpus:
+
+$$
+s_i = \max_j \; \cos\big(E(c_i),\, E(d_j)\big)
+$$
+
+An unrelated pair produces uniformly low `s`. A real pair produces a mix of high
+and low. Those similarities come free from the search already being run.
+
+| Signal | Outcome |
+|---|---|
+| Most claims match | Full comparison |
+| **Some** match | Compare the overlap, and **state plainly what did not overlap** |
+| Nothing matches | **Halt.** Report "no meaningful correspondence found" |
+
+**Calibrate the threshold; never hardcode a guess.** Cosine thresholds shift per
+embedding model, so measure on a few known-good and known-bad pairs — and
+re-calibrate after any embedder migration.
+
+**When the gate fails, show both summaries rather than an error:**
+
+> *No meaningful correspondence found.*
+> **A** — a psychology paper on memory recall in adolescents.
+> **B** — a convolutional image classifier on CIFAR-10.
+
+That is why `summarize` runs early: it grounds the comparison, and it is the
+useful output when there is no comparison to make.
+
+### The citation rule — the strongest anti-hallucination mechanism
+
+**Every finding must cite the chunk it came from** — file and line for code,
+section for the paper.
+
+If the model cannot point at a retrieved chunk, the claim was invented. This
+turns hallucination from an invisible failure into a **mechanically detectable**
+one: validate that every citation refers to a chunk that was actually retrieved,
+and reject the output if not. The check is cheap, deterministic, and independent
+of which tier answered — which matters across a chain spanning Gemini 3.6 down
+to Cloudflare.
 
 ---
 
