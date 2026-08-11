@@ -231,6 +231,82 @@ and it means the user never has to read instructions first:
 Because each capability declares its artifact precondition, the agent knows
 exactly what is absent. It never fails silently and never pretends.
 
+### Reading a repository — Step 1, recorded 2026-08-11
+
+All three input kinds collapse to one shape after the first step:
+
+```
+single file  ─┐
+uploaded zip ─┼─▶ a folder on disk ─▶ walk ─▶ chunk ─▶ embed ─▶ pgvector
+git URL      ─┘
+```
+
+Only the "get me a folder" step differs; everything downstream is shared.
+
+**For a git URL: shallow clone into a temp directory, then delete it.**
+
+```
+git clone --depth 1 --single-branch <url> <tempdir>
+```
+
+- `--depth 1` fetches one commit, no history. LabPilot compares *current* code,
+  and a repo with years of history can be 10× larger.
+- The clone is **throwaway**. After ingest the chunks and vectors are in
+  pgvector — *that* is the stored artifact. Delete the directory in a `finally`.
+- Never a persistent volume.
+
+**Filter before chunking, or the ingest budget is wasted on noise:**
+
+| Skip | Keep |
+|---|---|
+| `.git/`, `node_modules/`, `venv/`, `dist/`, `build/` | source files |
+| images, binaries, `*.lock`, `*.min.js` | `README`, docs |
+| anything over ~1MB | notebooks |
+
+**Cloning is safe in v1 because LabPilot only reads.** It never runs
+`pip install`, never executes `setup.py`. A clone is inert text. This is exactly
+why sandboxing (Incus, containers, VMs) is a **v2** question — v2 would execute
+code, v1 does not.
+
+**Stream the walk; never build the whole list.** Chunk and embed in batches of
+~100, saving each batch before reading the next. The text is small (~4MB for a
+repo) but the vectors are not: 2,000 × 1536 floats is ~12MB as numpy arrays and
+**~73MB as Python lists of floats** — for data about to be written away. Batching
+keeps it at ~4MB and costs nothing, since the loop exists regardless.
+
+### Memory budget — Render free tier, 512MB
+
+*Recorded 2026-08-11. Estimates, not measurements — verify at Step 3 with
+`docker stats` on a real ingest.*
+
+| Piece | Estimate |
+|---|---|
+| Python 3.13 + FastAPI + uvicorn | ~90MB |
+| LangGraph + minimal LangChain | ~120–200MB |
+| psycopg / Supabase client, misc | ~30MB |
+| Working memory during ingest | ~50MB |
+| *(ONNX reranker, if shipped)* | *~120MB* |
+
+Without the local reranker that is ~290–370MB against a hard 512MB ceiling.
+Exceeding it does not slow down — it **kills the process**.
+
+Four rules that keep it under:
+
+1. **Never install `torch`.** ~800MB installed, 300–500MB resident. This is the
+   single decision that would end the free tier instantly. Use ONNX/`fastembed`
+   if a local model is ever needed.
+2. **Keep LangChain minimal** — loaders, splitters and model interfaces only.
+   Already a design rule; it is now also a memory requirement.
+3. **Stream the repo walk** (above).
+4. **Leave the local reranker out of the container.** Reranking is the one stage
+   whose total failure is *degraded, not fatal*, so it is the correct thing to
+   drop first.
+
+Two Render facts that shape Step 3: free instances **spin down when idle** and
+cold-start on the next request, and **ingest runs in the same process** as the
+API — one service, no separate worker — so a 20-minute embed occupies the same
+512MB the API is serving from.
+
 ### Edge cases to handle explicitly
 - **Mismatched domains** (e.g. a psychology paper + an ML repo): detect and
   report "no meaningful correspondence found" — never hallucinate a comparison.
@@ -478,6 +554,7 @@ Copy `.env.example` to `.env` and fill in real values.
 | `MISTRAL_API_KEY` | Generator tiers 2 + 6, **embedder primary** | console.mistral.ai — phone verification, no card |
 | `OPENROUTER_API_KEY` | Generator tiers 4 + 5 | openrouter.ai/keys |
 | `COHERE_API_KEY` | **Reranker tier 1** — not yet obtained | dashboard.cohere.com |
+| `VOYAGE_API_KEY` | **Reranker tier 2** — not yet obtained. 200M free rerank tokens, one-time | dash.voyageai.com |
 | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | Reranker t2, embedder t4, generator t7 — not yet obtained | dash.cloudflare.com — token needs `Workers AI - Read` **and** `Workers AI - Edit` |
 | ~~`CEREBRAS_API_KEY`~~ | **Dead** — the API now requires a card (`402`) | — |
 | ~~`MODAL_API_KEY`~~ | No longer a chain tier. Step 4 only, for serving the fine-tuned model | modal.com |
@@ -843,8 +920,8 @@ Two independent sources were used (see [Model ranking](#model-ranking--how-the-o
 | 2 | **GLM-5.2** | **Mistral** | AA Index **53** (highest tested) · LMArena #33 (1470) · 1M context · text-only. Slug `glm-5-2`, **verified live 2026-08-11** on the Mistral key. Replaces Z.ai — same family, stronger model, account already exists. |
 | 3 | **Gemini 3.5 Flash** | Google AI Studio | AA Index **47** · LMArena #19 (1477). Shares Google's quota with #1. Slug `gemini-3.5-flash`. **Thinking model — see the thinking-token note below.** |
 | 4 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | AA Index **38** · LMArena **#96**. 550B MoE (55B active), **up to 1M context** per NVIDIA's model card. Slug `nvidia/nemotron-3-ultra-550b-a55b:free`. *Demoted from tier 1 — see the correction below.* |
-| 5 | **Cohere North Mini Code** (`:free`) | OpenRouter | AA Index 27.6 but **Coding Index 33.4** — beats Devstral 2 (123B) and Nemotron 3 Super despite 30B total / 3B active. 256K context. Slug `cohere/north-mini-code:free`. Shares OpenRouter's pool with #4. |
-| 6 | **Devstral 2** | Mistral | AA Index 19, but **72.2% SWE-bench Verified** (Mistral's own). A patch-writing specialist. Slug `devstral-2512`. |
+| 5 | **Devstral 2** | Mistral | AA Index 19, but **72.2% SWE-bench Verified** (Mistral's own). A patch-writing specialist. Slug `devstral-2512`. *Placed above North Mini Code despite scoring lower — see the note below.* |
+| 6 | **Cohere North Mini Code** (`:free`) | OpenRouter | AA Index 27.6 but **Coding Index 33.4** — beats Devstral 2 (123B) and Nemotron 3 Super despite 30B total / 3B active. 256K context. Slug `cohere/north-mini-code:free`. |
 | 7 | **`@cf/openai/gpt-oss-120b`** | Cloudflare Workers AI | Outage insurance only — ~11 calls/day at our prompt size. Reached only if Google, Mistral *and* OpenRouter are all down. |
 
 **Modal is no longer in the chain.** *(Decided 2026-08-11.)* Its $30 is reserved
@@ -864,6 +941,27 @@ user asks for a snippet. Neither appears on LMArena at all — because LMArena
 measures conversational preference and these are agentic coding models, not chat
 models. At Step 2, LangGraph should **route** that sub-task to them directly
 rather than walking the chain.
+
+**Why Devstral sits above the higher-scoring North Mini Code.** *(Decided
+2026-08-11, after a test caught it.)* Ordering strictly by capability put
+Nemotron (t4) and North Mini Code (t5) adjacent, and **both draw on OpenRouter's
+one 50/day pool** — so once the account cap is spent, tier 5 fails for the same
+reason tier 4 did, and the chain wastes an attempt. Swapping 5 and 6 makes the
+pools alternate:
+
+```
+GOOGLE · MISTRAL · GOOGLE · OPENROUTER · MISTRAL · OPENROUTER
+```
+
+The trade is a frequent small gain against a rare small loss: adjacency costs an
+attempt *every day* once OpenRouter is spent, while the capability difference
+only matters when four tiers above have already failed. Pool-aware 429 skipping
+would fix this properly, but it does not exist yet — it is planned for
+`chain.py`. When it lands, the swap costs nothing and can stay.
+
+The invariant is pinned by `test_no_two_adjacent_tiers_share_an_api_key`, which
+reads `api_key_env` off consecutive `CHAIN` entries — the pool is what runs out,
+not the provider name.
 
 ### Chain 2 — Embedder (migration, not fallback)
 
@@ -915,25 +1013,42 @@ put until deliberately re-embedded, which is optional and usually not worth it.
 
 ### Chain 3 — Reranker (true fallback)
 
-| # | Model | Provider | Limit |
-|---|---|---|---|
-| 1 | **`rerank-v4.0-fast`** / `rerank-v4.0-pro` | Cohere | 10 req/min, 32K context. Purpose-built cross-encoder |
-| 2 | `@cf/baai/bge-reranker-base` | Cloudflare | Confirmed to exist — outputs a [0,1] relevance score |
-| 3 | **`ms-marco-MiniLM-L-6-v2`** | **local (ONNX)** | **Unlimited — the floor** |
+*Revised 2026-08-11 — Voyage found, Mistral added, the local floor demoted.*
 
-**A local model is an infinite-quota tier, so it is always the correct last
-tier.** Anything placed below it is unreachable dead code. This is why
-**LLM-as-reranker was rejected**: it would spend a generation call — the scarcest
-resource — on an optional step, and a 22M-param cross-encoder trained for
-relevance ranking beats a general LLM at the job anyway.
+| # | Model | Provider | Quota | Kind |
+|---|---|---|---|---|
+| 1 | **`rerank-v4.0-fast`** / `-pro` | Cohere | 1,000/month, **renews** · 10 req/min · 32K ctx | purpose-built |
+| 2 | **`rerank-2.5-lite`** | **Voyage** | **200M tokens ≈ 8,000 calls — one-time** | purpose-built |
+| 3 | `@cf/baai/bge-reranker-base` | Cloudflare | neurons/day, shared | purpose-built |
+| 4 | `ministral-3b-2512` | Mistral | **12.5 RPS**, 1.3M TPM | LLM-as-reranker |
+| 5 | **skip reranking** | — | — | degraded, still works |
 
-`ms-marco-MiniLM-L-6-v2` is ~22M params (~22MB int8) — 25× smaller than
-`bge-reranker-base` and comfortably inside Render's 512MB.
+**Cohere before Voyage on purpose** — the same principle as the generator chain:
+*spend the quota that expires anyway, bank the one-time grant.* Cohere's 1,000
+resets monthly whether used or not; Voyage's 200M does not expire.
 
-**"Local" does not mean baked into the image.** `fastembed`/`sentence-transformers`
-download the weights from HF Hub at *runtime* into the container cache. The image
-carries only ONNX Runtime (~50MB). Shipping `torch` (~800MB) is what would bloat
-it — so do not.
+**LLM-as-reranker is no longer rejected outright.** *(Position changed
+2026-08-11.)* The old objection was that it spends a generation call — the
+scarcest resource. That does not hold for `ministral-3b-2512`: it sits on
+Mistral's quota, which is separate from OpenRouter and Google, and it is the
+fastest, cheapest model on that platform. It is still worse than a purpose-built
+cross-encoder, which is why it is tier 4 and not tier 1.
+
+**The local model is now a dev dependency, not a runtime one.** With four remote
+rerankers ahead of it, `ms-marco-MiniLM-L-6-v2` would almost never be reached —
+and it costs ~120MB resident on a 512MB Render box (see
+[Memory budget](#memory-budget--render-free-tier-512mb)). Keep it installed for
+tests, so integration tests never spend Cohere's monthly bucket, and leave it out
+of the deployed container.
+
+Two numbers that were conflated earlier and are not the same thing:
+**~22MB** is the int8 weights file on disk; **~120MB** is resident RAM once ONNX
+Runtime, the loaded weights and inference buffers are counted. The second number
+is an estimate, not a measurement.
+
+**Rerankers that do not exist anywhere free:** Groq (chat/Whisper/TTS/vision
+only), llm7.io (chat/video/image only), Mistral (zero matches in `/v1/models`).
+Jina offers 1M free tokens ≈ 40 calls — too small to be a tier.
 
 **Cohere auto-chunks documents longer than 510 tokens**, which silently multiplies
 the billed document count. Keep chunks under that.
@@ -975,6 +1090,7 @@ Assignments, so no pool funds two jobs:
 | **Google** | Generation t1/t3 **+ embedding backup** | Chat and embedding are **separate quotas**, so no conflict |
 | **Mistral** | Generation t2/t6 **+ embedder primary** | Rate-limited, largest headroom |
 | **Cohere** | **Rerank only** | 1,000/month is one shared bucket across chat, embed and rerank — too small to split |
+| **Voyage** | **Rerank only** | 200M tokens is a one-time grant, so bank it — spend renewing quota first |
 | **Cloudflare** | Rerank t2 · embedder t4 · generation t7 | Neurons are shared, so keep every user light |
 
 **Same-pool tiers must not sit adjacent.** Tiers 1+3 share Google and tiers 4+5
@@ -1141,20 +1257,31 @@ $$
 20 minutes is acceptable — **ingest is offline and queued**, nobody is watching.
 Query-time embedding is ~20 tokens per turn and is effectively free.
 
-#### Reranker — one call per retrieval, and a monthly ceiling
+#### Reranker — one call per retrieval, two different ceilings
 
-50 chunks × 500 tokens = **25,000 tokens per call**, inside Cohere's 32K window.
+50 chunks × 500 tokens = **25,000 tokens per call**, inside both Cohere's and
+Voyage's 32K windows. The two tiers are counted in different units:
 
 $$
-\text{turns per month} \le \frac{1{,}000}{r}
+\text{Cohere: turns/month} \le \frac{1{,}000}{r}
+\qquad
+\text{Voyage: total calls} \le \frac{200{,}000{,}000}{25{,}000} = 8{,}000
 $$
 
-where `r` = rerank calls per turn. At `r = 1` that is 1,000 turns/month (~33/day);
-a full report doing ~5 retrievals costs `r = 5`, so **~200 reports/month**.
+where `r` = rerank calls per turn. At `r = 1` Cohere gives 1,000 turns/month
+(~33/day); a full report doing ~5 retrievals costs `r = 5`, so **~200
+reports/month**. Voyage then adds ~8,000 calls — but **once, not monthly**. Over
+a year Cohere supplies 12,000 and Voyage 8,000, which is why Cohere is spent
+first and Voyage is banked.
 
 **The 510-token trap:** Cohere auto-chunks any document longer than 510 tokens,
 which silently multiplies the billed document count. Keep chunks under 510 or
 the arithmetic above is wrong by a factor of 3.
+
+**Then two more tiers with no practical ceiling** — Cloudflare's `bge-reranker`
+(neurons are cheap for reranking) and `ministral-3b-2512` at 12.5 RPS. Running
+out of reranking entirely is therefore very unlikely, and if it happens the
+answer is "skip it", not "fail".
 
 #### Generator — the binding constraint
 
@@ -1346,6 +1473,7 @@ what blocks the next commit, then write the commit.
 | **Mistral** | Generator t2 + t6, **embedder primary** | per-model TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-11 |
 | **Cloudflare Workers AI** | Reranker t2, embedder t4, generator t7 | 10,000 neurons/day | ❓ untested | ❌ |
 | **Cohere** | **Reranker t1** | 10 req/min rerank, **1,000 calls/month total** | ❓ untested | ❌ |
+| **Voyage AI** | **Reranker t2** | **200M rerank tokens, one-time** ≈ 8,000 calls | ❓ untested | ❌ |
 | ~~**Cerebras Cloud**~~ | ~~tier 5~~ | — | **YES — blocked** | ❌ `402` |
 | **Kaggle** | Fine-tuning (Step 4) | ~30 GPU-hrs/week, 2×T4 or P100, 12h sessions | No (phone verification) | — |
 | **Lightning AI** | One-shot escape hatch for a bigger GPU | **5 credits, one-time** (~2 A100-hrs) | No (phone verification) | — |
