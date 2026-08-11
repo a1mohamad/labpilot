@@ -41,20 +41,20 @@ NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
     api_key_env="OPENROUTER_API_KEY",
 )
 
-NORTH_MINI_CODE = OpenAICompatibleProvider(
-    name="North Mini Code",
-    tier=5,
-    url=OPENROUTER_URL,
-    model="cohere/north-mini-code:free",
-    api_key_env="OPENROUTER_API_KEY",
-)
-
 DEVSTRAL_2 = OpenAICompatibleProvider(
     name="Devstral 2",
-    tier=6,
+    tier=5,
     url=MISTRAL_URL,
     model="devstral-2512",
     api_key_env="MISTRAL_API_KEY",
+)
+
+NORTH_MINI_CODE = OpenAICompatibleProvider(
+    name="North Mini Code",
+    tier=6,
+    url=OPENROUTER_URL,
+    model="cohere/north-mini-code:free",
+    api_key_env="OPENROUTER_API_KEY",
 )
 
 CHAIN = (
@@ -62,6 +62,6 @@ CHAIN = (
     GLM_5_2,
     GEMINI_3_5_FLASH,
     NEMOTRON_3_ULTRA,
-    NORTH_MINI_CODE,
     DEVSTRAL_2,
+    NORTH_MINI_CODE,
 )
