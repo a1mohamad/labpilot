@@ -553,9 +553,9 @@ Copy `.env.example` to `.env` and fill in real values.
 | `GOOGLE_API_KEY` | Generator tiers 1 + 3, embedder backup | aistudio.google.com/api-keys — **from the second Google account**; the first is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
 | `MISTRAL_API_KEY` | Generator tiers 2 + 6, **embedder primary** | console.mistral.ai — phone verification, no card |
 | `OPENROUTER_API_KEY` | Generator tiers 4 + 5 | openrouter.ai/keys |
-| `COHERE_API_KEY` | **Reranker tier 1** — not yet obtained | dashboard.cohere.com |
-| `VOYAGE_API_KEY` | **Reranker tier 2** — not yet obtained. 200M free rerank tokens, one-time | dash.voyageai.com |
-| `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | Reranker t2, embedder t4, generator t7 — not yet obtained | dash.cloudflare.com — token needs `Workers AI - Read` **and** `Workers AI - Edit` |
+| `COHERE_API_KEY` | **Reranker tier 1**, embedder last resort | dashboard.cohere.com — trial key, no card |
+| `VOYAGE_API_KEY` | **Reranker tier 2** — 200M free rerank tokens, one-time | dash.voyageai.com — no card |
+| `CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` | Reranker t3, embedder t4, generator t7 | dash.cloudflare.com — token needs **both** `Workers AI - Read` and `Workers AI - Edit`. The **account ID goes in the URL path**, which is why this is the only provider needing two variables |
 | ~~`CEREBRAS_API_KEY`~~ | **Dead** — the API now requires a card (`402`) | — |
 | ~~`MODAL_API_KEY`~~ | No longer a chain tier. Step 4 only, for serving the fine-tuned model | modal.com |
 
@@ -973,8 +973,32 @@ order*, used when the primary is dead — not a per-request fallback.
 | 1 | **`codestral-embed`** | Mistral | **1536** | The only **code-specific** embedder found. 50K TPM ≈ 20 min per 1M-token repo — fine, ingest is offline. **Verified live 2026-08-11.** |
 | 2 | `mistral-embed` | Mistral | **1024** | **20M TPM** — same repo in ~3 seconds. Same platform, so swapping is easy. **Verified live 2026-08-11.** |
 | 3 | `gemini-embedding-001` | Google | 128–3072 | The real *cross-platform* backup. Max input **2,048 tokens**, so chunks must stay small. |
-| 4 | `@cf/baai/bge-*` | Cloudflare | 384 / 768 / 1024 | Open weights — **also runs locally via ONNX**, the only true two-runtime option. |
-| 5 | `embed-v4.0` | Cohere | — | Last. Competes with rerank for Cohere's single 1,000-calls/month bucket. |
+| 4 | `@cf/baai/bge-*` | Cloudflare | 384 / **768** / 1024 | Open weights — **also runs locally via ONNX**, the only true two-runtime option. `bge-base-en-v1.5` verified live at **768 dim**, 2026-08-11. |
+| 5 | `embed-v4.0` | Cohere | — | **Deliberate last resort — see below.** 128K input context, strong model. |
+
+**Why Cohere is last on purpose, not because it is weak.** *(Confirmed
+2026-08-11.)* `embed-v4.0` is a good embedder with a 128K input window — on
+quality it would rank higher. It sits last because of **quota shape**, not
+capability:
+
+Cohere's 1,000 calls/month is **one bucket shared by chat, embed and rerank**, and
+Cohere is the reranker primary. Migrating a corpus to Cohere is not a one-off
+cost — the corpus stays locked to that model, so **every future query embeds
+through Cohere too**:
+
+$$
+20 \text{ questions/day} \times 30 = 600 \text{ query embeds/month}
+$$
+
+That would leave ~400 calls for reranking (~13/day) and quietly starve the job
+Cohere exists to do. So it is kept as a **safety guard**: reachable if the four
+above are all gone, never entered casually.
+
+**And migrate back when the primary recovers.** A corpus stranded on Cohere keeps
+spending the rerank bucket forever. Re-embedding it back to Mistral or Google is
+a cheap background job and returns the quota. Same rule as any migration: the
+model is a property of the corpus, so fixing it means re-embedding, not a setting
+change.
 
 **Dimension changes are schema changes.** `codestral-embed` is 1536 and
 `mistral-embed` is 1024, so migrating between them alters the pgvector column
@@ -1471,9 +1495,9 @@ what blocks the next commit, then write the commit.
 | **OpenRouter** | Generator t4 + t5 | 50/day, 20 RPM | No | ✅ 2026-08-10 |
 | **Google AI Studio** | Generator t1 + t3, embedder backup | ~1,500 RPD | No — see restriction note | ✅ 2026-08-11 |
 | **Mistral** | Generator t2 + t6, **embedder primary** | per-model TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-11 |
-| **Cloudflare Workers AI** | Reranker t2, embedder t4, generator t7 | 10,000 neurons/day | ❓ untested | ❌ |
-| **Cohere** | **Reranker t1** | 10 req/min rerank, **1,000 calls/month total** | ❓ untested | ❌ |
-| **Voyage AI** | **Reranker t2** | **200M rerank tokens, one-time** ≈ 8,000 calls | ❓ untested | ❌ |
+| **Cohere** | **Reranker t1**, embedder last resort | 10 req/min rerank, **1,000 calls/month total** | No | ✅ 2026-08-11 |
+| **Voyage AI** | **Reranker t2** | **200M rerank tokens, one-time** · 4M TPM / 2,000 RPM | No | ✅ 2026-08-11 |
+| **Cloudflare Workers AI** | Reranker t3, embedder t4, generator t7 | 10,000 neurons/day, resets 00:00 UTC | No | ✅ 2026-08-11 |
 | ~~**Cerebras Cloud**~~ | ~~tier 5~~ | — | **YES — blocked** | ❌ `402` |
 | **Kaggle** | Fine-tuning (Step 4) | ~30 GPU-hrs/week, 2×T4 or P100, 12h sessions | No (phone verification) | — |
 | **Lightning AI** | One-shot escape hatch for a bigger GPU | **5 credits, one-time** (~2 A100-hrs) | No (phone verification) | — |
@@ -1510,6 +1534,59 @@ Also present: `zai-glm-5-2`, `codestral-embed-2505`, `devstral-2512`,
 **Still unconfirmed:** whether the account is on Free mode, and the exact monthly
 token cap. Both are on the account's own `Subscription` / `Limits` pages. Record
 them here once read — the cap decides how much of the chain rests on Mistral.
+
+### What was verified live on 2026-08-11 (Cohere, Voyage, Cloudflare)
+
+Every remaining platform was proven with a real call. **Nothing in the project is
+unproven now.**
+
+| Provider | Model | Result | Latency | Cost signal |
+|---|---|---|---|---|
+| Cohere | `rerank-v4.0-fast` | ✅ 200 | ~1 s | `billed_units.search_units: 1` |
+| Voyage | `rerank-2.5-lite` | ✅ 200 | 3.8 s | `usage.total_tokens: 28` |
+| Cloudflare | `@cf/openai/gpt-oss-120b` | ✅ 200 | ~2 s | **6.0 neurons** |
+| Cloudflare | `@cf/baai/bge-base-en-v1.5` | ✅ 200 | 1.2 s | **768 dimensions** |
+| Cloudflare | `@cf/baai/bge-reranker-base` | ✅ 200 | 1.1 s | **0.0124 neurons** |
+
+Both rerankers ranked correctly — the `lr = 3e-4` document scored highest every
+time, the irrelevant `import os` lowest.
+
+**Cohere is fast; a 96-second reading was a local network fault.** A repeat gave
+`HTTP 000` at 21 s (curl never completed the connection) then `HTTP 200` at
+0.97 s. When timing a provider, take more than one sample — and remember `000` is
+a client-side failure, not a provider response.
+
+#### `@cf/openai/gpt-oss-120b` is a thinking model — the Gemini trap, again
+
+With `max_tokens: 20` it returned:
+
+```json
+"finish_reason": "length",
+"message": {"content": null,
+            "reasoning": "User asks: \"Reply with one word: ok\". So we need to"}
+```
+
+`content: null` — the whole budget went to reasoning. With `max_tokens: 800` it
+answered `"ok"`, still spending **54 completion tokens on one word**.
+
+So tier 7 needs a `max_tokens` floor exactly like the Gemini tiers, and it hides
+its thoughts in a **`reasoning`** field rather than Gemini's
+`usageMetadata.thoughtsTokenCount`. Two families, two field names, same failure:
+our `_extract_message` sees an empty answer and falls through for no real reason.
+**Assume any modern model may be a thinking model until proven otherwise.**
+
+#### Neuron economics — measured, not estimated
+
+The live call confirms the published rates exactly: 73 in + 54 out = 6.0 neurons.
+
+| Job | Real call size | Neurons | Per day (10,000) |
+|---|---|---|---|
+| **Generation** | 20K in + 4K out | **909** | **~11** |
+| **Reranking** | 25K tokens | **~7** | **~1,400** |
+
+**Reranking is roughly 130× cheaper per token than generation on Cloudflare.**
+That measurement is the hard evidence for the quota allocation: Cloudflare is a
+rerank/embed home, and its generation tier is outage insurance only.
 
 ### Google AI Studio — the account restriction of 2026-08-11
 
