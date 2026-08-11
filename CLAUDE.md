@@ -330,7 +330,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. In progress — roughly 40% of Step 0 done.**
+**Phase: Step 0 — walking skeleton. Slice 2 is ~85% done; `chain.py` is all that
+remains of it.**
 **Last updated 2026-08-11 (second session). Working branch: `main`.**
 
 > **2026-08-11, session 2 — the provider landscape was re-verified end to end and
@@ -340,12 +341,28 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > to tier 4**. Embedder and reranker chains were designed for the first time.
 > The Step 2 [agent design](#agent-design--step-2-recorded-2026-08-11) was also
 > recorded — intent→plan, the correspondence gate, and the citation rule.
-> No code changed — `chain.py` is still unwritten, and that remains the next task.
+
+**Where the code actually stands (end of session 2):**
+
+- **`CHAIN` holds all seven generator tiers, every one proven live** — see the
+  table under [Chain 1](#chain-1--generator-true-fallback).
+- `OpenAICompatibleProvider` gained `account_env` + `_endpoint()` so Cloudflare's
+  account ID can sit in the URL path.
+- `DEFAULT_TEMPERATURE` was **0.2** and is now **0.0** — the repeatability rule
+  had never actually been in force.
+- Two `CHAIN` invariants are pinned by tests: tiers run 1..N in order, and no two
+  adjacent tiers share an `api_key_env`.
+- Suite: **30 unit tests passing, 7 smoke tests, ruff clean.**
+- **`chain.py` is still unwritten. It is the next task and blocks slices 3–5.**
 
 `feat/llm-client` was squash-merged into `main` on 2026-08-11 and **kept, not
-deleted** (user's choice). It is now 2 commits behind `main` and still contains
-`LEARNED.txt`, which `main` deleted — that 202-line file is the entire diff the
-editor shows. If work resumes on that branch, run `git merge main` on it first.
+deleted** (user's choice). It is now kept **in sync with `main` by merging after
+every commit**, so the two are identical. `LEARNED.txt` no longer differs — the
+merge removed it there too.
+
+**Two repository secrets are still missing on GitHub**, so the Monday smoke run
+will fail until they are added: `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`.
+Weekly smoke cost is now 7 requests.
 
 Setup is complete:
 - Git repository connected to `https://github.com/a1mohamad/labpilot`
@@ -445,24 +462,27 @@ is an empty `{}` with no `parts` at all. `AttributeError` is in the caught tuple
 here because `.get()` on a non-dict raises it where `[...]` raises `TypeError`.
 
 Tests added: 12 unit for `gemini.py`, 1 for the `CHAIN` tier invariant, and
-smoke tests for tiers 2, 3, 4. Suite is **27 passed, 4 skipped**, ruff clean.
+smoke tests for both Gemini models and North Mini Code. Suite was **27 passed,
+4 skipped**, ruff clean *at that point in the day*.
 
-**Verified live 2026-08-11:** all four models in `CHAIN` answer. Tier 1 was
-already proven on 2026-08-10.
+**Verified live 2026-08-11:** all four providers that existed then — Nemotron 3
+Ultra, both Gemini Flash models, and North Mini Code — answered. *(Tier numbers
+in this paragraph are the pre-reorder ones; see the current table under
+[Chain 1](#chain-1--generator-true-fallback).)*
 
-**Note — `registry.py` tier numbers are now stale.** The second session of
-2026-08-11 re-ordered the chain on measured benchmarks, so the four existing
-providers keep working but sit at different positions:
+**Then, later the same day, three more providers landed** — `glm-5-2` and
+`devstral-2512` on Mistral, and `@cf/openai/gpt-oss-120b` on Cloudflare — and
+every tier was renumbered onto the benchmark-based order. `CHAIN` is now seven
+entries; the suite is **30 unit tests, 7 smoke tests**.
 
-| Model | Old tier | **New tier** |
-|---|---|---|
-| Gemini 3.6 Flash | 2 | **1** |
-| Gemini 3.5 Flash | 3 | **3** |
-| Nemotron 3 Ultra | 1 | **4** |
-| North Mini Code | 4 | **5** |
+Two bugs the renumbering exposed, both worth remembering:
 
-Renumbering plus the two new Mistral providers is the first task of the remaining
-slice-2 work.
+- **Reordering `CHAIN` is not the same as renumbering `tier=`.** The tuple was
+  put in the right order while the `tier` fields kept their old values, so the
+  chain read `2, 2, 3, 1, 4, 6`. Only the invariant test caught it.
+- **`DEFAULT_TEMPERATURE` was 0.2, not 0.0.** CLAUDE.md had required
+  `temperature: 0` since slice 1 for repeatable comparisons, and the code had
+  never enforced it. Every smoke test until then had been sampling.
 
 ### Where to pick up — the rest of slice 2
 
