@@ -14,6 +14,7 @@ from labpilot.llm.defaults import (
     DEFAULT_TIMEOUT,
 )
 from labpilot.llm.errors import LLMError
+from labpilot.lm._http import error_from_response
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,7 @@ class GeminiProvider:
             raise LLMError(f"{self.name}: request failed: {exc}") from exc
 
         if response.status_code != 200:
-            raise LLMError(
-                f"{self.name}: HTTP {response.status_code}: {truncate(response.text)}"
-            )
+            raise error_from_response(response, self.name)
 
         try:
             body = response.json()
