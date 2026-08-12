@@ -9,7 +9,7 @@ import requests
 from labpilot.llm._text import truncate
 from labpilot.llm.errors import LLMError
 
-_MILISECOND_EPOCH = 1e11
+_MILLISECOND_EPOCH = 1e11
 _PLAUSIBLE_EPOCH = 1e9
 
 
@@ -51,7 +51,7 @@ def reset_at_epoch(headers: Mapping[str, str]) -> float | None:
     except ValueError:
         return None
 
-    if value > _MILISECOND_EPOCH:
+    if value > _MILLISECOND_EPOCH:
         value /= 1000.0
     if value < _PLAUSIBLE_EPOCH:
         return time.time() + value
