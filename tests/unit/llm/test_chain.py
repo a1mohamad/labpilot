@@ -147,3 +147,56 @@ def test_delay_falls_back_to_exponential_backoff():
 )
 def test_pool_is_exhausted_only_for_long_rate_limits(error, expected):
     assert pool_is_exhausted(error) is expected
+
+
+def test_marks_the_pool_dead_after_a_repeated_rate_limit(no_sleep):
+    busy = LLMError("busy", status=429)
+    first = FakeProvider(
+        name="First", tier=1, api_key_env="POOL", outcomes=[busy, busy]
+    )
+    third = ok("Third", 3, key="POOL")
+    client = LLMClient(
+        chain=(
+            first,
+            fails("Second", 2, LLMError("boom"), key="OTHER"),
+            third,
+            ok("Fourth", 4, key="LAST"),
+        )
+    )
+    result = client.generate("hello")
+
+    assert first.calls == 2
+    assert no_sleep == [1.0]
+    assert third.calls == 0
+    assert result.tier == 4
+
+
+def test_gives_up_on_a_tier_when_the_wait_exceeds_max_delay(no_sleep):
+    slow = LLMError("busy", status=429, retry_after=45.0)
+    first = fails("First", 1, slow, key="POOL")
+    result = LLMClient(chain=(first, ok("Second", 2, key="OTHER"))).generate("hello")
+
+    assert first.calls == 1
+    assert no_sleep == []
+    assert result.tier == 2
+
+
+def test_skips_every_tier_when_the_time_budget_is_already_spent():
+    first = ok("First", 1)
+    client = LLMClient(chain=(first, ok("Second", 2, key="KEY_B")), total_budget=0.0)
+
+    with pytest.raises(AllFreeTiersExhausted) as caught:
+        client.generate("hello")
+
+    assert first.calls == 0
+    assert all("time budget" in a.error for a in caught.value.attempts)
+
+
+def test_delay_uses_the_time_left_until_the_reset():
+    error = LLMError("busy", status=429, reset_at=time.time() + 20)
+    assert 18 <= delay_for(error, 0, base=1.0) <= 22
+
+
+def test_delay_is_never_negative_when_the_reset_already_passed():
+    error = LLMError("busy", status=429, reset_at=time.time() - 30)
+    assert delay_for(error, 0, base=1.0) == 0.0
