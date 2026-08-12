@@ -34,3 +34,23 @@ def test_chain_models_are_unique():
     models = [provider.model for provider in CHAIN]
 
     assert len(set(models)) == len(models), models
+
+
+def test_every_chain_provider_declares_its_token_limits():
+    missing = [
+        provider.name
+        for provider in CHAIN
+        if not provider.context_window or not provider.max_output_tokens
+    ]
+
+    assert not missing, missing
+
+
+def test_no_provider_promises_more_output_than_its_context_window():
+    over = [
+        provider.name
+        for provider in CHAIN
+        if provider.max_output_tokens > provider.context_window
+    ]
+
+    assert not over, over
