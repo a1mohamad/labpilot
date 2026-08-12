@@ -3,6 +3,8 @@ from __future__ import annotations
 import email.utils
 import time
 
+import pytest
+
 from labpilot.llm._http import (
     error_from_response,
     reset_at_epoch,
@@ -45,3 +47,16 @@ def test_reset_at_converts_milliseconds_to_seconds():
 def test_reset_at_treats_a_small_number_as_a_duration():
     reset = reset_at_epoch({"X-RateLimit-Reset": "20"})
     assert 18 <= reset - time.time() <= 22
+
+
+def test_reset_at_keeps_a_unix_timestamp_in_seconds():
+    assert reset_at_epoch({"X-RateLimit-Reset": "1800000000"}) == 1_800_000_000.0
+
+
+@pytest.mark.parametrize("headers", [{}, {"X-RateLimit-Reset": "soon"}])
+def test_reset_at_is_none_when_the_header_is_missing_or_unreadable(headers):
+    assert reset_at_epoch(headers) is None
+
+
+def test_retry_after_is_none_when_the_header_is_unreadable():
+    assert retry_after_seconds({"Retry-After": "soon"}) is None
