@@ -44,7 +44,7 @@ def pool_is_exhausted(error: LLMError) -> bool:
     if error.retry_after is not None:
         return error.retry_after > RATE_LIMIT_WINDOW
     if error.reset_at is not None:
-        return error.reset.at - time.time() > RATE_LIMIT_WINDOW
+        return error.reset_at - time.time() > RATE_LIMIT_WINDOW
     return False
 
 
@@ -62,7 +62,7 @@ class LLMClient:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
 
-        deadline = time.monotonic + self.total_budget
+        deadline = time.monotonic() + self.total_budget
         attempts: list[Attempt] = []
         dead_pools: set[str] = set()
 
@@ -105,7 +105,7 @@ class LLMClient:
                     raise
 
                 delay = delay_for(exc, attempt, base=self.base_delay)
-                if delay > self.max_delay or time.monotonic + delay >= deadline:
+                if delay > self.max_delay or time.monotonic() + delay >= deadline:
                     raise
 
                 logger.warning(
