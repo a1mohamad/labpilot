@@ -69,6 +69,41 @@ search is cosine similarity over embeddings — so go straight to the formula,
 normalization, and why approximate nearest-neighbour search exists; do not
 define "embedding". Agents are control flow over state — not "a helpful robot".
 
+#### The four gaps are the whole point — teach them hardest of all
+*(Rule added 2026-08-12, at the user's request, before Step 1 begins.)*
+
+This project **replaces a stack of theory courses**. The user is deliberately not
+spending weeks on video courses about RAG, retrieval, vector databases, agents,
+agent tools, agent memory, MCP, fine-tuning or QLoRA. The plan is to learn them
+**by building this**, with Claude teaching as the build goes.
+
+So when Steps 1–4 arrive, the teaching gets **more** attention, not less:
+
+- **Go slower on these four, not faster.** Step 0 was engineering the user
+  already knows. RAG, agents, MCP and fine-tuning are the parts they are new to.
+  A longer explanation there is correct; a longer explanation of FastAPI is not.
+- **Assume no prior knowledge of the concept itself** — but keep assuming the
+  deep-learning and engineering background listed above. "New to RAG" does not
+  mean "new to cosine similarity".
+- **Every concept needs a concrete example**, not only a definition. Show a real
+  chunk, a real vector, a real retrieved result, a real graph state dict before
+  and after a node runs. Abstract description alone does not teach this material.
+- **Language stays very clear and very simple.** Short sentences, plain words, no
+  idioms. Simplify the *words*, never the *idea* — the existing rule, applied
+  with extra care because the material is unfamiliar.
+- **Name the thing being taught**, so it is searchable later: *"this is called
+  chunk overlap"*, *"this is what people mean by an agent's tool schema"*. The
+  user must be able to recognise the term when they meet it elsewhere.
+- **Say why each piece exists**, not only how it works. What breaks without it,
+  and what people usually get wrong about it.
+- **Check understanding at the joins.** After a concept lands, connect it back to
+  the pipeline before moving on — the fourth part of the explanation format is
+  not optional for these four topics.
+
+The measure of success is not that LabPilot ships. It is that the user can
+**design a different RAG or agent system from scratch afterwards**, without this
+repo in front of them.
+
 ### Communication
 English proficiency is between B1 and B2, not a native speaker.
 
@@ -330,9 +365,20 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. Slice 2 is ~85% done; `chain.py` is all that
-remains of it.**
-**Last updated 2026-08-11 (second session). Working branch: `main`.**
+**Phase: Step 0 — walking skeleton. Slices 1 and 2 are DONE. Slice 3 is next.**
+**Last updated 2026-08-12 (third session). Working branch: `main`.**
+
+> **2026-08-12, session 3 — the LLM layer is finished.** `chain.py` landed with
+> `LLMClient`, retry/backoff, pool-aware skipping and a total time budget.
+> `base.py` was then extracted from the two providers, and every provider gained
+> `context_window` + `max_output_tokens` with a pre-flight validator. Every token
+> limit in the chain is now a **measured** number, read from each provider's own
+> API or docs — see [Token limits](#token-limits--measured-2026-08-12).
+> **Suite: 73 unit tests, 7 smoke tests, ruff clean.**
+>
+> **Nothing above the `LLMClient` seam exists yet.** No retrieval, no vector DB,
+> no agent, no API endpoint. That is exactly the walking-skeleton plan: Step 0
+> slice 3 starts the layer above.
 
 > **2026-08-11, session 2 — the provider landscape was re-verified end to end and
 > much of it changed.** Cerebras died (`402`, card now required). Modal left the
@@ -342,18 +388,137 @@ remains of it.**
 > The Step 2 [agent design](#agent-design--step-2-recorded-2026-08-11) was also
 > recorded — intent→plan, the correspondence gate, and the citation rule.
 
-**Where the code actually stands (end of session 2):**
+**Where the code actually stands (end of session 3):**
 
 - **`CHAIN` holds all seven generator tiers, every one proven live** — see the
   table under [Chain 1](#chain-1--generator-true-fallback).
+- **`LLMClient` exists and is the seam.** `generate(prompt) -> LLMResult`,
+  walking the chain, catching `LLMError`, recording an `Attempt` per tier and
+  raising `AllFreeTiersExhausted` when every tier is spent.
+- **`base.py` holds `HTTPProvider`** — the shared `complete()` template. The two
+  providers now supply only `_endpoint`, `_headers`, `_payload`,
+  `_extract_message`, `_usage_summary`. `gemini.py` went 124 → 61 lines,
+  `openai_compatible.py` 121 → 60.
+- **Two abstractions, on purpose**: `Provider` (a `Protocol` in `chain.py`) is
+  what the *chain requires*; `HTTPProvider` (an ABC in `base.py`) is what the
+  *providers share*. A future Cohere reranker will inherit the second and never
+  appear in `CHAIN`.
+- `LLMError` now carries `status`, `retry_after`, `reset_at`, filled by
+  `_http.error_from_response`. Control flow branches on those fields, never on
+  the message string.
 - `OpenAICompatibleProvider` gained `account_env` + `_endpoint()` so Cloudflare's
   account ID can sit in the URL path.
 - `DEFAULT_TEMPERATURE` was **0.2** and is now **0.0** — the repeatability rule
   had never actually been in force.
-- Two `CHAIN` invariants are pinned by tests: tiers run 1..N in order, and no two
-  adjacent tiers share an `api_key_env`.
-- Suite: **30 unit tests passing, 7 smoke tests, ruff clean.**
-- **`chain.py` is still unwritten. It is the next task and blocks slices 3–5.**
+- Four `CHAIN` invariants are pinned by tests: tiers run 1..N in order, no two
+  adjacent tiers share an `api_key_env`, every env var is documented in
+  `.env.example`, and every provider declares its token limits.
+- Suite: **73 unit tests passing, 7 smoke tests, ruff clean.**
+
+### How the chain decides — the three-way rule
+
+The whole of `chain.py` exists to tell three failures apart:
+
+| The failure | Response | Why |
+|---|---|---|
+| 429, resets in **seconds** | wait, **retry the same tier** | the tier is healthy, just busy |
+| 429, resets **tomorrow** | **skip every tier on that pool** | the *account* is spent, not the model |
+| 400 / 500 / empty / timeout | **next tier** | retrying cannot change it |
+
+The discriminator is distance to reset, because a per-minute bucket cannot take
+longer than 60 s to refill by definition:
+
+$$
+\text{pool is dead} \iff (t_{\text{reset}} - t_{\text{now}}) > \tau,
+\qquad \tau = 60\ \text{s}
+$$
+
+If no header says which, the chain retries once and treats a second 429 as a
+dead pool. Backoff honours `Retry-After` when present, otherwise
+$d_k = d_0 \cdot 2^{k}$ capped by `max_delay`.
+
+**`max_retries_per_tier = 1`, and that number came from arithmetic.** Worst case
+is $N \times ((R+1)\,T_{\text{timeout}} + \sum d_k)$; at `R=1` and a 180 s
+timeout that is $7 \times 361 \approx 42$ minutes. Nobody waits 42 minutes, so
+`DEFAULT_TOTAL_BUDGET = 300 s` enforces a real ceiling and every remaining tier
+is recorded as `skipped: time budget spent` rather than silently dropped.
+
+**Two kinds of math live in this file, and they are not the same.** The backoff
+formula and the pool-dead test each became one line of code. The 42-minute bound
+and $N_{\text{effective}}$ never run at all — they were computed once, on paper,
+and their only output is two constants. Expect that split everywhere.
+
+### Token limits — measured 2026-08-12
+
+Every number below was read from the provider's **own** API or docs, never from a
+blog or a rounded UI label. `GET /v1/models` and `GET /api/v1/models` cost no
+generation quota, so this cost nothing.
+
+| # | Model | `context_window` | `max_output_tokens` | Source |
+|---|---|---|---|---|
+| 1 | Gemini 3.6 Flash | 1,048,576 | 65,536 | Google model docs |
+| 2 | GLM-5.2 | 1,048,576 | 1,048,576 † | Mistral `GET /v1/models` |
+| 3 | Gemini 3.5 Flash | 1,048,576 | 65,536 | Google model docs |
+| 4 | Nemotron 3 Ultra | 1,000,000 | 65,536 | OpenRouter `GET /api/v1/models` |
+| 5 | Devstral 2 | 262,144 | **16,384** | Mistral API + docs |
+| 6 | North Mini Code | 256,000 | 64,000 | OpenRouter `GET /api/v1/models` |
+| 7 | `@cf/openai/gpt-oss-120b` | 128,000 | 128,000 † | Cloudflare dashboard |
+
+† shared window — the provider publishes no separate output cap, so the sum check
+does the real work.
+
+**Three traps this exercise exposed, all worth remembering:**
+
+1. **The same model on two hosts has different limits.** OpenRouter's page for
+   `gpt-oss-120b` reports 131K output — but that is *CoreWeave's* deployment.
+   LabPilot calls Cloudflare's, which is 128K total. Always read the page for the
+   host you actually call.
+2. **UI labels round; the API does not.** OpenRouter renders 65,536 as "66K" and
+   64,000 as "64K" — so a label cannot be reversed into an integer. Take exact
+   values from `GET /api/v1/models`.
+3. **Devstral's 16,384 output cap is the one that will bite.** Every other tier
+   allows 64K+. A 20,000-token request passes tiers 1–4 and fails tier 5 — now
+   caught locally instead of costing a request.
+
+Google is the only provider where input and output are **separate** limits
+($t_{\text{in}} \le C_{\text{in}}$ *and* $T_{\text{out}} \le C_{\text{out}}$),
+which is why the validator checks both rather than only the sum.
+
+### Thinking models — the count is at least four of seven
+
+*(Corrected 2026-08-12. An earlier note implied `gemini-3.6-flash` was safe
+because it passed a 64-token test. It passed by luck on a trivial prompt.)*
+
+Google AI Studio exposes a **Thinking level** selector for `gemini-3.6-flash`
+— Minimal / Low / Medium / High, defaulting to Medium. And OpenRouter's own page
+calls Nemotron 3 Ultra an *"open frontier-**reasoning** … model"*. So:
+
+| Tier | Model | Thinking? |
+|---|---|---|
+| 1 | Gemini 3.6 Flash | **yes** — level selector, defaults to Medium |
+| 3 | Gemini 3.5 Flash | **yes** — proven live, spent 60 of 64 output tokens |
+| 4 | Nemotron 3 Ultra | **yes** — NVIDIA's own description |
+| 7 | `gpt-oss-120b` | **yes** — proven live, `content: null` at 20 tokens |
+| 2, 5, 6 | GLM-5.2, Devstral 2, North Mini Code | **unverified — assume yes** |
+
+$$
+T_{\text{out}} = T_{\text{think}} + T_{\text{answer}}
+$$
+
+`max_tokens` budgets both. Too small a budget returns an empty answer that the
+chain then wastes a tier on.
+
+**Measure the rest for free on the next smoke run.** Those 7 requests already
+happen weekly — print each raw body once and read `usageMetadata.thoughtsTokenCount`
+(Gemini) or `choices[0].message.reasoning` (OpenAI shape). The universal signal
+needs no field name at all: **completion tokens far larger than the visible
+answer**. That is what caught `gpt-oss-120b`.
+
+**Thinking level is a per-task knob, not a global setting** — `explain_divergence`
+wants High, the correspondence gate wants Minimal. That argues for a `thinking`
+field on `GeminiProvider`, added in **slice 4** when real `max_tokens` values are
+chosen. Not before: nothing reads it yet. Get the exact REST field name from
+`<> Get code` in AI Studio rather than from memory.
 
 `feat/llm-client` was squash-merged into `main` on 2026-08-11 and **kept, not
 deleted** (user's choice). It is now kept **in sync with `main` by merging after
@@ -385,8 +550,8 @@ Step 0 is split into five slices. Finish one before starting the next; a
 six-provider client written in one go has six places to be wrong at once.
 
 1. ~~**Tier 1 alone returns text**~~ ✅ **done 2026-08-10**
-2. The fallback loop + 429 backoff, adding tiers 2–5 ← *in progress, ~45%*
-3. Dumb retrieval — read one hardcoded paper + code pair from `data/samples/`
+2. ~~The fallback loop + 429 backoff, all seven tiers~~ ✅ **done 2026-08-12**
+3. Dumb retrieval — read one hardcoded paper + code pair from `data/samples/` ← **next**
 4. The single-pass comparison prompt
 5. A bare FastAPI endpoint
 
@@ -431,7 +596,7 @@ push, and a separate **smoke** workflow that is manual + weekly only.
   "HTTP 200 with an `error` key" case **did not occur**, so no extra branch was
   added for it. Re-check if a future provider behaves differently.
 
-### Slice 2 — in progress (2026-08-11)
+### Slice 2 — DONE 2026-08-12
 
 **What has landed.** The providers, not the loop. `gemini.py` was written first
 on purpose: it is the only provider with a different request *and* response
@@ -509,25 +674,24 @@ and AWS Bedrock, which put account or region in the path the same way. And
 `account_env` stores the **name**, read inside `_endpoint()` at call time — the
 same discipline as `api_key_env`, so no log can leak it.
 
-**2. Then `chain.py`.** Iterate `CHAIN`, catch `LLMError`, record each failure
-into `Attempt`, back off on 429 honouring `Retry-After`. `AllFreeTiersExhausted`
-must **not** subclass `LLMError`, or the loop's own `except LLMError` would
-swallow the signal it needs to report. With Modal gone, this exception is now a
-plain terminal error — no user-consent gate to build.
+**2. ~~`chain.py`.~~ DONE 2026-08-12.** `LLMClient` walks `CHAIN`, records an
+`Attempt` per tier, honours `Retry-After`, skips dead pools and enforces a total
+time budget. `AllFreeTiersExhausted` deliberately does **not** subclass
+`LLMError`, or the loop's own `except LLMError` would swallow the signal it
+exists to report.
 
-Add **pool-aware skipping**: when a 429 signals the *account* cap rather than the
-model, mark that whole pool dead for the request and skip every tier using it.
-Otherwise the chain wastes two attempts on a spent OpenRouter.
+**3. ~~`base.py`.~~ DONE 2026-08-12.** `HTTPProvider` owns the template; the
+subclasses own `_endpoint` / `_headers` / `_payload` / `_extract_message` /
+`_usage_summary`. Written only after the second implementation existed, so the
+seam was observed rather than guessed.
 
-**3. `base.py`, once Mistral is in.** Three provider *shapes* will then exist
-(OpenAI-compatible, Gemini, and soon Cohere's own) and the shared part is proven:
-post → check status → parse JSON → reject an empty answer → log → return
-`LLMResult`. The varying part is exactly
-`_endpoint` / `_headers` / `_payload` / `_extract_message`.
-
-**4. `context_window` + the pre-flight budget validator**, in the same commit.
-Never the field alone. Note the validator must check **tokens-per-minute** too,
-not only context — TPM is what actually excluded Groq.
+**4. ~~`context_window` + the pre-flight validator.~~ DONE 2026-08-12.** Both
+limits are fields on `HTTPProvider`; `_check_fits` runs before `requests.post`.
+*One correction to the old note:* the validator does **not** check
+tokens-per-minute. TPM is a *rate*, not a per-request size, so it cannot be
+validated from a single prompt — it belongs to the chain's backoff, which already
+handles 429s. TPM is still what excluded Groq; that reasoning was about model
+selection, not about this check.
 
 **Chains 2 and 3 (embedder, reranker) are Step 1 work.** They are designed and
 recorded above, but retrieval does not exist yet. Do not build them now.
@@ -535,6 +699,38 @@ recorded above, but retrieval does not exist yet. Do not build them now.
 **Tier order must change if Google is ever lost again.** Tiers 1 and 3 share the
 Google pool. If Google goes down, promote Mistral so the chain does not spend
 both Google attempts before reaching an independent quota.
+
+### Where to pick up — slice 3, dumb retrieval
+
+*Written 2026-08-12, at the end of session 3.*
+
+> Read one hardcoded paper + code pair from `data/samples/`, cut it into pieces,
+> pick some, and hand them to `LLMClient`.
+
+**"Dumb" is the point.** No embeddings, no pgvector, no scoring — those are
+Step 1. Slice 3 exists to prove the *shape* of the pipeline
+(files → text → chunks → selection → prompt) before any part of it becomes
+clever. This is also the first piece of the RAG gap, so it gets the full
+teaching treatment described under
+[The four gaps](#the-four-gaps-are-the-whole-point--teach-them-hardest-of-all).
+
+**One thing blocks it: `data/samples/` is empty** (only `.gitkeep`). Before any
+code runs, put a real pair there. Recommended shape, to keep slice 3 about
+retrieval rather than parsing:
+
+- **side A** — a paper as **plain text or Markdown**, not PDF. PDF extraction is
+  a Step 1 problem.
+- **side B** — **one short Python file**, not a repo. Repo walking is also Step 1.
+- Pick a pair where the answer is already known — one of the user's own notebooks
+  against the paper it came from. A wrong output is then obvious immediately.
+
+**Two loose ends carried into the next session:**
+
+- `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` are still missing as **GitHub
+  repository secrets**, so the Monday smoke run fails on tier 7.
+- The weekly smoke run should print each raw response body **once**, to settle
+  which of tiers 2, 5 and 6 are thinking models — see
+  [Thinking models](#thinking-models--the-count-is-at-least-four-of-seven).
 
 ---
 
@@ -1284,7 +1480,40 @@ the locked `generate(prompt) -> LLMResult` signature. Revisit only if a real
 prompt is ever proven to need more than 100K.
 
 **Add `context_window` to the provider dataclass only when the validator that
-reads it exists** — a field nobody reads is dead code.
+reads it exists** — a field nobody reads is dead code. *(Done together, as
+required, on 2026-08-12.)*
+
+#### Two budgets, not one contradiction — clarified 2026-08-12
+
+This file used to give two different prompt budgets — **~100,000** here and
+**~20,000** under Constraints — and they read like a contradiction. They are not.
+They are two mechanisms with different enforcers:
+
+| Number | Enforced by | Protects against | Status |
+|---|---|---|---|
+| `context_window` per tier | `HTTPProvider._check_fits` | the provider's hard 400 | **built 2026-08-12** |
+| `INPUT_BUDGET` ≈ **20,000** | **retrieval**, at slice 3 | TPM limits, latency, and facts getting buried in a long context | not built yet |
+
+**Use 20,000, not 100,000.** Tokens-per-minute binds before context does, and a
+focused 20K prompt gives a *better* answer than a padded 100K one — attention
+spreads and the important lines get buried. The 100,000 figure was only ever an
+observation that such a prompt would still fit under every tier's window; it was
+never a target. Treat it as a ceiling that should never be approached.
+
+The estimator and margin are now real code in `_text.estimate_tokens` and
+`defaults`:
+
+$$
+\hat{t} = \left\lceil \frac{\text{chars}}{k} \right\rceil, \quad k = 3
+\qquad\text{and}\qquad
+\hat{t}\,(1+m) + T_{\text{out}} \le C, \quad m = 0.10
+$$
+
+**The margin multiplies only the estimate, never `max_tokens`.** `t̂` is a guess
+and can be wrong; `max_tokens` is a number we choose and send literally, so the
+server honours it exactly. Padding a known quantity only wastes window. That is
+the general rule: **a safety margin belongs on estimated quantities, never on
+known ones.**
 
 ### Budgeting all three chains — added 2026-08-11
 
