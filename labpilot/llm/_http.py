@@ -16,7 +16,7 @@ _PLAUSIBLE_EPOCH = 1e9
 def error_from_response(response: requests.Response, source: str) -> LLMError:
     return LLMError(
         f"{source} HTTP {response.status_code}: {truncate(response.text)}",
-        status_code=response.status_code,
+        status=response.status_code,
         retry_after=retry_after_seconds(response.headers),
         reset_at=reset_at_epoch(response.headers),
     )
