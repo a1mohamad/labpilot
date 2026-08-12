@@ -19,6 +19,8 @@ def provider(monkeypatch):
         url=BASE_URL,
         model="test-model",
         api_key_env="TEST_API_KEY",
+        context_window=8_000,
+        max_output_tokens=4_000,
     )
 
 

@@ -17,6 +17,8 @@ GEMINI_3_6_FLASH = GeminiProvider(
     url=GOOGLE_URL,
     model="gemini-3.6-flash",
     api_key_env="GOOGLE_API_KEY",
+    context_window=1_048_576,
+    max_output_tokens=65_536,
 )
 
 GLM_5_2 = OpenAICompatibleProvider(
@@ -25,6 +27,8 @@ GLM_5_2 = OpenAICompatibleProvider(
     url=MISTRAL_URL,
     model="glm-5-2",
     api_key_env="MISTRAL_API_KEY",
+    context_window=1_048_576,
+    max_output_tokens=1_048_576,
 )
 
 
@@ -34,6 +38,8 @@ GEMINI_3_5_FLASH = GeminiProvider(
     url=GOOGLE_URL,
     model="gemini-3.5-flash",
     api_key_env="GOOGLE_API_KEY",
+    context_window=1_048_576,
+    max_output_tokens=65_536,
 )
 
 NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
@@ -42,6 +48,8 @@ NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
     url=OPENROUTER_URL,
     model="nvidia/nemotron-3-ultra-550b-a55b:free",
     api_key_env="OPENROUTER_API_KEY",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
 )
 
 DEVSTRAL_2 = OpenAICompatibleProvider(
@@ -50,6 +58,8 @@ DEVSTRAL_2 = OpenAICompatibleProvider(
     url=MISTRAL_URL,
     model="devstral-2512",
     api_key_env="MISTRAL_API_KEY",
+    context_window=262_144,
+    max_output_tokens=16_384,
 )
 
 NORTH_MINI_CODE = OpenAICompatibleProvider(
@@ -58,6 +68,8 @@ NORTH_MINI_CODE = OpenAICompatibleProvider(
     url=OPENROUTER_URL,
     model="cohere/north-mini-code:free",
     api_key_env="OPENROUTER_API_KEY",
+    context_window=256_000,
+    max_output_tokens=64_000,
 )
 
 GPT_OSS_120B = OpenAICompatibleProvider(
@@ -67,6 +79,8 @@ GPT_OSS_120B = OpenAICompatibleProvider(
     model="@cf/openai/gpt-oss-120b",
     api_key_env="CLOUDFLARE_API_KEY",
     account_env="CLOUDFLARE_ACCOUNT_ID",
+    context_window=128_000,
+    max_output_tokens=128_000,
 )
 
 CHAIN = (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -8,12 +9,13 @@ from dataclasses import dataclass
 import requests
 
 from labpilot.llm._http import error_from_response
-from labpilot.llm._text import truncate
+from labpilot.llm._text import estimate_tokens, truncate
 from labpilot.llm.contracts import LLMResult
 from labpilot.llm.defaults import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT,
+    SAFETY_MARGIN_RATIO,
 )
 from labpilot.llm.errors import LLMError
 
@@ -27,6 +29,8 @@ class HTTPProvider(ABC):
     url: str
     model: str
     api_key_env: str
+    context_window: int
+    max_output_tokens: int
     timeout: tuple[float, float] = DEFAULT_TIMEOUT
     temperature: float = DEFAULT_TEMPERATURE
 
@@ -35,6 +39,8 @@ class HTTPProvider(ABC):
     ) -> LLMResult:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
+
+        self._check_fits(prompt, max_tokens)
 
         try:
             response = requests.post(
@@ -68,6 +74,23 @@ class HTTPProvider(ABC):
         )
 
         return LLMResult(text=text, model=served_model, tier=self.tier)
+
+    def _check_fits(self, prompt: str, max_tokens: int) -> None:
+        if max_tokens > self.max_output_tokens:
+            raise LLMError(
+                f"{self.name}: max_tokens {max_tokens} exceeds the output limit "
+                f"{self.max_output_tokens}"
+            )
+
+        estimate = estimate_tokens(prompt)
+        required = math.ceil(estimate * (1 + SAFETY_MARGIN_RATIO)) + max_tokens
+
+        if required > self.context_window:
+            raise LLMError(
+                f"{self.name}: prompt needs ~{required} tokens "
+                f"(~{estimate} prompt + {max_tokens} output + margin) "
+                f"but the context window is {self.context_window}"
+            )
 
     def _api_key(self) -> str:
         key = os.environ.get(self.api_key_env, "").strip()

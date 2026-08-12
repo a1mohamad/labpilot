@@ -18,6 +18,8 @@ def provider(monkeypatch):
         url=URL,
         model="test/model",
         api_key_env="TEST_API_KEY",
+        context_window=8_000,
+        max_output_tokens=4_000,
     )
 
 
@@ -125,6 +127,8 @@ def account_provider(monkeypatch):
         model="test/model",
         api_key_env="TEST_API_KEY",
         account_env="TEST_ACCOUNT_ID",
+        context_window=8_000,
+        max_output_tokens=4_000,
     )
 
 
@@ -145,3 +149,19 @@ def test_complete_raises_llm_error_when_account_id_missing(
 
     with pytest.raises(LLMError, match="TEST_ACCOUNT_ID"):
         account_provider.complete("hi")
+
+
+@responses.activate
+def test_complete_refuses_a_prompt_larger_than_the_context_window(provider):
+    with pytest.raises(LLMError, match="context window"):
+        provider.complete("x" * 100_000, max_tokens=512)
+
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_complete_refuses_max_tokens_above_the_output_limit(provider):
+    with pytest.raises(LLMError, match="output limit"):
+        provider.complete("hi", max_tokens=9_000)
+
+    assert len(responses.calls) == 0
