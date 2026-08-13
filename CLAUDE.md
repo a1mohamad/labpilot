@@ -9,6 +9,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [LLM Serving](#llm-serving--fallback-chain) · [The Three Chains](#the-three-chains--restructured-2026-08-11) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
+[Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -366,7 +367,22 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 ## Current Status
 
 **Phase: Step 0 — walking skeleton. Slices 1 and 2 are DONE. Slice 3 is next.**
-**Last updated 2026-08-12 (third session). Working branch: `main`.**
+**Last updated 2026-08-13 (fourth session). Working branch: `main`.**
+
+> **2026-08-13, session 4 — no code, by design: the RAG gap was taught and the
+> retrieval design was decided.** Lessons 1 (what RAG is) and 2 (chunking) were
+> delivered, and the decisions they produced are recorded in two new sections,
+> [Retrieval Design](#retrieval-design--recorded-2026-08-13) and
+> [Chunking](#chunking--decided-2026-08-13-built-in-slice-3). The headline
+> decisions: **the user's question is never the search query**; query source is a
+> field on each capability; code-vs-code uses a fixed checklist instead of paper
+> claims; one similarity matrix serves `verify`, `find_missing` *and* the gate;
+> `find_bugs` is a scan, not a search; small artifacts are stuffed, not
+> retrieved. Chunking is pinned at `s ≈ 500`, `o ≈ 50`, hard cap 510, split on
+> AST/headers/cells, with a `side` field that must not be forgotten. The
+> fine-tuning dataset plan was **corrected** — examples must be built by running
+> the retriever (RAFT), or the model learns to expect complete context.
+> Code state is unchanged: 73 unit tests, 7 smoke tests, ruff clean.
 
 > **2026-08-12, session 3 — the LLM layer is finished.** `chain.py` landed with
 > `LLMClient`, retry/backoff, pool-aware skipping and a total time budget.
@@ -713,6 +729,22 @@ Step 1. Slice 3 exists to prove the *shape* of the pipeline
 clever. This is also the first piece of the RAG gap, so it gets the full
 teaching treatment described under
 [The four gaps](#the-four-gaps-are-the-whole-point--teach-them-hardest-of-all).
+
+**But "dumb" applies to exactly one box.** *(Clarified 2026-08-13.)* Chunking is
+**real and permanent** — the chunker written here is the one Step 1 keeps, and a
+chunking mistake cannot be repaired by any later stage. Only **selection** is
+throwaway: a hardcoded rule now, replaced by cosine similarity plus reranking at
+Step 1. Build the chunker to the specification in
+[Chunking](#chunking--decided-2026-08-13-built-in-slice-3), including the full
+metadata field set, and treat the selector as scaffolding.
+
+Slice 3 is also where you will **see** the problem that motivates Step 1: the
+dumb selector returns the wrong chunks, and the model answers badly because it
+was handed the wrong two paragraphs. That contrast is the point of building it.
+
+**Two RAG lessons were taught before this slice** (session 4): *what RAG is and
+why it exists*, and *chunking*. Embeddings, cosine similarity, vector databases
+and reranking are taught at Step 1, each one immediately before it is built.
 
 **One thing blocks it: `data/samples/` is empty** (only `.gitkeep`). Before any
 code runs, put a real pair there. Recommended shape, to keep slice 3 about
@@ -1971,6 +2003,397 @@ research is never repeated.
 
 ---
 
+## Retrieval Design — recorded 2026-08-13
+
+*Decided during the RAG lessons of session 4, before slice 3 was written. The
+chunking half is built in slice 3; the query half arrives with the planner at
+Step 2. Both are recorded now because they change what slice 3's data structures
+must carry.*
+
+### The user's question is not the search query
+
+The single most important retrieval rule in this project, and the one that
+textbook RAG diagrams omit:
+
+```
+❌ search text: "Compare these and explain why the results diverge."
+✅ search text: "learning rate of 3e-4 with cosine decay"
+```
+
+The failure has a name: **query–document asymmetry**. A question is a *request*;
+a chunk is a *statement*. Their meanings are genuinely different, so their
+embeddings are genuinely far apart. The embedder is not broken — it was asked the
+wrong thing.
+
+Worse, a vague query attracts *generic* text. `README.md` saying *"this project
+compares our results with the paper"* outscores `train.py:6` on the question
+above, and the one line that explains the divergence is never retrieved.
+
+**So a naive single-search RAG would fail at LabPilot's core task. That is a
+first-class reason this project is an agent and not one call.**
+
+The rule that replaces it:
+
+> **Search with text that looks like the thing you want to find.**
+
+### Three query sources — cheapest first
+
+Something must produce specific query text. Three things can, and the planner
+picks by capability, never by habit:
+
+| Source | LLM cost | Runs | Used by |
+|---|---|---|---|
+| **A fixed checklist we write** | **none** | never | `find_bugs`, code-vs-code |
+| **The other artifact's claims** | 1 call | **once per artifact** | paper-vs-code |
+| **LLM query expansion** | 1 call | **once per turn** | vague open questions |
+
+Claim extraction is *not* free — it is an LLM call. It is cheaper only because
+the claims are stored in graph state and reused by every later turn, while
+expansion pays again on every turn.
+
+This obeys the existing budgeting rule: *plan with rules before spending an LLM
+call*. Only reach for expansion when the first two do not fit.
+
+### Query source is a field on the capability, not a step in front of everything
+
+**Rejected: running query expansion on every request.** Two reasons.
+
+1. **Query drift.** A specific question is already a good query, and rewriting it
+   can only lose. *"What learning rate does train.py use?"* expands into scheduler,
+   warmup and weight-decay queries the user never asked for, and the real answer
+   ends up buried in noise.
+2. Several capabilities need no semantic search at all — `summarize` wants the
+   README and the file tree, `find_bugs` wants a checklist.
+
+So each capability declares **where its queries come from**, exactly as it already
+declares how many artifacts it needs. The planner knows which capability is
+running, so the routing costs nothing — no classifier, no extra call.
+
+| Capability | Query source |
+|---|---|
+| `summarize` | none — structural (README, file tree, file headers) |
+| `find_bugs` | fixed checklist |
+| `verify` | the paper's claims |
+| `find_missing` | the code's decisions |
+| `answer_question` | expand only when the question is vague |
+
+**Tune this by measurement, not by taste.** Run the same question with the raw
+query and the expanded query, and look at which chunks come back. That is the
+honest way to tune retrieval, and it will be done many times.
+
+### Claim extraction — how side A becomes queries
+
+One LLM call over the method section — no retrieval, the section is small.
+Three rules decide whether it works:
+
+1. **A claim must be checkable against code.** *"learning rate is 3e-4"* yes;
+   *"our method is more efficient"* no. Read method, training setup and
+   experiments; skip abstract, introduction and related work.
+2. **One fact per claim.** *"lr 3e-4 with cosine decay and 500 warmup steps"* is
+   **three** claims. Merged, a partial match reads as a match and two real
+   mismatches disappear. **Detail merged at extraction time can never be
+   recovered later — this is the main way a comparison system quietly misses
+   things.**
+3. **Every claim keeps its source tag** (`[§4.1]`), which travels into the
+   retrieval, the finding and the report. This is what makes the citation rule
+   possible.
+
+Output a fixed shape (JSON) so the next node parses instead of guessing. It is a
+structured task, not a reasoning task, so it belongs on a cheap tier.
+
+### Code vs code uses a checklist, not claims
+
+The agent design below assumes a paper. **Code-vs-code has no prose claims**, so
+a fixed checklist of ~12 topics replaces them, searched against **both sides in
+parallel**:
+
+```
+optimizer and learning rate · model architecture · data preprocessing ·
+train/validation split · learning rate schedule · epochs and batch size ·
+loss function · augmentation · regularization and dropout · random seed ·
+evaluation metric · class imbalance handling
+```
+
+12 topics × 2 sides = **24 searches and zero LLM calls** — a search is an
+embedding plus a lookup. Then compare topic against itself (A side vs B side,
+never topic vs topic), batched ~5 topics per call.
+
+A full 2×4,000-line notebook comparison therefore costs about **6 generation
+calls**: 1 to locate the reported results, 3 to compare 12 topics, 1
+`explain_divergence`, 1 `propose_next`.
+
+### One similarity matrix, three readings
+
+Compute `s_ij = sim(E(c_i), E(d_j))` once — claims of A against chunks of B —
+and read it three ways:
+
+$$
+\text{row } i:\ \max_j s_{ij}\ \text{low} \;\Rightarrow\; \textbf{verify: the paper says it, the code does not do it}
+$$
+
+$$
+\text{col } j:\ \max_i s_{ij}\ \text{low} \;\Rightarrow\; \textbf{find\_missing: the code does it, the paper never says it}
+$$
+
+$$
+\max_{i,j} s_{ij}\ \text{and the distribution of } \max_j s_{ij} \;\Rightarrow\; \textbf{the correspondence gate}
+$$
+
+**Rows find broken promises. Columns find hidden choices. The whole matrix
+answers whether these two artifacts correspond at all.** Three products, one
+computation — the gate was already known to be free, and `find_missing` is free
+for the same reason.
+
+This matters because **most divergence comes from what the paper never says**,
+not from a stated value being wrong. The column reading is the one that finds it.
+
+### `find_bugs` is a scan, not a search
+
+**You cannot search for a bug, because you do not know what it is yet.** Search
+needs a query; a bug has no query. So `find_bugs` optimises for **coverage**, not
+relevance:
+
+```
+one small file  →  send the whole file, no retrieval at all
+a repository    →  walk the files that matter (model, training loop,
+                   data pipeline, loss) and check each in turn, batched
+```
+
+And the honest limit, which the product must state rather than hide:
+
+| Findable with **1** artifact | Needs **2** artifacts |
+|---|---|
+| `optimizer.zero_grad()` missing | `lr=1e-3` should be `3e-4` |
+| `criterion(target, output)` — arguments swapped | batch size should be 256 |
+| `model.eval()` / `torch.no_grad()` missing in validation | should be cosine, not StepLR |
+| `shuffle=True` on the test loader | 500 warmup steps missing |
+| no random seed; test data leaking into training | |
+
+The left column is wrong against *general programming knowledge*, which lives in
+the model's weights. The right column is only wrong *relative to the paper*.
+**With one artifact the honest output is "this is unusual", never "this is
+wrong".** That asymmetry is why two artifacts stays the headline.
+
+**Retrieval never finds a typo.** Retrieval puts code in front of the model;
+judging is the model's job. `lr=1e-3` and `lr=1e-4` have near-identical
+embeddings.
+
+### Stuff, do not retrieve, when the artifact is small
+
+**RAG exists because something does not fit. When it fits, retrieval is not
+neutral — it is harmful**, because a bad retriever can hide the buggy line.
+
+```
+≲ 8,000 tokens (one notebook)   →  send all of it. No retrieval.
+≳ 20,000 tokens (a repo, two big notebooks)  →  retrieve
+```
+
+Sizing rule, using the existing `chars / 3` estimator: 4,000 lines of Python
+≈ 160,000 chars ≈ **53,000 tokens**, so two such notebooks ≈ 107,000 tokens —
+a genuine retrieval case.
+
+### The knowledge split — why a vague question still works
+
+For an open question like *"why does my model diverge in training?"*, the query
+problem is really a **knowledge** problem, and it resolves cleanly:
+
+$$
+\text{answer} \;=\; \underbrace{\text{what usually causes this}}_{\text{model weights}} \;+\; \underbrace{\text{what YOUR code does}}_{\text{retrieval}}
+$$
+
+Ask the model for the known causes first (learning rate, gradient clipping,
+`log(0)`, normalization, initialization, mixed-precision overflow), then search
+for each one. Six sharp queries out of one vague question. **Neither source
+answers alone.**
+
+Also **route by question type**: a training question always fetches the training
+loop, the optimizer and the loss, whatever their scores. Cheap insurance against
+a bad search.
+
+---
+
+## Chunking — decided 2026-08-13, built in slice 3
+
+*The chunker written in slice 3 is the chunker Step 1 keeps. Nothing else in
+slice 3 survives unchanged, so this one is worth writing properly.*
+
+### Why it is the highest-leverage decision in RAG
+
+A **chunk** is the atom of retrieval — you never get half of one.
+
+```
+bad embedder  + good chunks  →  works, a bit worse
+good embedder + bad chunks   →  broken, with no fix downstream
+```
+
+If the answer is split across chunk 7 and chunk 8, **no** embedder retrieves it
+and **no** reranker repairs it. **Chunking decides what is possible; everything
+after it only decides what is chosen.**
+
+### The numbers, and where each comes from
+
+$$
+s \approx 500 \text{ tokens} \qquad o \approx 50 \text{ tokens}
+\qquad \text{hard cap } 510 \qquad \text{minimum } \approx 30
+$$
+
+| Constraint | Limit | Source |
+|---|---|---|
+| **Cohere auto-splits longer documents** | **≤ 510 tokens** | binds first — see Chain 3 |
+| `gemini-embedding-001` max input | ≤ 2,048 | embedder tier 3 |
+| Prompt budget `k · s ≤ B_in` | `k=10`, `B_in=20K` → `s ≤ 2,000` | token budget |
+| A function must fit one chunk | ~40 lines of Python | our structure rule |
+
+**510 tokens is about 40 lines of Python**, not 500 — a fact that is easy to get
+wrong by an order of magnitude. The cap is **soft**: exceeding it does not fail,
+Cohere splits the chunk itself and bills 2–3 documents instead of 1, which
+silently breaks the rerank budget arithmetic by 3×.
+
+### The overlap rule — a formula, not a guess
+
+Let `f` be the length of an atomic fact that must never be cut, `s` the chunk
+size, `o` the overlap. Chunks start at `0, s-o, 2(s-o), …`, so:
+
+$$
+f \le o \;\;\Longrightarrow\;\; \text{the fact is never split}
+\qquad\text{and otherwise}\qquad
+P(\text{split}) = \frac{f - o}{s - o}
+$$
+
+> **Overlap must be at least as large as the longest thing that must never be
+> cut.**
+
+LabPilot's facts are single lines and short sentences, `f ≈ 10–20`, so `o = 50`
+gives `P = 0`. A whole training loop is `f ≈ 60`, giving ~2.2% split — which is
+exactly why we split on the **AST** instead of trusting overlap, since a parser
+gives `P = 0` for any block at any size.
+
+**A bug that is a *missing line* can only be found in a chunk holding the whole
+block.** A training loop cut between `loss.backward()` and the absent
+`optimizer.zero_grad()` hides the bug in both halves.
+
+Overlap costs `o/(s-o)` extra chunks — 25% at these numbers — and means the same
+text can be retrieved twice. **Deduplicate before building the prompt.**
+
+### Signal dilution — why big chunks retrieve badly
+
+A model, not a theorem, but it explains the sizing. With `α = f/s` the fraction
+of the chunk that is the fact:
+
+$$
+\cos\big(E(q), E(\text{chunk})\big) \;\approx\; \alpha
+$$
+
+| `s` | `α` at `f = 20` | outcome |
+|---|---|---|
+| 100 | 0.20 | strong |
+| **500** | **0.04** | usable |
+| 5,000 | 0.004 | invisible |
+
+**One line of signal inside a page of unrelated text is nearly invisible to
+search.** This is the same effect as "lost in the middle", one stage earlier.
+
+### Split on structure, never with a ruler
+
+| File type | Split on | How |
+|---|---|---|
+| Markdown / paper | headers (`#`, `##`, `§`) | text scan |
+| Python | functions and classes | `ast.FunctionDef` / `ast.ClassDef` |
+| Notebook | cells | it is JSON — the author already chunked it |
+| anything else | recursive: `\n\n\n` → `\n\n` → `\n` → ` ` → chars | fallback |
+
+Header or AST splitting comes **first**; the size cap is a **second** pass. A
+section over 510 tokens is split again, repeating its header on each part
+(`[paper.md · §4.2 · part 2/3]`). A class over the cap splits per method; a
+method still over it splits on blank-line blocks, then fixed size.
+
+**Chunks are not all the same size, and must never be padded.** Padding adds
+noise and lowers `α`. Only two rules apply: **merge** below ~30 tokens, **split**
+above 510, and leave everything in between exactly as it is. Uneven sizes are the
+sign that you split on meaning.
+
+### The chunk carries metadata — design it now
+
+```python
+text · source · start_line · end_line · side · artifact_id ·
+chunk_index · embedding_model · dim
+```
+
+- `source` + lines → the citation `[train.py:42]`
+- **`side`** (A = reference, B = implementation) → **without it, a paper claim
+  retrieves the paper**, because a paper's sentences match a paper's sentences
+  best. This is the most confusing bug in the project and it is one missing
+  filter.
+- `embedding_model` + `dim` → a mixed embedder is detected, not silently
+  poisoning search (already required by Chain 2)
+- `chunk_index` → neighbour expansion later
+
+**Define every field in slice 3, even though slice 3 has no database.** A
+dataclass costs nothing; adding fields after 2,000 rows exist is a migration.
+This is the *"design against the roadmap"* rule applied literally.
+
+### Context header — free, no LLM call
+
+A chunk like `model.fit(X, y, epochs=100)` has a generic vector. Prepend a header
+built from metadata you already hold while chunking:
+
+```
+[train.py · def train_epoch · lines 42-71]
+[paper.md · §4.1 Training]
+[baseline.ipynb · cell 23 · section: Model training]
+```
+
+Filename, last header seen, function name from the AST, cell number — **all
+free**. The technique is called **contextual retrieval**. An LLM-written
+one-sentence description per chunk is a Step 1 upgrade, and is the same
+mechanism as the summarise-before-embed fix for cross-language comparison.
+
+### Small-to-big — Step 1, but keep it possible
+
+> **Embed something small. Return something large.**
+
+Search with the precise unit, then expand before building the prompt — the
+parent document, or chunks `i-1` and `i+1` (**neighbour expansion**, which is
+what `chunk_index` is for). This dissolves the precision/context trade-off and
+is what makes a missing-line bug visible. Not built in slice 3; made possible by
+the metadata.
+
+### Counting
+
+$$
+N = \left\lceil \frac{L - o}{s - o} \right\rceil
+$$
+
+At `L = 1,000,000`, `s = 500`, `o = 50` this gives ~2,200 chunks — the "~2,000"
+used throughout the budget sections, now derived rather than guessed. Storage is
+`N · n · 4` bytes ≈ 15MB at `n = 1536` — but ~123MB as Python lists of floats,
+which is the whole reason the repo walk streams in batches of 100.
+
+### Five failure modes to test against
+
+| Failure | Example | Fix |
+|---|---|---|
+| **Orphan chunk** | `        return total_loss / len(loader)` | structure split + context header |
+| **Split block** | loop cut before the missing `zero_grad()` | AST split, overlap, neighbour expansion |
+| **Giant chunk** | a 900-line file with no functions | hard cap + recursive fallback |
+| **Duplicate flood** | 40 near-identical config files | hash-dedupe at ingest |
+| **Mixed sides** | a paper claim retrieves the paper | the `side` filter |
+
+### What slice 3 must ship
+
+`labpilot/ingest/` — a frozen chunk dataclass with the full field set, three
+splitters chosen by extension, `estimate_tokens` reused from `_text.py` (no new
+tokenizer dependency), and tests in the same commit for: a function is never
+split · overlap is present and correct · a sub-minimum chunk is merged, not
+stored · no chunk exceeds the hard cap · line numbers really point at the text ·
+an empty file yields zero chunks, not one empty chunk · an unparseable file falls
+back to recursive splitting instead of raising.
+
+**Do not tune `s` by feeling.** Change it, re-run, and look at whether the right
+chunk comes back. Chunking is measured, not guessed.
+
+---
+
 ## Agent Design — Step 2, recorded 2026-08-11
 
 *Designed now, built at Step 2 when LangGraph exists. Step 0 slice 4 stays
@@ -2258,6 +2681,33 @@ responses (not part of the fine-tune).
   projects, Kaggle competition write-ups, real papers where they genuinely
   exist, and notebook-vs-notebook pairs (one side rewritten as a paper-style
   paragraph).
+- **Dataset shape — corrected 2026-08-13. Each example must be built by running
+  the retriever, not from whole documents.** Fine-tuning teaches *behaviour*
+  (format, citation habit, saying "not specified"), not *facts* — 200 examples
+  cannot install knowledge, and RAG is what supplies knowledge. So an example is:
+
+  ```
+  prompt_i  = instructions + retrieved chunks with [source] tags + the question
+  answer_i  = the ideal divergence report, with correct citations
+  ```
+
+  Train on whole documents and the model learns that the answer is **always
+  fully present** — then hallucinates the moment retrieval returns partial
+  context. The failure is called **train–serve skew**, and the fix is called
+  **RAFT** (Retrieval-Augmented Fine-Tuning).
+
+  **Include ~20% deliberately weak examples** — irrelevant chunks, or no correct
+  chunk at all — whose target answer is honest: *"The retrieved code does not
+  show a learning-rate schedule, so this cannot be verified."* This is how
+  honesty is trained; a model never shown that case always invents something. It
+  serves the partial-correspondence and missing-detail edge cases directly.
+
+  Retrieval runs during **dataset construction only**. The training loop sees
+  frozen strings and never touches a database.
+
+  **This is a second, harder reason fine-tuning is last:** the dataset cannot
+  exist until the retriever does. Step 4 depends on Steps 1–3 having run, not
+  merely on them being understood.
 - **Platform**: Kaggle Notebooks (free, ~30 GPU-hrs/week). Checkpoint the LoRA
   adapter regularly to survive session limits; resume across sessions rather
   than restarting.
