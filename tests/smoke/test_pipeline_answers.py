@@ -21,7 +21,7 @@ def test_pipeline_answers_from_the_sample_pairs():
     ) + chunk_file(SAMPLES / "B_train.py", side="B", artifact_id="quora")
 
     prompt = f"{build_context(select(chunks))}\n\n{QUESTION}"
-    result = LLMClient.generate(prompt, max_tokens=2000)
+    result = LLMClient().generate(prompt, max_tokens=2000)
 
     assert result.text
     print(f"\n--- answered by {result.model} (tier {result.tier}) ---\n{result.text}")
