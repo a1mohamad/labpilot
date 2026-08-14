@@ -9,6 +9,8 @@ from labpilot.llm.errors import LLMError
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GeminiProvider(HTTPProvider):
+    thinking: str | None = None
+
     def _endpoint(self) -> str:
         return f"{self.url}/{self.model}:generateContent"
 
@@ -19,12 +21,16 @@ class GeminiProvider(HTTPProvider):
         }
 
     def _payload(self, prompt: str, max_tokens: int) -> dict[str, object]:
+        config: dict[str, object] = {
+            "maxOutputTokens": max_tokens,
+            "temperature": self.temperature,
+        }
+        if self.thinking:
+            config["thinkingConfig"] = {"thinkingLevel": self.thinking}
+
         return {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "maxOutputTokens": max_tokens,
-                "temperature": self.temperature,
-            },
+            "generationConfig": config,
         }
 
     def _extract_message(self, body: dict) -> tuple[str, str, str]:

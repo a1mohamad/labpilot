@@ -15,4 +15,5 @@ class LLMResult:
     text: str
     model: str
     tier: int
+    finish_reason: str = "unknown"
     attempts: tuple[Attempt, ...] = ()

@@ -74,7 +74,12 @@ class HTTPProvider(ABC):
             self._usage_summary(body),
         )
 
-        return LLMResult(text=text, model=served_model, tier=self.tier)
+        return LLMResult(
+            text=text,
+            model=served_model,
+            tier=self.tier,
+            finish_reason=finish_reason,
+        )
 
     def _check_fits(self, prompt: str, max_tokens: int) -> None:
         if max_tokens > self.max_output_tokens:

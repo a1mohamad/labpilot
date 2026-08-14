@@ -1,39 +1,68 @@
-from __future__ import annotations
+import pytest
 
 from labpilot.ingest import Chunk
 from labpilot.prompts import build_context
 
 
-def _chunk(side: str, text: str, header: str) -> Chunk:
+def _chunk(side: str, index: int, text: str = "body") -> Chunk:
     return Chunk(
         text=text,
-        source="a.py",
+        source="f.py",
         start_line=1,
         end_line=1,
         side=side,
-        artifact_id="t",
-        chunk_index=0,
-        header=header,
+        artifact_id="a",
+        chunk_index=index,
+        header="[f.py · lines 1-1]",
     )
 
 
-def test_every_chunk_text_reaches_the_prompt():
-    chunks = (_chunk("A", "alpha", "[h1]"), _chunk("B", "beta", "[h2]"))
-    context = build_context(chunks)
-    assert "alpha" in context
-    assert "beta" in context
+def test_every_chunk_appears_in_the_outline():
+    chunks = (_chunk("A", 0), _chunk("A", 1))
+
+    context = build_context(chunks, (chunks[0],))
+
+    assert "A-0" in context
+    assert "A-1" in context
 
 
-def test_every_header_reaches_the_prompt():
-    context = build_context((_chunk("B", "beta", "[b.py · lines 1-1]"),))
-    assert "[b.py · lines 1-1]" in context
+def test_only_selected_chunks_show_their_text():
+    kept = _chunk("A", 0, text="this was kept")
+    dropped = _chunk("A", 1, text="this was dropped")
+
+    context = build_context((kept, dropped), (kept,))
+
+    assert "this was kept" in context
+    assert "this was dropped" not in context
 
 
-def test_side_a_comes_before_side_b():
-    chunks = (_chunk("B", "beta", "[h2]"), _chunk("A", "alpha", "[h1]"))
-    context = build_context(chunks)
-    assert context.index("alpha") < context.index("beta")
+def test_a_dropped_chunk_is_marked_in_the_outline():
+    chunks = (_chunk("A", 0), _chunk("A", 1))
+
+    context = build_context(chunks, (chunks[0],))
+
+    assert "A-1  text NOT included" in context
 
 
-def test_no_chunks_gives_an_empty_string():
-    assert build_context(()) == ""
+def test_a_side_with_nothing_selected_says_so():
+    chunks = (_chunk("A", 0), _chunk("B", 0))
+
+    context = build_context(chunks, (chunks[0],))
+
+    assert "(no part of this side was included)" in context
+
+
+def test_a_side_with_no_chunks_is_left_out():
+    chunks = (_chunk("A", 0),)
+
+    context = build_context(chunks, chunks)
+
+    assert "SIDE B" not in context
+
+
+def test_a_selected_chunk_that_is_not_in_chunks_is_our_bug():
+    chunks = (_chunk("A", 0),)
+    stranger = _chunk("A", 9)
+
+    with pytest.raises(ValueError):
+        build_context(chunks, (stranger,))

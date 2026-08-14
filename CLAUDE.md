@@ -12,7 +12,9 @@ Read the two rule sections first — they change *how* everything below is done.
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
 [Sample Pair](#the-sample-pair--quora_siamese-built-2026-08-14) ·
 [Slice 3 Result](#the-first-real-answer--measured-2026-08-14) ·
-[Next: Slice 4](#where-to-pick-up--slice-4-the-prompt) ·
+[Slice 4 Result](#the-measurement--five-runs-all-saved) ·
+[**Next: Coverage**](#why-coverage-is-stuck--diagnosed-2026-08-14) ·
+[Comparison Template](#the-comparison-template--designed-2026-08-14) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -372,6 +374,48 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: Step 0 — walking skeleton. Slices 1 and 2 are DONE. Slice 3 is in
 progress — the sample pair exists, the chunker does not.**
 **Last updated 2026-08-14 (fifth session). Working branch: `feat/retrieval`.**
+
+> **2026-08-14, session 6 (later) — slice 4's code is written.**
+> `labpilot/prompts/` now holds `_ids`, `context`, `instructions`, `builder` and
+> `citations`; `GeminiProvider` gained `thinking`, `OpenAICompatibleProvider`
+> gained `extra_body`, and both stay unset until a live request proves each
+> host's shape. See [What slice 4 built](#what-slice-4-built--labpilotprompts)
+> and the four sections after it.
+> **168 unit tests, 10 smoke tests, ruff clean.** `test_pipeline.py` and the smoke
+> test were rewritten; the smoke test now runs three times — `FULL`, `CORE` and
+> `CORE` stuffed — and records how many citations resolve.
+> **Every tier now asks for maximum reasoning** — Gemini via `thinkingLevel`,
+> Mistral via `reasoning_effort`, OpenRouter via `reasoning.effort`, Cloudflare
+> via a best guess. Tiers 2, 5 and 7 are unproven and may answer 422; the chain
+> records that and moves on, which is how we learn.
+
+> **2026-08-14, session 7 — the measurements were run, and they say the prompt
+> is the bottleneck.** Five runs are saved in `artifacts/`. `CORE` finished and
+> resolved 93% of its citations; `FULL` never finished at either budget; stuffing
+> all 96 chunks reached **11 of 18 findings** against the bare prompt's 10.
+> Scoring the answers row by row produced the finding that matters:
+> **every finding the model wrote has an A citation, and every miss has no anchor
+> in A.** The prompt never asks the model to walk B. See
+> [Why coverage is stuck](#why-coverage-is-stuck--diagnosed-2026-08-14) and
+> [The four prompt fixes](#the-four-prompt-fixes--not-yet-measured).
+> **Next: apply the four fixes and re-measure against the 11/18 stuffed
+> baseline.** Code state unchanged.
+
+> **2026-08-14, session 6 — no code: slice 4's output template was designed.**
+> Recorded in [The Comparison Template](#the-comparison-template--designed-2026-08-14).
+> The design was rewritten **twice** after the user rejected it: first for being
+> written from `EXPECTED.md` (training on the test set), then for assuming the
+> domain is machine learning and the code is Python. LabPilot is not MLPilot. The
+> version that survived is domain- and language-neutral and passes a mechanical
+> leakage test. Headline decisions: roles **A/B** instead of paper/code, with a
+> two-way mode for code-vs-code · every finding classified on **four axes**
+> (kind · box · evidence basis · impact) · **five boxes** where any divergence can
+> live · a **14-section** output where §3, §6 and §9 must be written before the
+> explanation · **`NONE` is a legal answer** or the model invents one · send the
+> **full chunk-header outline** including dropped chunks. Two capabilities the
+> library was missing turned up: `extract_outcomes` and `propose_fix`.
+> **Next: write the actual instruction text, then measure against the 10/18
+> baseline.** Code state unchanged: 130 unit tests, 8 smoke, ruff clean.
 
 > **2026-08-14, session 5 (end) — SLICE 3 IS DONE. The whole chain ran and a
 > real model answered.** `labpilot/ingest/` (the chunker, permanent),
@@ -848,7 +892,26 @@ from a test that passes.
 **`max_tokens` needs ~8000, not 2000.** At 2000 the answer was cut mid-sentence,
 because Gemini spends part of the budget thinking.
 
-### Where to pick up — slice 4, the prompt
+### Where to pick up — slice 4's coverage problem
+
+*Written 2026-08-14, session 7. **This replaces the slice 4 plan below**, which
+is kept because all four of its items were delivered.*
+
+> The prompt exists, citations resolve at 99%, and coverage is stuck at 11/18.
+> Apply [the four prompt fixes](#the-four-prompt-fixes--not-yet-measured) and
+> re-measure against the stuffed 11/18 baseline.
+
+The one thing to hold on to: **the miss list is not random.** Every miss is
+something B does that A never mentions, or something that needs reasoning over
+B's own numbers. The prompt asks for neither. Start with the B-walk — it is one
+instruction and it should be worth four findings.
+
+Do not touch `ingest/`, and do not improve `select()`. Measure **stuffed**, so
+retrieval is not a variable while the prompt is being changed.
+
+---
+
+### The original slice 4 plan *(delivered — kept for the reasoning)*
 
 *Written 2026-08-14, at the end of session 5.*
 
@@ -2839,6 +2902,760 @@ overlap is genuinely present (1215 then 1212):
 ```
 
 Suite at this point: **110 unit tests, 7 smoke, ruff clean.**
+
+---
+
+## The Comparison Template — designed 2026-08-14
+
+*Designed in session 6, before slice 4 was written. This is the output shape the
+model must produce. Step 0 sends the whole thing in one prompt; Step 2 splits it
+across capability nodes. The design is shared, so it is recorded once here.*
+
+### The rule that produced it: never write the prompt from the answer key
+
+`EXPECTED.md` may be used to **score** an answer. It may never be used to
+**write** the prompt. Reading the fixture and then adding a prompt rule aimed at
+one of its traps is training on the test set: the score rises and means nothing,
+and the next repository is no better off.
+
+**The leakage test, and it is mechanical.** Could this prompt run unchanged on a
+physics paper vs a C++ solver, a statistics paper vs an R script, a systems paper
+vs a Rust benchmark, or two notebooks? If a word only survives in one of those,
+delete it. This bans every language name, framework name, file extension, metric
+name, and field-specific term.
+
+**This was learned by getting it wrong twice in one session.** First the design
+was written around the fixture's threshold trap. Then it was rewritten around a
+six-box ML decomposition — still parochial, because LabPilot is not MLPilot and
+the code side is not always Python. The version below is the third attempt.
+
+### Roles, not file types
+
+Never say *paper* and *code*. Two neutral roles:
+
+- **A — the reference.** Whatever states intent: a PDF, a spec, a README, a
+  docstring, a paper, or an earlier implementation.
+- **B — the subject.** Whatever is being examined.
+
+| Mode | When | §7 becomes |
+|---|---|---|
+| **asymmetric** | A only *states*, B *does* | A's statements checked in B, then B's decisions absent from A |
+| **symmetric** | both *do* — code vs code, repo vs repo | one **two-way** walk, topic by topic |
+
+In symmetric mode there is no reference truth, so the only correct wording is
+*"they differ"* — never *"B is wrong"*. Confidently naming a winner when neither
+side is authoritative is a common failure and must be blocked by the prompt.
+
+### Every finding is classified on four axes
+
+One axis is not enough. A finding is only usable when its kind, its place, its
+evidence and its size are all recorded.
+
+**Axis 1 — kind of divergence:**
+
+| Kind | Meaning |
+|---|---|
+| `contradiction` | A states X, B does not-X |
+| `omission in B` | A states X, B does not do it at all |
+| `omission in A` | B does Y, A never mentions it |
+| `ambiguity in A` | A is under-specified, so B had to choose |
+| `defect` | B is wrong by its own internal logic, independent of A |
+| `scope` | B covers only part of A, or goes beyond A |
+| `representation` | same behaviour, different expression |
+
+`representation` is the one that must exist. Two languages, two libraries or two
+formulations of the same operation look different and are **not** divergences.
+Without a named category the model reports them as findings. With one, it must
+classify them and then drop them. This is the cross-language false positive that
+[Edge cases](#edge-cases-to-handle-explicitly) warns about, solved by
+classification rather than by an instruction to be careful.
+
+**Axis 2 — box (where in the process it lives):**
+
+$$
+\text{outcome} \;=\; \underbrace{f(\text{input})}_{\text{procedure}} \;\rightarrow\; \underbrace{\text{measured}}_{\text{instrument}} \;\rightarrow\; \underbrace{\text{selected}}_{\text{reporting}}
+$$
+
+**Input · Procedure · Measurement · Environment · Reporting.** Five boxes, true
+in any field. The earlier six-box list (data, model, objective, optimization,
+evaluation, environment) is just the machine-learning dialect of these five.
+
+**Axis 3 — evidence basis. This is the anti-hallucination axis:**
+
+| Basis | Wording it forces |
+|---|---|
+| seen in **both** artifacts | "A states … · B does …" |
+| seen in one, **not found in the provided context** | "not present in the retrieved context" — never "absent from the code" |
+| **general knowledge** only | "this is unusual" — never "this is wrong" |
+
+Without this axis, *"I did not see it"* gets written as *"it is not there"*. In
+Step 0 that error is guaranteed, because the selector is deliberately bad.
+
+**Axis 4 — impact:** `direction` (raises / lowers / unknown) · `magnitude`
+(large / small / unknown) · `confidence` (high / medium / low). A difference is
+not a cause until its direction is written down; that is the step that turns ten
+differences into the three that matter.
+
+### The catalogue of causes — domain- and language-neutral
+
+**Input** — different source or version · different subset, filter or exclusion
+rule · different ordering or grouping · different units, scaling or
+normalization · different handling of missing or invalid entries · different
+partition into parts used for different purposes · contamination between parts
+that must stay separate · different size or sampling · encoding, format or
+stored-precision differences.
+
+**Procedure** — different algorithm for the same goal · a step present in one and
+absent in the other · steps in a different order · different parameter values ·
+different stopping condition · different approximation or shortcut · **a step
+implemented but never invoked** · a value defined and then overridden elsewhere ·
+different edge-case and boundary handling · different treatment of randomness.
+
+**Measurement** — a different quantity is measured · **the same name means
+different formulas** · measured at a different point in the process · measured
+over a different scope · different aggregation · different protocol around the
+measurement.
+
+**Environment** — dependency version changing a default · numeric precision ·
+hardware or parallelism changing operation order · uncontrolled non-determinism ·
+platform, locale or path behaviour.
+
+**Reporting** — **a knob was chosen using the same data the value is reported
+on** · best-of-N instead of typical · one run with no variance · the value comes
+from a different stage than claimed · a subset was shown · rounding or precision
+· **the value is stale, produced by an earlier version of the procedure**.
+
+Two entries deserve attention. *"Same name, different formula"* is probably the
+most common silent divergence in any field. *"Stale number"* — the reported value
+came from code that no longer exists — is the one nobody writes down.
+
+### The template
+
+```
+§0  TASK
+    One sentence: what was asked. Which sections will be produced, and why.
+
+§1  SIDE A
+    What it is (type, subject, purpose). What it claims to achieve.
+    One paragraph. Citations.
+
+§2  SIDE B
+    What it is. What it actually does, in order. Its purpose.
+    One paragraph. Citations.
+
+§3  CORRESPONDENCE
+    Do these describe the same work?   FULL / PARTIAL / NONE
+    If PARTIAL: what overlaps, and what does not.
+    If NONE: stop after this section.
+
+§4  DEFECTS IN B ALONE
+    Problems visible without the reference at all.
+    Each: what, where, why it is wrong, evidence basis.
+    "unusual" if the basis is general knowledge only.
+    May be NONE.
+
+§5  REPORTED OUTCOMES
+    Table, one row per reported value, from either side.
+    value | what produced it | how measured | how selected | citation
+    May be NONE — many comparisons report nothing.
+
+§6  ARE THEY COMPARABLE?
+    YES / NO / CANNOT TELL, per pair, with the reason.
+    If NO or CANNOT TELL: no difference may be computed anywhere below.
+
+§7  DIVERGENCES
+    The enumeration. Asymmetric: A's statements, then B's unstated decisions.
+    Symmetric: one two-way walk, topic by topic.
+    Each row: id | kind | box | basis | A cite | B cite | direction | magnitude | confidence
+    Finish the list before writing anything below.
+
+§8  RANKING
+    The same rows, ordered by plausible effect on the outcome. Say why.
+
+§9  DOES IT ADD UP?
+    Expected effect of §8 versus the observed difference from §5.
+    CLOSES / DOES NOT CLOSE / NOT APPLICABLE.
+    If it does not close: give every honest reading. Never force agreement.
+
+§10 EXPLANATION
+    The causal story, built only from rows above, by id. No new claims here.
+
+§11 WHAT COULD NOT BE DETERMINED
+    What was missing, and what would settle it.
+
+§12 CORRECTIONS
+    Concrete changes to B. Each: the change, the location, the expected effect,
+    the confidence.
+
+§13 NEXT STEP
+    One experiment. What it would settle, and what each result would mean.
+```
+
+**Two orderings are load-bearing, and both follow from
+[a model cannot go back](#chain-of-thought--why-the-order-of-the-output-is-a-design-decision).**
+
+- **§3 sits before §4 and §7.** If the two artifacts do not correspond, every
+  finding below is invented. The halt has to be placed where it can still halt
+  something.
+- **§9 sits before §10.** The model must write *"does not close"* before it is
+  allowed to tell a story. Then there is no story left to force. The general
+  failure being blocked is *the model bends the evidence so its story closes* —
+  not the fixture's specific threshold trap, which is only one instance of it.
+
+### Four rules that hold the template together
+
+1. **`NONE` is a correct answer, and the instructions must say so.** A section
+   that demands a value will be filled with an invention.
+2. **The model never chooses which sections to skip.** It will drop the one that
+   threatens its conclusion. Section selection belongs to the planner at Step 2.
+3. **Every claim carries a citation, or it is deleted.** A claim that cannot
+   point at provided text was invented — the existing
+   [citation rule](#the-citation-rule--the-strongest-anti-hallucination-mechanism).
+4. **Wording follows the evidence basis mechanically**, per axis 3 above.
+
+### Chain of thought — why the order of the output is a design decision
+
+A model writes one token at a time, and each token is chosen from the tokens
+already written:
+
+$$
+P(y_t \mid y_1, \ldots, y_{t-1}, \text{prompt})
+$$
+
+There is no eraser. A wrong claim written early becomes the *context* for
+everything after it, so the model then reasons correctly from a false premise —
+and later text is bent to defend the early claim. Two consequences:
+
+- **A check placed after the conclusion is not a check. It is a justification.**
+  Any test that could invalidate the conclusion must be written **before** it.
+- **A forced verdict cannot be skipped, but free prose can waffle around a
+  question.** That is why §3, §6 and §9 demand one word from a fixed set.
+
+A second, separate reason CoT works: a transformer does a fixed amount of work
+per token, so the only way to spend more computation on a problem is to emit more
+tokens. With `m` reasoning tokens before an `n`-token answer, the work goes from
+`n·c` to `(m+n)·c`. **`m` is chosen by us, in the template.**
+
+We use **structured** CoT — we write the steps — not free-form *"think step by
+step"*. Free-form lets the model pick its own steps, and it will skip the step
+that ruins its story. **Self-consistency is rejected**: sampling N chains costs
+N× the quota, and the `temperature: 0` rule forbids sampling anyway.
+
+**What CoT cannot do**, so it is not over-trusted: it cannot create knowledge
+that is neither in the weights nor in the context (that is what retrieval is
+for); a wrong first step makes the answer *more* confidently wrong; and the
+written reasoning is not proof that it caused the answer (**unfaithful chain of
+thought**). Citations, not CoT, are what make a claim checkable.
+
+### The outline — send every chunk header, including the dropped ones
+
+*(Raised by the user 2026-08-14: "how can we summarize A and B if we only select
+some chunks?" The objection is correct and §1, §2 and §11 do not work without
+this.)*
+
+The model only receives the chunks the selector kept, so a description of B would
+really be a description of half of B — **and the model would not know that**. On
+the sample pair, A fits completely (18 chunks, ~4,300 tokens) but B does not
+(~42 of 78 chunks).
+
+**Fix: render the full ordered list of chunk headers first, marking which ones
+carry their text.** The chunker already produced a header for all 78.
+
+```
+SIDE B — all parts, in order
+  [text included]      [B_train.py · class QuoraTokenizer · def __init__ · lines 425-431]
+  [text NOT included]  [B_train.py · class Trainer · def fit · part 3/5 · lines 1240-1270]
+```
+
+**Cost is only the dropped headers**, since the kept ones are already sent:
+`36 × ~20 ≈ 800 tokens`, about 4% of `INPUT_BUDGET`.
+
+It fixes four sections, not one. §1/§2 can say *"there is a class `Trainer` whose
+body I did not read"*. §11 can name the exact missing line ranges. And §7 gets
+its best possible wording for a miss: *"not found; lines 1100–1200 were not
+included, and it may be there"* — which at Step 2 becomes the next search.
+
+**This is the Step 0 form of `summarize`.** [Retrieval
+Design](#three-query-sources--cheapest-first) already pins `summarize`'s query
+source as *structural — README, file tree, file headers*, with no semantic search
+at all. The outline is that idea, needed early. **Map-reduce summarization** (one
+call per chunk, then one over the summaries) is rejected on cost: 79 calls for
+one file against an OpenRouter cap of 50/day.
+
+**Filling A before B is the right selector rule — record it for Step 1, do not
+build it now.** Dropping part of B is recoverable, because A still tells us what
+to look for and we can report "not found". Dropping part of A loses a statement
+we never learn exists, and it disappears silently. The current 50/50 split is
+therefore wrong in principle — but `select()` stays broken on purpose, and it
+does not bite on this pair because A already fits.
+
+### Output length — `max_tokens` needs a real number
+
+Rough count of the full template on the sample pair:
+
+| Part | ~tokens |
+|---|---|
+| §7, about 18 rows | 1,100 |
+| §10 explanation · §12 corrections | 1,000 |
+| every other section | 2,400 |
+| **answer total** | **~4,500** |
+
+Thinking tokens sit on top of this and are not under our control, so **8,000 is
+probably not enough** — see [Thinking
+models](#thinking-models--the-count-is-at-least-four-of-seven). Start at 16,000,
+and treat `finish_reason: length` as the signal, not the look of the text.
+
+### What slice 4 built — `labpilot/prompts/`
+
+| Module | Holds |
+|---|---|
+| `_ids.py` | `assign_ids` — one running counter per side |
+| `context.py` | `build_context(chunks, selected)` — the outline plus the kept text |
+| `instructions.py` | `Instructions`, `FULL` (14 sections), `CORE` (6 sections) |
+| `builder.py` | `build_prompt`, `reserve` |
+| `citations.py` | `Citation`, `find_citations`, `resolve` |
+
+**Chunk ids are assigned at prompt time, not by the chunker.** `chunk_index`
+restarts at 0 for every file, so a repo with four files would produce four
+different `B-17`s. `assign_ids` walks the whole side with one counter, so
+`train.py` ends at `B-40` and `model.py` starts at `B-41`. Nothing in `ingest/`
+changed.
+
+### Citations — deterministic quoting, not line numbers
+
+The model **cannot count lines**, so asking for one is asking it to guess. The
+mechanism that works is already named in the literature: **deterministic
+quoting**. The model gives a pointer; the machine does the counting; the text
+shown to the user is read back from our own file, never from the model.
+
+```
+model writes   [B-17 "count = count + 1"]
+we check       does B-17 exist? is that line inside it?
+we compute     newlines before it + chunk.start_line  ->  train.py:1203
+we display     our copy of that line, never the model's
+```
+
+**Printing line numbers on every line was rejected on cost** — about 3 tokens per
+line, roughly 3,000 tokens, which is 15% of the budget spent to buy something a
+quote gives for free.
+
+`resolve` matches **line by line**, not by searching the whole text: exact match
+on the stripped line first, then "the line contains the quote". Indentation is
+therefore ignored, which matters because the model will not copy leading spaces
+reliably. When more than one line matches, `Citation.unique` is `False` — the
+finding still stands, only the line number is a guess between two places.
+
+**The citation format is fixed in the instructions** (`[B-17 "…"]`) purely so a
+regular expression can find them afterwards. A citation nobody can parse cannot
+be checked, and checking was the whole point.
+
+### The outline does not scale past Step 0
+
+Listing every chunk header costs ~2,400 tokens for the 96-chunk sample pair, and
+about **40,000 tokens for a 2,000-chunk repository** — larger than the whole
+budget. Step 1 must list **files**, not chunks. Recorded here so it is not
+discovered during a demo.
+
+Related, and also for Step 1: **`select()` should fill A before B.** Dropping part
+of B is recoverable, because A still says what to look for and the answer can be
+"not found". Dropping part of A loses a statement we never learn exists, and it
+disappears silently. The 50/50 split is wrong in principle. **Do not fix it now**
+— it does not bite on this pair, because A fits completely.
+
+### Thinking controls — three hosts, three different shapes
+
+Verified from each provider's own docs on 2026-08-14. There is **no shared
+field**; "they are all OpenAI-compatible" is true of the message shape and false
+of this.
+
+| Tier | Host | Where it goes | Values |
+|---|---|---|---|
+| 1, 3 | Google | `generationConfig.thinkingConfig.thinkingLevel` | `LOW` `MEDIUM` `HIGH` |
+| 2, 5 | Mistral | **root** `reasoning_effort` | `"high"` `"none"` |
+| 4, 6 | OpenRouter | **root** `reasoning: {"effort": …}` | `xhigh`…`none` |
+| 7 | Cloudflare | **not documented — unknown** | ? |
+
+`CLAUDE.md` previously guessed `thinkingConfig.thinkingBudget`. That is the
+**Gemini 2.5** field; Gemini 3 uses `thinkingLevel`, and sending both is a 400.
+
+**So the code carries two different things, on purpose.** `GeminiProvider` gets a
+`thinking` field, because its setting is nested inside `generationConfig` and
+cannot be merged at the top level. `OpenAICompatibleProvider` gets a generic
+`extra_body: dict | None` that is merged into the payload, because inventing one
+name for three shapes would be a lie. Both default to `None`, and both are data
+in `registry.py` — variants that differ only in data are instances, not
+subclasses.
+
+**Two traps that make blind configuration dangerous:** Mistral answers **HTTP
+422** when a model does not accept `reasoning_effort`, so setting it on `glm-5-2`
+or `devstral-2512` could kill two tiers. And OpenRouter **silently drops** it for
+some models — no error, no effect, which is worse than a failure. So every value
+stays unset until one real request proves it, on the weekly smoke run that
+already spends those requests.
+
+**Free measurement, taken at the same time:** `_usage_summary` on the OpenAI shape
+now also prints `completion_tokens_details.reasoning_tokens`, mirroring Gemini's
+`thoughtsTokenCount`. That settles [which tiers are thinking
+models](#thinking-models--the-count-is-at-least-four-of-seven) for nothing.
+
+### `REPORT_MAX_TOKENS = 24_000`, and the tier it deliberately costs
+
+*Corrected 2026-08-14. This section used to pin **16,000**, on the reasoning that
+it is the largest value every tier accepts. Measurement overruled it.*
+
+The tier limits are unchanged:
+
+| Tier | output limit |
+|---|---|
+| Devstral 2 | **16,384** ← binding |
+| North Mini Code | 64,000 |
+| both Gemini | 65,536 |
+
+But at 16,000 **both** runs were cut mid-report — `FULL` and `CORE` each returned
+`finish_reason: MAX_TOKENS`. A truncated report is not a worse report, it is not
+a report at all, so the constraint had to give somewhere. It gave at tier 5.
+
+**So `REPORT_MAX_TOKENS` is 24,000 and Devstral 2 can no longer serve a full
+report.** `_check_fits` raises before the HTTP call, which means the loss is
+cheap — no request is spent, the chain records the tier and moves on. For
+reports the chain is effectively six tiers, not seven.
+
+**The invariant test was rewritten to say so out loud**:
+`test_only_devstral_cannot_serve_a_full_report` asserts the unable-list is
+*exactly* `["Devstral 2"]`. That is the important part — the test now fails if a
+**second** tier ever drops below the report budget, which is the change that
+would actually hurt. A deliberate loss is pinned; an accidental one breaks CI.
+
+At 24,000 `CORE` finished (`STOP`). **`FULL` still did not** — see the run table
+below. Raising the budget fixed `CORE` and did not fix `FULL`.
+
+### `finish_reason` was promoted to `LLMResult`
+
+*Changed 2026-08-14.* It had been logged only. [The `LLMResult`
+rule](#llm-serving--fallback-chain) says a logged field is promoted "the moment
+the UI or the budget validator needs the number", and the slice 4 measurement
+needs it: `stop` means the report finished, `length` means `max_tokens` cut it
+mid-sentence and the report is incomplete. Without the field, a truncated report
+looks like a complete one in the saved artifact.
+
+It passes the seam test — every provider reports it, and `_extract_message`
+already returned it in both wire shapes. The field defaults to `"unknown"` so no
+existing construction site had to change.
+
+### What the smoke run writes
+
+`pytest tests/smoke --run-smoke -q` spends **2 requests** and writes three files
+into `artifacts/` (git-ignored):
+
+```
+2026-08-14_18-30_full_gemini-3.6-flash.md
+2026-08-14_18-30_core_gemini-3.6-flash.md
+2026-08-14_18-30_comparison.md
+```
+
+Each report carries `finish_reason`, chunks sent, prompt tokens, citations
+written, **citations that resolve**, failed tiers, the answer, and the exact
+prompt. The comparison file is one table so the two runs can be read side by
+side.
+
+**Read `model` and `tier` before believing the comparison.** If the two runs were
+served by different tiers, the model changed and not just the prompt, and the
+comparison is invalid — re-run rather than reasoning from it.
+
+**Thinking-token counts stay in the log**, not on `LLMResult`, because Google and
+the OpenAI shape name them differently. Read them with:
+
+```bash
+pytest tests/smoke --run-smoke -q --log-cli-level=INFO
+```
+
+### The measurement — five runs, all saved
+
+*The plan was four runs, one variable each. Five were run. Results, not
+predictions:*
+
+| Run | prompt | max_tokens | chunks | finish | citations resolve | findings |
+|---|---|---|---|---|---|---|
+| baseline | bare | 2,000 | 60/96 | cut | ~50% | **10/18** |
+| 1 | `FULL` | 16,000 | 63/96 | `MAX_TOKENS` | 1 of 3 | not scorable |
+| 2 | `CORE` | 16,000 | 65/96 | `MAX_TOKENS` | 1 of 1 | not scorable |
+| 3 | `FULL` | 24,000 | 63/96 | **`MAX_TOKENS`** | 22 of 45 (49%) | not scorable |
+| 4 | `CORE` | 24,000 | 65/96 | `STOP` | 67 of 72 (93%) | **9/18** |
+| 5 | `CORE` **stuffed** | 24,000 | **96/96** | `STOP` | **73 of 74 (99%)** | **11/18** |
+
+**`FULL` was never scored, because it never finished.** It was cut at §7 at both
+budgets. So the intended `FULL`-vs-`CORE` quality comparison did not happen —
+`FULL` simply does not fit in one answer. Its 49% citation rate is an artifact of
+truncation, not a measure of citation quality. **Do not read runs 1 and 3 as
+evidence about template length.**
+
+**Citations are solved.** 99% resolution on the stuffed run means deterministic
+quoting works and the model can point at real lines. That failure from slice 3 is
+closed and does not need more work.
+
+**Coverage is not solved, and it is now the whole problem.** The bare prompt
+found 10 with two-thirds of the context; the full template with *all* the context
+found 11. Whatever the template is buying, it is not findings.
+
+### `PROMPT_BUDGET = 26_000` — measured, not chosen
+
+*Recorded 2026-08-14 after running the real numbers. The first plan said "keep
+`INPUT_BUDGET` at 20,000". **Measurement proved that wrong**, and this is the
+clearest example so far of why a number must be measured before it is trusted.*
+
+At `20_000` the reserve of ~5,300 comes out of the chunks, so side B drops from
+the baseline's 10,000 tokens to **7,332** — a 27% cut in evidence. Run 1 would
+then change the prompt *and* delete a quarter of the code, and the result would
+be unreadable.
+
+**`INPUT_BUDGET = 20_000` always meant the *evidence* budget**, because there were
+no instructions when it was set. Now there are, so the total must grow by the
+reserve to keep the evidence the same. `PROMPT_BUDGET` lives in
+`labpilot/prompts/builder.py`, beside `REPORT_MAX_TOKENS`, because both belong to
+the task rather than to any model. The caller does
+`select(chunks, budget=PROMPT_BUDGET - reserve(...))`, which adapts on its own
+when the reserve changes.
+
+Measured on the sample pair — 96 chunks, A=18, B=78:
+
+| | instructions | reserve | chunks kept | evidence | whole prompt |
+|---|---|---|---|---|---|
+| baseline | 0 | 0 | 60 (B=42) | 14,273 | 14,273 |
+| `FULL` | 2,272 | 5,336 | 63 (**B=45**) | **14,558** | 19,736 |
+| `CORE` | 1,846 | 4,910 | 65 (**B=47**) | **14,791** | 19,545 |
+
+Total request is ~19.7K in + 16K out ≈ 36K, far under tier 7's 128K floor.
+
+**The prompt still lands ~6,000 under the budget**, and that is `select()`'s 50/50
+split wasting side A's unused half — the flaw Step 1 removes. Do not fix it here.
+
+### The measured ceiling of one call — 2026-08-14
+
+*This is the most important result of slice 4, and it changes an assumption into
+a measurement.*
+
+Three runs on the sample pair, all `gemini-3.6-flash` at tier 1, `thinkingLevel:
+HIGH`, `max_tokens = 24_000`:
+
+| | chunks | findings (of 18) | invented | citations resolve | finished |
+|---|---|---|---|---|---|
+| baseline, bare prompt | 60/96 | 10 | 0 | ~50% | no |
+| `CORE` | 65/96 | 9 | 0 | 93% | yes |
+| `FULL` | 63/96 | — | 0 | 49% | **no — cut at §7** |
+| **`CORE`, everything stuffed** | **96/96** | **11** | **0** | **99%** | yes |
+
+**Stuffing the entire fixture — no retrieval at all — bought exactly two
+findings**, and both needed parts the selector had dropped (`pos_class_weight`
+defined and never called; the unfreeze off-by-one). The other **seven** misses
+survived perfect context.
+
+**So the split is measured: retrieval costs ~2, the single call costs ~7.**
+
+**This section originally continued "and no prompt fixes the seven". That claim
+was wrong, and the next section replaces it.** Scoring the answers row by row
+showed the seven misses share one property that a prompt *can* address. The
+literature below is still correct about the ceiling of a single call — it is just
+not the binding constraint yet, because our prompt has not asked for the work at
+all. Read this section as the long-run limit, and
+[Why coverage is stuck](#why-coverage-is-stuck--diagnosed-2026-08-14) as the
+current one.
+
+The literature on the long-run limit:
+
+- **multi-needle decay** — recall falls as the number of facts asked for rises,
+  and reasoning over them is worse than retrieving them
+  ([LangChain](https://www.langchain.com/blog/multi-needle-in-a-haystack))
+- **context rot** — accuracy declines as input grows *even when the evidence is
+  present and well placed*
+- **map-reduce wins** — smaller focused calls keep recall, because one large
+  context full of irrelevant detail causes context confusion even in a
+  200K-token model
+
+The shape of our misses matches exactly: every Type-1 and Type-2 finding (A's
+claims, a short list early in the prompt) was found, and four of the seven misses
+are Type-3 — *things B does that A never mentions*, which requires walking a long
+list late in the context.
+
+> **One call cannot reliably find many things in a long text. The fix is many
+> small calls, not better sentences.**
+
+**This turns the agent from a design choice into a requirement.** `verify` and
+`find_missing` are a loop for this reason, not for elegance.
+
+*One line here was also wrong: "Step 0's ceiling is about 11 of 18, and chasing
+it further would be tuning to one fixture."* 11 is where **this** prompt stops,
+not where one call stops. The next section shows why, and predicts 16.
+
+### Why coverage is stuck — diagnosed 2026-08-14
+
+**The finding, in one line:**
+
+> **Every one of the 11 findings carries an A citation. Every one of the misses
+> has no anchor in A.**
+
+Read the stuffed run's §3 table. `D1` through `D11` each cite a line of A, then a
+line of B. The model walked **A's list of statements** and checked each one in B.
+It produced roughly one row per claim A makes. It never walked B.
+
+Now the misses, against the same test:
+
+| Missed | Does A mention it? |
+|---|---|
+| #14 vocabulary capped at 20,000, so OOV is non-trivial | **no** |
+| #15 rows dropped when empty *after* the regex | **no** |
+| #16 three layer-norm modules built and never enabled | **no** |
+| #17 `requires_grad` passed as an optimizer param-group key | **no** |
+| #18 all-stopword question encodes to the zero vector | **no** |
+| #9 threshold tuned on the split it is reported on | yes — but needs reasoning over B's own numbers |
+| #10b the 12.1-point train/validation gap | yes — but needs reasoning over B's run summary |
+
+The correlation is exact. **The model produced zero pure column findings.** Even
+#11 (stopword masking) and #13 (cosine similarity), which `EXPECTED.md` files
+under *unstated*, were found only because A happened to say something beside them
+(`A-6 "excludes padding positions and nothing else"`, `A-9 "r = [u;v;|u-v|;u⊙v]"`).
+Those were row findings wearing a column finding's clothes.
+
+**Two things in the code explain it, and neither is "too many rules".**
+
+1. **`CORE` deleted the column-walk instruction.** `FULL` §7 says *"first every
+   statement A makes, **then every decision B makes that A never mentions**"*.
+   `CORE` §3 says only *"Biggest effect first."* The second pass is gone — and
+   `CORE` is what scored 11.
+2. **`CORE` has no "problems in B alone" section at all.** `FULL` has §4 for
+   exactly this. #16, #17 and #18 have nowhere to be written.
+
+So the template that scored 11 had already removed the home of **five of the
+seven misses**. The label vocabulary still offered `missing-in-A` and `defect`,
+so the model *could* have used them — it simply was never told to walk B.
+
+**The honest reading of the "too many rules" hypothesis.** It was a reasonable
+guess from the numbers — 10 bare against 11 structured looks like the structure
+paid for nothing. Half of it holds: two of our rules do cost us
+([the four fixes](#the-four-prompt-fixes--not-yet-measured), items 3 and 4). But
+the direction was backwards. **Cutting sections is what lost the findings.**
+`CORE` is the short template, and short is where coverage fell.
+
+#### What the literature calls this
+
+- **Anchoring.** In LLM code review, *once the model latches onto one category of
+  issue, it under-reports every other category*. The standard fix is to constrain
+  each pass to one concern. Self-aggregation over 10 runs raised recall **118%**,
+  which means a single pass finds under half of what is present
+  ([Augment Code](https://www.augmentcode.com/guides/deep-code-review-recall-vs-precision)).
+- **Single-pass extraction is known to be non-exhaustive.** Google's own
+  extraction library ships multi-pass by default: 2 passes → 93% recall, 3 → 96%
+  ([google/langextract](https://github.com/google/langextract)). The academic
+  form is L3X — recall-oriented generation first, precision pruning second
+  ([Recall Them All](https://arxiv.org/abs/2405.02732)).
+- **Instruction density has a measured curve, and the failure mode is skipping.**
+  IFScale: ~90% adherence at 10 instructions, ~70% at 50, ~40% at 150. Models do
+  not degrade evenly — they **drop whole instructions**, and **middle-positioned
+  ones go first** ([arXiv 2507.11538](https://arxiv.org/pdf/2507.11538)).
+- **Serialising while thinking costs 10–30% of reasoning**, but *performance
+  recovers whenever unconstrained reasoning precedes structured submission*
+  ([Capacity, Not Format](https://arxiv.org/html/2606.09410)).
+- **Decomposition beats one large prompt** — DecomP 50.6% against 36% for CoT on
+  the same task ([Decomposed Prompting](https://www.emergentmind.com/topics/decomposed-prompting-decomp)).
+
+### The four prompt fixes — not yet measured
+
+In order of expected gain. **None of these is built; all are for the next
+session.**
+
+**1. Make the enumeration positional, not semantic.** The prompt already sends
+B's full ordered id list (`B-0`…`B-77`). Use it as a checklist instead of asking
+for "the differences":
+
+```
+Walk side B's part list from the first id to the last.
+For EVERY id write one line:
+    B-12 | <a decision this part makes that A never mentions>
+    B-13 | nothing
+Do not skip an id. Do not merge ids.
+Write this list before you write any table.
+```
+
+Free recall stops when the answer *feels* complete — that is why the model
+stopped at 9, then 11. A positional walk makes stopping early **visible and
+countable**: 78 ids in, 78 lines out. This is the single-call form of the Step 2
+loop.
+
+**2. Give the defect scan its own pass, placed before the comparison.** Anchoring
+is category-level, so the standalone-bug job must not share a list with the
+A-vs-B job. Put `PROBLEMS IN B ALONE` back into `CORE`, **before** the difference
+table, so B is scanned with fresh attention rather than after the model has
+settled into pair-matching.
+
+**3. Let it think in prose before the table.** Findings as free bullets first,
+then serialise into the row format. Right now the 10-column table *is* the
+thinking, which is premature serialisation during enumeration.
+
+**4. Delete `_CAUSES`.** ~25 lines of examples sitting mid-prompt that force no
+behaviour — exactly the position IFScale says gets dropped. It costs budget and
+buys nothing measurable. If removing it loses a finding, put it back; that is a
+cheap test.
+
+**The prediction, so it can be falsified:**
+
+$$
+11 \;+\; \underbrace{4}_{\#14,\ \#15,\ \#16,\ \#17\ \text{— the B-walk}} \;+\; \underbrace{1}_{\#18\ \text{— the defect pass}} \;=\; 16
+$$
+
+#9 and #10b stay hard. Both need reasoning over B's *own* reported numbers rather
+than matching against A, and that is honestly Step 2 work. **So 14 is reachable
+in one call and 16 is the ceiling of these four fixes.** If the B-walk lands and
+the score is still 11, this diagnosis is wrong and it gets re-opened.
+
+**Measure it stuffed.** `CORE` + B-walk against current `CORE`, both at 96/96
+chunks, both tier 1. Stuffing removes retrieval as a variable, so the only thing
+changing is the prompt.
+
+### Two prompt rules the runs proved, both general
+
+**1. A forced verdict must be first, and it must also bind the prose after it.**
+*Corrected 2026-08-14 — the first version of this rule misread the artifact.* §2
+demands `YES / NO / CANNOT TELL` and got it right in every run. §4 was recorded
+here as having "allowed prose first", but the saved answer shows `NOT APPLICABLE`
+**is** the first thing on its line, and the verdict itself is correct. The
+failure is the paragraph *after* it, which performs the banned comparison anyway:
+*"consistent with Side B's observed validation F1 of 0.8262 … lower than Side A's
+test F1 of 0.851."*
+
+So the fix that was proposed — move the verdict first — **is already satisfied
+and would change nothing**. The real rule is stronger: **a correct verdict does
+not constrain the prose that follows it.** Ban the material, not the conclusion —
+after a `NO`, the two numbers may not appear in the same sentence anywhere below.
+
+The general lesson is about method, not about §4: *the recorded diagnosis and the
+saved artifact disagreed, and only re-reading the artifact caught it.* Artifacts
+are kept for exactly this.
+
+**2. Free recall stops when the answer feels complete.** §3 says "finish this
+list completely" and the model stopped at 9, then 11. The one-call fix is to walk
+the input by id — *"for every part of B, write a row or `nothing A does not
+mention`"* — so stopping early becomes visible and countable.
+
+### What Step 0 ships, and where each section goes later
+
+| Section | Step 0 | Later |
+|---|---|---|
+| §0–§2 | yes | `summarize`, ×2 |
+| §3 | verdict only, cannot halt the graph | the **correspondence gate**, a real halt |
+| §4 | yes, general knowledge only | `find_bugs`, walking files |
+| §5–§6 | yes | **`extract_outcomes`** — a capability not yet in the library |
+| §7 | one pass over the given context | `verify` + `find_missing`, one search per row |
+| §8–§10 | yes | `diff_choices` + `explain_divergence`, routed to tier 1 |
+| §11 | reported only | drives **re-retrieval** |
+| §12 | yes | **`propose_fix`** — also not yet in the library |
+| §13 | yes | `propose_next` |
+
+**The template found two capabilities the library was missing** —
+`extract_outcomes` and `propose_fix`. Add them to
+[The capability library](#the-capability-library) when Step 2 is built.
+
+**The honest Step 0 limit:** every `not in context` in §7 may be a false alarm
+caused by the deliberately bad selector. Removing that is exactly what Steps 1
+and 2 are for.
 
 ---
 

@@ -10,6 +10,10 @@ CLOUDFLARE_URL = (
     "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
 )
 
+MISTRAL_REASONING: dict[str, object] = {"reasoning_effort": "high"}
+OPENROUTER_REASONING: dict[str, object] = {"reasoning": {"effort": "high"}}
+OPENAI_REASONING: dict[str, object] = {"reasoning_effort": "high"}
+
 
 GEMINI_3_6_FLASH = GeminiProvider(
     name="Gemini 3.6 Flash",
@@ -19,6 +23,7 @@ GEMINI_3_6_FLASH = GeminiProvider(
     api_key_env="GOOGLE_API_KEY",
     context_window=1_048_576,
     max_output_tokens=65_536,
+    thinking="HIGH",
 )
 
 GLM_5_2 = OpenAICompatibleProvider(
@@ -29,6 +34,7 @@ GLM_5_2 = OpenAICompatibleProvider(
     api_key_env="MISTRAL_API_KEY",
     context_window=1_048_576,
     max_output_tokens=1_048_576,
+    extra_body=MISTRAL_REASONING,
 )
 
 
@@ -40,6 +46,7 @@ GEMINI_3_5_FLASH = GeminiProvider(
     api_key_env="GOOGLE_API_KEY",
     context_window=1_048_576,
     max_output_tokens=65_536,
+    thinking="HIGH",
 )
 
 NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
@@ -50,6 +57,7 @@ NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
     api_key_env="OPENROUTER_API_KEY",
     context_window=1_000_000,
     max_output_tokens=65_536,
+    extra_body=OPENROUTER_REASONING,
 )
 
 DEVSTRAL_2 = OpenAICompatibleProvider(
@@ -70,6 +78,7 @@ NORTH_MINI_CODE = OpenAICompatibleProvider(
     api_key_env="OPENROUTER_API_KEY",
     context_window=256_000,
     max_output_tokens=64_000,
+    extra_body=OPENROUTER_REASONING,
 )
 
 GPT_OSS_120B = OpenAICompatibleProvider(
@@ -81,6 +90,7 @@ GPT_OSS_120B = OpenAICompatibleProvider(
     account_env="CLOUDFLARE_ACCOUNT_ID",
     context_window=128_000,
     max_output_tokens=128_000,
+    extra_body=OPENAI_REASONING,
 )
 
 CHAIN = (
