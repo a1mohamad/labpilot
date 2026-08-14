@@ -3278,9 +3278,12 @@ now also prints `completion_tokens_details.reasoning_tokens`, mirroring Gemini's
 `thoughtsTokenCount`. That settles [which tiers are thinking
 models](#thinking-models--the-count-is-at-least-four-of-seven) for nothing.
 
-### `max_tokens = 16000`, and why exactly that
+### `REPORT_MAX_TOKENS = 24_000`, and the tier it deliberately costs
 
-Not a round guess. It is the largest value **every** tier accepts:
+*Corrected 2026-08-14. This section used to pin **16,000**, on the reasoning that
+it is the largest value every tier accepts. Measurement overruled it.*
+
+The tier limits are unchanged:
 
 | Tier | output limit |
 |---|---|
@@ -3288,8 +3291,23 @@ Not a round guess. It is the largest value **every** tier accepts:
 | North Mini Code | 64,000 |
 | both Gemini | 65,536 |
 
-Asking for more makes `_check_fits` raise on tier 5, so the chain quietly loses a
-tier. A test pins this: `min(max_output_tokens) >= 16000`.
+But at 16,000 **both** runs were cut mid-report — `FULL` and `CORE` each returned
+`finish_reason: MAX_TOKENS`. A truncated report is not a worse report, it is not
+a report at all, so the constraint had to give somewhere. It gave at tier 5.
+
+**So `REPORT_MAX_TOKENS` is 24,000 and Devstral 2 can no longer serve a full
+report.** `_check_fits` raises before the HTTP call, which means the loss is
+cheap — no request is spent, the chain records the tier and moves on. For
+reports the chain is effectively six tiers, not seven.
+
+**The invariant test was rewritten to say so out loud**:
+`test_only_devstral_cannot_serve_a_full_report` asserts the unable-list is
+*exactly* `["Devstral 2"]`. That is the important part — the test now fails if a
+**second** tier ever drops below the report budget, which is the change that
+would actually hurt. A deliberate loss is pinned; an accidental one breaks CI.
+
+At 24,000 `CORE` finished (`STOP`). **`FULL` still did not** — see the run table
+below. Raising the budget fixed `CORE` and did not fix `FULL`.
 
 ### `finish_reason` was promoted to `LLMResult`
 
