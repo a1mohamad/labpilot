@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Artifacts files like LLM prompt and responses
+artifacts/
