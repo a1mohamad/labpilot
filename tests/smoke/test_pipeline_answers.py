@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from dotenv import load_dotenv
 
@@ -8,7 +10,7 @@ from labpilot.retrieval import select
 
 load_dotenv()
 
-SAMPLES = "data/samples/quora_siamese"
+SAMPLES = Path("data/samples/quora_siamese")
 QUESTION = "Compare these and explain why the results diverge."
 
 
