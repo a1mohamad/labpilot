@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from labpilot.tokens import CHARS_PER_TOKEN
+
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 MAX_CHUNK_TOKENS = 510
 MIN_CHUNK_TOKENS = 30
+
+MAX_CHARS = MAX_CHUNK_TOKENS * CHARS_PER_TOKEN
