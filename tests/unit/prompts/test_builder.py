@@ -51,8 +51,16 @@ def test_the_same_inputs_give_the_same_prompt():
 
 
 def test_reserve_leaves_out_the_chunk_text():
-    chunks = (_chunk("A", 0, text="X" * 9000),)
+    chunks = (_chunk("A", 0, text="X" * 60_000),)
 
     room = reserve(chunks, question="why?", instructions=FULL)
 
-    assert room < estimate_tokens("X" * 9000)
+    assert room < estimate_tokens("X" * 60_000)
+
+
+def test_reserve_counts_the_instructions_and_the_outline():
+    chunks = (_chunk("A", 0), _chunk("B", 0))
+
+    room = reserve(chunks, question="why?", instructions=FULL)
+
+    assert room > estimate_tokens(FULL.header)

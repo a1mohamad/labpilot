@@ -9,9 +9,7 @@ from labpilot.llm import LLMError, LLMResult, OpenAICompatibleProvider
 URL = "https://provider.test/v1/chat/completions"
 
 
-@pytest.fixture
-def provider(monkeypatch):
-    monkeypatch.setenv("TEST_API_KEY", "secret-key")
+def build_provider(**extra) -> OpenAICompatibleProvider:
     return OpenAICompatibleProvider(
         name="Test Provider",
         tier=1,
@@ -20,7 +18,14 @@ def provider(monkeypatch):
         api_key_env="TEST_API_KEY",
         context_window=8_000,
         max_output_tokens=4_000,
+        **extra,
     )
+
+
+@pytest.fixture
+def provider(monkeypatch):
+    monkeypatch.setenv("TEST_API_KEY", "secret-key")
+    return build_provider()
 
 
 def ok_body(content="hello", finish_reason="stop", model="test/model-v2"):
@@ -165,3 +170,18 @@ def test_complete_refuses_max_tokens_above_the_output_limit(provider):
         provider.complete("hi", max_tokens=9_000)
 
     assert len(responses.calls) == 0
+
+
+def test_extra_body_is_merged_into_the_request():
+    reasoning = {"reasoning": {"effort": "high"}}
+
+    payload = build_provider(extra_body=reasoning)._payload("hello", 100)
+
+    assert payload["reasoning"] == {"effort": "high"}
+    assert payload["model"] == "test/model"
+
+
+def test_nothing_extra_is_sent_when_extra_body_is_not_set():
+    payload = build_provider()._payload("hello", 100)
+
+    assert set(payload) == {"model", "messages", "max_tokens", "temperature"}

@@ -1,0 +1,70 @@
+from labpilot.ingest import Chunk
+from labpilot.prompts import FULL, find_citations, resolve
+
+BODY = "def fit():\n    loss.backward()\n    step()"
+
+
+def _chunks(text: str = BODY, start_line: int = 100) -> tuple[Chunk, ...]:
+    return (
+        Chunk(
+            text=text,
+            source="train.py",
+            start_line=start_line,
+            end_line=start_line + text.count("\n"),
+            side="B",
+            artifact_id="a",
+            chunk_index=0,
+        ),
+    )
+
+
+def test_a_quote_resolves_to_its_real_line_and_our_own_text():
+    found = resolve("B-0", "loss.backward()", _chunks())
+
+    assert found.source == "train.py"
+    assert found.line == 101
+    assert found.text == "    loss.backward()"
+    assert found.unique
+
+
+def test_an_id_that_does_not_exist_is_rejected():
+    assert resolve("B-9", "loss.backward()", _chunks()) is None
+
+
+def test_a_quote_that_is_not_in_the_part_is_rejected():
+    assert resolve("B-0", "optimizer.zero_grad()", _chunks()) is None
+
+
+def test_an_empty_quote_is_rejected():
+    assert resolve("B-0", "   ", _chunks()) is None
+
+
+def test_a_quote_inside_a_longer_line_still_resolves():
+    chunks = _chunks("a = 1\nloss.backward()  # step here")
+
+    found = resolve("B-0", "loss.backward()", chunks)
+
+    assert found.line == 101
+    assert found.text == "loss.backward()  # step here"
+
+
+def test_a_line_that_appears_twice_is_marked_not_unique():
+    chunks = _chunks("return None\nx = 1\nreturn None")
+
+    found = resolve("B-0", "return None", chunks)
+
+    assert found.line == 100
+    assert not found.unique
+
+
+def test_citations_are_pulled_out_of_an_answer():
+    answer = 'D1 the step is missing [B-17 "loss.backward()"] and [A-3 "print("x")"]'
+
+    assert find_citations(answer) == [
+        ("B-17", "loss.backward()"),
+        ("A-3", 'print("x")'),
+    ]
+
+
+def test_our_own_example_citation_can_be_parsed():
+    assert find_citations(FULL.header) == [("B-17", "count = count + 1")]

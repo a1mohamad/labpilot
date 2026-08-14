@@ -1,8 +1,10 @@
 from pathlib import Path
 
-from labpilot.llm import CHAIN
+from labpilot.llm import CHAIN, GeminiProvider, OpenAICompatibleProvider
+from labpilot.prompts import REPORT_MAX_TOKENS
 
 ENV_EXAMPLE = Path(__file__).resolve().parents[3] / ".env.example"
+KNOWN_THINKING = ("LOW", "MEDIUM", "HIGH")
 
 
 def test_chain_tiers_are_sequential_from_one():
@@ -54,3 +56,36 @@ def test_no_provider_promises_more_output_than_its_context_window():
     ]
 
     assert not over, over
+
+
+def test_every_tier_accepts_the_output_size_the_report_needs():
+    smallest = min(provider.max_output_tokens for provider in CHAIN)
+
+    assert smallest >= REPORT_MAX_TOKENS
+
+
+def test_every_gemini_tier_uses_a_thinking_level_google_accepts():
+    levels = [
+        provider.thinking for provider in CHAIN if isinstance(provider, GeminiProvider)
+    ]
+
+    assert levels
+    assert all(level in KNOWN_THINKING for level in levels), levels
+
+
+def test_the_google_tiers_do_not_drift_apart():
+    levels = {
+        provider.thinking for provider in CHAIN if isinstance(provider, GeminiProvider)
+    }
+
+    assert len(levels) == 1, levels
+
+
+def test_every_other_tier_asks_for_reasoning():
+    missing = [
+        provider.name
+        for provider in CHAIN
+        if isinstance(provider, OpenAICompatibleProvider) and not provider.extra_body
+    ]
+
+    assert not missing, missing

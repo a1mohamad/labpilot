@@ -10,9 +10,7 @@ BASE_URL = "https://provider.test/v1beta/models"
 URL = f"{BASE_URL}/test-model:generateContent"
 
 
-@pytest.fixture
-def provider(monkeypatch):
-    monkeypatch.setenv("TEST_API_KEY", "secret-key")
+def build_provider(**extra) -> GeminiProvider:
     return GeminiProvider(
         name="Test Gemini",
         tier=2,
@@ -21,7 +19,14 @@ def provider(monkeypatch):
         api_key_env="TEST_API_KEY",
         context_window=8_000,
         max_output_tokens=4_000,
+        **extra,
     )
+
+
+@pytest.fixture
+def provider(monkeypatch):
+    monkeypatch.setenv("TEST_API_KEY", "secret-key")
+    return build_provider()
 
 
 def ok_body(parts=("hello",), finish_reason="STOP", model="test-model-001"):
@@ -131,3 +136,15 @@ def test_complete_raises_llm_error_when_key_missing(provider, monkeypatch):
 def test_complete_rejects_empty_prompt_as_caller_bug(provider):
     with pytest.raises(ValueError):
         provider.complete("   ")
+
+
+def test_the_thinking_level_reaches_the_request():
+    payload = build_provider(thinking="HIGH")._payload("hello", 100)
+
+    assert payload["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "HIGH"}
+
+
+def test_no_thinking_config_is_sent_when_it_is_not_set():
+    payload = build_provider()._payload("hello", 100)
+
+    assert "thinkingConfig" not in payload["generationConfig"]
