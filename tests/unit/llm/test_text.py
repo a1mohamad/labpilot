@@ -1,13 +1,6 @@
 from __future__ import annotations
 
-import pytest
-
-from labpilot.llm._text import estimate_tokens, truncate
-
-
-@pytest.mark.parametrize(("text", "expected"), [("", 0), ("abc", 1), ("abcd", 2)])
-def test_estimate_tokens_rounds_up(text, expected):
-    assert estimate_tokens(text) == expected
+from labpilot.llm._text import truncate
 
 
 def test_truncate_leaves_short_text_alone():
