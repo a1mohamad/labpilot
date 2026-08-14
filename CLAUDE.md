@@ -378,7 +378,7 @@ progress — the sample pair exists, the chunker does not.**
 > `labpilot/retrieval/` (the dumb selector, throwaway) and
 > `labpilot/prompts/` (`build_context`) all exist. A smoke test runs
 > files → chunks → selection → `LLMClient` and saves the answer.
-> **126 unit tests, 8 smoke tests, ruff clean. Both branches level.**
+> **130 unit tests, 8 smoke tests, ruff clean. Both branches level.**
 > The first real answer scored **10 of 18 findings, zero hallucinations, but
 > half its line citations were wrong and its final conclusion was false** — see
 > [The first real answer](#the-first-real-answer--measured-2026-08-14).
@@ -837,6 +837,13 @@ Markdown file per run holding the model, tier, chunk count, which tiers failed,
 the answer, **and the exact prompt that produced it**. Keep the prompt — when an
 answer is bad, the chunks are usually the cause, and without the prompt there is
 nothing to inspect.
+
+**A filename typo hid four tests.** `tests/unit/prompts/text_context.py` — `text`
+instead of `test` — was committed and never ran, because pytest only collects
+`test_*.py`. Nothing failed, nothing warned, and the suite count still went up
+because other files were added at the same time. **Check the collected count,
+not just the passing count**: a test that is never collected is indistinguishable
+from a test that passes.
 
 **`max_tokens` needs ~8000, not 2000.** At 2000 the answer was cut mid-sentence,
 because Gemini spends part of the budget thinking.
