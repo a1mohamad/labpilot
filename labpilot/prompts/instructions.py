@@ -38,6 +38,8 @@ RULES
    If you report that something is missing, cite the side that mentions it
    and name the part where you expected to find it.
    A statement with no citation will be removed.
+   One exception: in a walk, a line that reports nothing needs no quote. The
+   id at the start of the line is enough. Keep those lines very short.
 
 2. SAY HOW YOU KNOW
    Seen in both sides
@@ -52,8 +54,19 @@ RULES
    Do not invent content to fill a section.
 
 4. DO NOT COMPARE TWO VALUES until you have written how each one was made.
+   If you answer NO or CANNOT TELL for a pair of values, those two values may
+   never appear in the same sentence anywhere below.
+   Do not write that one is lower than, higher than, close to, in line with,
+   or consistent with the other. Do not subtract them.
+   Say only that they cannot be compared, and why.
 
-5. WRITE EVERY SECTION, IN ORDER. Do not skip one. Do not reorder them."""
+5. WRITE EVERY SECTION, IN ORDER. Do not skip one. Do not reorder them.
+
+6. A WALK MUST BE COMPLETE.
+   When a section tells you to walk a part list, write one line for every id
+   in that list, in order, including the ids whose text was not sent to you.
+   Writing fewer lines than there are ids is an error, even when most lines
+   say "nothing". Do not stop early because the answer feels complete."""
 
 _LABELS = """\
 HOW TO LABEL EVERY DIFFERENCE
@@ -79,30 +92,6 @@ IMPACT
   direction   raises / lowers / unknown
   size        large / small / unknown
   confidence  high / medium / low"""
-
-_CAUSES = """\
-COMMON CAUSES - examples only, never a complete list
-
-input        a different source, or a different version of it; a different
-             subset or filter; a different order; different units or scaling;
-             different handling of missing or invalid entries; parts that
-             must stay separate got mixed together
-procedure    a different method for the same goal; a step present in one side
-             and absent in the other; steps in a different order; different
-             settings; a different stopping point; a step that is written but
-             never called; a value that is set and then replaced somewhere
-             else; different handling of edge cases; different handling of
-             randomness
-measurement  a different quantity is measured; the same name means a
-             different formula; measured at a different point, or over a
-             different range; added up a different way
-environment  a version change moved a default; different number precision;
-             different machinery changing the order of operations; randomness
-             that nobody controlled
-reporting    a setting was tuned on the same data the value is reported on;
-             the best of many runs was shown; one run with no spread; only
-             part of the results was shown; the value came from an older
-             version of the work"""
 
 _FULL_SECTIONS = """\
 §0  TASK
@@ -138,13 +127,17 @@ _FULL_SECTIONS = """\
     calculated anywhere below.
 
 §7  DIFFERENCES
-    One row each, numbered D1, D2, D3 ...
+    Do this in two walks, and write both before the table.
+    Walk 1 — go down side A's part list, first id to last. One line for every
+    id: what it states, and whether B does it, does not do it, or the place
+    it would be was not sent to you.
+    Walk 2 — go down side B's part list, first id to last. One line for every
+    id: something it decides that A never mentions, or "nothing".
+    Do not skip an id in either walk.
+    Then the table, numbered D1, D2, D3 ...
       id | kind | box | how you know | A citation | B citation |
       direction | size | confidence | one sentence
-    ONE-WAY: first every statement A makes, then every decision B makes that
-    A never mentions.
-    TWO-WAY: one pass, topic by topic.
-    Finish this list completely before you write anything below it.
+    Every line of either walk that is not "nothing" becomes a row.
 
 §8  RANKING
     The same D numbers, ordered by how much each one could change the result.
@@ -172,35 +165,61 @@ _FULL_SECTIONS = """\
     would mean."""
 
 _CORE_SECTIONS = """\
-§0  TASK
-    One sentence: what was asked.
-    Say whether this is ONE-WAY or TWO-WAY.
-
-§1  WHAT EACH SIDE IS
-    One paragraph for A, one for B.
+§0  WHAT EACH SIDE IS
+    Say whether this is ONE-WAY or TWO-WAY, and why.
+    Then one paragraph for A and one for B: what it is, and what it does.
     Name the parts whose text was not sent to you.
 
-§2  REPORTED VALUES
+§1  REPORTED VALUES
     One row per value either side reports:
       value | what produced it | how it was measured | how it was chosen | citation
     Then, for each pair: can they be compared?  YES / NO / CANNOT TELL, and why.
-    If NO or CANNOT TELL, no difference between them may be calculated below.
     May be NONE.
 
-§3  DIFFERENCES
-    One row each, numbered D1, D2, D3 ...
+§2  WALK SIDE A
+    Go down side A's part list, from the first id to the last.
+    Write one line for EVERY id:
+      A-4 | says: <one thing it states should happen> | B: does it / does not
+            do it / not in the text I was given
+      A-5 | says nothing that can be checked
+    A part may state more than one thing. Give it one line per thing.
+    Do not skip an id. Do not merge two ids into one line.
+
+§3  WALK SIDE B
+    Go down side B's part list, from the first id to the last.
+    Write one line for EVERY id:
+      B-12 | does: <something this part decides that A never mentions>
+      B-13 | nothing A does not already mention
+    Do not skip an id. Do not merge two ids into one line.
+    Look especially for: a limit or cap on what is kept; entries removed or
+    changed before use; a step that is written but never called; a part that
+    is built and never switched on; a value set in one place and replaced in
+    another; an extra input added to a calculation; a name passed where it
+    has no effect; an edge case A is silent about.
+
+§4  PROBLEMS IN B ALONE
+    Ignore A completely in this section.
+    Ask of B: what input would make this behave wrongly, and what would
+    happen then? Follow the value through, step by step.
+    Each one: what, where, why, and how you know.
+    May be NONE.
+
+§5  DIFFERENCES
+    Collect §2, §3 and §4 into one table, numbered D1, D2, D3 ...
       id | kind | box | how you know | A citation | B citation |
       direction | size | confidence | one sentence
     Biggest effect first.
-    Finish this list completely before you write anything below it.
+    EVERY line of §2, §3 and §4 that is not "nothing" and not "says nothing
+    that can be checked" must appear here as a row.
 
-§4  DOES IT ADD UP?
-    What §3 would predict, against what §2 actually shows.
+§6  DOES IT ADD UP?
+    What §5 would predict, against what §1 actually shows.
     CLOSES / DOES NOT CLOSE / NOT APPLICABLE.
     If it does not close, give every honest reading. Do not pick one.
+    Obey rule 4: a pair you marked NO or CANNOT TELL stays uncompared here.
 
-§5  EXPLANATION
-    The causal story. Use only D numbers from §3. Add no new claims."""
+§7  EXPLANATION
+    The causal story. Use only D numbers from §5. Add no new claims."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,11 +236,15 @@ def _numbers(text: str) -> list[int]:
 def _instructions(name: str, sections: str) -> Instructions:
     listed = ", ".join(f"§{number}" for number in _numbers(sections))
 
-    header = "\n\n".join((_PREAMBLE, _RULES, _LABELS, _CAUSES, f"OUTPUT\n\n{sections}"))
+    header = "\n\n".join((_PREAMBLE, _RULES, _LABELS, f"OUTPUT\n\n{sections}"))
     closing = (
         f"Now write the report. Write these sections, in this order:\n{listed}\n\n"
         "Cite with a part id and an exact quote. Never write a line number.\n"
-        "Write NONE for any section with nothing to report."
+        "Write NONE for any section with nothing to report.\n\n"
+        "Where a section tells you to walk a part list, every id in that list "
+        "gets its own line, in order, including ids whose text was not sent to "
+        "you. Count the ids in the list and write that many lines. Most lines "
+        "will say nothing, and that is the expected result."
     )
     return Instructions(name, header, closing)
 

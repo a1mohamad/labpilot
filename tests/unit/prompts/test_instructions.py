@@ -41,8 +41,38 @@ def test_full_asks_for_every_section_from_0_to_13():
     assert _numbers(FULL.header) == set(range(14))
 
 
-def test_core_asks_for_far_fewer_sections_than_full():
-    assert len(_numbers(CORE.header)) * 2 <= len(_numbers(FULL.header))
+def test_core_asks_for_fewer_sections_than_full():
+    assert len(_numbers(CORE.header)) < len(_numbers(FULL.header))
+
+
+def test_both_templates_walk_both_part_lists():
+    for instructions in (FULL, CORE):
+        text = instructions.header.lower()
+        assert "side a's part list" in text, instructions.name
+        assert "side b's part list" in text, instructions.name
+
+
+def test_both_templates_demand_a_line_for_every_id():
+    for instructions in (FULL, CORE):
+        whole = f"{instructions.header}\n{instructions.closing}".lower()
+        assert "every id" in whole, instructions.name
+        assert "do not skip an id" in whole, instructions.name
+
+
+def test_both_templates_forbid_rejoining_two_values_they_could_not_compare():
+    for instructions in (FULL, CORE):
+        text = instructions.header.lower()
+        assert "never appear in the same sentence" in text, instructions.name
+        assert "do not subtract them" in text, instructions.name
+
+
+def test_core_scans_b_alone_before_it_compares_the_two_sides():
+    header = CORE.header
+    assert header.index("PROBLEMS IN B ALONE") < header.index("§5  DIFFERENCES")
+
+
+def test_core_collects_every_walk_line_into_the_difference_table():
+    assert "must appear here as a row" in CORE.header
 
 
 def test_the_closing_names_the_same_sections_as_the_header():
