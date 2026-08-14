@@ -374,6 +374,22 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 progress — the sample pair exists, the chunker does not.**
 **Last updated 2026-08-14 (fifth session). Working branch: `feat/retrieval`.**
 
+> **2026-08-14, session 6 (later) — slice 4's code is written.**
+> `labpilot/prompts/` now holds `_ids`, `context`, `instructions`, `builder` and
+> `citations`; `GeminiProvider` gained `thinking`, `OpenAICompatibleProvider`
+> gained `extra_body`, and both stay unset until a live request proves each
+> host's shape. See [What slice 4 built](#what-slice-4-built--labpilotprompts)
+> and the four sections after it.
+> **164 unit tests, 9 smoke tests, ruff clean.** `test_pipeline.py` and the smoke
+> test were rewritten; the smoke test now runs twice, `FULL` and `CORE`, and
+> records how many citations resolve.
+> **Every tier now asks for maximum reasoning** — Gemini via `thinkingLevel`,
+> Mistral via `reasoning_effort`, OpenRouter via `reasoning.effort`, Cloudflare
+> via a best guess. Tiers 2, 5 and 7 are unproven and may answer 422; the chain
+> records that and moves on, which is how we learn.
+> **Left to do: run the four measurements.** Nothing has been measured yet — the
+> 10/18 baseline is still the only number.
+
 > **2026-08-14, session 6 — no code: slice 4's output template was designed.**
 > Recorded in [The Comparison Template](#the-comparison-template--designed-2026-08-14).
 > The design was rewritten **twice** after the user rejected it: first for being
@@ -3158,6 +3174,159 @@ Thinking tokens sit on top of this and are not under our control, so **8,000 is
 probably not enough** — see [Thinking
 models](#thinking-models--the-count-is-at-least-four-of-seven). Start at 16,000,
 and treat `finish_reason: length` as the signal, not the look of the text.
+
+### What slice 4 built — `labpilot/prompts/`
+
+| Module | Holds |
+|---|---|
+| `_ids.py` | `assign_ids` — one running counter per side |
+| `context.py` | `build_context(chunks, selected)` — the outline plus the kept text |
+| `instructions.py` | `Instructions`, `FULL` (14 sections), `CORE` (6 sections) |
+| `builder.py` | `build_prompt`, `reserve` |
+| `citations.py` | `Citation`, `find_citations`, `resolve` |
+
+**Chunk ids are assigned at prompt time, not by the chunker.** `chunk_index`
+restarts at 0 for every file, so a repo with four files would produce four
+different `B-17`s. `assign_ids` walks the whole side with one counter, so
+`train.py` ends at `B-40` and `model.py` starts at `B-41`. Nothing in `ingest/`
+changed.
+
+### Citations — deterministic quoting, not line numbers
+
+The model **cannot count lines**, so asking for one is asking it to guess. The
+mechanism that works is already named in the literature: **deterministic
+quoting**. The model gives a pointer; the machine does the counting; the text
+shown to the user is read back from our own file, never from the model.
+
+```
+model writes   [B-17 "count = count + 1"]
+we check       does B-17 exist? is that line inside it?
+we compute     newlines before it + chunk.start_line  ->  train.py:1203
+we display     our copy of that line, never the model's
+```
+
+**Printing line numbers on every line was rejected on cost** — about 3 tokens per
+line, roughly 3,000 tokens, which is 15% of the budget spent to buy something a
+quote gives for free.
+
+`resolve` matches **line by line**, not by searching the whole text: exact match
+on the stripped line first, then "the line contains the quote". Indentation is
+therefore ignored, which matters because the model will not copy leading spaces
+reliably. When more than one line matches, `Citation.unique` is `False` — the
+finding still stands, only the line number is a guess between two places.
+
+**The citation format is fixed in the instructions** (`[B-17 "…"]`) purely so a
+regular expression can find them afterwards. A citation nobody can parse cannot
+be checked, and checking was the whole point.
+
+### The outline does not scale past Step 0
+
+Listing every chunk header costs ~2,400 tokens for the 96-chunk sample pair, and
+about **40,000 tokens for a 2,000-chunk repository** — larger than the whole
+budget. Step 1 must list **files**, not chunks. Recorded here so it is not
+discovered during a demo.
+
+Related, and also for Step 1: **`select()` should fill A before B.** Dropping part
+of B is recoverable, because A still says what to look for and the answer can be
+"not found". Dropping part of A loses a statement we never learn exists, and it
+disappears silently. The 50/50 split is wrong in principle. **Do not fix it now**
+— it does not bite on this pair, because A fits completely.
+
+### Thinking controls — three hosts, three different shapes
+
+Verified from each provider's own docs on 2026-08-14. There is **no shared
+field**; "they are all OpenAI-compatible" is true of the message shape and false
+of this.
+
+| Tier | Host | Where it goes | Values |
+|---|---|---|---|
+| 1, 3 | Google | `generationConfig.thinkingConfig.thinkingLevel` | `LOW` `MEDIUM` `HIGH` |
+| 2, 5 | Mistral | **root** `reasoning_effort` | `"high"` `"none"` |
+| 4, 6 | OpenRouter | **root** `reasoning: {"effort": …}` | `xhigh`…`none` |
+| 7 | Cloudflare | **not documented — unknown** | ? |
+
+`CLAUDE.md` previously guessed `thinkingConfig.thinkingBudget`. That is the
+**Gemini 2.5** field; Gemini 3 uses `thinkingLevel`, and sending both is a 400.
+
+**So the code carries two different things, on purpose.** `GeminiProvider` gets a
+`thinking` field, because its setting is nested inside `generationConfig` and
+cannot be merged at the top level. `OpenAICompatibleProvider` gets a generic
+`extra_body: dict | None` that is merged into the payload, because inventing one
+name for three shapes would be a lie. Both default to `None`, and both are data
+in `registry.py` — variants that differ only in data are instances, not
+subclasses.
+
+**Two traps that make blind configuration dangerous:** Mistral answers **HTTP
+422** when a model does not accept `reasoning_effort`, so setting it on `glm-5-2`
+or `devstral-2512` could kill two tiers. And OpenRouter **silently drops** it for
+some models — no error, no effect, which is worse than a failure. So every value
+stays unset until one real request proves it, on the weekly smoke run that
+already spends those requests.
+
+**Free measurement, taken at the same time:** `_usage_summary` on the OpenAI shape
+now also prints `completion_tokens_details.reasoning_tokens`, mirroring Gemini's
+`thoughtsTokenCount`. That settles [which tiers are thinking
+models](#thinking-models--the-count-is-at-least-four-of-seven) for nothing.
+
+### `max_tokens = 16000`, and why exactly that
+
+Not a round guess. It is the largest value **every** tier accepts:
+
+| Tier | output limit |
+|---|---|
+| Devstral 2 | **16,384** ← binding |
+| North Mini Code | 64,000 |
+| both Gemini | 65,536 |
+
+Asking for more makes `_check_fits` raise on tier 5, so the chain quietly loses a
+tier. A test pins this: `min(max_output_tokens) >= 16000`.
+
+### The measurement plan — one variable per run
+
+The 10/18 baseline was measured with a bare prompt, `max_tokens=2000`, and no
+thinking setting. So:
+
+| Run | Prompt | Thinking | Answers |
+|---|---|---|---|
+| baseline | bare | default | 10/18, 0 invented, half the citations wrong |
+| 1 | `FULL` | default | did the template help? |
+| 2 | `CORE` | default | is a shorter template better? |
+| 3 | the winner | `HIGH` | does more thinking help? |
+
+**`max_tokens=16000` applies from run 1**, because 2,000 truncated the baseline —
+that is a fix, not a variable.
+
+### `PROMPT_BUDGET = 26_000` — measured, not chosen
+
+*Recorded 2026-08-14 after running the real numbers. The first plan said "keep
+`INPUT_BUDGET` at 20,000". **Measurement proved that wrong**, and this is the
+clearest example so far of why a number must be measured before it is trusted.*
+
+At `20_000` the reserve of ~5,300 comes out of the chunks, so side B drops from
+the baseline's 10,000 tokens to **7,332** — a 27% cut in evidence. Run 1 would
+then change the prompt *and* delete a quarter of the code, and the result would
+be unreadable.
+
+**`INPUT_BUDGET = 20_000` always meant the *evidence* budget**, because there were
+no instructions when it was set. Now there are, so the total must grow by the
+reserve to keep the evidence the same. `PROMPT_BUDGET` lives in
+`labpilot/prompts/builder.py`, beside `REPORT_MAX_TOKENS`, because both belong to
+the task rather than to any model. The caller does
+`select(chunks, budget=PROMPT_BUDGET - reserve(...))`, which adapts on its own
+when the reserve changes.
+
+Measured on the sample pair — 96 chunks, A=18, B=78:
+
+| | instructions | reserve | chunks kept | evidence | whole prompt |
+|---|---|---|---|---|---|
+| baseline | 0 | 0 | 60 (B=42) | 14,273 | 14,273 |
+| `FULL` | 2,272 | 5,336 | 63 (**B=45**) | **14,558** | 19,736 |
+| `CORE` | 1,846 | 4,910 | 65 (**B=47**) | **14,791** | 19,545 |
+
+Total request is ~19.7K in + 16K out ≈ 36K, far under tier 7's 128K floor.
+
+**The prompt still lands ~6,000 under the budget**, and that is `select()`'s 50/50
+split wasting side A's unused half — the flaw Step 1 removes. Do not fix it here.
 
 ### What Step 0 ships, and where each section goes later
 
