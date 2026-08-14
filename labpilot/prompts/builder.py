@@ -14,12 +14,11 @@ def build_prompt(
     instructions: Instructions,
 ) -> str:
     if not question.strip():
-        raise ValueError("Question must not be empty")
+        raise ValueError("question must not be empty")
 
-    ending = f"{instructions.header}\n\nQuestion: {question}"
-    context = build_context(chunks, selected)
+    ending = f"{instructions.closing}\n\nQUESTION: {question.strip()}"
 
-    return "\n\n\n".join(instructions.header, context, ending)
+    return "\n\n\n".join((instructions.header, build_context(chunks, selected), ending))
 
 
 def reserve(
