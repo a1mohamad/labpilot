@@ -1380,6 +1380,59 @@ Mistral and Repo Y on Google can coexist; each queries with its own model. When
 the primary recovers it is used for **new** corpora automatically — old ones stay
 put until deliberately re-embedded, which is optional and usually not worth it.
 
+#### Three open questions — answer them at Step 1, with measurements
+
+*Raised 2026-08-14 during slice 3. None can be answered now: slice 3 produces no
+vectors. All three are recorded so Step 1 does not start by guessing.*
+
+**1. Is `codestral-embed` actually better than `mistral-embed` on our data?**
+Nobody has checked. Tier 1 was chosen because it is the only **code-specific**
+embedder found, which is an argument from description, not from evidence. The
+speed difference is enormous and comes entirely from free-tier rate limits, not
+from hardware:
+
+| Model | TPM | 1M-token repo | Dim |
+|---|---|---|---|
+| `codestral-embed` | 50,000 | **~20 min** | 1536 |
+| `mistral-embed` | 20,000,000 | **~3 s** | 1024 |
+
+**The test:** embed `data/samples/quora_siamese/` both ways, run the same fixed
+query set, and compare which chunks return. If `codestral` does not win clearly,
+**use `mistral-embed` everywhere** — one model, one dimension, and question 2
+disappears with it.
+
+**2. Should the embedder be chosen by corpus size?** *(User's proposal, and the
+corrected form of it.)* Estimate the tokens of **both artifacts together**; above
+~50,000, use the fast model.
+
+- **The per-session part is essential, not cosmetic.** Choosing per *artifact*
+  would let side A be embedded by one model and side B by another, and then the
+  alignment matrix compares across models — the exact `cos(E_A(q), E_B(d))` =
+  noise failure the migration rule exists to prevent. One decision, both sides.
+- **The argument for it is Render, not impatience.** Ingest runs *in the same
+  process as the API* on a 512MB free instance that spins down when idle, so a
+  20-minute embed holds the serving process and can be interrupted. That is an
+  operational risk, not a wait.
+- **The argument against it** is that retrieval is hardest on large corpora,
+  which is exactly where the rule would use the weaker model — and small corpora
+  barely need retrieval at all.
+- **It is not blocked by schema.** An earlier objection said the 1536/1024
+  difference made this expensive; that was wrong. Coexistence of models — and
+  therefore of dimensions — is *already* required by the paragraph above.
+
+**Resolve question 1 first.** If `mistral-embed` wins, question 2 is moot.
+
+**3. How are two dimensions stored at once?** This is owed by the existing
+coexistence rule regardless of question 2. A pgvector index needs a fixed
+dimension per column, so the options are one table per dimension, or one table
+with `vector_1536` and `vector_1024` columns. Decide when the first second-model
+corpus actually exists.
+
+**What slice 3 owes all three: nothing but two fields.** `Chunk` carries
+`embedding_model: str | None = None` and `dim: int | None = None`, both left
+`None`. The chunker must never fill them — it does not embed, and a field it set
+would be a claim about work it did not do.
+
 ### Chain 3 — Reranker (true fallback)
 
 *Revised 2026-08-11 — Voyage found, Mistral added, the local floor demoted.*
@@ -2430,6 +2483,32 @@ Filename, last header seen, function name from the AST, cell number — **all
 free**. The technique is called **contextual retrieval**. An LLM-written
 one-sentence description per chunk is a Step 1 upgrade, and is the same
 mechanism as the summarise-before-embed fix for cross-language comparison.
+
+**Groq re-enters here — and only here.** *(Raised 2026-08-14.)* Groq was excluded
+from the generator chain because its free TPM (6K–12K) is smaller than one 24K
+comparison prompt, so a single request could never pass. **That objection does
+not apply to chunk annotation**, where the prompt is one chunk in (~500 tokens)
+and one sentence out. The cost is volume, not size:
+
+$$
+2{,}000 \text{ chunks} \times 530 \text{ tokens} \approx 1.06\text{M tokens}
+\;\Rightarrow\; \approx 2.2\ \text{hours at 8K TPM}
+$$
+
+Acceptable in principle — ingest is offline — but it makes ingest ~6× slower than
+embedding alone and adds 2,000 calls that can fail halfway. **Measure the free
+header first.** Run the chunker on the sample pair and count how many chunks end
+with an empty `label`; if that number is near zero, the LLM sentence is buying
+nothing. The general lesson worth keeping: **a provider excluded on prompt size
+may still be perfect for a small-prompt job.** Re-check exclusions against the
+actual task, not against the reason they were first rejected.
+
+**Where the empty label really comes from.** `_recursive` is reached three ways,
+and only two of them lack a name: an unknown extension, and a Python file that
+fails `ast.parse`. The common third case — the second-pass split of an oversized
+function or section — **inherits the parent's label**, which is why
+`split_recursive` takes a `label` argument and emits `part i/n`. So the fallback
+splitter is far less anonymous than it first appears.
 
 ### Small-to-big — Step 1, but keep it possible
 
