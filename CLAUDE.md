@@ -13,6 +13,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Sample Pair](#the-sample-pair--quora_siamese-built-2026-08-14) ·
 [Slice 3 Result](#the-first-real-answer--measured-2026-08-14) ·
 [Next: Slice 4](#where-to-pick-up--slice-4-the-prompt) ·
+[Comparison Template](#the-comparison-template--designed-2026-08-14) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -372,6 +373,22 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: Step 0 — walking skeleton. Slices 1 and 2 are DONE. Slice 3 is in
 progress — the sample pair exists, the chunker does not.**
 **Last updated 2026-08-14 (fifth session). Working branch: `feat/retrieval`.**
+
+> **2026-08-14, session 6 — no code: slice 4's output template was designed.**
+> Recorded in [The Comparison Template](#the-comparison-template--designed-2026-08-14).
+> The design was rewritten **twice** after the user rejected it: first for being
+> written from `EXPECTED.md` (training on the test set), then for assuming the
+> domain is machine learning and the code is Python. LabPilot is not MLPilot. The
+> version that survived is domain- and language-neutral and passes a mechanical
+> leakage test. Headline decisions: roles **A/B** instead of paper/code, with a
+> two-way mode for code-vs-code · every finding classified on **four axes**
+> (kind · box · evidence basis · impact) · **five boxes** where any divergence can
+> live · a **14-section** output where §3, §6 and §9 must be written before the
+> explanation · **`NONE` is a legal answer** or the model invents one · send the
+> **full chunk-header outline** including dropped chunks. Two capabilities the
+> library was missing turned up: `extract_outcomes` and `propose_fix`.
+> **Next: write the actual instruction text, then measure against the 10/18
+> baseline.** Code state unchanged: 130 unit tests, 8 smoke, ruff clean.
 
 > **2026-08-14, session 5 (end) — SLICE 3 IS DONE. The whole chain ran and a
 > real model answered.** `labpilot/ingest/` (the chunker, permanent),
@@ -2839,6 +2856,330 @@ overlap is genuinely present (1215 then 1212):
 ```
 
 Suite at this point: **110 unit tests, 7 smoke, ruff clean.**
+
+---
+
+## The Comparison Template — designed 2026-08-14
+
+*Designed in session 6, before slice 4 was written. This is the output shape the
+model must produce. Step 0 sends the whole thing in one prompt; Step 2 splits it
+across capability nodes. The design is shared, so it is recorded once here.*
+
+### The rule that produced it: never write the prompt from the answer key
+
+`EXPECTED.md` may be used to **score** an answer. It may never be used to
+**write** the prompt. Reading the fixture and then adding a prompt rule aimed at
+one of its traps is training on the test set: the score rises and means nothing,
+and the next repository is no better off.
+
+**The leakage test, and it is mechanical.** Could this prompt run unchanged on a
+physics paper vs a C++ solver, a statistics paper vs an R script, a systems paper
+vs a Rust benchmark, or two notebooks? If a word only survives in one of those,
+delete it. This bans every language name, framework name, file extension, metric
+name, and field-specific term.
+
+**This was learned by getting it wrong twice in one session.** First the design
+was written around the fixture's threshold trap. Then it was rewritten around a
+six-box ML decomposition — still parochial, because LabPilot is not MLPilot and
+the code side is not always Python. The version below is the third attempt.
+
+### Roles, not file types
+
+Never say *paper* and *code*. Two neutral roles:
+
+- **A — the reference.** Whatever states intent: a PDF, a spec, a README, a
+  docstring, a paper, or an earlier implementation.
+- **B — the subject.** Whatever is being examined.
+
+| Mode | When | §7 becomes |
+|---|---|---|
+| **asymmetric** | A only *states*, B *does* | A's statements checked in B, then B's decisions absent from A |
+| **symmetric** | both *do* — code vs code, repo vs repo | one **two-way** walk, topic by topic |
+
+In symmetric mode there is no reference truth, so the only correct wording is
+*"they differ"* — never *"B is wrong"*. Confidently naming a winner when neither
+side is authoritative is a common failure and must be blocked by the prompt.
+
+### Every finding is classified on four axes
+
+One axis is not enough. A finding is only usable when its kind, its place, its
+evidence and its size are all recorded.
+
+**Axis 1 — kind of divergence:**
+
+| Kind | Meaning |
+|---|---|
+| `contradiction` | A states X, B does not-X |
+| `omission in B` | A states X, B does not do it at all |
+| `omission in A` | B does Y, A never mentions it |
+| `ambiguity in A` | A is under-specified, so B had to choose |
+| `defect` | B is wrong by its own internal logic, independent of A |
+| `scope` | B covers only part of A, or goes beyond A |
+| `representation` | same behaviour, different expression |
+
+`representation` is the one that must exist. Two languages, two libraries or two
+formulations of the same operation look different and are **not** divergences.
+Without a named category the model reports them as findings. With one, it must
+classify them and then drop them. This is the cross-language false positive that
+[Edge cases](#edge-cases-to-handle-explicitly) warns about, solved by
+classification rather than by an instruction to be careful.
+
+**Axis 2 — box (where in the process it lives):**
+
+$$
+\text{outcome} \;=\; \underbrace{f(\text{input})}_{\text{procedure}} \;\rightarrow\; \underbrace{\text{measured}}_{\text{instrument}} \;\rightarrow\; \underbrace{\text{selected}}_{\text{reporting}}
+$$
+
+**Input · Procedure · Measurement · Environment · Reporting.** Five boxes, true
+in any field. The earlier six-box list (data, model, objective, optimization,
+evaluation, environment) is just the machine-learning dialect of these five.
+
+**Axis 3 — evidence basis. This is the anti-hallucination axis:**
+
+| Basis | Wording it forces |
+|---|---|
+| seen in **both** artifacts | "A states … · B does …" |
+| seen in one, **not found in the provided context** | "not present in the retrieved context" — never "absent from the code" |
+| **general knowledge** only | "this is unusual" — never "this is wrong" |
+
+Without this axis, *"I did not see it"* gets written as *"it is not there"*. In
+Step 0 that error is guaranteed, because the selector is deliberately bad.
+
+**Axis 4 — impact:** `direction` (raises / lowers / unknown) · `magnitude`
+(large / small / unknown) · `confidence` (high / medium / low). A difference is
+not a cause until its direction is written down; that is the step that turns ten
+differences into the three that matter.
+
+### The catalogue of causes — domain- and language-neutral
+
+**Input** — different source or version · different subset, filter or exclusion
+rule · different ordering or grouping · different units, scaling or
+normalization · different handling of missing or invalid entries · different
+partition into parts used for different purposes · contamination between parts
+that must stay separate · different size or sampling · encoding, format or
+stored-precision differences.
+
+**Procedure** — different algorithm for the same goal · a step present in one and
+absent in the other · steps in a different order · different parameter values ·
+different stopping condition · different approximation or shortcut · **a step
+implemented but never invoked** · a value defined and then overridden elsewhere ·
+different edge-case and boundary handling · different treatment of randomness.
+
+**Measurement** — a different quantity is measured · **the same name means
+different formulas** · measured at a different point in the process · measured
+over a different scope · different aggregation · different protocol around the
+measurement.
+
+**Environment** — dependency version changing a default · numeric precision ·
+hardware or parallelism changing operation order · uncontrolled non-determinism ·
+platform, locale or path behaviour.
+
+**Reporting** — **a knob was chosen using the same data the value is reported
+on** · best-of-N instead of typical · one run with no variance · the value comes
+from a different stage than claimed · a subset was shown · rounding or precision
+· **the value is stale, produced by an earlier version of the procedure**.
+
+Two entries deserve attention. *"Same name, different formula"* is probably the
+most common silent divergence in any field. *"Stale number"* — the reported value
+came from code that no longer exists — is the one nobody writes down.
+
+### The template
+
+```
+§0  TASK
+    One sentence: what was asked. Which sections will be produced, and why.
+
+§1  SIDE A
+    What it is (type, subject, purpose). What it claims to achieve.
+    One paragraph. Citations.
+
+§2  SIDE B
+    What it is. What it actually does, in order. Its purpose.
+    One paragraph. Citations.
+
+§3  CORRESPONDENCE
+    Do these describe the same work?   FULL / PARTIAL / NONE
+    If PARTIAL: what overlaps, and what does not.
+    If NONE: stop after this section.
+
+§4  DEFECTS IN B ALONE
+    Problems visible without the reference at all.
+    Each: what, where, why it is wrong, evidence basis.
+    "unusual" if the basis is general knowledge only.
+    May be NONE.
+
+§5  REPORTED OUTCOMES
+    Table, one row per reported value, from either side.
+    value | what produced it | how measured | how selected | citation
+    May be NONE — many comparisons report nothing.
+
+§6  ARE THEY COMPARABLE?
+    YES / NO / CANNOT TELL, per pair, with the reason.
+    If NO or CANNOT TELL: no difference may be computed anywhere below.
+
+§7  DIVERGENCES
+    The enumeration. Asymmetric: A's statements, then B's unstated decisions.
+    Symmetric: one two-way walk, topic by topic.
+    Each row: id | kind | box | basis | A cite | B cite | direction | magnitude | confidence
+    Finish the list before writing anything below.
+
+§8  RANKING
+    The same rows, ordered by plausible effect on the outcome. Say why.
+
+§9  DOES IT ADD UP?
+    Expected effect of §8 versus the observed difference from §5.
+    CLOSES / DOES NOT CLOSE / NOT APPLICABLE.
+    If it does not close: give every honest reading. Never force agreement.
+
+§10 EXPLANATION
+    The causal story, built only from rows above, by id. No new claims here.
+
+§11 WHAT COULD NOT BE DETERMINED
+    What was missing, and what would settle it.
+
+§12 CORRECTIONS
+    Concrete changes to B. Each: the change, the location, the expected effect,
+    the confidence.
+
+§13 NEXT STEP
+    One experiment. What it would settle, and what each result would mean.
+```
+
+**Two orderings are load-bearing, and both follow from
+[a model cannot go back](#chain-of-thought--why-the-order-of-the-output-is-a-design-decision).**
+
+- **§3 sits before §4 and §7.** If the two artifacts do not correspond, every
+  finding below is invented. The halt has to be placed where it can still halt
+  something.
+- **§9 sits before §10.** The model must write *"does not close"* before it is
+  allowed to tell a story. Then there is no story left to force. The general
+  failure being blocked is *the model bends the evidence so its story closes* —
+  not the fixture's specific threshold trap, which is only one instance of it.
+
+### Four rules that hold the template together
+
+1. **`NONE` is a correct answer, and the instructions must say so.** A section
+   that demands a value will be filled with an invention.
+2. **The model never chooses which sections to skip.** It will drop the one that
+   threatens its conclusion. Section selection belongs to the planner at Step 2.
+3. **Every claim carries a citation, or it is deleted.** A claim that cannot
+   point at provided text was invented — the existing
+   [citation rule](#the-citation-rule--the-strongest-anti-hallucination-mechanism).
+4. **Wording follows the evidence basis mechanically**, per axis 3 above.
+
+### Chain of thought — why the order of the output is a design decision
+
+A model writes one token at a time, and each token is chosen from the tokens
+already written:
+
+$$
+P(y_t \mid y_1, \ldots, y_{t-1}, \text{prompt})
+$$
+
+There is no eraser. A wrong claim written early becomes the *context* for
+everything after it, so the model then reasons correctly from a false premise —
+and later text is bent to defend the early claim. Two consequences:
+
+- **A check placed after the conclusion is not a check. It is a justification.**
+  Any test that could invalidate the conclusion must be written **before** it.
+- **A forced verdict cannot be skipped, but free prose can waffle around a
+  question.** That is why §3, §6 and §9 demand one word from a fixed set.
+
+A second, separate reason CoT works: a transformer does a fixed amount of work
+per token, so the only way to spend more computation on a problem is to emit more
+tokens. With `m` reasoning tokens before an `n`-token answer, the work goes from
+`n·c` to `(m+n)·c`. **`m` is chosen by us, in the template.**
+
+We use **structured** CoT — we write the steps — not free-form *"think step by
+step"*. Free-form lets the model pick its own steps, and it will skip the step
+that ruins its story. **Self-consistency is rejected**: sampling N chains costs
+N× the quota, and the `temperature: 0` rule forbids sampling anyway.
+
+**What CoT cannot do**, so it is not over-trusted: it cannot create knowledge
+that is neither in the weights nor in the context (that is what retrieval is
+for); a wrong first step makes the answer *more* confidently wrong; and the
+written reasoning is not proof that it caused the answer (**unfaithful chain of
+thought**). Citations, not CoT, are what make a claim checkable.
+
+### The outline — send every chunk header, including the dropped ones
+
+*(Raised by the user 2026-08-14: "how can we summarize A and B if we only select
+some chunks?" The objection is correct and §1, §2 and §11 do not work without
+this.)*
+
+The model only receives the chunks the selector kept, so a description of B would
+really be a description of half of B — **and the model would not know that**. On
+the sample pair, A fits completely (18 chunks, ~4,300 tokens) but B does not
+(~42 of 78 chunks).
+
+**Fix: render the full ordered list of chunk headers first, marking which ones
+carry their text.** The chunker already produced a header for all 78.
+
+```
+SIDE B — all parts, in order
+  [text included]      [B_train.py · class QuoraTokenizer · def __init__ · lines 425-431]
+  [text NOT included]  [B_train.py · class Trainer · def fit · part 3/5 · lines 1240-1270]
+```
+
+**Cost is only the dropped headers**, since the kept ones are already sent:
+`36 × ~20 ≈ 800 tokens`, about 4% of `INPUT_BUDGET`.
+
+It fixes four sections, not one. §1/§2 can say *"there is a class `Trainer` whose
+body I did not read"*. §11 can name the exact missing line ranges. And §7 gets
+its best possible wording for a miss: *"not found; lines 1100–1200 were not
+included, and it may be there"* — which at Step 2 becomes the next search.
+
+**This is the Step 0 form of `summarize`.** [Retrieval
+Design](#three-query-sources--cheapest-first) already pins `summarize`'s query
+source as *structural — README, file tree, file headers*, with no semantic search
+at all. The outline is that idea, needed early. **Map-reduce summarization** (one
+call per chunk, then one over the summaries) is rejected on cost: 79 calls for
+one file against an OpenRouter cap of 50/day.
+
+**Filling A before B is the right selector rule — record it for Step 1, do not
+build it now.** Dropping part of B is recoverable, because A still tells us what
+to look for and we can report "not found". Dropping part of A loses a statement
+we never learn exists, and it disappears silently. The current 50/50 split is
+therefore wrong in principle — but `select()` stays broken on purpose, and it
+does not bite on this pair because A already fits.
+
+### Output length — `max_tokens` needs a real number
+
+Rough count of the full template on the sample pair:
+
+| Part | ~tokens |
+|---|---|
+| §7, about 18 rows | 1,100 |
+| §10 explanation · §12 corrections | 1,000 |
+| every other section | 2,400 |
+| **answer total** | **~4,500** |
+
+Thinking tokens sit on top of this and are not under our control, so **8,000 is
+probably not enough** — see [Thinking
+models](#thinking-models--the-count-is-at-least-four-of-seven). Start at 16,000,
+and treat `finish_reason: length` as the signal, not the look of the text.
+
+### What Step 0 ships, and where each section goes later
+
+| Section | Step 0 | Later |
+|---|---|---|
+| §0–§2 | yes | `summarize`, ×2 |
+| §3 | verdict only, cannot halt the graph | the **correspondence gate**, a real halt |
+| §4 | yes, general knowledge only | `find_bugs`, walking files |
+| §5–§6 | yes | **`extract_outcomes`** — a capability not yet in the library |
+| §7 | one pass over the given context | `verify` + `find_missing`, one search per row |
+| §8–§10 | yes | `diff_choices` + `explain_divergence`, routed to tier 1 |
+| §11 | reported only | drives **re-retrieval** |
+| §12 | yes | **`propose_fix`** — also not yet in the library |
+| §13 | yes | `propose_next` |
+
+**The template found two capabilities the library was missing** —
+`extract_outcomes` and `propose_fix`. Add them to
+[The capability library](#the-capability-library) when Step 2 is built.
+
+**The honest Step 0 limit:** every `not in context` in §7 may be a false alarm
+caused by the deliberately bad selector. Removing that is exactly what Steps 1
+and 2 are for.
 
 ---
 
