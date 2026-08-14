@@ -1,6 +1,6 @@
 from __future__ import annotations
 
 CHUNK_SIZE = 500
-CHUNK_OVERLAP = 100
+CHUNK_OVERLAP = 50
 MAX_CHUNK_TOKENS = 510
 MIN_CHUNK_TOKENS = 30
