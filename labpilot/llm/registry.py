@@ -68,7 +68,6 @@ DEVSTRAL_2 = OpenAICompatibleProvider(
     api_key_env="MISTRAL_API_KEY",
     context_window=262_144,
     max_output_tokens=16_384,
-    extra_body=MISTRAL_REASONING,
 )
 
 NORTH_MINI_CODE = OpenAICompatibleProvider(

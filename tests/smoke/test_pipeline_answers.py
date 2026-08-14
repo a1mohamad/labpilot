@@ -52,30 +52,42 @@ def comparison():
     print(f"\nsaved -> {path}")
 
 
+RUNS = ((FULL, False), (CORE, False), (CORE, True))
+IDS = ("full", "core", "core-stuffed")
+
+
 @pytest.mark.smoke
-@pytest.mark.parametrize("instructions", (FULL, CORE), ids=("full", "core"))
-def test_the_pipeline_answers_from_the_sample_pair(instructions):
+@pytest.mark.parametrize(("instructions", "stuffed"), RUNS, ids=IDS)
+def test_the_pipeline_answers_from_the_sample_pair(instructions, stuffed):
     chunks = chunk_file(
         SAMPLES / "A_paper.md", side="A", artifact_id="quora"
     ) + chunk_file(SAMPLES / "B_train.py", side="B", artifact_id="quora")
 
-    room = PROMPT_BUDGET - reserve(chunks, question=QUESTION, instructions=instructions)
-    picked = select(chunks, budget=room)
+    if stuffed:
+        picked = chunks
+    else:
+        room = PROMPT_BUDGET - reserve(
+            chunks, question=QUESTION, instructions=instructions
+        )
+        picked = select(chunks, budget=room)
+
     prompt = build_prompt(chunks, picked, question=QUESTION, instructions=instructions)
     result = LLMClient().generate(prompt, max_tokens=REPORT_MAX_TOKENS)
 
+    label = f"{instructions.name}-stuffed" if stuffed else instructions.name
+
     assert result.text
-    _save(prompt, chunks, picked, result, instructions)
+    _save(prompt, chunks, picked, result, label)
 
 
 def _stamp() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H-%M")
 
 
-def _save(prompt, chunks, picked, result, instructions):
+def _save(prompt, chunks, picked, result, label):
     ARTIFACTS.mkdir(exist_ok=True)
     model = result.model.replace("/", "-")
-    path = ARTIFACTS / f"{_stamp()}_{instructions.name}_{model}.md"
+    path = ARTIFACTS / f"{_stamp()}_{label}_{model}.md"
 
     cited = find_citations(result.text)
     resolved = [pair for pair in cited if resolve(pair[0], pair[1], chunks)]
@@ -83,7 +95,7 @@ def _save(prompt, chunks, picked, result, instructions):
     tokens = estimate_tokens(prompt)
 
     report = (
-        f"# {instructions.name} · {result.model} (tier {result.tier})\n\n"
+        f"# {label} · {result.model} (tier {result.tier})\n\n"
         f"- finish reason: {result.finish_reason}\n"
         f"- chunks sent: {len(picked)} of {len(chunks)}\n"
         f"- prompt tokens: {tokens}\n"
@@ -97,7 +109,7 @@ def _save(prompt, chunks, picked, result, instructions):
     path.write_text(report, encoding="utf-8")
 
     _ROWS.append(
-        f"| {instructions.name} | {result.model} | {result.tier} "
+        f"| {label} | {result.model} | {result.tier} "
         f"| {len(picked)}/{len(chunks)} | {tokens} "
         f"| {len(cited)} | {len(resolved)} | {result.finish_reason} |"
     )

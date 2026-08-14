@@ -3368,6 +3368,64 @@ Total request is ~19.7K in + 16K out ≈ 36K, far under tier 7's 128K floor.
 **The prompt still lands ~6,000 under the budget**, and that is `select()`'s 50/50
 split wasting side A's unused half — the flaw Step 1 removes. Do not fix it here.
 
+### The measured ceiling of one call — 2026-08-14
+
+*This is the most important result of slice 4, and it changes an assumption into
+a measurement.*
+
+Three runs on the sample pair, all `gemini-3.6-flash` at tier 1, `thinkingLevel:
+HIGH`, `max_tokens = 24_000`:
+
+| | chunks | findings (of 18) | invented | citations resolve | finished |
+|---|---|---|---|---|---|
+| baseline, bare prompt | 60/96 | 10 | 0 | ~50% | no |
+| `CORE` | 65/96 | 9 | 0 | 93% | yes |
+| `FULL` | 63/96 | — | 0 | 49% | **no — cut at §7** |
+| **`CORE`, everything stuffed** | **96/96** | **11** | **0** | **99%** | yes |
+
+**Stuffing the entire fixture — no retrieval at all — bought exactly two
+findings**, and both needed parts the selector had dropped (`pos_class_weight`
+defined and never called; the unfreeze off-by-one). The other **seven** misses
+survived perfect context.
+
+**So the split is measured: retrieval costs ~2, the single call costs ~7.**
+
+**And no prompt fixes the seven.** The literature names the reason:
+
+- **multi-needle decay** — recall falls as the number of facts asked for rises,
+  and reasoning over them is worse than retrieving them
+  ([LangChain](https://www.langchain.com/blog/multi-needle-in-a-haystack))
+- **context rot** — accuracy declines as input grows *even when the evidence is
+  present and well placed*
+- **map-reduce wins** — smaller focused calls keep recall, because one large
+  context full of irrelevant detail causes context confusion even in a
+  200K-token model
+
+The shape of our misses matches exactly: every Type-1 and Type-2 finding (A's
+claims, a short list early in the prompt) was found, and four of the seven misses
+are Type-3 — *things B does that A never mentions*, which requires walking a long
+list late in the context.
+
+> **One call cannot reliably find many things in a long text. The fix is many
+> small calls, not better sentences.**
+
+**This turns the agent from a design choice into a requirement.** `verify` and
+`find_missing` are a loop for this reason, not for elegance. Step 0's ceiling is
+about 11 of 18, and chasing it further would be tuning to one fixture.
+
+### Two prompt rules the runs proved, both general
+
+**1. A forced verdict must be the first thing on its line.** §2 worked every
+time — it demands `YES / NO / CANNOT TELL` and got it right in all runs. §4
+allowed prose first, and in the stuffed run the model wrote *"consistent with"*
+and compared two numbers it had itself declared incomparable two sections
+earlier. Same model, same prompt, different position of the required word.
+
+**2. Free recall stops when the answer feels complete.** §3 says "finish this
+list completely" and the model stopped at 9, then 11. The one-call fix is to walk
+the input by id — *"for every part of B, write a row or `nothing A does not
+mention`"* — so stopping early becomes visible and countable.
+
 ### What Step 0 ships, and where each section goes later
 
 | Section | Step 0 | Later |

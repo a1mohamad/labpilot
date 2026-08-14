@@ -66,5 +66,22 @@ def test_citations_are_pulled_out_of_an_answer():
     ]
 
 
+def test_several_citations_inside_one_bracket_are_all_found():
+    answer = '[B-2 "class SystemConfig:", B-3 "class PathConfig:"]'
+
+    assert find_citations(answer) == [
+        ("B-2", "class SystemConfig:"),
+        ("B-3", "class PathConfig:"),
+    ]
+
+
+def test_a_quote_that_spans_a_wrapped_line_still_resolves():
+    chunks = _chunks("On the Quora benchmark the model\nreaches 0.878 accuracy.")
+
+    found = resolve("B-0", "the model reaches 0.878 accuracy.", chunks)
+
+    assert found.line == 100
+
+
 def test_our_own_example_citation_can_be_parsed():
     assert find_citations(FULL.header) == [("B-17", "count = count + 1")]
