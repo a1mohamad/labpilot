@@ -3557,10 +3557,10 @@ the direction was backwards. **Cutting sections is what lost the findings.**
 - **Decomposition beats one large prompt** — DecomP 50.6% against 36% for CoT on
   the same task ([Decomposed Prompting](https://www.emergentmind.com/topics/decomposed-prompting-decomp)).
 
-### The four prompt fixes — not yet measured
+### The four prompt fixes — BUILT 2026-08-14, not yet measured
 
-In order of expected gain. **None of these is built; all are for the next
-session.**
+*All four are in `instructions.py` now. One of them grew a second half while it
+was being written — see [the A-walk correction](#the-a-walk--the-correction-that-raised-the-prediction).*
 
 **1. Make the enumeration positional, not semantic.** The prompt already sends
 B's full ordered id list (`B-0`…`B-77`). Use it as a checklist instead of asking
@@ -3595,20 +3595,82 @@ behaviour — exactly the position IFScale says gets dropped. It costs budget an
 buys nothing measurable. If removing it loses a finding, put it back; that is a
 cheap test.
 
-**The prediction, so it can be falsified:**
+### The A-walk — the correction that raised the prediction
+
+**Writing fix 1 exposed an error in the diagnosis, and it is worth keeping.**
+The diagnosis filed #9 (threshold tuned on the split it is reported on) and #10b
+(the 12.1-point train/validation gap) as *"needs reasoning over B's own numbers —
+Step 2 work"*. That was wrong. Both are **stated in A**:
+
+```
+A_paper.md:212  "It is selected once, at the end of ... applied unchanged to the test set"
+A_paper.md:232  "is 2.1 points. We take this as evidence that the dropout rates ..."
+```
+
+So they are row findings, not column findings. **The model walked A incompletely
+— it answered some of A's claims and silently skipped others.** The 11 findings
+were never "all of A"; they were "as much of A as the model felt like doing".
+
+That is the same free-recall failure as the B side, so it needs the same fix.
+**Both walks are positional now**, A as well as B. This costs almost nothing —
+A is only 18 parts against B's 78.
+
+**The general lesson:** *"the model found everything A stated"* was never
+measured, only assumed, because the misses were sorted by type instead of
+checked against A one id at a time. **A miss you have not looked up is not
+evidence about the model — it is evidence about your scoring.**
+
+### The revised prediction, so it can be falsified
 
 $$
-11 \;+\; \underbrace{4}_{\#14,\ \#15,\ \#16,\ \#17\ \text{— the B-walk}} \;+\; \underbrace{1}_{\#18\ \text{— the defect pass}} \;=\; 16
+11
+\;+\; \underbrace{2}_{\#9,\ \#10b\ \text{— the A-walk}}
+\;+\; \underbrace{4}_{\#14,\ \#15,\ \#16,\ \#17\ \text{— the B-walk}}
+\;+\; \underbrace{1}_{\#18\ \text{— the defect pass}}
+\;=\; 18
 $$
 
-#9 and #10b stay hard. Both need reasoning over B's *own* reported numbers rather
-than matching against A, and that is honestly Step 2 work. **So 14 is reachable
-in one call and 16 is the ceiling of these four fixes.** If the B-walk lands and
-the score is still 11, this diagnosis is wrong and it gets re-opened.
+18 is the *arithmetic* ceiling, not a forecast. Every remaining miss now has a
+section that asks for it, which is the most a prompt can do; whether the model
+uses it is the open question. **Expect 15–16. Treat anything at or above 14 as
+the fix working, and 11 as the diagnosis being wrong.**
 
-**Measure it stuffed.** `CORE` + B-walk against current `CORE`, both at 96/96
-chunks, both tier 1. Stuffing removes retrieval as a variable, so the only thing
-changing is the prompt.
+**Measure it stuffed.** New `CORE` against the stuffed 11/18 baseline, both at
+96/96 chunks, both tier 1. Stuffing removes retrieval as a variable, so the only
+thing that changed is the prompt.
+
+**Two things to check in the artifact before believing the score:**
+
+1. **Count the walk lines.** B has 78 ids. If the walk has 40 lines, rule 6 was
+   ignored and the fix did not actually run — that is a different failure from
+   the fix not working.
+2. **Read §6 for the banned comparison.** The two F1 numbers must not appear in
+   one sentence. If they do, the material ban failed and the conclusion is still
+   wrong even if coverage improved.
+
+### What was actually built
+
+| Fix | Where |
+|---|---|
+| walk A and walk B, positional | `CORE` §2 and §3; `FULL` §7 rewritten in place |
+| defect scan before the comparison | `CORE` §4, ahead of §5 |
+| prose before the table | the walks *are* the prose — no separate section needed |
+| `_CAUSES` deleted | its useful hints moved inside walk B, where they are used |
+| the comparison ban | rule 4 — a `NO` pair may not share a sentence anywhere below |
+| walk completeness | rule 6, repeated in the closing for recency |
+
+**A conflict had to be resolved, and it is the kind IFScale warns about.** Rule 1
+demands a citation for every statement; rule 6 demands ~78 walk lines, most of
+them saying "nothing". Left alone, the two rules fight. Rule 1 now carries an
+explicit exception for walk lines that report nothing.
+
+**`REPORT_MAX_TOKENS` rose 24,000 → 32,000.** The walks add roughly 96 lines to
+every answer, and `CORE` only finished at 24,000 because its answer was short.
+No further tier is lost — the next binding limit is North Mini Code at 64,000.
+
+Measured cost on the sample pair: instructions 1,846 → 2,052 tokens, reserve
+4,910 → 5,272, chunks selected 65 → 64. **One chunk, for four new sections** —
+deleting `_CAUSES` paid for most of the walks.
 
 ### Two prompt rules the runs proved, both general
 
