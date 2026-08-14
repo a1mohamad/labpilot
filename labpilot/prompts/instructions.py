@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 _PREAMBLE = """\
@@ -100,40 +101,39 @@ reporting    a setting was tuned on the same data the value is reported on;
              part of the results was shown; the value came from an older
              version of the work"""
 
-_SECTIONS: dict[int, str] = {
-    0: """\
+_FULL_SECTIONS = """\
 §0  TASK
     One sentence: what was asked.
-    Say whether this is ONE-WAY or TWO-WAY, and why.""",
-    1: """\
+    Say whether this is ONE-WAY or TWO-WAY, and why.
+
 §1  SIDE A
     What it is, and what it says it achieves. One paragraph.
-    Name the parts of A whose text was not sent to you.""",
-    2: """\
+    Name the parts of A whose text was not sent to you.
+
 §2  SIDE B
     What it is, and what it actually does, in order. One paragraph.
-    Name the parts of B whose text was not sent to you.""",
-    3: """\
+    Name the parts of B whose text was not sent to you.
+
 §3  CORRESPONDENCE
     Do A and B describe the same work?   FULL / PARTIAL / NONE
     PARTIAL: say what overlaps and what does not.
-    NONE: give your reason and STOP. Write no section below this one.""",
-    4: """\
+    NONE: give your reason and STOP. Write no section below this one.
+
 §4  PROBLEMS IN B ALONE
     Problems in B that need no reference at all.
     Each one: what, where, why, and how you know.
-    May be NONE.""",
-    5: """\
+    May be NONE.
+
 §5  REPORTED RESULTS
     One row for each value either side reports:
       value | what produced it | how it was measured | how it was chosen | citation
-    May be NONE. Many comparisons report nothing.""",
-    6: """\
+    May be NONE. Many comparisons report nothing.
+
 §6  CAN THEY BE COMPARED?
     For each pair of values from §5: YES / NO / CANNOT TELL, and why.
     If NO or CANNOT TELL, no difference between those two values may be
-    calculated anywhere below.""",
-    7: """\
+    calculated anywhere below.
+
 §7  DIFFERENCES
     One row each, numbered D1, D2, D3 ...
       id | kind | box | how you know | A citation | B citation |
@@ -141,36 +141,63 @@ _SECTIONS: dict[int, str] = {
     ONE-WAY: first every statement A makes, then every decision B makes that
     A never mentions.
     TWO-WAY: one pass, topic by topic.
-    Finish this list completely before you write anything below it.""",
-    8: """\
+    Finish this list completely before you write anything below it.
+
 §8  RANKING
     The same D numbers, ordered by how much each one could change the result.
-    Say why the top ones are on top.""",
-    9: """\
+    Say why the top ones are on top.
+
 §9  DOES IT ADD UP?
     What §8 would predict, against what §5 actually shows.
     CLOSES / DOES NOT CLOSE / NOT APPLICABLE.
     If it does not close, give every honest reading. Do not pick one.
-    Do not change anything above to make it close.""",
-    10: """\
+    Do not change anything above to make it close.
+
 §10 EXPLANATION
-    The causal story. Use only D numbers from §7. Add no new claims here.""",
-    11: """\
+    The causal story. Use only D numbers from §7. Add no new claims here.
+
 §11 WHAT COULD NOT BE DETERMINED
     What was missing, which parts were not sent to you, and what would
-    settle each open question.""",
-    12: """\
+    settle each open question.
+
 §12 CORRECTIONS
     Concrete changes to B. Each one: the change, where, the expected effect,
-    and your confidence.""",
-    13: """\
+    and your confidence.
+
 §13 NEXT STEP
     One experiment. What it would settle, and what each possible result
-    would mean.""",
-}
+    would mean."""
 
-_FULL_ORDER = tuple(range(14))
-_CORE_ORDER = (0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11)
+_CORE_SECTIONS = """\
+§0  TASK
+    One sentence: what was asked.
+    Say whether this is ONE-WAY or TWO-WAY.
+
+§1  WHAT EACH SIDE IS
+    One paragraph for A, one for B.
+    Name the parts whose text was not sent to you.
+
+§2  REPORTED VALUES
+    One row per value either side reports:
+      value | what produced it | how it was measured | how it was chosen | citation
+    Then, for each pair: can they be compared?  YES / NO / CANNOT TELL, and why.
+    If NO or CANNOT TELL, no difference between them may be calculated below.
+    May be NONE.
+
+§3  DIFFERENCES
+    One row each, numbered D1, D2, D3 ...
+      id | kind | box | how you know | A citation | B citation |
+      direction | size | confidence | one sentence
+    Biggest effect first.
+    Finish this list completely before you write anything below it.
+
+§4  DOES IT ADD UP?
+    What §3 would predict, against what §2 actually shows.
+    CLOSES / DOES NOT CLOSE / NOT APPLICABLE.
+    If it does not close, give every honest reading. Do not pick one.
+
+§5  EXPLANATION
+    The causal story. Use only D numbers from §3. Add no new claims."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,20 +207,21 @@ class Instructions:
     closing: str
 
 
-def _header(order: tuple[int, ...]) -> str:
-    sections = "\n\n".join(_SECTIONS[number] for number in order)
-    return "\n\n".join((_PREAMBLE, _RULES, _LABELS, _CAUSES, f"OUTPUT\n\n{sections}"))
+def _numbers(text: str) -> list[int]:
+    return sorted({int(found) for found in re.findall(r"§(\d+)", text)})
 
 
-def _closing(order: tuple[int, ...]) -> str:
-    names = ", ".join(f"§{number}" for number in order)
-    return (
-        "Now write the report. Write these sections, in this order:\n"
-        f"{names}\n\n"
+def _instructions(name: str, sections: str) -> Instructions:
+    listed = ", ".join(f"§{number}" for number in _numbers(sections))
+
+    header = "\n\n".join((_PREAMBLE, _RULES, _LABELS, _CAUSES, f"OUTPUT\n\n{sections}"))
+    closing = (
+        f"Now write the report. Write these sections, in this order:\n{listed}\n\n"
         "Cite with a part id and an exact quote. Never write a line number.\n"
         "Write NONE for any section with nothing to report."
     )
+    return Instructions(name, header, closing)
 
 
-FULL = Instructions("full", _header(_FULL_ORDER), _closing(_FULL_ORDER))
-CORE = Instructions("core", _header(_CORE_ORDER), _closing(_CORE_ORDER))
+FULL = _instructions("full", _FULL_SECTIONS)
+CORE = _instructions("core", _CORE_SECTIONS)
