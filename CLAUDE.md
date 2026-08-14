@@ -10,6 +10,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
+[Sample Pair](#the-sample-pair--quora_siamese-built-2026-08-14) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -366,8 +367,18 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. Slices 1 and 2 are DONE. Slice 3 is next.**
-**Last updated 2026-08-13 (fourth session). Working branch: `main`.**
+**Phase: Step 0 — walking skeleton. Slices 1 and 2 are DONE. Slice 3 is in
+progress — the sample pair exists, the chunker does not.**
+**Last updated 2026-08-14 (fifth session). Working branch: `feat/retrieval`.**
+
+> **2026-08-14, session 5 — slice 3 was unblocked.** `data/samples/` is no
+> longer empty: the `quora_siamese` pair was built from the user's own Quora
+> Question Pairs research notebooks, sized at ~20,400 tokens so that stuffing is
+> impossible, and carrying 18 real divergences plus a full answer key. See
+> [The sample pair](#the-sample-pair--quora_siamese-built-2026-08-14).
+> `data/samples/` was excluded from ruff and pre-commit in the same commit, and
+> work moved off `main` onto `feat/retrieval` per the branch-per-slice rule.
+> **No `labpilot/` source changed. The chunker is next.**
 
 > **2026-08-13, session 4 — no code, by design: the RAG gap was taught and the
 > retrieval design was decided.** Lessons 1 (what RAG is) and 2 (chunking) were
@@ -746,15 +757,8 @@ was handed the wrong two paragraphs. That contrast is the point of building it.
 why it exists*, and *chunking*. Embeddings, cosine similarity, vector databases
 and reranking are taught at Step 1, each one immediately before it is built.
 
-**One thing blocks it: `data/samples/` is empty** (only `.gitkeep`). Before any
-code runs, put a real pair there. Recommended shape, to keep slice 3 about
-retrieval rather than parsing:
-
-- **side A** — a paper as **plain text or Markdown**, not PDF. PDF extraction is
-  a Step 1 problem.
-- **side B** — **one short Python file**, not a repo. Repo walking is also Step 1.
-- Pick a pair where the answer is already known — one of the user's own notebooks
-  against the paper it came from. A wrong output is then obvious immediately.
+**~~One thing blocks it: `data/samples/` is empty.~~ UNBLOCKED 2026-08-14 —
+see [The sample pair](#the-sample-pair--quora_siamese-built-2026-08-14).**
 
 **Two loose ends carried into the next session:**
 
@@ -763,6 +767,79 @@ retrieval rather than parsing:
 - The weekly smoke run should print each raw response body **once**, to settle
   which of tiers 2, 5 and 6 are thinking models — see
   [Thinking models](#thinking-models--the-count-is-at-least-four-of-seven).
+
+### The sample pair — `quora_siamese`, built 2026-08-14
+
+`data/samples/quora_siamese/` holds three files. **The pair is the measuring
+instrument for the whole of slice 3** — without a known answer there is no way
+to tell a working chunker from a broken one.
+
+| File | ~tokens | What it is |
+|---|---|---|
+| `A_paper.md` | 3,900 | side A, the reference. **Fictional**, written for this fixture |
+| `B_train.py` | 16,500 | side B, the implementation. **Real code**, flattened from `research-notebooks/Quora Questions Pairs/research/` |
+| `EXPECTED.md` | — | the answer key. **Never ingested** |
+
+**Side B is real and side A is not, and that asymmetry is deliberate.** The code
+is the user's own — `02-train.ipynb` plus `model_architecture.py` merged into one
+file, values, comments and flaws untouched — and its `DATA` / `MODEL` /
+`RUN SUMMARY` docstring is transcribed from the notebook's stored outputs (MLflow
+run `LSTM_attention-MultiHead-Bahdanau-v10`). The paper has to be invented,
+because a real paper never lines up with a reimplementation cleanly enough to
+place claims that *match*, claims that *contradict*, and claims the code never
+addresses at all.
+
+**Total ≈ 20,400 tokens against `INPUT_BUDGET` of 20,000.** Stuffing is
+impossible by construction, so retrieval must work. That was the sizing target,
+not an accident.
+
+**18 divergences, in the three kinds the similarity matrix reads:**
+
+| Kind | Count | The one that matters |
+|---|---|---|
+| stated and **wrong** (rows, `verify`) | 6 | the paper pools `Σ αᵢhᵢ` over hidden states; `B_train.py:584-586` pools the **projected** features, and the code's own comment says so |
+| stated and **absent** (rows, `verify`) | 5 | `pos_class_weight()` is defined at `:544` and **never called** |
+| **unstated** but present (columns, `find_missing`) | 7 | stopword masking — `_build_stop_mask` at `:433` and `_encode` at `:661` |
+
+Plus one latent bug findable from a single artifact: a question of only
+stopwords masks to all zeros, so softmax over a constant returns uniform weights
+and the sentence encodes to the zero vector.
+
+**Three properties worth preserving if the pair is ever replaced:**
+
+1. **The scattered fact.** The stopword finding needs two chunks from two
+   classes, ~230 lines apart. One retrieved chunk cannot explain it.
+2. **Honest distractors.** `TrainConfig` configures four LR schedulers and only
+   `ReduceLROnPlateau` is live, so any "learning rate schedule" query pulls back
+   dead constants. Nothing was planted — the code really is like that.
+3. **The two numbers are not comparable.** Paper 0.851 F1 on a clean test split;
+   code 0.8262 on a validation split whose threshold was tuned on itself. A
+   naive system subtracts them and reports "2.5 points behind". **The correct
+   answer refuses the subtraction**, and the per-epoch threshold sequence
+   (0.4358 → 0.3970 → 0.4825 → 0.3893 → 0.4631 → 0.5787) is the evidence.
+
+**The arithmetic deliberately does not close.** The four defects predict ≈ −8 F1
+if the paper's ablations composed additively; the observed gap is ≈ 2.5. A good
+report offers the three honest readings — ablations overlap, the code's number
+is inflated, the code has advantages the paper lacks — instead of asserting one.
+
+**Chunker coverage.** The pair exercises every path on purpose: 3 markdown
+sections under the ~30-token minimum (**merge**), `§4.3` at ~656 tokens
+(**second-pass split** with repeated header), 11 AST units over the 510 cap,
+largest `class Trainer` at ~5,300 tokens, and `Trainer.fit` as the training loop
+that must stay whole.
+
+**`data/samples/` is excluded from ruff and from pre-commit.** The fixture is
+data, not source: `ruff check .` would fail CI on flaws that are the point, and
+`ruff-format` would move the exact lines `EXPECTED.md` cites. The exclusion is
+in both `ruff.toml` and `.pre-commit-config.yaml` and the two must stay in step.
+**It does not affect ingest** — the chunker still reads these files normally.
+
+**A process lesson from building it.** The first version invented the run
+summary, because the notebook dump extracted cell *source* and skipped cell
+*outputs*. The real numbers were in the file the whole time. **When a notebook is
+the source of truth, read its outputs, not only its code** — stored outputs are
+the only record of what actually happened.
 
 ---
 
