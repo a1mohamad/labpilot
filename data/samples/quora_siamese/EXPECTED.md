@@ -35,7 +35,7 @@ deliberate — see *Stuff, do not retrieve* in CLAUDE.md.
 | Section under the ~30 minimum → **merge**, never store alone | `# title`, `## 4. Method`, `## 5. Experimental Setup` |
 | Python AST split | `B_train.py` parses clean |
 | AST unit over the 510 cap → split per method, then per block | **11 units**, largest is `class Trainer` at ~5,300 tokens |
-| Training loop must stay whole | `Trainer.fit`, lines 1172–1300 |
+| Training loop must stay whole | `Trainer.fit`, lines 1189–1317 |
 
 ---
 
@@ -45,11 +45,11 @@ deliberate — see *Stuff, do not retrieve* in CLAUDE.md.
 
 | # | Paper says | Code does | Where |
 |---|---|---|---|
-| 1 | attention returns $\sum_i \alpha_i h_i$, a weighted sum of the **encoder hidden states**; §4.3 states explicitly that the projection is for scoring only | pools `masked_proj`, the **projected** features. The code's own comment admits it | `B_train.py:584-586` |
-| 2 | gradient clipping at global norm **1.0** (§5.2) | `CLIP_NORM = 1.5` | `B_train.py:221` |
-| 3 | label smoothing **ε = 0.1** (§4.5) | `LABEL_SMOOTHING = 0.05` | `B_train.py:188` |
-| 4 | weight decay **0.01** (§5.2) | `WEIGHT_DECAY = 1e-3` | `B_train.py:240` |
-| 5 | embeddings unfrozen from **epoch 3**, i.e. after 2 frozen epochs (§5.2) | `UNFREEZE_EPOCH = 3` with a 0-based loop, so it fires after **3** frozen epochs | `B_train.py:239`, `1190-1194` |
+| 1 | attention returns $\sum_i \alpha_i h_i$, a weighted sum of the **encoder hidden states**; §4.3 states explicitly that the projection is for scoring only | pools `masked_proj`, the **projected** features. The code's own comment admits it | `B_train.py:601-603` |
+| 2 | gradient clipping at global norm **1.0** (§5.2) | `CLIP_NORM = 1.5` | `B_train.py:238` |
+| 3 | label smoothing **ε = 0.1** (§4.5) | `LABEL_SMOOTHING = 0.05` | `B_train.py:205` |
+| 4 | weight decay **0.01** (§5.2) | `WEIGHT_DECAY = 1e-3` | `B_train.py:257` |
+| 5 | embeddings unfrozen from **epoch 3**, i.e. after 2 frozen epochs (§5.2) | `UNFREEZE_EPOCH = 3` with a 0-based loop, so it fires after **3** frozen epochs | `B_train.py:256`, `1207-1211` |
 
 **#1 is the flagship.** It is architectural, it is subtle, and the paper's §7
 ablation prices it at −1.4 F1. A correct report must name it and cite the line.
@@ -58,11 +58,11 @@ ablation prices it at −1.4 F1. A correct report must name it and cite the line
 
 | # | Paper says | Code | Where to look |
 |---|---|---|---|
-| 6 | positive class weighted by $w_+ = N_-/N_+ \approx 1.71$ (§4.5) | `pos_class_weight()` is **defined and never called**. The criterion is plain `BCEWithLogitsLoss` inside `BCEWithLabelSmoothing` | defined `B_train.py:544`, criterion built `B_train.py:1365` |
-| 7 | linear warmup over 2 epochs, then cosine decay to 1e-6 (§5.2) | `ReduceLROnPlateau`. **No warmup anywhere** | `B_train.py:241` |
-| 8 | three splits — train / dev / **test**, and the test split is never used for tuning (§5.1) | one `train_test_split` at 0.9. There is **no test set** | `B_train.py:238`, `1315-1321` |
-| 9 | threshold chosen once on **dev**, applied unchanged to **test** (§5.4) | threshold re-tuned on the validation set inside `evaluate()`, then the same set's metrics recomputed at that threshold | `B_train.py:1129-1130` |
-| 10 | every number is the mean of **3 seeds**, deterministic kernels on (§5.3) | one seed, `IS_DETERMINISTIC = False`, `cudnn.benchmark = True` | `B_train.py:62`, `299` |
+| 6 | positive class weighted by $w_+ = N_-/N_+ \approx 1.71$ (§4.5) | `pos_class_weight()` is **defined and never called**. The criterion is plain `BCEWithLogitsLoss` inside `BCEWithLabelSmoothing` | defined `B_train.py:561`, criterion built `B_train.py:1382` |
+| 7 | linear warmup over 2 epochs, then cosine decay to 1e-6 (§5.2) | `ReduceLROnPlateau`. **No warmup anywhere** | `B_train.py:258` |
+| 8 | three splits — train / dev / **test**, and the test split is never used for tuning (§5.1) | one `train_test_split` at 0.9. There is **no test set** | `B_train.py:255`, `1332-1338` |
+| 9 | threshold chosen once on **dev**, applied unchanged to **test** (§5.4) | threshold re-tuned on the validation set inside `evaluate()`, then the same set's metrics recomputed at that threshold | `B_train.py:1146-1147` |
+| 10 | every number is the mean of **3 seeds**, deterministic kernels on (§5.3) | one seed, `IS_DETERMINISTIC = False`, `cudnn.benchmark = True` | `B_train.py:79`, `316` |
 | 10b | the train-to-test F1 gap is **2.1 points**, and the dropout rates are therefore sufficient (§6) | the real gap is **12.1 points** — train F1 0.9439 against val F1 0.8226 at epoch 15. The paper even names the cause: it appears once the embedding matrix becomes trainable, which is exactly what `UNFREEZE_EPOCH` does | run summary in the module docstring |
 
 **#9 is the one a weak system will miss**, because nothing is named "wrong" —
@@ -74,13 +74,13 @@ The paper never mentions any of these. They exist only in the code.
 
 | # | The code does | Where |
 |---|---|---|
-| 11 | **masks every NLTK stopword out of the attention** — `not`, `what`, `how`, `why`, `is`, `from`, `to` can never be attended to | `_build_stop_mask`, `B_train.py:433-453` **and** `_encode`, `B_train.py:661-662` |
-| 12 | also masks punctuation and `<UNK>`, so out-of-vocabulary tokens are invisible to attention | same, `B_train.py:435-453` |
+| 11 | **masks every NLTK stopword out of the attention** — `not`, `what`, `how`, `why`, `is`, `from`, `to` can never be attended to | `_build_stop_mask`, `B_train.py:450-470` **and** `_encode`, `B_train.py:678-679` |
+| 12 | also masks punctuation and `<UNK>`, so out-of-vocabulary tokens are invisible to attention | same, `B_train.py:452-470` |
 | 13 | appends **cosine similarity** as a 3073rd interaction feature; the paper's $r$ has only $4d$ dimensions | `QuoraSiameseClassifier.forward` |
-| 14 | vocabulary capped at 20,000 with a whitespace tokenizer, so OOV rate is non-trivial and every OOV is then masked | `B_train.py:132` |
+| 14 | vocabulary capped at 20,000 with a whitespace tokenizer, so OOV rate is non-trivial and every OOV is then masked | `B_train.py:149` |
 | 15 | drops rows whose questions are empty *after* the punctuation-spacing regex | `QuoraPreproccesor.preprocess_df` |
 | 16 | `emb_norm`, `lstm_norm`, `attn_norm` are constructed but every layer-norm flag is `False` — three dead modules | `QuoraSiameseClassifier.__init__` |
-| 17 | `"requires_grad": False` is passed as an **optimizer param-group key**, where it does nothing. Freezing actually happens via `weight.requires_grad` | `B_train.py:1377` |
+| 17 | `"requires_grad": False` is passed as an **optimizer param-group key**, where it does nothing. Freezing actually happens via `weight.requires_grad` | `B_train.py:1394` |
 
 **#11 is the scattered fact.** The stopword list is built in the tokenizer and
 applied in the model — two locations, ~230 lines apart. **One retrieved chunk
@@ -94,7 +94,7 @@ multi-query retrieval matter.
     `MASK_FILL_NUM = -1e10`, softmax over a constant vector returns a **uniform**
     distribution, and the context vector becomes the mean of `proj * 0`, i.e.
     the zero vector. The question silently encodes to nothing.
-    `B_train.py:204`, `584-586`, `661-662`.
+    `B_train.py:221`, `601-603`, `678-679`.
 
     This is findable with **one** artifact — it is wrong against general
     programming knowledge, not against the paper. It belongs to `find_bugs`,
@@ -154,7 +154,7 @@ them rather than pretending to certainty:
 
 ### The next experiment to propose
 
-**Remove the stopword mask** — one line, `B_train.py:661-662` — and retrain with
+**Remove the stopword mask** — one line, `B_train.py:678-679` — and retrain with
 nothing else changed. It is the cheapest single edit, it has the largest
 predicted effect, and it is the only one that tests a *hypothesis about the
 model* rather than a hyperparameter value.
