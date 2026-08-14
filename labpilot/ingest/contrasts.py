@@ -23,7 +23,7 @@ class Chunk:
     side: Side
     artifact_id: str
     chunk_index: int
-    header: str
+    header: str = ""
     embedding_model: str | None = None
     dim: int | None = None
 
