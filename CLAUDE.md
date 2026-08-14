@@ -11,6 +11,8 @@ Read the two rule sections first — they change *how* everything below is done.
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
 [Sample Pair](#the-sample-pair--quora_siamese-built-2026-08-14) ·
+[Slice 3 Result](#the-first-real-answer--measured-2026-08-14) ·
+[Next: Slice 4](#where-to-pick-up--slice-4-the-prompt) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -371,6 +373,24 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 progress — the sample pair exists, the chunker does not.**
 **Last updated 2026-08-14 (fifth session). Working branch: `feat/retrieval`.**
 
+> **2026-08-14, session 5 (end) — SLICE 3 IS DONE. The whole chain ran and a
+> real model answered.** `labpilot/ingest/` (the chunker, permanent),
+> `labpilot/retrieval/` (the dumb selector, throwaway) and
+> `labpilot/prompts/` (`build_context`) all exist. A smoke test runs
+> files → chunks → selection → `LLMClient` and saves the answer.
+> **126 unit tests, 8 smoke tests, ruff clean. Both branches level.**
+> The first real answer scored **10 of 18 findings, zero hallucinations, but
+> half its line citations were wrong and its final conclusion was false** — see
+> [The first real answer](#the-first-real-answer--measured-2026-08-14).
+> **Next: slice 4, the prompt.** Start at
+> [Where to pick up](#where-to-pick-up--slice-4-the-prompt).
+>
+> **Progress, honestly measured: Step 0 ≈ 70%. The whole project ≈ 10%.**
+> Steps 1–4 have not started: no database, no agent, no UI, no deployment, no
+> fine-tuning dataset. The *design* is much further ahead than the code, which
+> lowers risk but ships nothing. CLAUDE.md's own warning — *"one month may be
+> optimistic"* — is now confirmed by measurement.
+
 > **2026-08-14, session 5 (later) — the chunker is built and measured.**
 > `labpilot/ingest/` ships seven modules; `estimate_tokens` moved out of
 > `labpilot/llm/_text.py` to `labpilot/tokens.py` now that two packages read it.
@@ -591,8 +611,8 @@ six-provider client written in one go has six places to be wrong at once.
 
 1. ~~**Tier 1 alone returns text**~~ ✅ **done 2026-08-10**
 2. ~~The fallback loop + 429 backoff, all seven tiers~~ ✅ **done 2026-08-12**
-3. Dumb retrieval — read one hardcoded paper + code pair from `data/samples/` ← **next**
-4. The single-pass comparison prompt
+3. ~~Dumb retrieval — read one hardcoded paper + code pair from `data/samples/`~~ ✅ **done 2026-08-14**
+4. The single-pass comparison prompt ← **next**
 5. A bare FastAPI endpoint
 
 **What slice 1 shipped.** `labpilot/llm/` split by reason-to-change, not by size:
@@ -740,7 +760,118 @@ recorded above, but retrieval does not exist yet. Do not build them now.
 Google pool. If Google goes down, promote Mistral so the chain does not spend
 both Google attempts before reaching an independent quota.
 
-### Where to pick up — slice 3, dumb retrieval
+### Slice 3 — DONE 2026-08-14
+
+**What shipped.** Three packages, and the seam between them finally closed.
+
+| Package | Fate | Holds |
+|---|---|---|
+| `labpilot/ingest/` | **permanent** | `Piece`, `Chunk`, three splitters, `chunker.py` |
+| `labpilot/retrieval/` | **throwaway** | `select()` — a hardcoded rule, deleted at Step 1 |
+| `labpilot/prompts/` | grows in slice 4 | `build_context()` — chunks → one string |
+| `labpilot/tokens.py` | permanent | `estimate_tokens`, moved out of `llm/_text.py` |
+
+**The selector, in one sentence:** split the budget in half, then take chunks
+from the top of each side until that half is full. No scoring, no question, no
+relevance. It is scaffolding and it is *supposed* to be bad.
+
+**Two flaws in it, both deliberate and both left alone:**
+
+- **It wastes budget.** Fixed halves. On the sample pair it sent 14,273 tokens
+  of a 20,000 budget, because side B filled its 10,000 while side A needed only
+  4,273. The leftover is not shared.
+- **It picks by position, not meaning.** It covered three of the four known bug
+  lines *by luck* — they sit early in the file — and missed the fourth at line
+  1146 entirely. Move a bug to line 1400 and it disappears.
+
+That second flaw **is the argument for Step 1**, now demonstrated rather than
+asserted.
+
+**The pipeline test.** `tests/unit/test_pipeline.py` runs the real chain with no
+mocks — chunk both files, select, and check that the prompt fits the budget,
+both sides survive, every chunk is still checkable against its file, and the
+same input gives the same answer twice.
+
+#### The first real answer — measured 2026-08-14
+
+Tier 1 (`gemini-3.6-flash`) answered a bare prompt: context plus one question,
+**no instructions at all**. Scored against `EXPECTED.md`:
+
+| | |
+|---|---|
+| findings **correct** | **10 of 18** |
+| **hallucinations** | **0** — every claim pointed at code that exists |
+| line citations correct | **about half** |
+| overall, honestly | **5 / 10** |
+
+**It found the two hardest ones:** pooling the projected features, and the
+stopword mask — including *both halves* of the scattered fact, the tokenizer and
+the model.
+
+**Three failures, and each one sets a task for slice 4:**
+
+1. **It cannot count lines.** Given a header saying `lines 579-604`, it invented
+   a plausible number inside that range and was wrong about half the time —
+   `197` for a line that is at `205`, `251` for `257`. **A model sees text, not
+   line numbers.** So the citation rule cannot work by hoping. Slice 4 must
+   either number the lines inside the prompt, or require the model to **quote
+   the chunk header verbatim** instead of inventing a number.
+2. **Its final conclusion was false, and it is the exact trap the fixture was
+   built to set.** It summed the paper's ablations, produced a range, and said
+   the code's 0.822–0.826 *"accurately reflects these compound errors."* But
+   0.851 is a clean **test** score and 0.826 is a **validation** score with the
+   threshold tuned on itself. They are not comparable. It subtracted two
+   different things and declared agreement. Slice 4 must instruct it to ask
+   *"are these two numbers measured the same way?"* before comparing them.
+3. **It walked past evidence it was given.** Seven of the eight missed findings
+   were **in the text sent to it** — most importantly the 12-point
+   train-vs-validation gap sitting in the docstring. Only one miss (#9, the
+   threshold leak at line 1146) was the selector's fault.
+
+**The one-line summary worth remembering: it is good at *spotting* differences
+and bad at *judging* them.** A user reading the last section would have believed
+something false. That is why slice 4 is a whole slice and not a paragraph.
+
+**Where answers are saved.** `artifacts/` (git-ignored), one timestamped
+Markdown file per run holding the model, tier, chunk count, which tiers failed,
+the answer, **and the exact prompt that produced it**. Keep the prompt — when an
+answer is bad, the chunks are usually the cause, and without the prompt there is
+nothing to inspect.
+
+**`max_tokens` needs ~8000, not 2000.** At 2000 the answer was cut mid-sentence,
+because Gemini spends part of the budget thinking.
+
+### Where to pick up — slice 4, the prompt
+
+*Written 2026-08-14, at the end of session 5.*
+
+> Turn the bare context into a real comparison prompt.
+
+**Everything below the prompt already works.** Do not touch `ingest/` — the
+chunker is permanent and measured. Do not improve `retrieval/select()` — it is
+deleted at Step 1, and making it better would *hide* the failure that motivates
+Step 1.
+
+**The four things slice 4 must produce**, in the order they matter:
+
+1. **Instructions.** What the tool is, the five things every report must contain
+   (bugs · design differences · missing details · the causal story · the next
+   experiment), and the output shape.
+2. **A citation mechanism that actually works** — see failure 1 above. This is
+   not a sentence in the prompt; it is a design decision about how chunks are
+   rendered.
+3. **A rule about comparing numbers** — see failure 2 above. Check that two
+   numbers were measured the same way before subtracting them.
+4. **Real `max_tokens` values**, and the `thinking` field on `GeminiProvider`
+   that [Thinking models](#thinking-models--the-count-is-at-least-four-of-seven)
+   defers to this slice. Get the exact REST field name from `<> Get code` in AI
+   Studio, not from memory.
+
+**Measure it the same way.** Re-run the smoke test, score the answer against
+`EXPECTED.md`, and compare with the 5/10 baseline above. **The baseline is the
+point** — without it there is no way to tell whether the prompt helped.
+
+### Where to pick up — slice 3, dumb retrieval *(closed — kept for the reasoning)*
 
 *Written 2026-08-12, at the end of session 3.*
 
@@ -1070,13 +1201,36 @@ seam rule is enforced by this, not by good intentions.
 ```
 tests/
     conftest.py           shared fixtures and the --run-smoke flag
-    unit/                 no I/O, no network; mirrors labpilot/ structure
+    unit/                 no network, no database; mirrors labpilot/ structure
     integration/          real Supabase / real pgvector, no live LLM
     api/                  FastAPI TestClient against the endpoints
-    smoke/                real providers over the network; opt-in only
+    smoke/                anything that spends API quota; opt-in only
 ```
 
 Folders are created when their first real test exists, not before.
+
+**The split is by *cost*, not by scope.** *(Clarified 2026-08-14.)* This is not
+the textbook meaning — in the usual sense, a test that runs the chunker, the
+selector and `LLMClient` together is an *integration* test. Here it lives in
+`smoke/` for one reason: **it spends a request from a 50/day pool, so it must
+never run by default.** Ask *"what does this test cost, and what must be
+switched on for it to pass?"*, not *"how many layers does it touch?"*
+
+Two consequences:
+
+- **`unit/` may read a committed sample file.** The old wording said "no I/O",
+  which `test_chunker.py` broke on day one. Reading a fixture that lives in the
+  repo is neither slow nor an outside service. **No network and no database** is
+  the real rule, and all 126 unit tests still run in under half a second.
+- **A test that crosses packages sits at the top of `unit/`**, not inside a
+  package folder — `tests/unit/test_pipeline.py`. The "mirrors `labpilot/`"
+  rule applies to tests of one module; a test of the *seam between* modules
+  mirrors nothing.
+
+**Never name a test after a slice number.** `test_slice3_chain.py` was written
+and renamed the same day. Slice numbers are temporary scaffolding and the file
+outlives them; in a month "slice 3" means nothing while "the pipeline answers"
+still does. Name a test by **what it checks**.
 
 ### Commits
 **Conventional Commits** — `<type>: <short imperative description>`, lowercase,
@@ -1104,6 +1258,21 @@ portfolio repo, and a PR is also the only way to run a multi-agent code review.
   creation, `requirements.txt`.
 - Do not let a branch live for weeks. One slice, a few days, merge, delete. A
   long branch drifts from `main` and merging becomes painful.
+
+**Never commit on `main`. Only merge into it.** *(Learned the hard way
+2026-08-14.)* CLAUDE.md was being kept current on `main` by copying the file
+across — `git checkout feat/retrieval -- CLAUDE.md` plus a separate commit on
+`main`. That creates an **independent** commit touching the same lines, so git
+sees two unrelated edits to one region and stops with a conflict. It has no way
+to know both came from the same source.
+
+The fix is a rule, not a technique: **edit every file on the branch; `main`
+receives and never writes.** Then the two sides can never disagree, and the
+merge is a fast-forward.
+
+*(The `--squash` was not the cause. The double editing was. `--no-ff` was used
+in the end so all 26 commits kept their own messages on `main` — a deliberate
+override of the squash rule above, at the user's request.)*
 
 ### Dependencies
 `requirements.txt` holds **direct dependencies only**, with pinned versions —
@@ -2331,6 +2500,31 @@ neutral — it is harmful**, because a bad retriever can hide the buggy line.
 ≲ 8,000 tokens (one notebook)   →  send all of it. No retrieval.
 ≳ 20,000 tokens (a repo, two big notebooks)  →  retrieve
 ```
+
+**Those two numbers left a hole, and the hole is the interesting part.**
+*(Fixed 2026-08-14, after the user asked what happens between 8,000 and
+20,000.)* The real test is not the size of a file. It is:
+
+$$
+t(A) + t(B) + t(\text{instructions}) + T_{\text{out}} \;\le\; B_{\text{in}}
+\;\Longrightarrow\; \textbf{stuff}
+$$
+
+**8,000 was only a shortcut for the common two-artifact case** — two files of
+8,000 plus instructions still fit under 20,000. So the middle zone depends on
+how many artifacts there are, not on how big one of them is:
+
+| Artifacts | Each | Total | Do |
+|---|---|---|---|
+| one | 12,000 | 12,000 | **stuff** — it fits |
+| two | 12,000 | 24,000 | **retrieve** — it does not |
+| two | 8,000 | 16,000 | **stuff** |
+
+**Add up everything you would send. If it fits, send it all.** Size thresholds
+are a shortcut, never the rule.
+
+*Already true in the code:* the dumb selector stuffs by accident — when a side
+is smaller than its half of the budget, nothing is dropped.
 
 Sizing rule, using the existing `chars / 3` estimator: 4,000 lines of Python
 ≈ 160,000 chars ≈ **53,000 tokens**, so two such notebooks ≈ 107,000 tokens —
