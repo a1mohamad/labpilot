@@ -67,11 +67,21 @@ def test_the_header_names_the_source_and_the_lines(code_chunks):
     assert f"lines {chunk.start_line}-{chunk.end_line}]" in chunk.header
 
 
-def test_text_stays_inside_the_lines_it_cites(code_chunks):
-    source = (SAMPLES / "B_train.py").read_text(encoding="utf-8").splitlines()
-    for chunk in code_chunks:
+@pytest.mark.parametrize("name", ["B_train.py", "A_paper.md"])
+def test_text_is_a_verbatim_slice_of_the_lines_it_cites(name):
+    path = SAMPLES / name
+    source = path.read_text(encoding="utf-8").splitlines()
+    side = "B" if name.endswith(".py") else "A"
+    for chunk in chunk_file(path, side=side, artifact_id="quora"):
         cited = "\n".join(source[chunk.start_line - 1 : chunk.end_line])
-        assert chunk.text.splitlines()[0] in cited
+        assert chunk.text in cited
+
+
+def test_a_merged_chunk_keeps_the_blank_lines_between_its_parts():
+    chunks = chunk_text(CODE, source="tiny.py", side="B", artifact_id="t")
+    lines = CODE.splitlines()
+    merged = next(c for c in chunks if "class Holder" in c.text)
+    assert merged.text == "\n".join(lines[merged.start_line - 1 : merged.end_line])
 
 
 def test_an_oversized_definition_is_numbered_into_parts(code_chunks):
