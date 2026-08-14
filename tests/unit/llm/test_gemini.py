@@ -69,6 +69,13 @@ def test_complete_sends_expected_request(provider):
 
 
 @responses.activate
+def test_the_finish_reason_reaches_the_result(provider):
+    responses.post(URL, json=ok_body(finish_reason="MAX_TOKENS"))
+
+    assert provider.complete("hi").finish_reason == "MAX_TOKENS"
+
+
+@responses.activate
 def test_complete_joins_every_part_of_the_answer(provider):
     responses.post(URL, json=ok_body(parts=("first ", "second")))
 

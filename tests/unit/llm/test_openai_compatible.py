@@ -62,6 +62,13 @@ def test_complete_sends_expected_request(provider):
     assert body["max_tokens"] == 16
 
 
+@responses.activate
+def test_the_finish_reason_reaches_the_result(provider):
+    responses.post(URL, json=ok_body(finish_reason="length"))
+
+    assert provider.complete("hi").finish_reason == "length"
+
+
 @pytest.mark.parametrize("status", [401, 429, 500])
 @responses.activate
 def test_complete_raises_llm_error_on_bad_status(provider, status):
