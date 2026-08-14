@@ -1,3 +1,7 @@
+# Keep in step with extend-exclude in ruff.toml: sample artifacts are fixture
+# data and must reach the chunker exactly as written.
+exclude: ^data/samples/
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.2
