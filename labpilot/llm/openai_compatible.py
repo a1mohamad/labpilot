@@ -11,6 +11,7 @@ from labpilot.llm.errors import LLMError
 @dataclass(frozen=True, slots=True, kw_only=True)
 class OpenAICompatibleProvider(HTTPProvider):
     account_env: str | None = None
+    extra_body: dict[str, object] | None = None
 
     def _endpoint(self) -> str:
         if self.account_env is None:
@@ -28,12 +29,16 @@ class OpenAICompatibleProvider(HTTPProvider):
         }
 
     def _payload(self, prompt: str, max_tokens: int) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens,
             "temperature": self.temperature,
         }
+        if self.extra_body:
+            payload.update(self.extra_body)
+
+        return payload
 
     def _extract_message(self, body: dict) -> tuple[str, str, str]:
         try:
@@ -54,7 +59,9 @@ class OpenAICompatibleProvider(HTTPProvider):
 
     def _usage_summary(self, body: dict) -> str:
         usage = body.get("usage", {})
+        details = usage.get("completion_tokens_details") or {}
         return (
             f"{usage.get('prompt_tokens', '?')} in / "
-            f"{usage.get('completion_tokens', '?')} out tokens"
+            f"{usage.get('completion_tokens', '?')} out / "
+            f"{details.get('reasoning_tokens', '?')} reasoning tokens"
         )
