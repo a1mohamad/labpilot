@@ -3,12 +3,11 @@ from __future__ import annotations
 from bisect import bisect_left
 
 from labpilot.ingest.contracts import Piece
-from labpilot.ingest.defaults import CHUNK_OVERLAP, CHUNK_SIZE, MAX_CHUNK_TOKENS
+from labpilot.ingest.defaults import CHUNK_OVERLAP, CHUNK_SIZE, MAX_CHARS
 from labpilot.tokens import CHARS_PER_TOKEN
 
 SEPARATORS: tuple[str, ...] = ("\n\n\n", "\n\n", "\n", " ")
 
-MAX_CHARS = MAX_CHUNK_TOKENS * CHARS_PER_TOKEN
 TARGET_CHARS = CHUNK_SIZE * CHARS_PER_TOKEN
 OVERLAP_CHARS = CHUNK_OVERLAP * CHARS_PER_TOKEN
 
