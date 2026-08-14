@@ -6,7 +6,7 @@ from labpilot.prompts.context import build_context
 from labpilot.prompts.instructions import Instructions
 from labpilot.tokens import estimate_tokens
 
-REPORT_MAX_TOKENS = 24_000
+REPORT_MAX_TOKENS = 32_000
 PROMPT_BUDGET = 26_000
 
 
