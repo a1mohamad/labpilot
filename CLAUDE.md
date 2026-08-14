@@ -371,6 +371,14 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 progress — the sample pair exists, the chunker does not.**
 **Last updated 2026-08-14 (fifth session). Working branch: `feat/retrieval`.**
 
+> **2026-08-14, session 5 (later) — the chunker is built and measured.**
+> `labpilot/ingest/` ships seven modules; `estimate_tokens` moved out of
+> `labpilot/llm/_text.py` to `labpilot/tokens.py` now that two packages read it.
+> **110 unit tests, ruff clean.** Three design decisions were changed *by
+> measurement* rather than by argument — see
+> [What the chunker actually shipped](#what-the-chunker-actually-shipped--2026-08-14).
+> **Only the dumb selector is left in slice 3.**
+
 > **2026-08-14, session 5 — slice 3 was unblocked.** `data/samples/` is no
 > longer empty: the `quora_siamese` pair was built from the user's own Quora
 > Question Pairs research notebooks, sized at ~20,400 tokens so that stuffing is
@@ -2408,7 +2416,9 @@ gives `P = 0` for any block at any size.
 block.** A training loop cut between `loss.backward()` and the absent
 `optimizer.zero_grad()` hides the bug in both halves.
 
-Overlap costs `o/(s-o)` extra chunks — 25% at these numbers — and means the same
+Overlap costs a factor of `s/(s-o)` extra chunks — **+11%** at `s=500, o=50`
+*(corrected 2026-08-14: this file previously said 25%, which is the figure for
+`o=100`, not for the `o=50` it pins two paragraphs above)* — and means the same
 text can be retrieved twice. **Deduplicate before building the prompt.**
 
 ### Signal dilution — why big chunks retrieve badly
@@ -2506,9 +2516,17 @@ actual task, not against the reason they were first rejected.
 **Where the empty label really comes from.** `_recursive` is reached three ways,
 and only two of them lack a name: an unknown extension, and a Python file that
 fails `ast.parse`. The common third case — the second-pass split of an oversized
-function or section — **inherits the parent's label**, which is why
-`split_recursive` takes a `label` argument and emits `part i/n`. So the fallback
-splitter is far less anonymous than it first appears.
+function or section — **inherits the parent's label** and gains `part i/n`, so
+the fallback splitter is far less anonymous than it first appears.
+
+**But the splitter does not do the labelling.** *(Corrected 2026-08-14 — an
+earlier version of this line said `split_recursive` takes a `label` argument.)*
+`split_recursive` receives only a string and cannot know where it came from. The
+chunker called it, so the chunker knows the parent, and only the chunker knows
+the total needed for `part i/n` — it counts the returned list. **The splitter
+cuts; the chunker names.** Measured on `B_train.py`, exactly three chunks end up
+with no label, and all three are module-level code: the docstring and imports,
+the config instantiation block, and the `if __name__` guard.
 
 ### Small-to-big — Step 1, but keep it possible
 
@@ -2553,6 +2571,73 @@ back to recursive splitting instead of raising.
 
 **Do not tune `s` by feeling.** Change it, re-run, and look at whether the right
 chunk comes back. Chunking is measured, not guessed.
+
+### What the chunker actually shipped — 2026-08-14
+
+`labpilot/ingest/` is built and measured. **The selector is not** — that is the
+remaining piece of slice 3.
+
+| Module | Holds |
+|---|---|
+| `contracts.py` | `Piece`, `Chunk`, `Side` — imports nothing from `labpilot` |
+| `defaults.py` | the four numbers, plus `MAX_CHARS` / `MIN_CHARS` in characters |
+| `_recursive.py` | the separator ladder, the fallback |
+| `_markdown.py` | header split |
+| `_python.py` | AST split |
+| `chunker.py` | picks a splitter, runs pass 2, attaches metadata |
+| `__init__.py` | `chunk_file`, `chunk_text` — the only door |
+
+**Two types, and the split is by reason to change.** A splitter sees only text,
+so it returns a `Piece` (text, lines, label). The chunker knows the artifact, so
+it produces a `Chunk` (adds source, side, artifact_id, chunk_index, header).
+
+**The header is a field, never inside `text`.** `Chunk.embed_text` is the single
+place they are joined. If callers joined them by hand, one would forget, that
+chunk's vector would be weaker, and **nothing would raise** — the expensive kind
+of bug. `text` stays an exact copy of the cited lines, which is what makes a
+citation checkable at all.
+
+**Overlap applies only to arbitrary cuts.** An AST or header boundary already
+gives `P(split) = 0`, so overlap there would duplicate whole functions for no
+gain. Only `_recursive` and the second-pass size split overlap.
+
+**Character limits, not token limits, inside the loop.** `estimate_tokens` is
+exactly `ceil(chars/3)`, so a token cap is an exact character cap. Compare
+characters; never call the estimator in a loop.
+
+#### Three things the measurement changed
+
+1. **Merge forward, not backward — and decide by label.** The plan said "merge a
+   sub-minimum piece into the previous sibling". The real file disproved it: a
+   bare `class QuoraTokenizer:` line is a *header*, so it belongs with the method
+   after it, not with the last method of the previous class. But pure forward is
+   also wrong — a tiny *last* method would cross into the next class. The rule
+   that handles both: **merge with the neighbour sharing more of the label,
+   ties go forward.** Guarded so a merge can never exceed the cap.
+2. **Decorators must be included by hand.** `node.lineno` points at the `def`
+   line, not at `@decorator`. Use `min(node.lineno, *decorator linenos)` or
+   `@torch.no_grad()` is orphaned into the previous chunk.
+3. **A `#` inside a fenced code block is not a header.** Track ``` and ~~~
+   fences, or every code comment in a Markdown file becomes a section boundary.
+
+#### Measured on the sample pair
+
+| | chunks | total tok | min | max | mean | over 510 | under 30 |
+|---|---|---|---|---|---|---|---|
+| `B_train.py` | 78 | 16,932 | 32 | 500 | 217 | 0 | 0 |
+| `A_paper.md` | 18 | 3,961 | 48 | 393 | 220 | 0 | 0 |
+
+Real headers, showing that oversized units keep their identity and that the
+overlap is genuinely present (1215 then 1212):
+
+```
+[B_train.py · class Trainer · def fit · part 1/5 · lines 1189-1215]
+[B_train.py · class Trainer · def fit · part 2/5 · lines 1212-1235]
+[B_train.py · class QuoraTokenizer · def __init__ · lines 425-431]
+[A_paper.md · 4.1 Input representation and tokenization · lines 53-72]
+```
+
+Suite at this point: **110 unit tests, 7 smoke, ruff clean.**
 
 ---
 

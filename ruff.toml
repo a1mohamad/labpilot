@@ -1,4 +1,10 @@
 line-length = 88
 
+# Sample artifacts are fixture data, not project source. B_train.py is a real
+# notebook flattened with its flaws intact, and those flaws are what the
+# retrieval tests look for. Linting it would fail CI; formatting it would move
+# the lines EXPECTED.md cites.
+extend-exclude = ["data/samples"]
+
 [lint]
 select = ["E", "F", "I", "UP", "B"]

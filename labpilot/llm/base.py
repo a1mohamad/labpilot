@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import requests
 
 from labpilot.llm._http import error_from_response
-from labpilot.llm._text import estimate_tokens, truncate
+from labpilot.llm._text import truncate
 from labpilot.llm.contracts import LLMResult
 from labpilot.llm.defaults import (
     DEFAULT_MAX_TOKENS,
@@ -18,6 +18,7 @@ from labpilot.llm.defaults import (
     SAFETY_MARGIN_RATIO,
 )
 from labpilot.llm.errors import LLMError
+from labpilot.tokens import estimate_tokens
 
 logger = logging.getLogger(__name__)
 
