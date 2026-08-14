@@ -3281,6 +3281,46 @@ Not a round guess. It is the largest value **every** tier accepts:
 Asking for more makes `_check_fits` raise on tier 5, so the chain quietly loses a
 tier. A test pins this: `min(max_output_tokens) >= 16000`.
 
+### `finish_reason` was promoted to `LLMResult`
+
+*Changed 2026-08-14.* It had been logged only. [The `LLMResult`
+rule](#llm-serving--fallback-chain) says a logged field is promoted "the moment
+the UI or the budget validator needs the number", and the slice 4 measurement
+needs it: `stop` means the report finished, `length` means `max_tokens` cut it
+mid-sentence and the report is incomplete. Without the field, a truncated report
+looks like a complete one in the saved artifact.
+
+It passes the seam test — every provider reports it, and `_extract_message`
+already returned it in both wire shapes. The field defaults to `"unknown"` so no
+existing construction site had to change.
+
+### What the smoke run writes
+
+`pytest tests/smoke --run-smoke -q` spends **2 requests** and writes three files
+into `artifacts/` (git-ignored):
+
+```
+2026-08-14_18-30_full_gemini-3.6-flash.md
+2026-08-14_18-30_core_gemini-3.6-flash.md
+2026-08-14_18-30_comparison.md
+```
+
+Each report carries `finish_reason`, chunks sent, prompt tokens, citations
+written, **citations that resolve**, failed tiers, the answer, and the exact
+prompt. The comparison file is one table so the two runs can be read side by
+side.
+
+**Read `model` and `tier` before believing the comparison.** If the two runs were
+served by different tiers, the model changed and not just the prompt, and the
+comparison is invalid — re-run rather than reasoning from it.
+
+**Thinking-token counts stay in the log**, not on `LLMResult`, because Google and
+the OpenAI shape name them differently. Read them with:
+
+```bash
+pytest tests/smoke --run-smoke -q --log-cli-level=INFO
+```
+
 ### The measurement plan — one variable per run
 
 The 10/18 baseline was measured with a bare prompt, `max_tokens=2000`, and no
