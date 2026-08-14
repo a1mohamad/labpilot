@@ -29,4 +29,4 @@ class Chunk:
 
     @property
     def embed_text(self) -> str:
-        return f"f{self.header}\n{self.text}" if self.header else self.text
+        return f"{self.header}\n{self.text}" if self.header else self.text
