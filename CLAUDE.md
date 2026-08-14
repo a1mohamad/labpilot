@@ -3431,7 +3431,16 @@ survived perfect context.
 
 **So the split is measured: retrieval costs ~2, the single call costs ~7.**
 
-**And no prompt fixes the seven.** The literature names the reason:
+**This section originally continued "and no prompt fixes the seven". That claim
+was wrong, and the next section replaces it.** Scoring the answers row by row
+showed the seven misses share one property that a prompt *can* address. The
+literature below is still correct about the ceiling of a single call — it is just
+not the binding constraint yet, because our prompt has not asked for the work at
+all. Read this section as the long-run limit, and
+[Why coverage is stuck](#why-coverage-is-stuck--diagnosed-2026-08-14) as the
+current one.
+
+The literature on the long-run limit:
 
 - **multi-needle decay** — recall falls as the number of facts asked for rises,
   and reasoning over them is worse than retrieving them
@@ -3451,16 +3460,155 @@ list late in the context.
 > small calls, not better sentences.**
 
 **This turns the agent from a design choice into a requirement.** `verify` and
-`find_missing` are a loop for this reason, not for elegance. Step 0's ceiling is
-about 11 of 18, and chasing it further would be tuning to one fixture.
+`find_missing` are a loop for this reason, not for elegance.
+
+*One line here was also wrong: "Step 0's ceiling is about 11 of 18, and chasing
+it further would be tuning to one fixture."* 11 is where **this** prompt stops,
+not where one call stops. The next section shows why, and predicts 16.
+
+### Why coverage is stuck — diagnosed 2026-08-14
+
+**The finding, in one line:**
+
+> **Every one of the 11 findings carries an A citation. Every one of the misses
+> has no anchor in A.**
+
+Read the stuffed run's §3 table. `D1` through `D11` each cite a line of A, then a
+line of B. The model walked **A's list of statements** and checked each one in B.
+It produced roughly one row per claim A makes. It never walked B.
+
+Now the misses, against the same test:
+
+| Missed | Does A mention it? |
+|---|---|
+| #14 vocabulary capped at 20,000, so OOV is non-trivial | **no** |
+| #15 rows dropped when empty *after* the regex | **no** |
+| #16 three layer-norm modules built and never enabled | **no** |
+| #17 `requires_grad` passed as an optimizer param-group key | **no** |
+| #18 all-stopword question encodes to the zero vector | **no** |
+| #9 threshold tuned on the split it is reported on | yes — but needs reasoning over B's own numbers |
+| #10b the 12.1-point train/validation gap | yes — but needs reasoning over B's run summary |
+
+The correlation is exact. **The model produced zero pure column findings.** Even
+#11 (stopword masking) and #13 (cosine similarity), which `EXPECTED.md` files
+under *unstated*, were found only because A happened to say something beside them
+(`A-6 "excludes padding positions and nothing else"`, `A-9 "r = [u;v;|u-v|;u⊙v]"`).
+Those were row findings wearing a column finding's clothes.
+
+**Two things in the code explain it, and neither is "too many rules".**
+
+1. **`CORE` deleted the column-walk instruction.** `FULL` §7 says *"first every
+   statement A makes, **then every decision B makes that A never mentions**"*.
+   `CORE` §3 says only *"Biggest effect first."* The second pass is gone — and
+   `CORE` is what scored 11.
+2. **`CORE` has no "problems in B alone" section at all.** `FULL` has §4 for
+   exactly this. #16, #17 and #18 have nowhere to be written.
+
+So the template that scored 11 had already removed the home of **five of the
+seven misses**. The label vocabulary still offered `missing-in-A` and `defect`,
+so the model *could* have used them — it simply was never told to walk B.
+
+**The honest reading of the "too many rules" hypothesis.** It was a reasonable
+guess from the numbers — 10 bare against 11 structured looks like the structure
+paid for nothing. Half of it holds: two of our rules do cost us
+([the four fixes](#the-four-prompt-fixes--not-yet-measured), items 3 and 4). But
+the direction was backwards. **Cutting sections is what lost the findings.**
+`CORE` is the short template, and short is where coverage fell.
+
+#### What the literature calls this
+
+- **Anchoring.** In LLM code review, *once the model latches onto one category of
+  issue, it under-reports every other category*. The standard fix is to constrain
+  each pass to one concern. Self-aggregation over 10 runs raised recall **118%**,
+  which means a single pass finds under half of what is present
+  ([Augment Code](https://www.augmentcode.com/guides/deep-code-review-recall-vs-precision)).
+- **Single-pass extraction is known to be non-exhaustive.** Google's own
+  extraction library ships multi-pass by default: 2 passes → 93% recall, 3 → 96%
+  ([google/langextract](https://github.com/google/langextract)). The academic
+  form is L3X — recall-oriented generation first, precision pruning second
+  ([Recall Them All](https://arxiv.org/abs/2405.02732)).
+- **Instruction density has a measured curve, and the failure mode is skipping.**
+  IFScale: ~90% adherence at 10 instructions, ~70% at 50, ~40% at 150. Models do
+  not degrade evenly — they **drop whole instructions**, and **middle-positioned
+  ones go first** ([arXiv 2507.11538](https://arxiv.org/pdf/2507.11538)).
+- **Serialising while thinking costs 10–30% of reasoning**, but *performance
+  recovers whenever unconstrained reasoning precedes structured submission*
+  ([Capacity, Not Format](https://arxiv.org/html/2606.09410)).
+- **Decomposition beats one large prompt** — DecomP 50.6% against 36% for CoT on
+  the same task ([Decomposed Prompting](https://www.emergentmind.com/topics/decomposed-prompting-decomp)).
+
+### The four prompt fixes — not yet measured
+
+In order of expected gain. **None of these is built; all are for the next
+session.**
+
+**1. Make the enumeration positional, not semantic.** The prompt already sends
+B's full ordered id list (`B-0`…`B-77`). Use it as a checklist instead of asking
+for "the differences":
+
+```
+Walk side B's part list from the first id to the last.
+For EVERY id write one line:
+    B-12 | <a decision this part makes that A never mentions>
+    B-13 | nothing
+Do not skip an id. Do not merge ids.
+Write this list before you write any table.
+```
+
+Free recall stops when the answer *feels* complete — that is why the model
+stopped at 9, then 11. A positional walk makes stopping early **visible and
+countable**: 78 ids in, 78 lines out. This is the single-call form of the Step 2
+loop.
+
+**2. Give the defect scan its own pass, placed before the comparison.** Anchoring
+is category-level, so the standalone-bug job must not share a list with the
+A-vs-B job. Put `PROBLEMS IN B ALONE` back into `CORE`, **before** the difference
+table, so B is scanned with fresh attention rather than after the model has
+settled into pair-matching.
+
+**3. Let it think in prose before the table.** Findings as free bullets first,
+then serialise into the row format. Right now the 10-column table *is* the
+thinking, which is premature serialisation during enumeration.
+
+**4. Delete `_CAUSES`.** ~25 lines of examples sitting mid-prompt that force no
+behaviour — exactly the position IFScale says gets dropped. It costs budget and
+buys nothing measurable. If removing it loses a finding, put it back; that is a
+cheap test.
+
+**The prediction, so it can be falsified:**
+
+$$
+11 \;+\; \underbrace{4}_{\#14,\ \#15,\ \#16,\ \#17\ \text{— the B-walk}} \;+\; \underbrace{1}_{\#18\ \text{— the defect pass}} \;=\; 16
+$$
+
+#9 and #10b stay hard. Both need reasoning over B's *own* reported numbers rather
+than matching against A, and that is honestly Step 2 work. **So 14 is reachable
+in one call and 16 is the ceiling of these four fixes.** If the B-walk lands and
+the score is still 11, this diagnosis is wrong and it gets re-opened.
+
+**Measure it stuffed.** `CORE` + B-walk against current `CORE`, both at 96/96
+chunks, both tier 1. Stuffing removes retrieval as a variable, so the only thing
+changing is the prompt.
 
 ### Two prompt rules the runs proved, both general
 
-**1. A forced verdict must be the first thing on its line.** §2 worked every
-time — it demands `YES / NO / CANNOT TELL` and got it right in all runs. §4
-allowed prose first, and in the stuffed run the model wrote *"consistent with"*
-and compared two numbers it had itself declared incomparable two sections
-earlier. Same model, same prompt, different position of the required word.
+**1. A forced verdict must be first, and it must also bind the prose after it.**
+*Corrected 2026-08-14 — the first version of this rule misread the artifact.* §2
+demands `YES / NO / CANNOT TELL` and got it right in every run. §4 was recorded
+here as having "allowed prose first", but the saved answer shows `NOT APPLICABLE`
+**is** the first thing on its line, and the verdict itself is correct. The
+failure is the paragraph *after* it, which performs the banned comparison anyway:
+*"consistent with Side B's observed validation F1 of 0.8262 … lower than Side A's
+test F1 of 0.851."*
+
+So the fix that was proposed — move the verdict first — **is already satisfied
+and would change nothing**. The real rule is stronger: **a correct verdict does
+not constrain the prose that follows it.** Ban the material, not the conclusion —
+after a `NO`, the two numbers may not appear in the same sentence anywhere below.
+
+The general lesson is about method, not about §4: *the recorded diagnosis and the
+saved artifact disagreed, and only re-reading the artifact caught it.* Artifacts
+are kept for exactly this.
 
 **2. Free recall stops when the answer feels complete.** §3 says "finish this
 list completely" and the model stopped at 9, then 11. The one-call fix is to walk
