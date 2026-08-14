@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from labpilot.ingest.contracts import Chunk
 
 
@@ -19,6 +21,11 @@ def _chunk(**overrides) -> Chunk:
 def test_embed_text_prepends_the_header():
     chunk = _chunk(header="[a.py · line 1]")
     assert chunk.embed_text == "[a.py · line 1]\nx = 1"
+
+
+def test_a_side_outside_a_and_b_is_rejected():
+    with pytest.raises(ValueError, match="side must be"):
+        _chunk(side="ZZZ")
 
 
 def test_embed_text_is_the_text_alone_when_there_is_no_header():

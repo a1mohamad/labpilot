@@ -21,7 +21,7 @@ def chunk_text(
     text: str, *, source: str, side: Side, artifact_id: str
 ) -> tuple[Chunk, ...]:
     pieces = _splitter_for(source)(text)
-    pieces = _merge_small(_enforce_cap(pieces))
+    pieces = _merge_small(_enforce_cap(pieces), text.splitlines())
     return tuple(
         _chunk(piece, index, source=source, side=side, artifact_id=artifact_id)
         for index, piece in enumerate(pieces)
@@ -63,36 +63,43 @@ def _part_label(label: str, position: int, total: int) -> str:
     return f"{label} · {part}" if label else part
 
 
-def _merge_small(pieces: list[Piece]) -> list[Piece]:
+def _merge_small(pieces: list[Piece], lines: list[str]) -> list[Piece]:
     merged = list(pieces)
     index = 0
     while index < len(merged):
         if len(merged[index].text) >= MIN_CHARS:
             index += 1
             continue
-        target = _merge_target(merged, index)
+        target = _merge_target(merged, index, lines)
         if target is None:
             index += 1
             continue
         low, high = sorted((index, target))
-        merged[low : high + 1] = [_join(merged[low], merged[high])]
+        merged[low : high + 1] = [_join(merged[low], merged[high], lines)]
         index = low
     return merged
 
 
-def _merge_target(pieces: list[Piece], index: int) -> int | None:
+def _merge_target(pieces: list[Piece], index: int, lines: list[str]) -> int | None:
     candidates = [
         neighbour
         for neighbour in (index + 1, index - 1)
-        if 0 <= neighbour < len(pieces) and _fits(pieces[index], pieces[neighbour])
+        if 0 <= neighbour < len(pieces)
+        and _fits(pieces[index], pieces[neighbour], lines)
     ]
     if not candidates:
         return None
     return max(candidates, key=lambda n: _shared_label(pieces[index], pieces[n]))
 
 
-def _fits(one: Piece, other: Piece) -> bool:
-    return len(one.text) + len(other.text) + 1 <= MAX_CHARS
+def _fits(one: Piece, other: Piece, lines: list[str]) -> bool:
+    return len(_span_text(one, other, lines)) <= MAX_CHARS
+
+
+def _span_text(one: Piece, other: Piece, lines: list[str]) -> str:
+    start = min(one.start_line, other.start_line)
+    end = max(one.end_line, other.end_line)
+    return "\n".join(lines[start - 1 : end])
 
 
 def _shared_label(one: Piece, other: Piece) -> int:
@@ -106,9 +113,9 @@ def _shared_label(one: Piece, other: Piece) -> int:
     return shared
 
 
-def _join(first: Piece, second: Piece) -> Piece:
+def _join(first: Piece, second: Piece, lines: list[str]) -> Piece:
     return Piece(
-        text=f"{first.text}\n{second.text}",
+        text=_span_text(first, second, lines),
         start_line=min(first.start_line, second.start_line),
         end_line=max(first.end_line, second.end_line),
         label=first.label if len(first.text) >= len(second.text) else second.label,
