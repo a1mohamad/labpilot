@@ -12,7 +12,8 @@ Read the two rule sections first — they change *how* everything below is done.
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
 [Sample Pair](#the-sample-pair--quora_siamese-built-2026-08-14) ·
 [Slice 3 Result](#the-first-real-answer--measured-2026-08-14) ·
-[Next: Slice 4](#where-to-pick-up--slice-4-the-prompt) ·
+[Slice 4 Result](#the-measurement--five-runs-all-saved) ·
+[**Next: Coverage**](#why-coverage-is-stuck--diagnosed-2026-08-14) ·
 [Comparison Template](#the-comparison-template--designed-2026-08-14) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
@@ -891,7 +892,26 @@ from a test that passes.
 **`max_tokens` needs ~8000, not 2000.** At 2000 the answer was cut mid-sentence,
 because Gemini spends part of the budget thinking.
 
-### Where to pick up — slice 4, the prompt
+### Where to pick up — slice 4's coverage problem
+
+*Written 2026-08-14, session 7. **This replaces the slice 4 plan below**, which
+is kept because all four of its items were delivered.*
+
+> The prompt exists, citations resolve at 99%, and coverage is stuck at 11/18.
+> Apply [the four prompt fixes](#the-four-prompt-fixes--not-yet-measured) and
+> re-measure against the stuffed 11/18 baseline.
+
+The one thing to hold on to: **the miss list is not random.** Every miss is
+something B does that A never mentions, or something that needs reasoning over
+B's own numbers. The prompt asks for neither. Start with the B-walk — it is one
+instruction and it should be worth four findings.
+
+Do not touch `ingest/`, and do not improve `select()`. Measure **stuffed**, so
+retrieval is not a variable while the prompt is being changed.
+
+---
+
+### The original slice 4 plan *(delivered — kept for the reasoning)*
 
 *Written 2026-08-14, at the end of session 5.*
 
