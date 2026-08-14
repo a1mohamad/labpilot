@@ -803,9 +803,9 @@ not an accident.
 
 | Kind | Count | The one that matters |
 |---|---|---|
-| stated and **wrong** (rows, `verify`) | 6 | the paper pools `Σ αᵢhᵢ` over hidden states; `B_train.py:584-586` pools the **projected** features, and the code's own comment says so |
-| stated and **absent** (rows, `verify`) | 5 | `pos_class_weight()` is defined at `:544` and **never called** |
-| **unstated** but present (columns, `find_missing`) | 7 | stopword masking — `_build_stop_mask` at `:433` and `_encode` at `:661` |
+| stated and **wrong** (rows, `verify`) | 6 | the paper pools `Σ αᵢhᵢ` over hidden states; `B_train.py:601-603` pools the **projected** features, and the code's own comment says so |
+| stated and **absent** (rows, `verify`) | 5 | `pos_class_weight()` is defined at `:561` and **never called** |
+| **unstated** but present (columns, `find_missing`) | 7 | stopword masking — `_build_stop_mask` at `:450` and `_encode` at `:678` |
 
 Plus one latent bug findable from a single artifact: a question of only
 stopwords masks to all zeros, so softmax over a constant returns uniform weights
@@ -832,7 +832,7 @@ is inflated, the code has advantages the paper lacks — instead of asserting on
 **Chunker coverage.** The pair exercises every path on purpose: 3 markdown
 sections under the ~30-token minimum (**merge**), `§4.3` at ~656 tokens
 (**second-pass split** with repeated header), 11 AST units over the 510 cap,
-largest `class Trainer` at ~5,300 tokens, and `Trainer.fit` as the training loop
+largest `class Trainer` (lines 920-1317) at ~5,300 tokens, and `Trainer.fit` (lines 1189-1317) as the training loop
 that must stay whole.
 
 **`data/samples/` is excluded from ruff and from pre-commit.** The fixture is
