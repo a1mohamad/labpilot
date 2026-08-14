@@ -6,7 +6,7 @@ from labpilot.tokens import estimate_tokens
 INPUT_BUDGET = 20000
 
 
-def select(chunks: list[Chunk], *, budget: int = INPUT_BUDGET) -> list[Chunk]:
+def select(chunks: tuple[Chunk], *, budget: int = INPUT_BUDGET) -> tuple[Chunk]:
     per_side = budget // 2
     picked: list[Chunk] = []
     for side in ("A", "B"):
@@ -19,4 +19,4 @@ def select(chunks: list[Chunk], *, budget: int = INPUT_BUDGET) -> list[Chunk]:
                 break
             picked.append(chunk)
             spent += cost
-    return picked
+    return tuple(picked)
