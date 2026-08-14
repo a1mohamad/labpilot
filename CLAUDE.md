@@ -3349,20 +3349,33 @@ the OpenAI shape name them differently. Read them with:
 pytest tests/smoke --run-smoke -q --log-cli-level=INFO
 ```
 
-### The measurement plan — one variable per run
+### The measurement — five runs, all saved
 
-The 10/18 baseline was measured with a bare prompt, `max_tokens=2000`, and no
-thinking setting. So:
+*The plan was four runs, one variable each. Five were run. Results, not
+predictions:*
 
-| Run | Prompt | Thinking | Answers |
-|---|---|---|---|
-| baseline | bare | default | 10/18, 0 invented, half the citations wrong |
-| 1 | `FULL` | default | did the template help? |
-| 2 | `CORE` | default | is a shorter template better? |
-| 3 | the winner | `HIGH` | does more thinking help? |
+| Run | prompt | max_tokens | chunks | finish | citations resolve | findings |
+|---|---|---|---|---|---|---|
+| baseline | bare | 2,000 | 60/96 | cut | ~50% | **10/18** |
+| 1 | `FULL` | 16,000 | 63/96 | `MAX_TOKENS` | 1 of 3 | not scorable |
+| 2 | `CORE` | 16,000 | 65/96 | `MAX_TOKENS` | 1 of 1 | not scorable |
+| 3 | `FULL` | 24,000 | 63/96 | **`MAX_TOKENS`** | 22 of 45 (49%) | not scorable |
+| 4 | `CORE` | 24,000 | 65/96 | `STOP` | 67 of 72 (93%) | **9/18** |
+| 5 | `CORE` **stuffed** | 24,000 | **96/96** | `STOP` | **73 of 74 (99%)** | **11/18** |
 
-**`max_tokens=16000` applies from run 1**, because 2,000 truncated the baseline —
-that is a fix, not a variable.
+**`FULL` was never scored, because it never finished.** It was cut at §7 at both
+budgets. So the intended `FULL`-vs-`CORE` quality comparison did not happen —
+`FULL` simply does not fit in one answer. Its 49% citation rate is an artifact of
+truncation, not a measure of citation quality. **Do not read runs 1 and 3 as
+evidence about template length.**
+
+**Citations are solved.** 99% resolution on the stuffed run means deterministic
+quoting works and the model can point at real lines. That failure from slice 3 is
+closed and does not need more work.
+
+**Coverage is not solved, and it is now the whole problem.** The bare prompt
+found 10 with two-thirds of the context; the full template with *all* the context
+found 11. Whatever the template is buying, it is not findings.
 
 ### `PROMPT_BUDGET = 26_000` — measured, not chosen
 
