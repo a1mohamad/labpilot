@@ -380,15 +380,25 @@ progress — the sample pair exists, the chunker does not.**
 > gained `extra_body`, and both stay unset until a live request proves each
 > host's shape. See [What slice 4 built](#what-slice-4-built--labpilotprompts)
 > and the four sections after it.
-> **164 unit tests, 9 smoke tests, ruff clean.** `test_pipeline.py` and the smoke
-> test were rewritten; the smoke test now runs twice, `FULL` and `CORE`, and
-> records how many citations resolve.
+> **168 unit tests, 10 smoke tests, ruff clean.** `test_pipeline.py` and the smoke
+> test were rewritten; the smoke test now runs three times — `FULL`, `CORE` and
+> `CORE` stuffed — and records how many citations resolve.
 > **Every tier now asks for maximum reasoning** — Gemini via `thinkingLevel`,
 > Mistral via `reasoning_effort`, OpenRouter via `reasoning.effort`, Cloudflare
 > via a best guess. Tiers 2, 5 and 7 are unproven and may answer 422; the chain
 > records that and moves on, which is how we learn.
-> **Left to do: run the four measurements.** Nothing has been measured yet — the
-> 10/18 baseline is still the only number.
+
+> **2026-08-14, session 7 — the measurements were run, and they say the prompt
+> is the bottleneck.** Five runs are saved in `artifacts/`. `CORE` finished and
+> resolved 93% of its citations; `FULL` never finished at either budget; stuffing
+> all 96 chunks reached **11 of 18 findings** against the bare prompt's 10.
+> Scoring the answers row by row produced the finding that matters:
+> **every finding the model wrote has an A citation, and every miss has no anchor
+> in A.** The prompt never asks the model to walk B. See
+> [Why coverage is stuck](#why-coverage-is-stuck--diagnosed-2026-08-14) and
+> [The four prompt fixes](#the-four-prompt-fixes--not-yet-measured).
+> **Next: apply the four fixes and re-measure against the 11/18 stuffed
+> baseline.** Code state unchanged.
 
 > **2026-08-14, session 6 — no code: slice 4's output template was designed.**
 > Recorded in [The Comparison Template](#the-comparison-template--designed-2026-08-14).
