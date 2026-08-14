@@ -552,9 +552,14 @@ deleted** (user's choice). It is now kept **in sync with `main` by merging after
 every commit**, so the two are identical. `LEARNED.txt` no longer differs — the
 merge removed it there too.
 
-**Two repository secrets are still missing on GitHub**, so the Monday smoke run
-will fail until they are added: `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`.
-Weekly smoke cost is now 7 requests.
+~~**Two repository secrets are still missing on GitHub.**~~ **Added 2026-08-14.**
+All seven repository secrets now exist: `CLOUDFLARE_ACCOUNT_ID`,
+`CLOUDFLARE_API_KEY`, `COHERE_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`,
+`OPENROUTER_API_KEY`, `VOYAGE_API_KEY`. `smoke.yaml` maps all five it needs, with
+the variable name and the secret name matching on both sides of the colon — the
+thing the 2026-08-11 `OPENROUTE_API_KEY` typo got wrong. Weekly smoke cost is 7
+requests, and tier 7 should now pass. **Secrets are repository-wide, so they
+apply on every branch — but scheduled runs still fire from `main` only.**
 
 Setup is complete:
 - Git repository connected to `https://github.com/a1mohamad/labpilot`
@@ -760,10 +765,11 @@ and reranking are taught at Step 1, each one immediately before it is built.
 **~~One thing blocks it: `data/samples/` is empty.~~ UNBLOCKED 2026-08-14 —
 see [The sample pair](#the-sample-pair--quora_siamese-built-2026-08-14).**
 
-**Two loose ends carried into the next session:**
+**Loose ends carried into the next session:**
 
-- `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` are still missing as **GitHub
-  repository secrets**, so the Monday smoke run fails on tier 7.
+- ~~`CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` are missing as GitHub
+  repository secrets.~~ **Added 2026-08-14 — all seven secrets are present and
+  `smoke.yaml` maps them correctly. Tier 7 should pass on the next run.**
 - The weekly smoke run should print each raw response body **once**, to settle
   which of tiers 2, 5 and 6 are thinking models — see
   [Thinking models](#thinking-models--the-count-is-at-least-four-of-seven).
