@@ -30,6 +30,9 @@ RULES
    Every statement you make about A or B must give:
      - the part id, exactly as written, for example B-17
      - a short quote, copied exactly, of one whole line from that part
+   Write every citation exactly like this:
+       [B-17 "count = count + 1"]
+   The part id, a space, then the quote in double quotes. Nothing else.
    Never write a line number. Line numbers are added for you afterwards.
    If a statement needs two parts, give two ids and two quotes.
    If you report that something is missing, cite the side that mentions it
