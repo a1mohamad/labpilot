@@ -1,6 +1,6 @@
 import re
 
-from labpilot.prompts.instructions import CORE, FULL
+from labpilot.prompts import CORE, FULL
 
 BANNED = (
     "python",
@@ -41,8 +41,8 @@ def test_full_asks_for_every_section_from_0_to_13():
     assert _numbers(FULL.header) == set(range(14))
 
 
-def test_core_asks_for_fewer_of_the_same_sections():
-    assert _numbers(CORE.header) < _numbers(FULL.header)
+def test_core_asks_for_far_fewer_sections_than_full():
+    assert len(_numbers(CORE.header)) * 2 <= len(_numbers(FULL.header))
 
 
 def test_the_closing_names_the_same_sections_as_the_header():
