@@ -60,7 +60,7 @@ def _enforce_cap(pieces: list[Piece]) -> list[Piece]:
 
 def _part_label(label: str, position: int, total: int) -> str:
     part = f"part {position}/{total}"
-    return f"{label} . {part}" if label else part
+    return f"{label} · {part}" if label else part
 
 
 def _merge_small(pieces: list[Piece]) -> list[Piece]:
