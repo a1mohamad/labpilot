@@ -7,6 +7,10 @@ ENV_EXAMPLE = Path(__file__).resolve().parents[3] / ".env.example"
 KNOWN_THINKING = ("LOW", "MEDIUM", "HIGH")
 REJECTS_REASONING = ("Devstral 2",)
 
+# Deliberate, measured exceptions. A new name appearing here is a real problem.
+OUTPUT_TOO_SMALL = ("Devstral 2",)
+INPUT_LIMITED = ("Gemma 4 31B", "GPT-OSS 120B (Groq)")
+
 
 def test_chain_tiers_are_sequential_from_one():
     assert [provider.tier for provider in CHAIN] == list(range(1, len(CHAIN) + 1))
@@ -78,14 +82,28 @@ def test_no_provider_promises_more_output_than_its_context_window():
     assert not over, over
 
 
-def test_only_devstral_cannot_serve_a_full_report():
+def test_only_known_tiers_cannot_serve_a_full_report():
     unable = [
         provider.name
         for provider in CHAIN
         if provider.max_output_tokens < REPORT_MAX_TOKENS
     ]
 
-    assert unable == ["Devstral 2"]
+    assert unable == list(OUTPUT_TOO_SMALL), unable
+
+
+def test_only_known_tiers_are_blocked_by_an_input_limit():
+    blocked = [
+        provider.name for provider in CHAIN if provider.max_input_tokens is not None
+    ]
+
+    assert blocked == list(INPUT_LIMITED), blocked
+
+
+def test_input_limited_tiers_sit_at_the_end_of_the_chain():
+    limited = [i for i, p in enumerate(CHAIN) if p.max_input_tokens is not None]
+
+    assert limited == list(range(len(CHAIN) - len(limited), len(CHAIN))), limited
 
 
 def test_every_gemini_tier_uses_a_thinking_level_google_accepts():
