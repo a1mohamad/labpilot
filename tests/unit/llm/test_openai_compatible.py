@@ -192,3 +192,27 @@ def test_nothing_extra_is_sent_when_extra_body_is_not_set():
     payload = build_provider()._payload("hello", 100)
 
     assert set(payload) == {"model", "messages", "max_tokens", "temperature"}
+
+
+def test_a_reasoning_model_answer_drops_the_thinking_block():
+    content = [
+        {"type": "thinking", "thinking": [{"type": "text", "text": "let me think"}]},
+        {"type": "text", "text": "the answer"},
+    ]
+
+    text, _, _ = build_provider()._extract_message(
+        {"choices": [{"message": {"content": content}, "finish_reason": "stop"}]}
+    )
+
+    assert text == "the answer"
+
+
+def test_a_reasoning_model_that_only_thinks_counts_as_an_empty_answer():
+    content = [
+        {"type": "thinking", "thinking": [{"type": "text", "text": "still thinking"}]}
+    ]
+
+    with pytest.raises(LLMError, match="empty answer"):
+        build_provider()._extract_message(
+            {"choices": [{"message": {"content": content}, "finish_reason": "length"}]}
+        )

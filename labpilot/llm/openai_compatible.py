@@ -8,6 +8,19 @@ from labpilot.llm.base import HTTPProvider
 from labpilot.llm.errors import LLMError
 
 
+def _visible_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+
+    return "".join(
+        block.get("text", "")
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class OpenAICompatibleProvider(HTTPProvider):
     account_env: str | None = None
@@ -43,7 +56,7 @@ class OpenAICompatibleProvider(HTTPProvider):
     def _extract_message(self, body: dict) -> tuple[str, str, str]:
         try:
             choice = body["choices"][0]
-            text = choice["message"]["content"]
+            text = _visible_text(choice["message"]["content"])
             finish_reason = choice.get("finish_reason", "unknown")
 
         except (KeyError, IndexError, TypeError) as exc:

@@ -11,6 +11,7 @@ from labpilot.llm.errors import LLMError
 
 _MILLISECOND_EPOCH = 1e11
 _PLAUSIBLE_EPOCH = 1e9
+_LIMIT_PREFIX = "x-ratelimit-limit-"
 
 
 def error_from_response(response: requests.Response, source: str) -> LLMError:
@@ -19,6 +20,7 @@ def error_from_response(response: requests.Response, source: str) -> LLMError:
         status=response.status_code,
         retry_after=retry_after_seconds(response.headers),
         reset_at=reset_at_epoch(response.headers),
+        rate_limit=rate_limit_ceiling(response.headers),
     )
 
 
@@ -57,3 +59,20 @@ def reset_at_epoch(headers: Mapping[str, str]) -> float | None:
         return time.time() + value
 
     return value
+
+
+def rate_limit_ceiling(headers: Mapping[str, str]) -> float | None:
+    ceilings = []
+
+    for name, raw in headers.items():
+        if not name.lower().startswith(_LIMIT_PREFIX):
+            continue
+        try:
+            ceilings.append(float(raw.strip()))
+        except ValueError:
+            continue
+
+    if not ceilings:
+        return None
+
+    return min(ceilings)

@@ -12,11 +12,30 @@ def test_chain_tiers_are_sequential_from_one():
     assert [provider.tier for provider in CHAIN] == list(range(1, len(CHAIN) + 1))
 
 
-def test_no_two_adjacent_tiers_share_an_api_key():
-    pools = [provider.api_key_env for provider in CHAIN]
-    adjacent = list(zip(pools, pools[1:], strict=False))
+def test_no_single_pool_can_kill_the_whole_chain():
+    pools = {provider.api_key_env for provider in CHAIN}
 
-    assert all(first != second for first, second in adjacent), pools
+    for dead in pools:
+        survivors = [p.name for p in CHAIN if p.api_key_env != dead]
+        assert survivors, dead
+
+
+def test_no_single_pool_can_stop_a_full_report():
+    pools = {provider.api_key_env for provider in CHAIN}
+
+    for dead in pools:
+        survivors = [
+            p.name
+            for p in CHAIN
+            if p.api_key_env != dead and p.max_output_tokens >= REPORT_MAX_TOKENS
+        ]
+        assert survivors, dead
+
+
+def test_the_chain_spans_at_least_three_pools():
+    pools = {provider.api_key_env for provider in CHAIN}
+
+    assert len(pools) >= 3, pools
 
 
 def test_every_chain_env_var_is_documented_in_env_example():

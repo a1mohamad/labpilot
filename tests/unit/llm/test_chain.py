@@ -4,7 +4,12 @@ import time
 
 import pytest
 
-from labpilot.llm.chain import LLMClient, delay_for, pool_is_exhausted
+from labpilot.llm.chain import (
+    LLMClient,
+    delay_for,
+    model_is_unavailable,
+    pool_is_exhausted,
+)
 from labpilot.llm.contracts import LLMResult
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 
@@ -200,3 +205,73 @@ def test_delay_uses_the_time_left_until_the_reset():
 def test_delay_is_never_negative_when_the_reset_already_passed():
     error = LLMError("busy", status=429, reset_at=time.time() - 30)
     assert delay_for(error, 0, base=1.0) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (LLMError("x", status=429, rate_limit=0), True),
+        (LLMError("x", status=429, rate_limit=50), False),
+        (LLMError("x", status=429), False),
+        (LLMError("x", status=500, rate_limit=0), False),
+    ],
+)
+def test_model_is_unavailable_only_for_a_zero_ceiling_rate_limit(error, expected):
+    assert model_is_unavailable(error) is expected
+
+
+def test_an_unavailable_model_does_not_kill_its_pool(no_sleep):
+    error = LLMError("Dead: HTTP 429", status=429, rate_limit=0)
+    later = ok("Later", 5, key="KEY_A")
+
+    client = LLMClient(chain=(fails("Dead", 2, error, key="KEY_A"), later))
+    result = client.generate("hello")
+
+    assert result.tier == 5
+    assert later.calls == 1
+
+
+def test_retries_the_same_tier_once_when_the_service_is_overloaded(no_sleep):
+    busy = FakeProvider(
+        name="Busy",
+        tier=1,
+        api_key_env="KEY_A",
+        outcomes=[LLMError("Busy: HTTP 503", status=503), "answer"],
+    )
+
+    result = LLMClient(chain=(busy,)).generate("hello")
+
+    assert result.tier == 1
+    assert busy.calls == 2
+    assert no_sleep == [1.0]
+
+
+def test_an_overloaded_service_never_kills_its_pool(no_sleep):
+    error = LLMError("Busy: HTTP 503", status=503)
+    later = ok("Later", 3, key="KEY_A")
+
+    client = LLMClient(
+        chain=(
+            FakeProvider(
+                name="Busy", tier=1, api_key_env="KEY_A", outcomes=[error, error]
+            ),
+            later,
+        )
+    )
+    result = client.generate("hello")
+
+    assert result.tier == 3
+    assert later.calls == 1
+
+
+def test_an_unavailable_model_is_not_retried(no_sleep):
+    error = LLMError("Dead: HTTP 429", status=429, rate_limit=0)
+    dead = FakeProvider(
+        name="Dead", tier=2, api_key_env="KEY_A", outcomes=[error, error]
+    )
+
+    with pytest.raises(AllFreeTiersExhausted):
+        LLMClient(chain=(dead,)).generate("hello")
+
+    assert dead.calls == 1
+    assert no_sleep == []

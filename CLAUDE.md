@@ -7,6 +7,9 @@ Read the two rule sections first — they change *how* everything below is done.
 [Status](#current-status) · [Environment](#development-environment) ·
 [Conventions](#conventions) · [Architecture](#architecture--stack) ·
 [LLM Serving](#llm-serving--fallback-chain) · [The Three Chains](#the-three-chains--restructured-2026-08-11) ·
+[**The five-way rule**](#how-the-chain-decides--the-five-way-rule) ·
+[Reasoning shape](#the-reasoning-content-shape--found-2026-08-16) ·
+[Adjacency retired](#why-the-adjacency-rule-was-retired--2026-08-16) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
@@ -371,9 +374,26 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. Slices 1 and 2 are DONE. Slice 3 is in
-progress — the sample pair exists, the chunker does not.**
-**Last updated 2026-08-14 (fifth session). Working branch: `feat/retrieval`.**
+**Phase: Step 0 — walking skeleton. Slices 1–3 are DONE. Slice 4 is built but
+its coverage fix has not been measured.**
+**Last updated 2026-08-16 (eighth session). Working branch: `feat/retrieval`.**
+
+> **2026-08-16, session 8 — no prompt work: the LLM layer was repaired and
+> re-organised.** GLM-5.2 died on Mistral, and the way it died exposed a bug that
+> was quietly costing tier 1 on every call. Four things landed:
+> **the chain now tells five kinds of failure apart** (was three) —
+> see [How the chain decides](#how-the-chain-decides--the-five-way-rule) ·
+> **the chain is ten tiers**, led by `gemini-3.7-flash`, with two Mistral
+> **reasoning** models nobody had noticed —
+> see [Chain 1](#chain-1--generator-true-fallback) ·
+> **`_extract_message` handles the reasoning content shape**, which is a list of
+> blocks, not a string — see
+> [The reasoning content shape](#the-reasoning-content-shape--found-2026-08-16) ·
+> **the adjacency invariant was retired** and replaced by three better ones —
+> see [Why the adjacency rule was retired](#why-the-adjacency-rule-was-retired--2026-08-16).
+> **198 unit tests, 9 of 10 tiers proven live, ruff clean.**
+> **Next is unchanged: measure the four prompt fixes against the stuffed 11/18
+> baseline** — now on `gemini-3.7-flash`, so record the model with the score.
 
 > **2026-08-14, session 6 (later) — slice 4's code is written.**
 > `labpilot/prompts/` now holds `_ids`, `context`, `instructions`, `builder` and
@@ -514,15 +534,53 @@ progress — the sample pair exists, the chunker does not.**
   `.env.example`, and every provider declares its token limits.
 - Suite: **73 unit tests passing, 7 smoke tests, ruff clean.**
 
-### How the chain decides — the three-way rule
+### How the chain decides — the five-way rule
 
-The whole of `chain.py` exists to tell three failures apart:
+*Was three ways. Two more were added 2026-08-16, each after a real failure that
+the three-way rule handled wrongly.*
 
 | The failure | Response | Why |
 |---|---|---|
 | 429, resets in **seconds** | wait, **retry the same tier** | the tier is healthy, just busy |
 | 429, resets **tomorrow** | **skip every tier on that pool** | the *account* is spent, not the model |
+| **429, `limit` header is `0`** | **fail this tier alone, pool untouched** | not busy — **not entitled**. It will never reset |
+| **503** | wait, **retry the same tier** | the server said *"try again later"*, and it works |
 | 400 / 500 / empty / timeout | **next tier** | retrying cannot change it |
+
+**Why the `limit: 0` case had to exist.** GLM-5.2 (then tier 2) began answering
+`429` with `x-ratelimit-limit-tokens-minute: 0`. Read the *limit*, not the
+remaining: a ceiling of zero means the model is not on this account's plan. The
+old rule treated it as a spent pool and **marked all of Mistral dead**, so
+Devstral — which was working perfectly — was skipped on every single call.
+
+$$
+\text{not entitled} \iff \text{status} = 429 \;\wedge\; \min_i(\text{limit}_i) = 0
+$$
+
+`_http.rate_limit_ceiling` takes the **minimum** of every `x-ratelimit-limit-*`
+header, because Mistral sends two (requests and tokens) and either one at zero
+blocks the call. `_http` extracts the number; `chain` decides what it means —
+the same split as `retry_after` and `reset_at`.
+
+**Why the 503 case had to exist.** The old rule lumped 503 with 500 and moved on,
+on the reasoning *"retrying cannot change it"*. Measured, that is simply false:
+
+```
+gemini-3.7-flash   try 1 → 503 UNAVAILABLE   try 2 → 200 STOP
+```
+
+Google's 503 says *"experiencing high demand … usually temporary"* and clears in
+seconds. It was seen **three times in one afternoon**, on two different models.
+Every one of those threw tier 1 away for nothing, and is the likeliest reason so
+many saved reports were served by tier 3.
+
+**A 503 never kills a pool.** Only 429 does. `RETRYABLE_STATUSES` in `defaults.py`
+holds both codes; `dead_pools` is still reached only from 429.
+
+**The general lesson, and it generalises past HTTP:** *"the server refused"* is
+not one fact. Refusals differ by **whether trying again can help** and **whether
+the refusal is about the model or the account**. Those two questions produce four
+cases, and a chain that collapses them loses working tiers.
 
 The discriminator is distance to reset, because a per-minute bucket cannot take
 longer than 60 s to refill by definition:
@@ -553,15 +611,20 @@ Every number below was read from the provider's **own** API or docs, never from 
 blog or a rounded UI label. `GET /v1/models` and `GET /api/v1/models` cost no
 generation quota, so this cost nothing.
 
+*Renumbered 2026-08-16 for the ten-tier chain.*
+
 | # | Model | `context_window` | `max_output_tokens` | Source |
 |---|---|---|---|---|
-| 1 | Gemini 3.6 Flash | 1,048,576 | 65,536 | Google model docs |
-| 2 | GLM-5.2 | 1,048,576 | 1,048,576 † | Mistral `GET /v1/models` |
-| 3 | Gemini 3.5 Flash | 1,048,576 | 65,536 | Google model docs |
-| 4 | Nemotron 3 Ultra | 1,000,000 | 65,536 | OpenRouter `GET /api/v1/models` |
-| 5 | Devstral 2 | 262,144 | **16,384** | Mistral API + docs |
-| 6 | North Mini Code | 256,000 | 64,000 | OpenRouter `GET /api/v1/models` |
-| 7 | `@cf/openai/gpt-oss-120b` | 128,000 | 128,000 † | Cloudflare dashboard |
+| 1 | Gemini 3.7 Flash | 1,048,576 | 65,536 | Google `GET /v1beta/models` |
+| 2 | Gemini 3.6 Flash | 1,048,576 | 65,536 | Google `GET /v1beta/models` |
+| 3 | Gemini 3.5 Flash | 1,048,576 | 65,536 | Google `GET /v1beta/models` |
+| 4 | GLM-5.2 | 1,048,576 | 1,048,576 † | Mistral `GET /v1/models` |
+| 5 | Mistral Medium | 262,144 | 262,144 † | Mistral `GET /v1/models` |
+| 6 | Nemotron 3 Ultra | 1,000,000 | 65,536 | OpenRouter `GET /api/v1/models` |
+| 7 | Magistral Small | 262,144 | 262,144 † | Mistral `GET /v1/models` |
+| 8 | North Mini Code | 256,000 | 64,000 | OpenRouter `GET /api/v1/models` |
+| 9 | Devstral 2 | 262,144 | **16,384** | Mistral API + docs |
+| 10 | `@cf/openai/gpt-oss-120b` | 128,000 | 128,000 † | Cloudflare dashboard |
 
 † shared window — the provider publishes no separate output cap, so the sum check
 does the real work.
@@ -582,6 +645,64 @@ does the real work.
 Google is the only provider where input and output are **separate** limits
 ($t_{\text{in}} \le C_{\text{in}}$ *and* $T_{\text{out}} \le C_{\text{out}}$),
 which is why the validator checks both rather than only the sum.
+
+**Devstral's 16,384 may be stale — do not trust it without a re-test.**
+*(Raised 2026-08-16.)* Asked directly, Mistral **accepts** `max_tokens: 32000` on
+`devstral-2512` with a 200. That does not prove it can *generate* 32,000 tokens,
+only that the parameter is not rejected, so the number here was left alone. But
+if it is wrong, `_check_fits` is excluding a working tier from every report for
+no reason. Settle it with one long-output request, not with another guess.
+
+### The reasoning content shape — found 2026-08-16
+
+**A reasoning model on the OpenAI wire format does not return a string.** It
+returns a **list of blocks**, and our `_extract_message` called `.strip()` on it:
+
+```json
+"content": [
+  {"type": "thinking", "thinking": [{"type": "text", "text": "The user asked…"}]},
+  {"type": "text",     "text": "Hello!"}
+]
+```
+
+```
+AttributeError: 'list' object has no attribute 'strip'
+```
+
+`_visible_text` now keeps only blocks whose `type` is `"text"` and drops the
+thinking. Both branches are pinned by tests, including *"a model that only
+thinks counts as an empty answer"* — which must stay an `LLMError`, because a
+budget spent entirely on thoughts is a failure, not an answer.
+
+**This had been true of GLM-5.2 all along.** That tier was broken twice over: the
+429 hid a shape crash waiting behind it. **A tier that fails early can hide a
+second bug — when one is fixed, re-test rather than assuming the tier is now
+good.**
+
+**`reasoning_effort` also needs `top_p: 1`.** With `temperature: 0` and nothing
+else, Mistral answers:
+
+```
+400  "top_p must be 1 when using greedy sampling"
+```
+
+So `MISTRAL_REASONING` is `{"reasoning_effort": "high", "top_p": 1}`. The earlier
+note in this file predicted a **422** for models that reject the field; the real
+code is **400** with `code: 3051`, and it is a *different* failure from this one.
+Both were guesses until a request was actually sent.
+
+**Thinking length is not repeatable, even at `temperature: 0`.** Nine runs of
+`mistral-medium-latest` on one trivial prompt:
+
+```
+completion tokens: 53 · 531 · 531 · 531 · 865 · 1533 · 1901 · 1901 · 53
+```
+
+A **36× spread**, while `magistral-small-latest` sat at 39–40 every time. The
+answers were identical; the *cost* was not. Two consequences: a small
+`max_tokens` makes a reasoning tier **flaky rather than broken** (it passed at
+2048, then failed on the same setting an hour later — the smoke floor is now
+8,192), and any future cost estimate per call must be a range, not a number.
 
 ### Thinking models — the count is at least four of seven
 
@@ -898,8 +1019,22 @@ because Gemini spends part of the budget thinking.
 is kept because all four of its items were delivered.*
 
 > The prompt exists, citations resolve at 99%, and coverage is stuck at 11/18.
-> Apply [the four prompt fixes](#the-four-prompt-fixes--not-yet-measured) and
-> re-measure against the stuffed 11/18 baseline.
+> The four prompt fixes are **written but never scored**. Re-measure against the
+> stuffed 11/18 baseline.
+
+**Two things changed under this task on 2026-08-16, and both affect the
+measurement:**
+
+1. **Tier 1 is now `gemini-3.7-flash`, not `gemini-3.6-flash`.** The 11/18
+   baseline was set by 3.6. So a straight comparison changes **the prompt and the
+   model at once** — the exact mistake this file warns about under
+   [what the smoke run writes](#what-the-smoke-run-writes). **Pin the model.**
+   Either score the new prompt on 3.6 first, or run both models and report two
+   numbers.
+2. **`artifacts/` already holds unscored post-fix runs** from 2026-08-14/15,
+   including `2026-08-15_00-16_core-stuffed_gemini-3.6-flash.md` — stuffed, tier
+   1, on 3.6, with the fixes in. **That is the correct like-for-like comparison
+   and it is already paid for.** Score that file before spending another request.
 
 The one thing to hold on to: **the miss list is not random.** Every miss is
 something B does that A never mentions, or something that needs reasoning over
@@ -1105,8 +1240,8 @@ Copy `.env.example` to `.env` and fill in real values.
 | Variable | Used for | Where to get it |
 |---|---|---|
 | `GOOGLE_API_KEY` | Generator tiers 1 + 3, embedder backup | aistudio.google.com/api-keys — **from the second Google account**; the first is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
-| `MISTRAL_API_KEY` | Generator tiers 2 + 6, **embedder primary** | console.mistral.ai — phone verification, no card |
-| `OPENROUTER_API_KEY` | Generator tiers 4 + 5 | openrouter.ai/keys |
+| `MISTRAL_API_KEY` | Generator tiers 4, 5, 7, 9, **embedder primary** | console.mistral.ai — phone verification, no card |
+| `OPENROUTER_API_KEY` | Generator tiers 6 + 8 | openrouter.ai/keys |
 | `COHERE_API_KEY` | **Reranker tier 1**, embedder last resort | dashboard.cohere.com — trial key, no card |
 | `VOYAGE_API_KEY` | **Reranker tier 2** — 200M free rerank tokens, one-time | dash.voyageai.com — no card |
 | `CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` | Reranker t3, embedder t4, generator t7 | dash.cloudflare.com — token needs **both** `Workers AI - Read` and `Workers AI - Edit`. The **account ID goes in the URL path**, which is why this is the only provider needing two variables |
@@ -1506,15 +1641,54 @@ reason the three chains are shaped differently.
 Ordered by **measured capability**, not by quota and not by vendor claims.
 Two independent sources were used (see [Model ranking](#model-ranking--how-the-order-was-decided-2026-08-11)).
 
-| # | Model | Provider | Evidence / why |
-|---|---|---|---|
-| 1 | **Gemini 3.6 Flash** | Google AI Studio | AA Index **52** · LMArena **#15 (1484)** · **1M context** · **multimodal** (can read paper figures) · ~1,500 RPD · 235 tok/s. Slug `gemini-3.6-flash`, verified live 2026-08-11. |
-| 2 | **GLM-5.2** | **Mistral** | AA Index **53** (highest tested) · LMArena #33 (1470) · 1M context · text-only. Slug `glm-5-2`, **verified live 2026-08-11** on the Mistral key. Replaces Z.ai — same family, stronger model, account already exists. |
-| 3 | **Gemini 3.5 Flash** | Google AI Studio | AA Index **47** · LMArena #19 (1477). Shares Google's quota with #1. Slug `gemini-3.5-flash`. **Thinking model — see the thinking-token note below.** |
-| 4 | **NVIDIA Nemotron 3 Ultra** (`:free`) | OpenRouter | AA Index **38** · LMArena **#96**. 550B MoE (55B active), **up to 1M context** per NVIDIA's model card. Slug `nvidia/nemotron-3-ultra-550b-a55b:free`. *Demoted from tier 1 — see the correction below.* |
-| 5 | **Devstral 2** | Mistral | AA Index 19, but **72.2% SWE-bench Verified** (Mistral's own). A patch-writing specialist. Slug `devstral-2512`. *Placed above North Mini Code despite scoring lower — see the note below.* |
-| 6 | **Cohere North Mini Code** (`:free`) | OpenRouter | AA Index 27.6 but **Coding Index 33.4** — beats Devstral 2 (123B) and Nemotron 3 Super despite 30B total / 3B active. 256K context. Slug `cohere/north-mini-code:free`. |
-| 7 | **`@cf/openai/gpt-oss-120b`** | Cloudflare Workers AI | Outage insurance only — ~11 calls/day at our prompt size. Reached only if Google, Mistral *and* OpenRouter are all down. **Verified live 2026-08-11.** A **thinking model** — needs `max_tokens` ≥ ~500 or it returns `content: null`. |
+*Reordered 2026-08-16 — ten tiers now. Every row except tier 4 was proven live
+that day.*
+
+| # | Model | Provider | Live | Evidence / why |
+|---|---|---|---|---|
+| 1 | **Gemini 3.7 Flash** | Google | ✅ | Newest Flash. 1M context, 65,536 output. Slug `gemini-3.7-flash`. Not on AA or LMArena yet — promoted on recency + identical limits to 3.6, **not** on a measured score. |
+| 2 | **Gemini 3.6 Flash** | Google | ✅ | AA **52** · LMArena **#15 (1484)** · multimodal. The old tier 1, kept because it is the most-proven model in the chain. |
+| 3 | **Gemini 3.5 Flash** | Google | ✅ | AA **47** · LMArena #19 (1477). |
+| 4 | **GLM-5.2** | Mistral | ❌ | AA **53**, the highest tested — and **unreachable since ~2026-08-16**. Kept in the chain deliberately; see the note below. |
+| 5 | **Mistral Medium** | Mistral | ✅ | **A reasoning model nobody had looked at.** `reasoning: true` in `/v1/models`, 262K context. Slug `mistral-medium-latest`. Unscored on AA/LMArena. |
+| 6 | **Nemotron 3 Ultra** (`:free`) | OpenRouter | ✅ | AA **38** · LMArena **#96**. 550B MoE, 1M context. |
+| 7 | **Magistral Small** | Mistral | ✅ | Mistral's dedicated **reasoning** family. 262K context, **50,000 TPM** — double Mistral Medium's, so it is the safer of the two. |
+| 8 | **North Mini Code** (`:free`) | OpenRouter | ✅ | Coding Index 33.4 at 30B total / 3B active. |
+| 9 | **Devstral 2** | Mistral | ✅ | **72.2% SWE-bench Verified.** A patch-writing specialist. Cannot serve a full report — 16,384 output cap. |
+| 10 | **`@cf/openai/gpt-oss-120b`** | Cloudflare | ✅ | Outage insurance only — ~11 calls/day at report size. |
+
+**Three Google tiers now sit at the top, and that is deliberate.** The reason is
+not capability, it is **quota shape**:
+
+| Pool | Daily budget |
+|---|---|
+| Google | ~1,500 requests |
+| OpenRouter | **50** |
+| Cloudflare | ~11 reports |
+
+**Spend the renewing, abundant pool first; bank the scarce ones.** This is the
+same principle already used for Cohere-before-Voyage in the reranker chain. It
+costs nothing extra because pool-aware skipping means one 429 retires all three
+Google tiers at once.
+
+**GLM-5.2 is kept at tier 4 on purpose, not by neglect.** Since the `limit: 0`
+rule exists, a dead tier costs exactly **one wasted request, no retry, and no
+damage to its pool** — and tier 4 is only reached after all three Google tiers
+are down, which is rare. If Mistral ever restores the allocation, the tier starts
+working again **with no code change**, because the chain reads the live header
+instead of a note in this file. Leaving it at tier *2* would have been wrong; the
+cost is paid on every call there.
+
+**Two reasoning models were sitting unused the whole time.** `/v1/models` on
+Mistral reports a `capabilities.reasoning` flag, and it was never read. CLAUDE.md
+had judged Mistral solely on `mistral-large-3` (AA 16, rejected) and concluded
+Mistral had nothing strong. That conclusion was about **one model**, not about the
+platform. **When a provider is dismissed, record which model was tested — the
+next reader will otherwise inherit the conclusion without the evidence.**
+
+**Neither new model has a benchmark score.** Their order (Medium above Magistral)
+is a guess from name and size, and is explicitly *not* measured. Settle it on the
+fixture before trusting it.
 
 **Modal is no longer in the chain.** *(Decided 2026-08-11.)* Its $30 is reserved
 entirely for serving the fine-tuned model. That removes the user-consent gate:
@@ -1551,9 +1725,11 @@ only matters when four tiers above have already failed. Pool-aware 429 skipping
 would fix this properly, but it does not exist yet — it is planned for
 `chain.py`. When it lands, the swap costs nothing and can stay.
 
-The invariant is pinned by `test_no_two_adjacent_tiers_share_an_api_key`, which
-reads `api_key_env` off consecutive `CHAIN` entries — the pool is what runs out,
-not the provider name.
+~~The invariant is pinned by `test_no_two_adjacent_tiers_share_an_api_key`.~~
+**Retired 2026-08-16** — pool-aware skipping made adjacency free. See
+[Why the adjacency rule was retired](#why-the-adjacency-rule-was-retired--2026-08-16).
+The reasoning above is kept because it explains why the *pool*, not the provider
+name, is the thing that runs out.
 
 ### Chain 2 — Embedder (migration, not fallback)
 
@@ -1762,13 +1938,52 @@ Assignments, so no pool funds two jobs:
 | **Voyage** | **Rerank only** | 200M tokens is a one-time grant, so bank it — spend renewing quota first |
 | **Cloudflare** | Rerank t2 · embedder t4 · generation t7 | Neurons are shared, so keep every user light |
 
-**Same-pool tiers must not sit adjacent.** Tiers 1+3 share Google and tiers 4+5
-share OpenRouter. If tier 4 fails because the OpenRouter *account* cap is spent,
-tier 5 fails too — so an independent pool is placed between them.
+### Why the adjacency rule was retired — 2026-08-16
 
-**Worth building into `chain.py`:** when a 429 indicates the *account* cap rather
-than the model, mark that whole **pool** dead for this request and skip every tier
-using it. Otherwise the chain wastes two attempts on a spent OpenRouter.
+**The old rule:** *same-pool tiers must not sit adjacent*, pinned by
+`test_no_two_adjacent_tiers_share_an_api_key`. Its purpose was to stop the chain
+wasting a second attempt on a pool that had just run out.
+
+**It was written before pool-aware skipping existed, and this file said so:**
+
+> *"Pool-aware 429 skipping would fix this properly, but it does not exist yet —
+> it is planned for `chain.py`. When it lands, the swap costs nothing."*
+
+**It landed in slice 2.** `dead_pools` means one 429 retires every tier on that
+key at once:
+
+```
+tier 1  429, resets tomorrow  →  GOOGLE_API_KEY marked dead
+tier 2  skipped instantly, 0 requests
+tier 3  skipped instantly, 0 requests
+tier 4  the next real attempt
+```
+
+Adjacency now costs **nothing**, so the rule was forbidding a chain shape that is
+free — and forbidding the very shape the quota argument asks for.
+
+**Three invariants replace it, and they check the property that actually
+matters** — not *arrangement*, but *survival*:
+
+| Test | Asserts |
+|---|---|
+| `test_no_single_pool_can_kill_the_whole_chain` | killing any one pool leaves at least one tier |
+| `test_no_single_pool_can_stop_a_full_report` | …and at least one that can serve `REPORT_MAX_TOKENS` |
+| `test_the_chain_spans_at_least_three_pools` | the chain is not secretly one provider |
+
+The second is the strongest of the three: it is the only one that would notice
+the chain quietly filling with 16K-output models.
+
+**The general lesson is about invariants, not about pools.** The old test encoded
+a *workaround* for a missing feature. When the feature arrived, the test kept
+enforcing the workaround — and it was still green, so nothing drew attention to
+it. **A test that pins a workaround must name the workaround, or it outlives the
+problem and starts causing one.**
+
+**One risk is genuinely higher now** and is accepted with open eyes: if the Google
+*account* is restricted — as happened on 2026-08-11 — three tiers die instead of
+two. That scenario is already close to fatal, and the ~1,500 RPD it buys every
+other day is worth more than the marginal protection.
 
 **Transport**: plain `requests` for every tier in Step 0 — one uniform style,
 and it keeps the underlying HTTP call visible for learning. OpenRouter, Mistral,
@@ -1929,6 +2144,46 @@ and can be wrong; `max_tokens` is a number we choose and send literally, so the
 server honours it exactly. Padding a known quantity only wastes window. That is
 the general rule: **a safety margin belongs on estimated quantities, never on
 known ones.**
+
+#### The estimator was checked against real counts — it is correct
+
+*(Measured 2026-08-16. `k = 3` stays.)* Providers return the true token count on
+every call, so the estimate can be graded for free:
+
+| Prompt | our `chars/3` | provider's real count | |
+|---|---|---|---|
+| `FULL`, sample pair | 19,736 | **19,151** | over by 3% ✅ |
+| `CORE` stuffed, sample pair | 28,056 | **26,594** | over by 5.5% ✅ |
+
+**It over-estimates on real LabPilot content**, which is the correct direction —
+the margin is there to be unnecessary.
+
+**A synthetic test said the opposite, and that was the test's fault.** Repetitive
+one-line code (`def step(x): return x*2+1`, ×2400) measured **33,621** real
+tokens against a 27,200 estimate — 19% *under*. Newline- and punctuation-dense
+filler tokenizes far worse than real source. **A worst-case string is not a
+measurement of your data; grade an estimator on the corpus it will actually
+see.**
+
+**A real tokenizer would not fix this.** `tiktoken` is OpenAI's BPE, while the
+chain runs on Google, Mistral, NVIDIA and Cohere — it would be a *different*
+wrong number plus a dependency on a 512MB box. **The upgrade is measurement, not
+arithmetic:** log estimate against the returned count on every call and let `k`
+be set by evidence. `prompt_tokens` is already logged; only the comparison is
+missing.
+
+#### Tokens-per-minute does not reject a single large request
+
+*(Corrected 2026-08-16.)* A 33,621-token prompt was sent to
+`mistral-medium-latest`, whose ceiling is **25,000 tokens/minute**, and it
+returned **200**. TPM throttles *across* a minute; it does not reject one call
+that exceeds it.
+
+This weakens the reasoning — though not necessarily the conclusion — behind
+[the Groq exclusion](#constraints), which says a 24K prompt "can never pass" an
+8K TPM limit. That may be true of Groq specifically, but it does **not** follow
+from TPM alone and was never tested. **Re-check an exclusion against the claim
+that produced it, not against the memory of the decision.**
 
 ### Budgeting all three chains — added 2026-08-11
 
@@ -2096,6 +2351,40 @@ naive un-batched 14-call loop would burn OpenRouter's entire day on one report.
   and was never true for the API, because the API had never been called. This is
   the same blind spot as the Google restriction: **an issued API key is not a
   working API.**
+- **GLM-5.2 died on Mistral, and there is no free route to it anywhere.**
+  *(Verified 2026-08-16, every claim from a provider's own page.)* It answered on
+  2026-08-11 and stopped by 2026-08-16 — Mistral changed something, and no error
+  message says what. Six routes were checked and **all six are paid**:
+
+  | Route | Status |
+  |---|---|
+  | Mistral | `limit: 0` — was free, now zero allocation |
+  | OpenRouter | `z-ai/glm-5.2` exists, **paid**, no `:free` twin |
+  | Z.ai direct | **$1.40 / $4.40** per 1M — paid *at the company that made it* |
+  | Z.ai ZCODE CLI | **5-day trial**, then $12.60–$144/month |
+  | OpenCode Zen | card required, $1.40/M |
+  | Hugging Face | works, but free credit is **$0.10/month** and one report costs **$0.127** |
+
+  Z.ai's free models are **GLM-4.7-Flash / 4.5-Flash / 4.6V-Flash**, never 5.2.
+
+  **This is the blog-source rule proving itself a second time.** A "free routes"
+  list named four options; each turned out to be a trial, a credit grant, or a
+  paid plan using the word *free*. **Every claim from an official page held;
+  every claim from a blog collapsed** — exactly as on 2026-08-08 with Beam,
+  Cerebrium and Saturn Cloud.
+
+  **And a new phrase to distrust: "the model is available."** Mistral's admin
+  page still lists `glm-5-2` with 1.00 requests/second — while its *tokens per
+  minute* is a dash. Requests are granted; tokens are not. **Read every limit a
+  provider publishes, not the one that looks reassuring.**
+- **Gemini Pro is not on the free tier.** *(Verified 2026-08-16.)*
+  `gemini-3.1-pro-preview` and `gemini-pro-latest` both answer `429` with
+  *"generate_content_free_tier_requests, **limit: 0**"*, and `gemini-2.5-pro`
+  returns `404 — no longer available to new users`. **Same `limit: 0` signal as
+  GLM, from a different company** — that phrasing is how providers say *"not on
+  your plan"*. Note Google puts it in the **message body** while Mistral puts it
+  in a **header**, so `model_is_unavailable` catches Mistral and not Google. Not
+  urgent, since no Pro tier is planned.
 - **Groq is excluded — on tokens-per-minute, not on quality.** Its daily counts
   are excellent (30 RPM, up to 14,400 RPD) but the free TPM is smaller than one
   LabPilot prompt: `llama-3.1-8b-instant` **6K**, `gpt-oss-120b` **8K**,
@@ -2172,7 +2461,7 @@ what blocks the next commit, then write the commit.
 |---|---|---|---|---|
 | **OpenRouter** | Generator t4 + t5 | 50/day, 20 RPM | No | ✅ 2026-08-10 |
 | **Google AI Studio** | Generator t1 + t3, embedder backup | ~1,500 RPD | No — see restriction note | ✅ 2026-08-11 |
-| **Mistral** | Generator t2 + t6, **embedder primary** | per-model TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-11 |
+| **Mistral** | Generator t4/t5/t7/t9, **embedder primary** | **per-model** TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-16 |
 | **Cohere** | **Reranker t1**, embedder last resort | 10 req/min rerank, **1,000 calls/month total** | No | ✅ 2026-08-11 |
 | **Voyage AI** | **Reranker t2** | **200M rerank tokens, one-time** · 4M TPM / 2,000 RPM | No | ✅ 2026-08-11 |
 | **Cloudflare Workers AI** | Reranker t3, embedder t4, generator t7 | 10,000 neurons/day, resets 00:00 UTC | No | ✅ 2026-08-11 |
@@ -3270,10 +3559,11 @@ of this.
 
 | Tier | Host | Where it goes | Values |
 |---|---|---|---|
-| 1, 3 | Google | `generationConfig.thinkingConfig.thinkingLevel` | `LOW` `MEDIUM` `HIGH` |
-| 2, 5 | Mistral | **root** `reasoning_effort` | `"high"` `"none"` |
-| 4, 6 | OpenRouter | **root** `reasoning: {"effort": …}` | `xhigh`…`none` |
-| 7 | Cloudflare | **not documented — unknown** | ? |
+| 1, 2, 3 | Google | `generationConfig.thinkingConfig.thinkingLevel` | `LOW` `MEDIUM` `HIGH` |
+| 4, 5, 7 | Mistral | **root** `reasoning_effort` — **and `top_p: 1` beside it** | `"high"` `"none"` |
+| 6, 8 | OpenRouter | **root** `reasoning: {"effort": …}` | `xhigh`…`none` |
+| 10 | Cloudflare | **not documented — unknown** | ? |
+| 9 | Devstral 2 | **rejects it** — `400`, `code: 3051` | — |
 
 `CLAUDE.md` previously guessed `thinkingConfig.thinkingBudget`. That is the
 **Gemini 2.5** field; Gemini 3 uses `thinkingLevel`, and sending both is a 400.

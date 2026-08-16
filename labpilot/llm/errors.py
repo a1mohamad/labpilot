@@ -11,11 +11,13 @@ class LLMError(Exception):
         status: int | None = None,
         retry_after: float | None = None,
         reset_at: float | None = None,
+        rate_limit: float | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
         self.retry_after = retry_after
         self.reset_at = reset_at
+        self.rate_limit = rate_limit
 
 
 class AllFreeTiersExhausted(Exception):

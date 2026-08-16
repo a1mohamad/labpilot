@@ -14,6 +14,7 @@ from labpilot.llm.defaults import (
     DEFAULT_TOTAL_BUDGET,
     HTTP_TOO_MANY_REQUESTS,
     RATE_LIMIT_WINDOW,
+    RETRYABLE_STATUSES,
 )
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 from labpilot.llm.registry import CHAIN
@@ -46,6 +47,13 @@ def pool_is_exhausted(error: LLMError) -> bool:
     if error.reset_at is not None:
         return error.reset_at - time.time() > RATE_LIMIT_WINDOW
     return False
+
+
+def model_is_unavailable(error: LLMError) -> bool:
+    if error.status != HTTP_TOO_MANY_REQUESTS:
+        return False
+
+    return error.rate_limit == 0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -82,6 +90,12 @@ class LLMClient:
                     provider, prompt, max_tokens=max_tokens, deadline=deadline
                 )
             except LLMError as exc:
+                if model_is_unavailable(exc):
+                    attempts.append(
+                        self._attempt(provider, f"not available on this account: {exc}")
+                    )
+                    continue
+
                 if exc.status == HTTP_TOO_MANY_REQUESTS:
                     dead_pools.add(pool)
                 attempts.append(self._attempt(provider, str(exc)))
@@ -99,9 +113,13 @@ class LLMClient:
             try:
                 return provider.complete(prompt, max_tokens=max_tokens)
             except LLMError as exc:
-                if exc.status != HTTP_TOO_MANY_REQUESTS:
+                if exc.status not in RETRYABLE_STATUSES:
                     raise
-                if pool_is_exhausted(exc) or attempt >= self.max_retries_per_tier:
+                if (
+                    pool_is_exhausted(exc)
+                    or model_is_unavailable(exc)
+                    or attempt >= self.max_retries_per_tier
+                ):
                     raise
 
                 delay = delay_for(exc, attempt, base=self.base_delay)

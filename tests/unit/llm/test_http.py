@@ -7,6 +7,7 @@ import pytest
 
 from labpilot.llm._http import (
     error_from_response,
+    rate_limit_ceiling,
     reset_at_epoch,
     retry_after_seconds,
 )
@@ -60,3 +61,20 @@ def test_reset_at_is_none_when_the_header_is_missing_or_unreadable(headers):
 
 def test_retry_after_is_none_when_the_header_is_unreadable():
     assert retry_after_seconds({"Retry-After": "soon"}) is None
+
+
+def test_rate_limit_ceiling_reads_the_smallest_limit_header():
+    headers = {
+        "x-ratelimit-limit-req-minute": "50",
+        "x-ratelimit-limit-tokens-minute": "1000000",
+    }
+
+    assert rate_limit_ceiling(headers) == 50
+
+
+def test_rate_limit_ceiling_is_zero_when_the_model_has_no_allocation():
+    assert rate_limit_ceiling({"x-ratelimit-limit-req-minute": "0"}) == 0
+
+
+def test_rate_limit_ceiling_is_none_when_no_limit_header_is_sent():
+    assert rate_limit_ceiling({"Retry-After": "5"}) is None

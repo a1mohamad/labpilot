@@ -5,24 +5,20 @@ from labpilot.llm import NEMOTRON_3_ULTRA, NORTH_MINI_CODE
 
 load_dotenv()
 
-
-@pytest.mark.smoke
-def test_tier4_answers_a_real_prompt():
-    result = NEMOTRON_3_ULTRA.complete(
-        "Reply with one short sentence: you are online.", max_tokens=64
-    )
-
-    assert result.text
-    assert result.tier == 4
-    assert "nemotron" in result.model.lower()
+REASONING_FLOOR = 2048
 
 
 @pytest.mark.smoke
-def test_tier6_answers_a_real_prompt():
-    result = NORTH_MINI_CODE.complete(
-        "Reply with one short sentence: you are online.", max_tokens=64
+@pytest.mark.parametrize(
+    "provider",
+    [NEMOTRON_3_ULTRA, NORTH_MINI_CODE],
+    ids=lambda provider: provider.name,
+)
+def test_openrouter_tier_answers_a_real_prompt(provider):
+    result = provider.complete(
+        "Reply with one short sentence: you are online.", max_tokens=REASONING_FLOOR
     )
 
     assert result.text
-    assert result.tier == 6
-    assert "cohere" in result.model.lower()
+    assert result.tier == provider.tier
+    assert result.model

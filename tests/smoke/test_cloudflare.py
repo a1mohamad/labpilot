@@ -5,13 +5,15 @@ from labpilot.llm import GPT_OSS_120B
 
 load_dotenv()
 
+REASONING_FLOOR = 2048
+
 
 @pytest.mark.smoke
-def test_tier7_answers_a_real_prompt():
+def test_cloudflare_tier_answers_a_real_prompt():
     result = GPT_OSS_120B.complete(
-        "Reply with one short sentence: you are online.", max_tokens=800
+        "Reply with one short sentence: you are online.", max_tokens=REASONING_FLOOR
     )
 
     assert result.text
-    assert result.tier == 7
+    assert result.tier == GPT_OSS_120B.tier
     assert "gpt-oss" in result.model.lower()
