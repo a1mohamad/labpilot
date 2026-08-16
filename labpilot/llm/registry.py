@@ -84,12 +84,12 @@ MISTRAL_MEDIUM = OpenAICompatibleProvider(
 )
 
 GEMINI_3_1_FLASH_LITE = _gemini(
-    name="Gemini 3.1 Flash-Lite", tier=8, model="gemini-3.1-flash-lite"
+    name="Gemini 3.1 Flash-Lite", tier=15, model="gemini-3.1-flash-lite"
 )
 
 NEMOTRON_3_SUPER = OpenAICompatibleProvider(
     name="Nemotron 3 Super",
-    tier=9,
+    tier=10,
     url=OPENROUTER_URL,
     model="nvidia/nemotron-3-super-120b-a12b:free",
     api_key_env="OPENROUTER_API_KEY",
@@ -100,7 +100,7 @@ NEMOTRON_3_SUPER = OpenAICompatibleProvider(
 
 GPT_OSS_120B = OpenAICompatibleProvider(
     name="GPT-OSS 120B",
-    tier=10,
+    tier=11,
     url=CLOUDFLARE_URL,
     model="@cf/openai/gpt-oss-120b",
     api_key_env="CLOUDFLARE_API_KEY",
@@ -112,7 +112,7 @@ GPT_OSS_120B = OpenAICompatibleProvider(
 
 MAGISTRAL_SMALL = OpenAICompatibleProvider(
     name="Magistral Small",
-    tier=11,
+    tier=13,
     url=MISTRAL_URL,
     model="magistral-small-latest",
     api_key_env="MISTRAL_API_KEY",
@@ -123,7 +123,7 @@ MAGISTRAL_SMALL = OpenAICompatibleProvider(
 
 NORTH_MINI_CODE = OpenAICompatibleProvider(
     name="North Mini Code",
-    tier=12,
+    tier=9,
     url=OPENROUTER_URL,
     model="cohere/north-mini-code:free",
     api_key_env="OPENROUTER_API_KEY",
@@ -134,7 +134,7 @@ NORTH_MINI_CODE = OpenAICompatibleProvider(
 
 DEVSTRAL_2 = OpenAICompatibleProvider(
     name="Devstral 2",
-    tier=13,
+    tier=14,
     url=MISTRAL_URL,
     model="devstral-2512",
     api_key_env="MISTRAL_API_KEY",
@@ -144,7 +144,7 @@ DEVSTRAL_2 = OpenAICompatibleProvider(
 
 GEMMA_4_31B = _gemini(
     name="Gemma 4 31B",
-    tier=14,
+    tier=8,
     model="gemma-4-31b-it",
     context_window=262_144,
     max_output_tokens=32_768,
@@ -153,13 +153,12 @@ GEMMA_4_31B = _gemini(
 
 GPT_OSS_120B_GROQ = OpenAICompatibleProvider(
     name="GPT-OSS 120B (Groq)",
-    tier=15,
+    tier=12,
     url=GROQ_URL,
     model="openai/gpt-oss-120b",
     api_key_env="GROQ_API_KEY",
-    context_window=131_072,
-    max_output_tokens=65_536,
-    max_input_tokens=8_000,
+    context_window=8_000,
+    max_output_tokens=8_000,
     extra_body=OPENAI_REASONING,
 )
 
@@ -171,12 +170,12 @@ CHAIN = (
     NEMOTRON_3_ULTRA,
     GEMINI_3_5_FLASH_LITE,
     MISTRAL_MEDIUM,
-    GEMINI_3_1_FLASH_LITE,
+    GEMMA_4_31B,
+    NORTH_MINI_CODE,
     NEMOTRON_3_SUPER,
     GPT_OSS_120B,
-    MAGISTRAL_SMALL,
-    NORTH_MINI_CODE,
-    DEVSTRAL_2,
-    GEMMA_4_31B,
     GPT_OSS_120B_GROQ,
+    MAGISTRAL_SMALL,
+    DEVSTRAL_2,
+    GEMINI_3_1_FLASH_LITE,
 )
