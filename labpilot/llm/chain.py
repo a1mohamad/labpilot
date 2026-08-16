@@ -27,6 +27,9 @@ class Provider(Protocol):
     tier: int
     api_key_env: str
 
+    @property
+    def pool(self) -> str: ...
+
     def complete(self, prompt: str, *, max_tokens: int = ...) -> LLMResult: ...
 
 
@@ -75,7 +78,7 @@ class LLMClient:
         dead_pools: set[str] = set()
 
         for provider in self.chain:
-            pool = provider.api_key_env
+            pool = provider.pool
 
             if pool in dead_pools:
                 attempts.append(self._attempt(provider, f"skipped: {pool} exhausted"))
