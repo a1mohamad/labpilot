@@ -15,12 +15,17 @@ from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 
 
 class FakeProvider:
-    def __init__(self, *, name, tier, api_key_env, outcomes):
+    def __init__(self, *, name, tier, api_key_env, outcomes, quota_pool=None):
         self.name = name
         self.tier = tier
         self.api_key_env = api_key_env
+        self.quota_pool = quota_pool
         self.outcomes = list(outcomes)
         self.calls = 0
+
+    @property
+    def pool(self):
+        return self.quota_pool or self.api_key_env
 
     def complete(self, prompt, *, max_tokens=1024):
         self.calls += 1
