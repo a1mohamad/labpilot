@@ -8,8 +8,14 @@ Read the two rule sections first — they change *how* everything below is done.
 [Conventions](#conventions) · [Architecture](#architecture--stack) ·
 [LLM Serving](#llm-serving--fallback-chain) · [The Three Chains](#the-three-chains--restructured-2026-08-11) ·
 [**The five-way rule**](#how-the-chain-decides--the-five-way-rule) ·
+[**Real quota numbers**](#the-real-free-tier-numbers--measured-2026-08-16-and-they-overturned-a-lot) ·
+[Quota pools](#a-pool-is-the-bucket-that-runs-out-not-the-api-key) ·
+[Input limits](#two-kinds-of-limit-and-they-are-not-the-same-thing) ·
 [Reasoning shape](#the-reasoning-content-shape--found-2026-08-16) ·
 [Adjacency retired](#why-the-adjacency-rule-was-retired--2026-08-16) ·
+[**Model routing**](#model-routing--a-chain-per-task-not-a-model-per-task) ·
+[Thinking presets](#thinking-level--a-user-preset-never-a-per-model-switch) ·
+[**Why the fixes failed**](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
@@ -374,9 +380,42 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. Slices 1–3 are DONE. Slice 4 is built but
-its coverage fix has not been measured.**
-**Last updated 2026-08-16 (eighth session). Working branch: `feat/retrieval`.**
+**Phase: Step 0 — walking skeleton. Slices 1–3 are DONE. Slice 4 is built and
+measured: citations are solved, coverage is not.**
+**Last updated 2026-08-17 (ninth session). Working branch: `feat/retrieval`.**
+
+> ### START HERE IN A NEW SESSION
+>
+> **The one open question:** slice 4's four prompt fixes were measured and
+> **did not work** — coverage stayed at 11/18. See
+> [Why the prompt fixes failed](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17).
+> The conclusion is that **enumeration was never the bottleneck; judgement is** —
+> which makes Step 2's agent loop a requirement, not a preference.
+>
+> **Do not start by tuning the prompt again.** Three attempts have now bought
+> citations 50% → 99% (real) and coverage 10 → 11 → 11 (nothing).
+>
+> **Code state:** 193 unit tests, 18 smoke, ruff clean. 15-tier chain, 13 tiers
+> proven live. `labpilot/` holds `llm/`, `ingest/`, `retrieval/`, `prompts/`.
+> No database, no agent, no API, no UI.
+>
+> **Honest progress: Step 0 ≈ 85%. The whole project ≈ 12%.**
+
+> **2026-08-17, session 9 — the chain was rebuilt on real quota numbers, and the
+> coverage question was finally answered.**
+> **The prompt fixes failed** — 11/18 before, 11/18 after, against a prediction of
+> 15–16. See [the measurement](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17).
+> **Google's "~1,500 RPD" was wrong**: every Flash model is **20/day**, Flash-Lite
+> is 500, Gemma is 14,400 — see
+> [the real numbers](#the-real-free-tier-numbers--measured-2026-08-16-and-they-overturned-a-lot).
+> **`quota_pool` separates the bucket from the API key**, recovering ~40
+> requests/day. **`max_input_tokens` turns a limit into a schedule** — Gemma and
+> Groq are refused locally now and light up by themselves once retrieval shrinks
+> the prompt. **The chain is 15 tiers ordered purely on measured score.**
+> Two Step 2 designs were recorded at the user's request:
+> [model routing](#model-routing--a-chain-per-task-not-a-model-per-task) and
+> [thinking presets](#thinking-level--a-user-preset-never-a-per-model-switch).
+> Smoke tests now **parametrize over `CHAIN`**, so a new tier cannot be forgotten.
 
 > **2026-08-16, session 8 — no prompt work: the LLM layer was repaired and
 > re-organised.** GLM-5.2 died on Mistral, and the way it died exposed a bug that
@@ -417,7 +456,7 @@ its coverage fix has not been measured.**
 > **every finding the model wrote has an A citation, and every miss has no anchor
 > in A.** The prompt never asks the model to walk B. See
 > [Why coverage is stuck](#why-coverage-is-stuck--diagnosed-2026-08-14) and
-> [The four prompt fixes](#the-four-prompt-fixes--not-yet-measured).
+> [The four prompt fixes](#the-four-prompt-fixes--built-2026-08-14-not-yet-measured).
 > **Next: apply the four fixes and re-measure against the 11/18 stuffed
 > baseline.** Code state unchanged.
 
@@ -447,7 +486,7 @@ its coverage fix has not been measured.**
 > half its line citations were wrong and its final conclusion was false** — see
 > [The first real answer](#the-first-real-answer--measured-2026-08-14).
 > **Next: slice 4, the prompt.** Start at
-> [Where to pick up](#where-to-pick-up--slice-4-the-prompt).
+> [Where to pick up](#where-to-pick-up--slice-4s-coverage-problem).
 >
 > **Progress, honestly measured: Step 0 ≈ 70%. The whole project ≈ 10%.**
 > Steps 1–4 have not started: no database, no agent, no UI, no deployment, no
@@ -611,20 +650,32 @@ Every number below was read from the provider's **own** API or docs, never from 
 blog or a rounded UI label. `GET /v1/models` and `GET /api/v1/models` cost no
 generation quota, so this cost nothing.
 
-*Renumbered 2026-08-16 for the ten-tier chain.*
+*Renumbered 2026-08-17 for the fifteen-tier chain. `max_input` is the new third
+column — see [Two kinds of limit](#two-kinds-of-limit-and-they-are-not-the-same-thing).*
 
-| # | Model | `context_window` | `max_output_tokens` | Source |
-|---|---|---|---|---|
-| 1 | Gemini 3.7 Flash | 1,048,576 | 65,536 | Google `GET /v1beta/models` |
-| 2 | Gemini 3.6 Flash | 1,048,576 | 65,536 | Google `GET /v1beta/models` |
-| 3 | Gemini 3.5 Flash | 1,048,576 | 65,536 | Google `GET /v1beta/models` |
-| 4 | GLM-5.2 | 1,048,576 | 1,048,576 † | Mistral `GET /v1/models` |
-| 5 | Mistral Medium | 262,144 | 262,144 † | Mistral `GET /v1/models` |
-| 6 | Nemotron 3 Ultra | 1,000,000 | 65,536 | OpenRouter `GET /api/v1/models` |
-| 7 | Magistral Small | 262,144 | 262,144 † | Mistral `GET /v1/models` |
-| 8 | North Mini Code | 256,000 | 64,000 | OpenRouter `GET /api/v1/models` |
-| 9 | Devstral 2 | 262,144 | **16,384** | Mistral API + docs |
-| 10 | `@cf/openai/gpt-oss-120b` | 128,000 | 128,000 † | Cloudflare dashboard |
+| # | Model | `context_window` | `max_output` | `max_input` | Source |
+|---|---|---|---|---|---|
+| 1 | Gemini 3.7 Flash | 1,048,576 | 65,536 | — | Google `GET /v1beta/models` |
+| 2 | Gemini 3.6 Flash | 1,048,576 | 65,536 | — | Google `GET /v1beta/models` |
+| 3 | Gemini 3.5 Flash | 1,048,576 | 65,536 | — | Google `GET /v1beta/models` |
+| 4 | GLM-5.2 | 1,048,576 | 1,048,576 † | — | Mistral `GET /v1/models` |
+| 5 | Nemotron 3 Ultra | 1,000,000 | 65,536 | — | OpenRouter `GET /api/v1/models` |
+| 6 | Gemini 3.5 Flash-Lite | 1,048,576 | 65,536 | — | Google `GET /v1beta/models` |
+| 7 | Mistral Medium | 262,144 | 262,144 † | — | Mistral `GET /v1/models` |
+| 8 | **Gemma 4 31B** | 262,144 | 32,768 | **16,000** | live 429, quota id |
+| 9 | North Mini Code | 256,000 | 64,000 | — | OpenRouter `GET /api/v1/models` |
+| 10 | Nemotron 3 Super | 262,144 | 262,144 † | — | OpenRouter `GET /api/v1/models` |
+| 11 | GPT-OSS 120B (CF) | 128,000 | 128,000 † | — | Cloudflare dashboard |
+| 12 | **GPT-OSS 120B (Groq)** | **8,000** | **8,000** | — | live 413 |
+| 13 | Magistral Small | 262,144 | 262,144 † | — | Mistral `GET /v1/models` |
+| 14 | Devstral 2 | 262,144 | **16,384** | — | Mistral API + docs |
+| 15 | Gemini 3.1 Flash-Lite | 1,048,576 | 65,536 | — | Google `GET /v1beta/models` |
+
+**Groq is modelled as an 8,000 context window on purpose.** Its real context is
+131,072, but the binding limit is a **total** per-minute budget of 8,000 covering
+prompt *and* reserved output. Setting `context_window` to the smaller number
+makes `_check_fits` enforce exactly the right inequality. **Model the limit that
+binds, not the one the vendor advertises.**
 
 † shared window — the provider publishes no separate output cap, so the sum check
 does the real work.
@@ -1018,9 +1069,61 @@ because Gemini spends part of the budget thinking.
 *Written 2026-08-14, session 7. **This replaces the slice 4 plan below**, which
 is kept because all four of its items were delivered.*
 
-> The prompt exists, citations resolve at 99%, and coverage is stuck at 11/18.
-> The four prompt fixes are **written but never scored**. Re-measure against the
-> stuffed 11/18 baseline.
+> ~~The four prompt fixes are written but never scored.~~
+> **SCORED 2026-08-17. They did not work.** Read the next section instead.
+
+### The prompt fixes were measured, and they failed — 2026-08-17
+
+Both runs stuffed (96/96 chunks), both `gemini-3.6-flash`, both `STOP`. Only the
+prompt differed.
+
+| | baseline `21-27` | post-fix `00-16` |
+|---|---|---|
+| findings | **11 / 18** | **11 / 18** |
+| predicted | — | 15–16 |
+| citations resolve | 73/74 (99%) | 118/148 (80%) |
+
+The prediction said *"treat anything at or above 14 as the fix working, and 11 as
+the diagnosis being wrong."* **It is 11.**
+
+**And it is a *different* 11.** It gained #9 (threshold tuned on the reported
+split) and **lost #5** (the unfreeze off-by-one) — the word "unfreeze" does not
+appear anywhere in the post-fix answer, not even in the 78-line walk.
+
+**The walks ran.** 18 A-lines and 78 B-lines, complete, exactly as rule 6
+demanded. The fix was executed and produced nothing.
+
+> **Enumeration was never the bottleneck. Judgement is.**
+> The model can list all 78 parts of B and still not tell which of them matter.
+
+**Two new problems the fixes created:**
+
+1. **It merged findings.** `D7` = weight decay *and* clip norm; `D8` = no test
+   split *and* threshold re-tuned. This is the failure
+   [claim extraction](#claim-extraction--how-side-a-becomes-queries) already
+   names: *"merged, a partial match reads as a match and two real mismatches
+   disappear."* The count only held because they were unpacked by hand.
+2. **Citation resolution fell 99% → 80%.** More citations written (74 → 148), a
+   larger share wrong.
+
+**The scoring lesson, which cost an hour.** A regex screen said the baseline
+lacked findings #5 and #6. It had both — written in *words* rather than
+identifiers (*"B unfreezes at epoch 4"*, not `UNFREEZE_EPOCH`). **Pattern
+matching is a screen, never a score.** This file already warned: *"a miss you
+have not looked up is not evidence about the model — it is evidence about your
+scoring."* It happened again anyway.
+
+**What this settles.** The remaining seven misses all require reasoning about **B
+on its own terms**, with no A statement to anchor to. That is `find_bugs` and
+`find_missing` — a loop with one focused call per unit. The measured split stands:
+
+$$
+\text{retrieval costs} \approx 2 \text{ findings}, \qquad
+\textbf{the single call costs} \approx 7
+$$
+
+**So Step 2 is a requirement, not a design preference — and the numbers now say
+so.** Stop tuning the prompt.
 
 **Two things changed under this task on 2026-08-16, and both affect the
 measurement:**
@@ -1539,6 +1642,43 @@ every scheduled run failed with `OPENROUTER_API_KEY is not set`. A typo on the
 left of the colon is invisible to YAML validation and to CI, because the only
 thing that notices is the code reading `os.environ`.
 
+#### The smoke suite parametrizes over `CHAIN` — added 2026-08-17
+
+Four per-provider smoke files (`test_google/mistral/openrouter/cloudflare.py`)
+were replaced by **one file that parametrizes over `CHAIN` itself**. Add a tier,
+and it gets smoke coverage automatically. Before this, five of fifteen models had
+no smoke test at all and nobody noticed.
+
+Three details that make it work:
+
+- **A known-dead tier is `xfail(strict=False)`, not deleted.** GLM-5.2 reports
+  `XFAIL` quietly every week — and the day Mistral restores it, the result flips
+  to **`XPASS`**, which is exactly the signal we want and would otherwise never
+  arrive.
+- **The output budget is per provider**, `min(8192, max_output, context // 2)`.
+  A fixed 8,192 asked Groq for more than its entire 8,000 budget.
+- **8,192 is the reasoning floor.** At 2,048 `mistral-medium-latest` sometimes
+  spends the whole budget thinking and returns nothing — flaky, not broken.
+
+#### A unit test now guards the workflow file
+
+`test_every_chain_env_var_is_mapped_in_the_smoke_workflow` reads
+`.github/workflows/smoke.yaml` and asserts the exact string
+`NAME: ${{ secrets.NAME }}` for every `api_key_env` in `CHAIN`.
+
+**This is the test that would have caught the 2026-08-11 `OPENROUTE_API_KEY`
+typo** — a wrong variable name on the left of the colon, invisible to YAML
+validation and to CI, which silently broke every scheduled run. It was verified
+to fail on a misspelling before being trusted.
+
+> **If CI configuration can drift from code, a unit test should check it.** The
+> workflow is just a text file; reading it costs nothing and runs on every push.
+
+**Secrets are still manual.** Adding a provider needs the GitHub repository
+secret created by hand — the test catches the *mapping*, never the secret's
+existence. `GROQ_API_KEY` was added to the workflow on 2026-08-17 and **the
+repository secret must be created**, or Monday's run fails on tier 12.
+
 **Scheduled workflows run from the default branch only.** A fix living on a
 feature branch does not affect Monday's run until it reaches `main`.
 
@@ -1641,43 +1781,56 @@ reason the three chains are shaped differently.
 Ordered by **measured capability**, not by quota and not by vendor claims.
 Two independent sources were used (see [Model ranking](#model-ranking--how-the-order-was-decided-2026-08-11)).
 
-*Reordered 2026-08-16 — ten tiers now. Every row except tier 4 was proven live
-that day.*
+*Rebuilt 2026-08-17 — **fifteen tiers**, ordered purely on measured score. Every
+row was proven live before it was added.*
 
-| # | Model | Provider | Live | Evidence / why |
-|---|---|---|---|---|
-| 1 | **Gemini 3.7 Flash** | Google | ✅ | Newest Flash. 1M context, 65,536 output. Slug `gemini-3.7-flash`. Not on AA or LMArena yet — promoted on recency + identical limits to 3.6, **not** on a measured score. |
-| 2 | **Gemini 3.6 Flash** | Google | ✅ | AA **52** · LMArena **#15 (1484)** · multimodal. The old tier 1, kept because it is the most-proven model in the chain. |
-| 3 | **Gemini 3.5 Flash** | Google | ✅ | AA **47** · LMArena #19 (1477). |
-| 4 | **GLM-5.2** | Mistral | ❌ | AA **53**, the highest tested — and **unreachable since ~2026-08-16**. Kept in the chain deliberately; see the note below. |
-| 5 | **Mistral Medium** | Mistral | ✅ | **A reasoning model nobody had looked at.** `reasoning: true` in `/v1/models`, 262K context. Slug `mistral-medium-latest`. Unscored on AA/LMArena. |
-| 6 | **Nemotron 3 Ultra** (`:free`) | OpenRouter | ✅ | AA **38** · LMArena **#96**. 550B MoE, 1M context. |
-| 7 | **Magistral Small** | Mistral | ✅ | Mistral's dedicated **reasoning** family. 262K context, **50,000 TPM** — double Mistral Medium's, so it is the safer of the two. |
-| 8 | **North Mini Code** (`:free`) | OpenRouter | ✅ | Coding Index 33.4 at 30B total / 3B active. |
-| 9 | **Devstral 2** | Mistral | ✅ | **72.2% SWE-bench Verified.** A patch-writing specialist. Cannot serve a full report — 16,384 output cap. |
-| 10 | **`@cf/openai/gpt-oss-120b`** | Cloudflare | ✅ | Outage insurance only — ~11 calls/day at report size. |
+| # | Model | Provider | AA | LMArena | Note |
+|---|---|---|---|---|---|
+| 1 | **Gemini 3.7 Flash** | Google | **56.0** | — | released 2026-08-13, +4 over 3.6 |
+| 2 | **Gemini 3.6 Flash** | Google | 51.6 | 1484 (#15) | the most-proven model here |
+| 3 | **Gemini 3.5 Flash** | Google | 50.2 | **1480 (#4)** | |
+| 4 | **GLM-5.2** | Mistral | 52.6 | 1465 (#13) | ❌ **dead** — see Constraints |
+| 5 | **Nemotron 3 Ultra** `:free` | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
+| 6 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
+| 7 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
+| 8 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input limit |
+| 9 | **North Mini Code** `:free` | OpenRouter | 27.6 | — | Coding Index 33.4 |
+| 10 | **Nemotron 3 Super** `:free` | OpenRouter | 25.7 | 1378 (#83) | |
+| 11 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
+| 12 | **GPT-OSS 120B** | **Groq** | 24.1 | 1365 (#98) | ⏸ 8K total budget |
+| 13 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
+| 14 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
+| 15 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
 
-**Three Google tiers now sit at the top, and that is deliberate.** The reason is
-not capability, it is **quota shape**:
+⏸ = alive but **unreachable today**, because a report prompt exceeds its limit.
+Each is refused *locally* by `_check_fits`, so it costs no request and no time —
+see [Input limits](#two-kinds-of-limit-and-they-are-not-the-same-thing).
 
-| Pool | Daily budget |
-|---|---|
-| Google | ~1,500 requests |
-| OpenRouter | **50** |
-| Cloudflare | ~11 reports |
+**The ordering rule is capability, full stop.** An earlier draft put the ⏸ tiers
+at the back and `gemini-3.1-flash-lite` at tier 8 "because it has 500/day". Both
+were wrong, and the user rejected them:
 
-**Spend the renewing, abundant pool first; bank the scarce ones.** This is the
-same principle already used for Cohere-before-Voyage in the reranker chain. It
-costs nothing extra because pool-aware skipping means one 429 retires all three
-Google tiers at once.
+- the quota argument was **already spent** at tier 6, which supplies the volume
+- and once `max_input_tokens` made a blocked tier free, there was **no cost left
+  to avoid**, so nothing justified demoting a stronger model
 
-**GLM-5.2 is kept at tier 4 on purpose, not by neglect.** Since the `limit: 0`
-rule exists, a dead tier costs exactly **one wasted request, no retry, and no
-damage to its pool** — and tier 4 is only reached after all three Google tiers
-are down, which is rare. If Mistral ever restores the allocation, the tier starts
-working again **with no code change**, because the chain reads the live header
-instead of a note in this file. Leaving it at tier *2* would have been wrong; the
-cost is paid on every call there.
+> **Order by power. Let the limit fields handle reachability.** A tier that
+> cannot run costs nothing; a tier ranked below its ability costs quality on
+> every call.
+
+**Three tiers are ordered on judgement, not evidence** — Magistral Small,
+Gemini 3.1 Flash-Lite, and the relative position of the two GPT-OSS hosts.
+Neither of the first two appears on AA or LMArena. **Settle them by running the
+fixture, not by arguing.**
+
+**GLM-5.2 is kept at tier 4 on purpose.** With the `limit: 0` rule, a dead tier
+costs one request, no retry, and no damage to its pool. If Mistral restores the
+allocation it starts working **with no code change**, because the chain reads the
+live header rather than a note in this file. The smoke suite marks it
+`xfail(strict=False)`, so a revival shows up as **XPASS** instead of silence.
+
+**Two reasoning models were sitting unused the whole time.** `/v1/models` on
+Mistral reports a `capabilities.reasoning` flag, and it was never read.
 
 **Two reasoning models were sitting unused the whole time.** `/v1/models` on
 Mistral reports a `capabilities.reasoning` flag, and it was never read. CLAUDE.md
@@ -1912,14 +2065,112 @@ HTTP, so "Asking Nemotron…" is true and "Nemotron is thinking…" is not.
 adapter). Tier 6 is a borrowed side-use of the same $30, not what the credit is
 for. If the two ever compete, the fine-tuned demo wins.
 
-### Quota allocation — one platform, one job
+### The real free-tier numbers — measured 2026-08-16, and they overturned a lot
+
+**This file said Google gives "~1,500 RPD". That was wrong, and several decisions
+rested on it.** The truth, read from the account's own
+`aistudio.google.com/rate-limit` page and confirmed by live 429s:
+
+| Model | RPM | TPM | **RPD** |
+|---|---|---|---|
+| Gemini 3.7 / 3.6 / 3.5 / 3 Flash | 5 | 250K | **20 each** |
+| Gemini 3.5 / 3.1 Flash-Lite | 15 | 250K | **500 each** |
+| **Gemma 4 31B / 26B** | 30 | **16K** | **14,400 each** |
+
+Three things follow, and all three changed the design:
+
+1. **Google's quota is per *model*, not per key.** The error body says so:
+   `GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit: 20`. So one spent
+   model must not retire the others — that is what
+   [`quota_pool`](#a-pool-is-the-bucket-that-runs-out-not-the-api-key) fixes, and
+   it recovered about **40 requests a day**.
+2. **"Spend Google first because it is huge" was false.** Three Flash models give
+   60/day against OpenRouter's 50 — the same size. The ordering survived, but the
+   reason for it did not.
+3. **The newer the model, the smaller the allowance.** 3.7 Flash launched
+   2026-08-13 with 20/day and answers 503 constantly. **Do not assume a new model
+   inherits the previous one's limits.**
+
+Every provider's shape, now measured rather than assumed:
+
+| Pool | Requests | Tokens | Shape |
+|---|---|---|---|
+| **Google** | 20/day (Flash) · 500/day (Lite) · 14,400/day (Gemma) | 250K/min (16K Gemma) | **per model** |
+| **OpenRouter** | 50/day, 20/min | — | **per account** |
+| **Mistral** | 50/min | 25K–1M per model | per model + monthly org cap |
+| **Groq** | **1,000/day** | **8,000/min total** | per account |
+| **Cloudflare** | 10,000 neurons/day ≈ 11 reports | — | per account |
+| **Cohere** | 1,000/**month**, shared across chat+embed+rerank | — | per account |
 
 Two kinds of limit exist, and they behave differently:
 
 | Type | Behaviour | Platforms |
 |---|---|---|
-| **Quota** | Runs out. Dead until reset | OpenRouter (50/day), Google (~1,500 RPD), Cohere (1,000/**month**), Cloudflare (10,000 neurons/day) |
+| **Quota** | Runs out. Dead until reset | OpenRouter, Google, Groq, Cohere, Cloudflare |
 | **Rate limit** | Never runs out — only throttles | Mistral (per-model TPM/RPS) |
+
+### A pool is the bucket that runs out, not the API key
+
+*(Built 2026-08-16, after a per-model 429 cost ~40 requests a day.)*
+
+`api_key_env` answers *"how do I authenticate?"*. It is the wrong answer to
+*"what just ran out?"* — and the chain was using it for both.
+
+```
+Google      each MODEL has its own daily quota   →  independent buckets
+OpenRouter  ONE 50/day for the whole account     →  shared bucket
+```
+
+So `HTTPProvider` gained **`quota_pool`**, defaulting to `api_key_env` so nothing
+changes for providers that do not set one. Google entries set
+`quota_pool=f"GOOGLE:{model}"`; OpenRouter entries leave it alone and keep
+sharing. The chain reads `provider.pool`.
+
+Two tests pin the two halves, because they are opposite requirements and a single
+test could not express both:
+
+```
+test_each_google_model_owns_its_quota_pool     →  all pools differ
+test_openrouter_tiers_share_one_quota_pool     →  all pools identical
+```
+
+**The general lesson:** *authentication and accounting are different questions.*
+Any field that answers both is wrong for at least one of them — and the failure
+is silent, because a shared key looks exactly like a shared quota until the day
+it isn't.
+
+### Two kinds of limit, and they are not the same thing
+
+*(Measured 2026-08-16/17. Both fields exist because two providers genuinely
+differ — this is not over-engineering.)*
+
+| Provider | What the limit counts | Modelled as |
+|---|---|---|
+| **Gemma 4 31B** | **input only** — `GenerateContentInputTokensPerModelPerMinute` | `max_input_tokens = 16_000` |
+| **GPT-OSS (Groq)** | **input + reserved output** | `context_window = max_output_tokens = 8_000` |
+
+The evidence that they differ, from one smoke run:
+
+```
+Groq   413  "Limit 8000, Requested 8273"    ← prompt 77 + max_tokens 8192
+Gemma  200                                   ← same max_tokens 8192, passed
+```
+
+Groq counts the `max_tokens` you *reserve*, even if you never use it. Gemma does
+not. So a single field could not describe both.
+
+**Why this matters more than it looks.** `_check_fits` now refuses these tiers
+**before the HTTP call** — no request spent, no 413, no 429, no retry, no
+backoff. That is what made it safe to rank them by capability instead of hiding
+them at the end of the chain. And when retrieval shrinks the prompt below their
+limits, **they start working with no code change**, because the check reads the
+prompt rather than a flag someone has to remember to flip.
+
+> **A limit you model correctly becomes a schedule, not an exclusion.**
+
+**Step 1 unlock, worth more than any reordering:** when the reranker brings the
+prompt under ~16K input, **Gemma 4 31B + 26B add 28,800 requests/day** — more
+than every other pool in this project combined, at AA 29.7 / LMArena #27.
 
 **Mistral also has a monthly consumption cap**, so it is not truly unlimited —
 their docs state API access "can be suspended until the next month begins" if the
@@ -1932,8 +2183,9 @@ Assignments, so no pool funds two jobs:
 | Pool | Assigned to | Reason |
 |---|---|---|
 | **OpenRouter** (50/day) | **Generation only** | Scarcest pool. Never spend it on embedding or reranking |
-| **Google** | Generation t1/t3 **+ embedding backup** | Chat and embedding are **separate quotas**, so no conflict |
-| **Mistral** | Generation t2/t6 **+ embedder primary** | Rate-limited, largest headroom |
+| **Google** | Generation **+ embedding backup** | Chat and embedding are **separate quotas**, so no conflict |
+| **Mistral** | Generation **+ embedder primary** | Rate-limited, largest headroom |
+| **Groq** | Generation, **small jobs only** | 1,000/day but 8K total per call — perfect for the gate, impossible for a report |
 | **Cohere** | **Rerank only** | 1,000/month is one shared bucket across chat, embed and rerank — too small to split |
 | **Voyage** | **Rerank only** | 200M tokens is a one-time grant, so bank it — spend renewing quota first |
 | **Cloudflare** | Rerank t2 · embedder t4 · generation t7 | Neurons are shared, so keep every user light |
@@ -1981,9 +2233,41 @@ it. **A test that pins a workaround must name the workaround, or it outlives the
 problem and starts causing one.**
 
 **One risk is genuinely higher now** and is accepted with open eyes: if the Google
-*account* is restricted — as happened on 2026-08-11 — three tiers die instead of
-two. That scenario is already close to fatal, and the ~1,500 RPD it buys every
-other day is worth more than the marginal protection.
+*account* is restricted — as happened on 2026-08-11 — **six** tiers die at once,
+not two. That scenario is already close to fatal, and the volume Google supplies
+every other day is worth more than the marginal protection.
+
+### Pin the deliberate exceptions, so an accidental one still breaks CI
+
+*(2026-08-17.)* Three tiers cannot serve a full report today, each for a
+different, measured reason. A test asserting *"every tier can"* would simply be
+false; a test asserting nothing would let a real regression through. So the
+exceptions are **named constants** and the test compares against the list:
+
+```python
+OUTPUT_TOO_SMALL = ("GPT-OSS 120B (Groq)", "Devstral 2")
+INPUT_LIMITED = ("Gemma 4 31B",)
+```
+
+| Test | Asserts |
+|---|---|
+| `test_only_known_tiers_cannot_serve_a_full_report` | the output-capped list is **exactly** these two |
+| `test_only_known_tiers_are_blocked_by_an_input_limit` | the input-capped list is **exactly** this one |
+| `test_an_input_limited_tier_costs_no_request` | `_check_fits` rejects an oversized prompt **before** any HTTP call |
+
+The third is the one that matters most: it proves the blocked tiers are **free**,
+which is the entire reason they can be ranked by capability instead of hidden at
+the end of the chain.
+
+**The pattern generalises.** When a rule has real exceptions, do not weaken the
+rule and do not delete the test. **List the exceptions by name.** Then a
+deliberate loss is documented, and an accidental one — a new tier quietly
+dropping below the report budget — breaks the build.
+
+An earlier version of this test, `test_input_limited_tiers_sit_at_the_end_of_the_chain`,
+was **deleted the same day it was written**: it enforced a workaround for a cost
+that `max_input_tokens` had already removed. The same mistake as the adjacency
+rule, caught faster this time.
 
 **Transport**: plain `requests` for every tier in Step 0 — one uniform style,
 and it keeps the underlying HTTP call visible for learning. OpenRouter, Mistral,
@@ -2035,6 +2319,44 @@ LMArena tiebreak (#15 vs #33) plus multimodality and verified availability.
   **fill-in-the-middle autocomplete** model, not a conversational one. It would be
   the right choice only if LabPilot ever adds in-editor gap completion.
 - **Groq is excluded on TPM, not quality** — see Constraints.
+  *(Partly reversed 2026-08-17: it is now tier 12, reachable for small jobs only.)*
+
+#### Re-measured 2026-08-17 — the scores the 15-tier order is built on
+
+Two sources again, both re-read rather than remembered. Scores move fast: Google
+shipped **three** new Flash models in three months.
+
+| Model | AA Index | LMArena | Where |
+|---|---|---|---|
+| Gemini 3.7 Flash | **56.0** | — | Google |
+| GLM-5.2 | 52.6 | 1465 (#13) | Mistral ❌ |
+| Gemini 3.6 Flash | 51.6 | 1484 (#15) | Google |
+| Gemini 3.5 Flash | 50.2 | **1480 (#4)** | Google |
+| Nemotron 3 Ultra | 38.3 | 1426 | OpenRouter |
+| **Gemini 3.5 Flash-Lite** | **37.4** | — | Google |
+| Mistral Medium 3.5 | 30.4 | 1420 (#50) | Mistral |
+| Gemma 4 31B | 29.7 | **1441 (#27)** | Google |
+| North Mini Code | 27.6 | — | OpenRouter |
+| Nemotron 3 Super | 25.7 | 1378 (#83) | OpenRouter |
+| GPT-OSS 120B | 24.1 | 1365 (#98) | Cloudflare · Groq |
+| Nemotron 3.5 Lightning | 23.6 | — | OpenRouter |
+| Mistral Small 4 | 19.7 | — | Mistral |
+| Devstral 2 | 19 | — | Mistral |
+
+**Not listed anywhere:** Magistral Small, Gemini 3.1 Flash-Lite. Their tier
+positions are guesses and are labelled as such in the chain table.
+
+**Two corrections this round produced, and both were errors of *reading*, not of
+judgement:**
+
+- **North Mini Code is AA 27.6.** That number was already in this file, and I
+  recorded it as "no score" while ranking it. It moved 12 → 9. **Search your own
+  notes before declaring something unmeasured.**
+- **Gemini 3.5 Flash-Lite at 37.4 beats every non-Gemini model below tier 6** —
+  Mistral Medium, Gemma, GPT-OSS, Nemotron Super — while having **25× their
+  daily budget** and spending **zero thinking tokens**. It is the single best
+  value in the project and was found only because the user asked whether
+  Flash-Lite models were usable at all.
 
 ### Token budget — decided 2026-08-10
 
@@ -2258,15 +2580,27 @@ $$
 \text{reports per day} \;=\; \Big\lfloor \frac{\text{daily quota}}{10} \Big\rfloor
 $$
 
-| Pool | Daily quota | Full reports/day |
-|---|---|---|
-| Google (tiers 1+3) | ~1,500 | **~150** |
-| OpenRouter (tiers 4+5) | 50 | **~5** |
-| Cloudflare (tier 7) | ~11 calls | **~1** |
+*Rewritten 2026-08-17 on the measured quotas — the old table assumed Google gave
+~1,500 RPD and therefore ~150 reports/day. **Both numbers were fiction.***
 
-**This is the number that matters.** It confirms tier 1 must be Google: at ~5
-reports/day, OpenRouter alone could not run a demo session. It also means a
-naive un-batched 14-call loop would burn OpenRouter's entire day on one report.
+| Pool | Daily quota | Full reports/day, un-routed |
+|---|---|---|
+| Google Flash ×3 | 20 each = **60** | **~6** |
+| Google Flash-Lite ×2 | 500 each = **1,000** | **~100** |
+| Google Gemma ×2 | 14,400 each | ⏸ blocked until the prompt shrinks |
+| OpenRouter | 50 | **~5** |
+| Groq | 1,000 | ⏸ small jobs only |
+| Cloudflare | ~11 calls | **~1** |
+
+**The conclusion inverts.** The old note said *"tier 1 must be Google because it
+has 1,500/day"*. The truth is that Google's **best** models give 60 calls a day
+between them — about six un-routed reports — while its **cheap** models give
+1,000 and its Gemma models 28,800.
+
+**That is the whole argument for
+[model routing](#model-routing--a-chain-per-task-not-a-model-per-task).** Spend
+the 20/day models on `explain_divergence` only, and run the other nine calls on
+Flash-Lite, Gemma and Groq. Same report count, far better report.
 
 #### Consequences to build in
 
@@ -2385,12 +2719,37 @@ naive un-batched 14-call loop would burn OpenRouter's entire day on one report.
   your plan"*. Note Google puts it in the **message body** while Mistral puts it
   in a **header**, so `model_is_unavailable` catches Mistral and not Google. Not
   urgent, since no Pro tier is planned.
-- **Groq is excluded — on tokens-per-minute, not on quality.** Its daily counts
-  are excellent (30 RPM, up to 14,400 RPD) but the free TPM is smaller than one
-  LabPilot prompt: `llama-3.1-8b-instant` **6K**, `gpt-oss-120b` **8K**,
-  `llama-3.3-70b-versatile` **12K**, against our ~24K total. A single request can
-  never pass. Groq also offers **no embedding models at all**. Revisit only if the
-  prompt budget ever drops below ~8K.
+- ~~**Groq is excluded**~~ **— reversed 2026-08-17. Groq is now tier 12, and the
+  original reasoning was right about the number but wrong about the response.**
+  Measured on this account:
+
+  ```
+  small prompt   200   ok
+  27K prompt     413   "Limit 8000, Requested 37770"
+  headers        x-ratelimit-limit-requests: 1000
+                 x-ratelimit-limit-tokens:   8000
+  ```
+
+  **1,000 requests/day** — one of the largest budgets in the project — against
+  **8,000 tokens/minute total**, which counts prompt *and* reserved output. So a
+  full report is impossible and always will be; even the 32,000-token answer
+  alone exceeds the whole budget.
+
+  It earns a place anyway because `context_window = 8_000` makes `_check_fits`
+  refuse it **locally**, costing nothing, and because **Step 2's small jobs fit
+  easily** — the correspondence gate is ~500 in / 200 out. Groq still offers **no
+  embedding models at all**.
+
+  Two corrections worth keeping: the refusal is **413**, not 429 — a status the
+  chain treats as "next tier", which is correct. And the old note said "up to
+  14,400 RPD"; the measured figure for `gpt-oss-120b` is **1,000**.
+- **A 180-second read timeout is too small for a report.** *(Found 2026-08-17.)*
+  `DEFAULT_TIMEOUT` is `(10.0, 180.0)`, and a stuffed report on a thinking model
+  needs longer — one measured answer spent 26,678 thought tokens before writing a
+  word. Two of three runs died on `Read timed out`, which looks exactly like a
+  dead provider in the logs and is not one. **Raise the read timeout with
+  `REPORT_MAX_TOKENS`, and remember `DEFAULT_TOTAL_BUDGET` (300 s) must move with
+  it** — a 600-second call inside a 300-second budget can never finish.
 - **Modal is out of the chain entirely.** *(Decided 2026-08-11.)* The $30 is
   reserved for serving the fine-tuned model, which is the job nothing free can do.
   `MODAL_API_KEY` is therefore not needed by `chain.py`, and the chain ends at
@@ -2460,11 +2819,12 @@ what blocks the next commit, then write the commit.
 | Platform | Role | Limits | Card? | Proven live? |
 |---|---|---|---|---|
 | **OpenRouter** | Generator t4 + t5 | 50/day, 20 RPM | No | ✅ 2026-08-10 |
-| **Google AI Studio** | Generator t1 + t3, embedder backup | ~1,500 RPD | No — see restriction note | ✅ 2026-08-11 |
+| **Google AI Studio** | Generator t1/t2/t3/t6/t8/t15, embedder backup | **per model**: Flash 20/day · Flash-Lite 500/day · Gemma 14,400/day | No — see restriction note | ✅ 2026-08-17 |
 | **Mistral** | Generator t4/t5/t7/t9, **embedder primary** | **per-model** TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-16 |
 | **Cohere** | **Reranker t1**, embedder last resort | 10 req/min rerank, **1,000 calls/month total** | No | ✅ 2026-08-11 |
 | **Voyage AI** | **Reranker t2** | **200M rerank tokens, one-time** · 4M TPM / 2,000 RPM | No | ✅ 2026-08-11 |
 | **Cloudflare Workers AI** | Reranker t3, embedder t4, generator t7 | 10,000 neurons/day, resets 00:00 UTC | No | ✅ 2026-08-11 |
+| **Groq** | Generator t12 · **Step 2 small jobs** | **1,000 req/day** · **8,000 tokens/min total** | No | ✅ 2026-08-17 |
 | ~~**Cerebras Cloud**~~ | ~~tier 5~~ | — | **YES — blocked** | ❌ `402` |
 | **Kaggle** | Fine-tuning (Step 4) | ~30 GPU-hrs/week, 2×T4 or P100, 12h sessions | No (phone verification) | — |
 | **Lightning AI** | One-shot escape hatch for a bigger GPU | **5 credits, one-time** (~2 A100-hrs) | No (phone verification) | — |
@@ -3821,7 +4181,7 @@ so the model *could* have used them — it simply was never told to walk B.
 **The honest reading of the "too many rules" hypothesis.** It was a reasonable
 guess from the numbers — 10 bare against 11 structured looks like the structure
 paid for nothing. Half of it holds: two of our rules do cost us
-([the four fixes](#the-four-prompt-fixes--not-yet-measured), items 3 and 4). But
+([the four fixes](#the-four-prompt-fixes--built-2026-08-14-not-yet-measured), items 3 and 4). But
 the direction was backwards. **Cutting sections is what lost the findings.**
 `CORE` is the short template, and short is where coverage fell.
 
@@ -4061,6 +4421,113 @@ When a requested capability's precondition is unmet, the agent **says what is
 missing** rather than failing or improvising — see
 [UI shape](#ui-shape--step-3-recorded-now).
 
+### Model routing — a chain per task, not a model per task
+
+*(Designed 2026-08-17. This is the payoff for everything measured that day, and
+it needs no new code.)*
+
+**Each capability gets its own ordered chain**, not a single model. One model per
+task would be fragile — if Gemma 503s, the correspondence gate dies and the whole
+graph stops. `LLMClient` already takes `chain=` as a parameter, so routing is
+**choosing which tuple to pass**, nothing more.
+
+```python
+GATE_CHAIN = (GEMMA_4_31B, GPT_OSS_120B_GROQ, GEMINI_3_5_FLASH_LITE)
+SUMMARY_CHAIN = (GEMMA_4_31B, GEMINI_3_5_FLASH_LITE, MISTRAL_MEDIUM)
+VERIFY_CHAIN = (GEMINI_3_5_FLASH_LITE, GEMMA_4_31B, MISTRAL_MEDIUM)
+CODE_CHAIN = (DEVSTRAL_2, NORTH_MINI_CODE, GEMINI_3_6_FLASH)
+EXPLAIN_CHAIN = CHAIN  # the full one — this is the product
+```
+
+Every task chain still inherits the whole five-way rule: 429 retry, 503 retry,
+`limit: 0` detection, per-model pools, and the total time budget.
+
+**Why this is the point of Step 2, in one table.** A report is ~10 calls, but
+only **one** of them needs a scarce model:
+
+| Job | Size | Chain leads with | Budget it spends |
+|---|---|---|---|
+| correspondence gate | ~500 in / 200 out | **Gemma 4 31B** | 14,400/day |
+| `summarize` ×2 | ~4K / 1K | **Gemma** | 14,400/day |
+| `extract_claims` | ~3K / 1K | **Flash-Lite** | 500/day |
+| `verify` ×3 batches | ~3K / 1K | **Flash-Lite** | 500/day |
+| `write_code` | medium | **Devstral 2** | Mistral rate-limit |
+| **`explain_divergence`** | large | **Gemini 3.7 Flash** | **20/day** |
+
+$$
+\text{today: } 1 \text{ call} \times 20/\text{day} \Rightarrow 20 \text{ reports}
+\qquad
+\text{Step 2: } 9 \text{ cheap} + 1 \text{ scarce} \Rightarrow \textbf{still } 20
+$$
+
+**A much better report for the same scarce budget**, because nine of the ten
+calls come from pools that cannot realistically be exhausted.
+
+**Two rules that fall out, and both are easy to get wrong:**
+
+1. **Every task chain must end in a model that cannot run out.** The gate must
+   never fail merely because Gemma is busy.
+2. **A cheap chain must not *start* with a 20/day model**, or routing achieves
+   nothing — it just spends the scarce pool earlier.
+
+**This supersedes the scattered routing notes** elsewhere in this file, which
+refer to models by **tier number**. Tier numbers went stale twice on 2026-08-16
+alone. **Route by model name, never by tier index.**
+
+### Thinking level — a user preset, never a per-model switch
+
+*(Designed 2026-08-17, at the user's request. A **Step 3** feature — it needs a
+UI. Recorded now so it is not re-derived.)*
+
+**The user must not choose the model's thinking level directly, because they do
+not know which model will answer.** That is the whole point of a fallback chain:
+tier 1 may 503 and tier 6 serves instead. A per-model control would be a promise
+the chain cannot keep.
+
+So the knob is **per task**, exactly as this file already said:
+
+> *"Thinking level is a per-task knob, not a global setting — `explain_divergence`
+> wants High, the correspondence gate wants Minimal."*
+
+**The user picks a goal; we pick the mechanism:**
+
+```
+user sees:   Fast  |  Balanced  |  Deep
+                        ↓
+we set:      per-task thinking level  AND  per-task max_tokens
+                        ↓
+provider:    thinkingLevel / reasoning_effort / reasoning.effort / omit
+```
+
+| Preset | gate | summarize | verify | **explain_divergence** |
+|---|---|---|---|---|
+| Fast | none | none | low | medium |
+| Balanced | none | low | medium | **high** |
+| Deep | low | medium | high | **high** |
+
+**The preset must set the token budget too, not only the level.** Thinking is
+paid out of `max_tokens`, and we measured how much:
+
+```
+gemini-3.6-flash, one report:  26,678 thought tokens + 5,318 answer = MAX_TOKENS
+```
+
+**83% of the budget went to thinking and the report was cut.** So a knob that
+raised the level alone would make "Deep" produce *worse* output than "Balanced" —
+a control that harms you when you turn it up is a broken control.
+
+**Implementation, when it is built:** `thinking` moves from a registry field to
+an argument of `complete()`, for exactly the reason `max_tokens` already is —
+*"answer length belongs to the task, not the model."* Pass a neutral enum
+(`NONE / LOW / MEDIUM / HIGH`) and let each provider translate it to its own wire
+shape. Translating vendor differences is what the provider abstraction is for.
+
+**Unverified, and it matters:** `gemini-3.5-flash-lite` **accepts**
+`thinkingLevel: HIGH` and returned `thoughts = 0`. It may ignore the setting
+entirely. Check before building a preset that depends on it. And every
+measurement so far ran at HIGH — **the preset values are a design, not a
+finding.**
+
 ### Why this is an agent and not one LLM call
 
 Worked example — *"find bugs in my code based on the paper"*:
@@ -4284,12 +4751,16 @@ responses (not part of the fine-tune).
   **This became critical on 2026-08-11**: Cerebras was going to serve the
   evaluation baseline and is now dead (`402`, card required). **Google is now the
   only free place to run `gemma-4-26b-a4b-it`**, the actual fine-tune target, as
-  a baseline. Losing that Google account would cost the evaluation as well as two
-  generator tiers.
+  a baseline. Losing that Google account would cost the evaluation as well as
+  **six** generator tiers.
 - **Evaluation**: fine-tuned model vs. base model, and vs. `gemma-4-31b`.
   **Run the baseline on Google** — *changed 2026-08-11; the earlier plan said
-  Cerebras, which now requires a card.* Google's ~1,500 RPD makes a real
-  evaluation possible in one sitting, where OpenRouter's ~50/day does not. Run
+  Cerebras, which now requires a card.* **The quota is better than the old note
+  claimed, for this job specifically:** `gemma-4-26b-a4b-it` and `gemma-4-31b-it`
+  each allow **14,400 requests/day** (measured 2026-08-16), so a few hundred
+  evaluation prompts cost nothing. The 16K input limit that blocks Gemma from
+  serving *reports* does not bite here — evaluation prompts are short.
+  OpenRouter's ~50/day could not do this at all. Run
   the fine-tuned model on Modal or ZeroGPU. Where a like-for-like comparison
   matters, run both the fine-tuned model *and* the base model on Modal, on the
   same GPU with the same settings, so differences come from the fine-tuning and
