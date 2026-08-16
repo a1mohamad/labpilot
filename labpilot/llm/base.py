@@ -32,8 +32,14 @@ class HTTPProvider(ABC):
     api_key_env: str
     context_window: int
     max_output_tokens: int
+    max_input_tokens: int | None = None
+    quota_pool: str | None = None
     timeout: tuple[float, float] = DEFAULT_TIMEOUT
     temperature: float = DEFAULT_TEMPERATURE
+
+    @property
+    def pool(self) -> str:
+        return self.quota_pool or self.api_key_env
 
     def complete(
         self, prompt: str, *, max_tokens: int = DEFAULT_MAX_TOKENS
@@ -89,7 +95,15 @@ class HTTPProvider(ABC):
             )
 
         estimate = estimate_tokens(prompt)
-        required = math.ceil(estimate * (1 + SAFETY_MARGIN_RATIO)) + max_tokens
+        padded = math.ceil(estimate * (1 + SAFETY_MARGIN_RATIO))
+
+        if self.max_input_tokens is not None and padded > self.max_input_tokens:
+            raise LLMError(
+                f"{self.name}: prompt needs ~{padded} input tokens but the "
+                f"per-minute input limit is {self.max_input_tokens}"
+            )
+
+        required = padded + max_tokens
 
         if required > self.context_window:
             raise LLMError(
