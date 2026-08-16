@@ -9,6 +9,7 @@ import labpilot.llm as llm
 from labpilot.llm import CHAIN, LLMClient
 
 GOOGLE_TIER_1_URL = f"{CHAIN[0].url}/{CHAIN[0].model}:generateContent"
+GOOGLE_TIER_2_URL = f"{CHAIN[1].url}/{CHAIN[1].model}:generateContent"
 GOOGLE_TIER_3_URL = f"{CHAIN[2].url}/{CHAIN[2].model}:generateContent"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -54,26 +55,35 @@ def test_the_real_chain_returns_tier_one_when_google_answers(keys):
 
 
 @responses.activate
-def test_the_real_chain_skips_every_google_tier_when_google_is_spent(keys):
+def test_one_spent_google_model_does_not_skip_the_others(keys):
     responses.post(
         GOOGLE_TIER_1_URL,
         status=429,
-        json={"error": "daily quota exceeded"},
+        json={"error": "daily quota exceeded for this model"},
         headers={"X-RateLimit-Reset": str(int(time.time() + 3600))},
     )
-    responses.post(MISTRAL_URL, status=500, json={"error": "upstream failure"})
-    responses.post(GOOGLE_TIER_3_URL, json=gemini_body("no google tier may run"))
-    responses.post(OPENROUTER_URL, json=openai_body("nvidia/nemotron-3-ultra"))
+    responses.post(GOOGLE_TIER_2_URL, json=gemini_body("tier 2 still has quota"))
 
     result = LLMClient().generate("why do these diverge?")
 
-    google_tiers = [p.tier for p in CHAIN if p.api_key_env == "GOOGLE_API_KEY"]
-    skipped = {a.tier for a in result.attempts if "exhausted" in a.error}
-    winner = next(p for p in CHAIN if p.tier == result.tier)
+    assert result.tier == 2
+    assert result.text == "tier 2 still has quota"
+    assert [attempt.tier for attempt in result.attempts] == [1]
 
-    assert winner.api_key_env != "GOOGLE_API_KEY"
-    assert skipped == set(google_tiers[1:])
-    assert GOOGLE_TIER_3_URL not in [call.request.url for call in responses.calls]
+
+def test_each_google_model_owns_its_quota_pool():
+    google = [p for p in CHAIN if p.api_key_env == "GOOGLE_API_KEY"]
+    pools = [p.pool for p in google]
+
+    assert len(google) >= 2
+    assert len(set(pools)) == len(pools), pools
+
+
+def test_openrouter_tiers_share_one_quota_pool():
+    openrouter = [p for p in CHAIN if p.api_key_env == "OPENROUTER_API_KEY"]
+
+    assert len(openrouter) >= 2
+    assert len({p.pool for p in openrouter}) == 1
 
 
 def test_the_default_client_uses_the_registry_chain():
