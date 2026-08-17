@@ -1,0 +1,182 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #666666;
+  --line: #d8d8d8;
+  --panel: #f6f6f6;
+  --accent: #2f5fd0;
+  --warn: #9a4b00;
+  --error: #a01919;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c;
+    --fg: #e8e8e8;
+    --muted: #9aa0a6;
+    --line: #33373d;
+    --panel: #1e2126;
+    --accent: #7aa2f7;
+    --warn: #e0a458;
+    --error: #f07178;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+  max-width: 52rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+header p {
+  margin: 0.35rem 0 2rem;
+  color: var(--muted);
+}
+
+.slots {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 40rem) {
+  .slots {
+    grid-template-columns: 1fr;
+  }
+}
+
+.slot,
+.question {
+  display: block;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.question {
+  margin-top: 1rem;
+}
+
+.slot-title {
+  display: block;
+  font-weight: 600;
+}
+
+.slot-hint {
+  display: block;
+  margin-bottom: 0.6rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+input[type="file"] {
+  width: 100%;
+  color: var(--fg);
+  font-size: 0.85rem;
+}
+
+textarea {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+
+button {
+  margin-top: 1rem;
+  padding: 0.6rem 1.4rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+#status {
+  margin-top: 1.5rem;
+  color: var(--muted);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 2rem 0 1rem;
+}
+
+.tag {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.tag.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+pre {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font: 0.85rem/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-x: auto;
+}
+
+details {
+  margin-top: 1rem;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+#citations {
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+
+#citations code {
+  color: var(--muted);
+}
+
+#failure h2 {
+  margin-bottom: 0.25rem;
+  color: var(--error);
+  font-size: 1.05rem;
+}
+
+.request-id {
+  color: var(--muted);
+  font-size: 0.8rem;
+}

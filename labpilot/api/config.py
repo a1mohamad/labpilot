@@ -32,6 +32,10 @@ class ApiConfig:
         )
     )
 
+    # Mounted at /ui only when it exists, so an API-only deployment needs no
+    # change. Same origin as the API, which is why CORS can stay empty.
+    FRONTEND_DIR: Path = Path(os.getenv("FRONTEND_DIR", PROJECT_ROOT / "web"))
+
     CORS_ALLOW_ORIGINS: tuple[str, ...] = tuple(
         origin.strip()
         for origin in os.getenv("CORS_ALLOW_ORIGINS", "").split(",")

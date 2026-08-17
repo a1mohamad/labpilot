@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from labpilot.api import ApiConfig
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from labpilot.api import ApiConfig, create_app
 from tests.api.conftest import COMPARE, QUESTION, problem
 
 
@@ -51,3 +55,21 @@ def test_a_successful_response_also_carries_a_request_id(client):
 
 def test_an_unknown_path_is_still_a_404(client):
     assert client.get("/nope").status_code == 404
+
+
+def test_the_page_is_served_from_the_same_origin_as_the_api(client):
+    """Same origin is why CORS_ALLOW_ORIGINS can stay empty."""
+    response = client.get("/ui/")
+
+    assert response.status_code == 200
+    assert "LabPilot" in response.text
+
+
+def test_the_page_mount_is_optional(monkeypatch, provider_key):
+    """An API-only deployment simply does not ship web/, and must still boot."""
+    monkeypatch.setattr(ApiConfig, "FRONTEND_DIR", Path("no-such-directory"))
+    bare = create_app()
+
+    with TestClient(bare) as running:
+        assert running.get("/ui/").status_code == 404
+        assert running.get("/health").status_code == 200

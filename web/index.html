@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LabPilot</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>LabPilot</h1>
+      <p>Compares two pieces of work and explains why their results diverge.</p>
+    </header>
+
+    <form id="compare">
+      <div class="slots">
+        <label class="slot">
+          <span class="slot-title">A &mdash; the reference</span>
+          <span class="slot-hint">the paper, spec or README</span>
+          <input type="file" name="a" required />
+        </label>
+
+        <label class="slot">
+          <span class="slot-title">B &mdash; the implementation</span>
+          <span class="slot-hint">the code being examined</span>
+          <input type="file" name="b" required />
+        </label>
+      </div>
+
+      <!-- Prefilled and editable, never a placeholder: this text is also the
+           retrieval query, so the user must see what will be asked. v1. -->
+      <label class="question">
+        <span class="slot-title">Question</span>
+        <textarea name="question" rows="2" required>
+Compare these and explain why the results diverge.</textarea
+        >
+      </label>
+
+      <button type="submit">Compare</button>
+    </form>
+
+    <p id="status" hidden></p>
+
+    <section id="result" hidden>
+      <div id="meta" class="meta"></div>
+      <pre id="answer"></pre>
+      <details id="citations-box">
+        <summary><span id="citations-summary"></span></summary>
+        <ul id="citations"></ul>
+      </details>
+    </section>
+
+    <section id="failure" hidden>
+      <h2 id="failure-code"></h2>
+      <p id="failure-message"></p>
+      <p class="request-id">request id: <code id="failure-id"></code></p>
+      <ul id="failure-attempts"></ul>
+    </section>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from labpilot.api.config import ApiConfig
 from labpilot.api.error_handlers import register_error_handlers
@@ -63,6 +64,14 @@ def create_app() -> FastAPI:
     register_error_handlers(application)
     application.include_router(service_router)
     application.include_router(api_router, prefix=ApiConfig.PREFIX)
+
+    # Optional: the container ships it, a bare API deployment need not.
+    if ApiConfig.FRONTEND_DIR.is_dir():
+        application.mount(
+            "/ui",
+            StaticFiles(directory=ApiConfig.FRONTEND_DIR, html=True),
+            name="ui",
+        )
 
     return application
 

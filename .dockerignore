@@ -1,0 +1,26 @@
+# The image needs the package, its pinned requirements and the page. Nothing
+# else, and never a secret.
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+.git/
+.github/
+.vscode/
+.pytest_cache/
+.pre-commit-config.yaml
+ruff.toml
+pytest.ini
+
+tests/
+notebooks/
+research-notebooks/
+data/
+artifacts/
+docker/
+
+CLAUDE.md
+README.md
+requirements-dev.txt
