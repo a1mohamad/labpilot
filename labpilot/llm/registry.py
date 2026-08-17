@@ -38,7 +38,7 @@ def _gemini(
         context_window=context_window,
         max_output_tokens=max_output_tokens,
         max_input_tokens=max_input_tokens,
-        thinking="HIGH",
+        thinking="MEDIUM",
     )
 
 
