@@ -1,5 +1,6 @@
 from labpilot.ingest import Chunk
 from labpilot.prompts import FULL, find_citations, resolve
+from labpilot.prompts.citations import unescape
 
 BODY = "def fit():\n    loss.backward()\n    step()"
 
@@ -85,3 +86,30 @@ def test_a_quote_that_spans_a_wrapped_line_still_resolves():
 
 def test_our_own_example_citation_can_be_parsed():
     assert find_citations(FULL.header) == [("B-17", "count = count + 1")]
+
+
+def test_a_quote_escaped_for_a_markdown_table_still_resolves():
+    chunks = _chunks('        SCHEDULER_TYPE = "ReduceLROnPlateau"')
+    found = resolve("B-0", '        SCHEDULER_TYPE = \\"ReduceLROnPlateau\\"', chunks)
+
+    assert found is not None
+    assert found.text == '        SCHEDULER_TYPE = "ReduceLROnPlateau"'
+
+
+def test_an_escaped_pipe_inside_a_quoted_row_still_resolves():
+    chunks = _chunks("| acc 0.8649 | P 0.7869 | F1 0.8262 |")
+
+    assert resolve("B-0", r"\| acc 0.8649 \| P 0.7869 \| F1 0.8262 \|", chunks)
+
+
+def test_a_backslash_that_is_part_of_the_code_is_not_removed():
+    assert (
+        unescape(r'text = re.sub(r"\n", " ", text)')
+        == r'text = re.sub(r"\n", " ", text)'
+    )
+
+
+def test_unescaping_never_rescues_a_quote_that_is_simply_wrong():
+    chunks = _chunks("        LEARNING_RATE = 3e-4")
+
+    assert resolve("B-0", "        LEARNING_RATE = 1e-3", chunks) is None
