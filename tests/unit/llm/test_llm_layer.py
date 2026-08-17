@@ -7,6 +7,7 @@ import responses
 
 import labpilot.llm as llm
 from labpilot.llm import CHAIN, LLMClient
+from labpilot.llm.defaults import DEFAULT_TIMEOUT, DEFAULT_TOTAL_BUDGET
 
 GOOGLE_TIER_1_URL = f"{CHAIN[0].url}/{CHAIN[0].model}:generateContent"
 GOOGLE_TIER_2_URL = f"{CHAIN[1].url}/{CHAIN[1].model}:generateContent"
@@ -88,3 +89,14 @@ def test_openrouter_tiers_share_one_quota_pool():
 
 def test_the_default_client_uses_the_registry_chain():
     assert LLMClient().chain is CHAIN
+
+
+def test_the_time_budget_can_outlast_one_slow_call():
+    """A call allowed 900s inside a 300s budget can never finish.
+
+    Hit for real on 2026-08-17: a 64,000-token report timed out at the 180s read
+    timeout. Raising one of these without the other silently guarantees failure.
+    """
+    _connect, read = DEFAULT_TIMEOUT
+
+    assert DEFAULT_TOTAL_BUDGET >= read
