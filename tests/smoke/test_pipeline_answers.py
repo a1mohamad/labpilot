@@ -10,6 +10,7 @@ from labpilot.prompts import (
     CORE,
     FULL,
     PROMPT_BUDGET,
+    REPORT,
     REPORT_MAX_TOKENS,
     build_prompt,
     find_citations,
@@ -52,8 +53,11 @@ def comparison():
     print(f"\nsaved -> {path}")
 
 
-RUNS = ((FULL, False), (CORE, False), (CORE, True))
-IDS = ("full", "core", "core-stuffed")
+# REPORT stuffed is the one that matters: it is the template the API ships, and
+# stuffing removes retrieval as a variable so the score can be compared with the
+# saved baselines. FULL and CORE are frozen baselines kept for comparison only.
+RUNS = ((FULL, False), (CORE, False), (CORE, True), (REPORT, True))
+IDS = ("full", "core", "core-stuffed", "report-stuffed")
 
 
 @pytest.mark.smoke
