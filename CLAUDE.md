@@ -18,6 +18,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Why the fixes failed**](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17) ·
 [**Slice 4 DONE**](#slice-4--done-2026-08-17) ·
 [**Slice 5 DONE — Step 0 closed**](#slice-5--done-2026-08-17) ·
+[**Hardening the API**](#hardening-and-what-running-it-for-real-exposed--2026-08-17) ·
 [The test that could not fail](#the-test-that-could-not-fail--2026-08-17) ·
 [**THE ROOT CAUSE**](#the-root-cause-found-2026-08-17-session-10) ·
 [**THE LEAN REWRITE**](#the-lean-rewrite-measured-2026-08-17-session-10) ·
@@ -425,8 +426,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** **207 unit, 14 api, 18 smoke, ruff clean.** `labpilot/api/`
-> serves `POST /compare`. `instructions.py` holds five templates: `FULL` and
+> **Code state:** **207 unit, 20 api, 6 integration, 19 smoke, ruff clean.**
+> `labpilot/api/` serves `POST /compare`. `instructions.py` holds five templates: `FULL` and
 > `CORE` (scored baselines, untouched) and the lean `REPORT`, `SCAN`, `COMPARE`.
 > Still **no database, no agent, no UI, no deployment, no fine-tuning dataset**.
 >
@@ -1286,13 +1287,110 @@ already proves the pipeline answers, and the HTTP layer touches no provider — 
 weekly request would buy nothing. *"Do not add tests to raise a number"* applies
 to smoke tests hardest, because those ones cost quota.
 
+### Hardening, and what running it for real exposed — 2026-08-17
+
+**Starting the server by hand found three things no test could.** Every one was
+invisible to a green suite, which is the point.
+
+**1. The app never loaded `.env`, so it could not work once.** `LLMClient` reads
+keys from `os.environ` at call time, and only the *smoke tests* called
+`load_dotenv()`. `uvicorn labpilot.api:app` therefore started with no
+credentials: all 15 tiers failed on "key is not set" and the endpoint answered
+**503 — identical to a total provider outage.**
+
+**No API test could catch it, by construction**, because they all override the
+`LLMClient` dependency and never read a key. `tests/api/test_app_startup.py` now
+closes it with a **subprocess**: a fresh interpreter, `GOOGLE_API_KEY` stripped
+from its environment, must still find the key after importing the app. A second
+test pins the opposite direction — a platform-supplied variable must **win** over
+`.env`, or a deployed server would read a stale committed value.
+
+> **A dependency override is a hole in your coverage, not just a convenience.**
+> Whatever it replaces is untested. List those things and test them another way.
+
+**2. A legal upload could send a prompt with no evidence in it.** Measured: 875KB
+of Python — comfortably under `MAX_UPLOAD_BYTES` — is **8,334 parts**, whose
+outline alone costs **210,541 tokens of a 26,000 budget**. `select()` then
+returns nothing and the prompt is **185,640 tokens of headers**. Gemini's 1M
+context means it would be *sent*, spending a scarce request to ask a model about
+a list of filenames.
+
+This is [the outline scaling problem](#the-outline-does-not-scale-past-step-0)
+that this file already recorded for Step 1 — **the endpoint simply made it
+reachable, and nobody had guarded the door.** `_prompt` now refuses with a **413**
+naming the real numbers. The fix is a guard, not a redesign: Step 1 still has to
+replace the per-chunk outline with a per-file one.
+
+> **Recording a limit is not the same as enforcing it.** Every "this does not
+> scale past Step 0" note is a missing guard until something checks it.
+
+**3. `thinking=HIGH` and the 180s read timeout were still live.** Both were
+written down as owed and neither had been applied. Fixed, and the live run
+confirms the measurement: **`MEDIUM` returned a complete report — `STOP`, 11,507
+characters, 47 of 47 citations resolved — in 52.7 seconds.**
+
+**And 52.7s is worth reading honestly: the timeout raise was not what fixed it.**
+The old 180s limit would have been fine. `MEDIUM` is simply far cheaper than
+`HIGH`, which is very likely the real cause of the timeouts session 10 blamed on
+the timeout value. **Two changes shipped together; only one did the work.**
+
+#### `integration/` became real, with a wider definition
+
+It was defined as *"real Supabase / real pgvector"*, which cannot exist until
+Step 1. But a genuine gap had opened between the layers:
+
+| Suite | Mocks | So it never exercises |
+|---|---|---|
+| `unit/llm/` | providers, at the `Provider` protocol | HTTP |
+| `api/` | the whole `LLMClient` | the chain |
+
+**Nothing joined them**, and the five-way failure rule only matters if its
+verdict survives into an HTTP response body. `tests/integration/` now runs
+API → pipeline → `LLMClient` → chain → **real provider HTTP mocked with
+`responses`** — free, no quota, and it pins that a 503 is retried on the same
+tier, that a spent pool skips its sibling **without spending a request**, that an
+oversized prompt costs its tier nothing, and that a total failure reaches the
+client as a 503 naming every tier.
+
+The folder definition is widened to **"several real layers, mocked only at the
+outer edge"**. Step 1's pgvector tests fit that unchanged; today's fit it too.
+
+#### One smoke gap, and it was the template we actually ship
+
+The weekly run exercised `FULL` and `CORE` — both **frozen baselines we no longer
+use** — while **`REPORT`, the template the endpoint sends, had no live test at
+all.** `RUNS` now includes `(REPORT, True)`. Stuffed, so retrieval is not a
+variable and the score is comparable with the saved baselines — which also makes
+the weekly run produce, by itself, the measurement **START HERE** lists as owed.
+
+**No API smoke test was added.** It would cost a request a week to prove what
+`test_pipeline_answers.py` already proves, and the one bug it would have
+caught — the missing `load_dotenv()` — is now covered for free by the subprocess
+test. *"Do not add tests to raise a number"* binds hardest where the number costs
+quota.
+
+#### `.env.example` was quietly lying
+
+It still said Google gives **"~1,500 requests/day"** — the exact fiction session 9
+overturned — and its tier numbers were from the seven-tier era, when `glm-5-2`
+was tier 2 and is now dead. The existing test only checks each variable
+**exists**, never that the comment beside it is true.
+
+**Every tier number is now gone from that file**, replaced by model names, per
+this file's own rule: *"Route by model name, never by tier index."* A number that
+goes stale twice in one day should not be written down a third time.
+
+> **Untested prose rots faster than untested code**, because nothing ever fails
+> when it goes wrong. The fix is not more tests — it is writing down the fact
+> that does not change (a model name) instead of the one that does (its rank).
+
 ### The test that could not fail — 2026-08-17
 
 Every new invariant was broken on purpose to check its test noticed. Four of five
 did. **The size-limit test passed against a build with the limit raised 100×:**
 
 ```python
-huge = b"x = 1\n" * (MAX_UPLOAD_BYTES // 3)   # ← the bug
+huge = b"x = 1\n" * (MAX_UPLOAD_BYTES // 3)  # ← the bug
 ```
 
 The payload size was derived from **the constant under test**. Raise the limit
@@ -2257,8 +2355,8 @@ seam rule is enforced by this, not by good intentions.
 ```
 tests/
     conftest.py           shared fixtures and the --run-smoke flag
-    unit/                 no network, no database; mirrors labpilot/ structure
-    integration/          real Supabase / real pgvector, no live LLM
+    unit/                 one module at a time; mirrors labpilot/ structure
+    integration/          several real layers, mocked only at the outer edge
     api/                  FastAPI TestClient against the endpoints
     smoke/                anything that spends API quota; opt-in only
 ```
