@@ -19,6 +19,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Slice 4 DONE**](#slice-4--done-2026-08-17) ·
 [**Slice 5 DONE — Step 0 closed**](#slice-5--done-2026-08-17) ·
 [**Hardening the API**](#hardening-and-what-running-it-for-real-exposed--2026-08-17) ·
+[**The API layout**](#the-api-layout--restructured-2026-08-17) ·
 [The test that could not fail](#the-test-that-could-not-fail--2026-08-17) ·
 [**THE ROOT CAUSE**](#the-root-cause-found-2026-08-17-session-10) ·
 [**THE LEAN REWRITE**](#the-lean-rewrite-measured-2026-08-17-session-10) ·
@@ -426,22 +427,33 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** **207 unit, 20 api, 6 integration, 19 smoke, ruff clean.**
-> `labpilot/api/` serves `POST /compare`. `instructions.py` holds five templates: `FULL` and
-> `CORE` (scored baselines, untouched) and the lean `REPORT`, `SCAN`, `COMPARE`.
+> **Code state:** **207 unit, 34 api, 6 integration, 19 smoke, ruff clean.**
+> `labpilot/api/` serves `POST /api/v1/compare` plus `/` and `/health`, built by
+> a `create_app()` factory with a lifespan, routers, services, a typed error
+> vocabulary and two ASGI middleware — see
+> [the API layout](#the-api-layout--restructured-2026-08-17).
+> `instructions.py` holds five templates: `FULL` and `CORE` (scored baselines,
+> untouched) and the lean `REPORT`, `SCAN`, `COMPARE`.
 > Still **no database, no agent, no UI, no deployment, no fine-tuning dataset**.
 >
 > **Honest progress: Step 0 = 100%. The whole project ≈ 16%.**
 
-> **2026-08-17, session 11 — slice 5 shipped and Step 0 is closed.**
-> `labpilot/api/` serves one `POST /compare`: two uploads and a question in, the
-> answer plus the model that produced it, the tiers that failed, the chunk counts
-> per side, and **every citation resolved to a real file and line** out. 14 API
-> tests, no network, `LLMClient` swapped through a FastAPI dependency override.
-> **Mutation testing caught one of my own tests being self-fulfilling** — it
-> derived its payload size from the constant it was testing, so it passed against
-> a build with the limit raised 100×. See
-> [Slice 5 — DONE](#slice-5--done-2026-08-17) and
+> **2026-08-17, session 11 — slice 5 shipped, Step 0 closed, and the API was
+> then restructured.**
+> `labpilot/api/` serves `POST /api/v1/compare`: two uploads and a question in,
+> the answer plus the model that produced it, the tiers that failed, the chunk
+> counts per side, and **every citation resolved to a real file and line** out.
+> It shipped as one `app.py` and was **split the same day** into a `create_app()`
+> factory, a lifespan, routers, services, a typed error vocabulary and two ASGI
+> middleware — the shape read from the user's own `sms-spam` and
+> `Lung Disease Detection` projects, plus five things that go past them. See
+> [the API layout](#the-api-layout--restructured-2026-08-17).
+> **A real run over uvicorn found what no test could:** the app never called
+> `load_dotenv`, so every tier failed on a missing key and the endpoint answered
+> 503 — indistinguishable from a total outage. The lifespan now refuses to boot
+> when no tier has a key.
+> **Mutation testing caught two of my own tests being self-fulfilling**, both
+> deriving their payload size from the constant under test. See
 > [the test that could not fail](#the-test-that-could-not-fail--2026-08-17).
 > Two dependencies were added: **`python-multipart` is runtime**, not dev.
 
@@ -1183,16 +1195,13 @@ broken** — not written to raise a count:
 
 ## Slice 5 — DONE 2026-08-17
 
-**The last box of the walking skeleton. One `POST /compare` over the pipeline
+**The last box of the walking skeleton. One compare endpoint over the pipeline
 that already worked.** It took one short session, as predicted — FastAPI is on
 the assumed-known list, so the work was all in a handful of decisions.
 
-| Module | Holds |
-|---|---|
-| `labpilot/api/contracts.py` | the Pydantic **response** models — imports nothing else from the API |
-| `labpilot/api/app.py` | the app, the `LLMClient` dependency, the route, the failure branches |
-| `labpilot/api/__init__.py` | `app`, `get_client`, `MAX_UPLOAD_BYTES` |
-| `tests/api/test_compare.py` | 14 tests, no network, no quota |
+It shipped as one `app.py`, and was **restructured the same day** — see
+[the API layout](#the-api-layout--restructured-2026-08-17). The decisions below
+survived the restructure unchanged; only their addresses moved.
 
 **The request is `multipart/form-data`** — two named `UploadFile` parameters `a`
 and `b`, plus `question` as a form field. Two *named* parameters rather than a
@@ -1317,7 +1326,7 @@ a list of filenames.
 
 This is [the outline scaling problem](#the-outline-does-not-scale-past-step-0)
 that this file already recorded for Step 1 — **the endpoint simply made it
-reachable, and nobody had guarded the door.** `_prompt` now refuses with a **413**
+reachable, and nobody had guarded the door.** `services._prompt` refuses with a **413**
 naming the real numbers. The fix is a guard, not a redesign: Step 1 still has to
 replace the per-chunk outline with a per-file one.
 
@@ -1418,10 +1427,126 @@ Both are recorded rather than solved, and both belong to Step 3:
   `DEFAULT_TOTAL_BUDGET = 300 s`; any proxy will kill it, Render especially. SSE
   is already scheduled — see
   [live progress events](#chain-3--reranker-true-fallback).
-- **The 1MB cap is enforced after Starlette has spooled the upload to disk.** A
-  true streaming limit belongs in nginx.
+- **The per-file cap is enforced after Starlette has spooled the upload to disk.**
+  The whole-body cap is now checked *before* parsing (see the restructure below),
+  but a true streaming limit still belongs in nginx.
 
-No `/health` endpoint yet — it gets real content the day Docker exists.
+~~No `/health` endpoint yet.~~ **Added in the restructure**, because the moment
+the server is started by hand there is something to probe.
+
+## The API layout — restructured 2026-08-17
+
+*Same session, right after slice 5 shipped. **No new product decisions** — the
+comparison behaves identically. Only the shape changed, plus the error body.*
+
+**The trigger:** one `app.py` held the app, the route, the pipeline, the upload
+parsing and every failure branch. That is five reasons to change in one file,
+which this file's own [layout rule](#layout--plan-the-shape-early-create-files-late)
+forbids.
+
+The shape follows the user's own two FastAPI projects — `sms-spam` and
+`Lung Disease Detection` — read directly rather than invented:
+
+| Module | Holds |
+|---|---|
+| `main.py` | `create_app()` and the `lifespan` |
+| `config.py` | `ApiConfig`, and the project's **only** `load_dotenv` |
+| `contracts.py` | `Artifact`, `Comparison` — plain dataclasses, no Pydantic |
+| `schemas.py` | the wire models, including the error envelope |
+| `errors.py` | one `ApiError` hierarchy, each subclass carrying `status` + `code` |
+| `error_handlers.py` | `register_error_handlers()` — one envelope for every failure |
+| `dependencies.py` | `LLMClientDep` |
+| `uploads.py` | the HTTP edge: `UploadFile` → `Artifact` |
+| `services.py` | the domain pipeline — **no FastAPI import at all** |
+| `startup.py` | `validate_provider_keys()` |
+| `routers/` | `compare.py`, `health.py` |
+| `middleware/` | `request_id.py`, `body_limit.py` — both **pure ASGI** |
+
+**The split that carries the most weight is `services.py` having no FastAPI
+types in it.** Routers speak HTTP, `uploads.py` owns the multipart edge, services
+do the domain work. At Step 2, LangGraph replaces `services.py` and **nothing
+else moves** — which is the test of whether a seam is in the right place.
+
+**`contracts.py` and `schemas.py` are deliberately separate**, which neither
+reference project does. Domain values change when the *pipeline* changes; wire
+models change when the *API* changes. Same rule as `llm/contracts.py`.
+
+### Five things that go past the reference projects
+
+1. **`/api/v1` on `/compare`, while `/` and `/health` stay off it.** A probe must
+   not have to know which API version is deployed.
+2. **Failure responses declared on the route**, so OpenAPI documents 413, 422 and
+   503 instead of only 200.
+3. **The error envelope is a Pydantic model**, so its shape is documented rather
+   than assembled by hand in each handler.
+4. **One handler over a typed `ApiError` hierarchy**, not one handler per
+   exception. A new failure is one class, not a class plus a handler plus a
+   registration.
+5. **The lifespan validates that at least one chain tier has an API key.** This is
+   the analogue of their `validate_artifact_paths()`, and it is exactly what
+   would have caught the missing `load_dotenv` **at boot** instead of at the
+   first request.
+
+### The one behaviour change
+
+The error body moved to the house style used in both reference projects:
+
+```
+before   {"detail": "b (logo.png) is not UTF-8 text"}
+after    {"error": {"code": "unreadable_upload", "message": "...",
+                    "request_id": "...", "attempts": []}}
+```
+
+`code` is stable and machine-readable; `message` is for a human; `request_id`
+ties the reply to the log line. `attempts` is filled only by
+`generation_unavailable`.
+
+### Two ASGI middleware, and why not `BaseHTTPMiddleware`
+
+Both are written as raw ASGI callables, copying the reference projects' choice.
+`BaseHTTPMiddleware` buffers the response and interacts badly with streaming and
+background tasks; a plain ASGI class has neither problem.
+
+- **`RequestIDMiddleware`** — a UUID per request, on `scope["state"]` and on the
+  `X-Request-ID` response header.
+- **`RequestBodyLimitMiddleware`** — refuses an oversized body by `Content-Length`
+  *before* reading it, and falls back to counting streamed bytes when the header
+  is absent or unparseable. This is the whole-body guard the per-file check could
+  not provide, because the per-file check runs after parsing.
+
+**Order matters and is easy to get backwards.** `add_middleware` prepends, so the
+**last** one added is outermost. Request ID is added last on purpose: a body
+rejected for size still comes back with a correlation ID.
+
+### What the restructure did NOT add
+
+- **No `app.mount(...)`.** The lung project mounts `/static` for generated images
+  and `/ui` for a frontend. LabPilot has neither, and a mount pointing at nothing
+  is dead code. It arrives at Step 3 with the UI.
+- **No docstrings.** This file's own rule puts documentation in a separate pass
+  with the `documentarize` skill — which is why the two reference projects read
+  the way they do. The code is drafted raw on purpose.
+
+### Mutation testing found the same bug twice in one day
+
+Every new invariant was broken on purpose. Two tests did not bite:
+
+1. **`test_every_error_carries_a_request_id_...` passed with the middleware
+   removed**, because `error_response` falls back to a fresh UUID. It pins the
+   *envelope*, not the middleware. The middleware is really pinned by
+   `test_a_successful_response_also_carries_a_request_id`, where no fallback
+   exists.
+2. **The body-limit test had the identical self-fulfilling shape** as the upload
+   test fixed hours earlier: `over = b"x" * (MAX_REQUEST_BODY_BYTES + 1)`. Raise
+   the ceiling and the payload grows with it.
+
+> **Knowing the rule does not stop you breaking it.** *A threshold test needs a
+> literal on one side of the comparison* was written down the same day and
+> violated again within hours. Mutation testing caught it both times; reading the
+> test did not.
+
+**Code state after the restructure: 207 unit, 34 api, 6 integration, 19 smoke,
+ruff clean.**
 
 ### Step 0, honestly closed
 
@@ -1431,7 +1556,7 @@ No `/health` endpoint yet — it gets real content the day Docker exists.
 | 2 | the fallback chain, now 15 tiers and a five-way failure rule |
 | 3 | the chunker (permanent) and the dumb selector (throwaway) |
 | 4 | the prompt — 13 of 19 findings, ~99% citations, correct conclusion |
-| 5 | **`POST /compare`** |
+| 5 | **`POST /api/v1/compare`** |
 
 **What Step 0 proved:** the core idea produces something useful, and every layer
 connects. **What it did not prove:** that it works on anything but one fixture.
