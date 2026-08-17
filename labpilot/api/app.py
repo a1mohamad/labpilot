@@ -26,6 +26,7 @@ from labpilot.prompts import (
     resolve,
 )
 from labpilot.retrieval import select
+from labpilot.tokens import estimate_tokens
 
 MAX_UPLOAD_BYTES = 1_000_000
 
@@ -54,9 +55,7 @@ def compare(
 
     chunks = _chunks(a, side="A", field="a") + _chunks(b, side="B", field="b")
 
-    room = PROMPT_BUDGET - reserve(chunks, question=question, instructions=REPORT)
-    picked = select(chunks, budget=room)
-    prompt = build_prompt(chunks, picked, question=question, instructions=REPORT)
+    prompt, picked = _prompt(chunks, question=question)
 
     try:
         result = client.generate(prompt, max_tokens=REPORT_MAX_TOKENS)
@@ -70,6 +69,26 @@ def compare(
         ) from exc
 
     return _response(result, chunks, picked)
+
+
+def _prompt(
+    chunks: tuple[Chunk, ...], *, question: str
+) -> tuple[str, tuple[Chunk, ...]]:
+    overhead = reserve(chunks, question=question, instructions=REPORT)
+    room = PROMPT_BUDGET - overhead
+    picked = select(chunks, budget=room) if room > 0 else ()
+    prompt = build_prompt(chunks, picked, question=question, instructions=REPORT)
+
+    if not picked or estimate_tokens(prompt) > PROMPT_BUDGET:
+        raise HTTPException(
+            HTTP_TOO_LARGE,
+            f"too large to compare: {len(chunks)} parts need {overhead} tokens "
+            f"just to list, of a {PROMPT_BUDGET} token budget, so no artifact "
+            f"text fits. Step 0 sends one outline line per part; use smaller "
+            f"artifacts until Step 1 replaces it with a per-file outline",
+        )
+
+    return prompt, picked
 
 
 def _chunks(upload: UploadFile, *, side: Side, field: str) -> tuple[Chunk, ...]:

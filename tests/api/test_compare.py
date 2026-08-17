@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from labpilot.api import MAX_UPLOAD_BYTES, app, get_client
 from labpilot.ingest import chunk_file
 from labpilot.llm import AllFreeTiersExhausted, Attempt, LLMResult
-from labpilot.prompts import PROMPT_BUDGET
+from labpilot.prompts import PROMPT_BUDGET, REPORT
 from labpilot.tokens import estimate_tokens
 
 SAMPLES = Path("data/samples/quora_siamese")
@@ -181,6 +181,48 @@ def test_the_failed_tiers_of_a_successful_answer_reach_the_response(client, fake
     assert body["attempts"] == [
         {"tier": 1, "model": "gemini-3.7-flash", "error": "HTTP 503"}
     ]
+
+
+def test_an_artifact_too_large_to_outline_is_refused_before_the_model(client, fake):
+    """A legal upload can still make the outline alone exceed the whole budget.
+
+    Measured 2026-08-17: 875KB of Python is 8,334 parts, whose outline costs
+    210,541 tokens of a 26,000 budget. select() then returns nothing and the
+    prompt is 185,640 tokens of headers with no artifact text in it at all.
+    Gemini's 1M context means it would be sent, spending a scarce request to
+    ask a model about a list of filenames.
+    """
+    many_parts = b"def step(x):\n    return x * 2 + 1\n\n" * 25_000
+    assert len(many_parts) < MAX_UPLOAD_BYTES, "must pass the upload size check"
+
+    response = post(client, b=("many.py", many_parts, "text/x-python"))
+
+    assert response.status_code == 413
+    assert "too large to compare" in response.json()["detail"]
+    assert fake.prompts == []
+
+
+def test_non_ascii_content_survives_the_round_trip(client, fake):
+    """Hit for real on 2026-08-17 outside the app, printing a U+2212 minus."""
+    body = "ratio = 0.5  # −4.1 F1, α ≤ 0.05, تست"
+    fake.result = LLMResult(
+        text=f'B loses accuracy [B-0 "{body}"].', model="fake-model", tier=1
+    )
+
+    response = post(client, b=("b.py", body.encode("utf-8"), "text/x-python"))
+
+    assert response.status_code == 200
+    cited = response.json()["citations"]["resolved_list"]
+    assert cited[0]["text"] == body
+
+
+def test_the_endpoint_sends_the_report_instructions(client, fake):
+    post(client)
+
+    prompt = fake.prompts[0]
+    assert REPORT.header in prompt
+    assert REPORT.closing in prompt
+    assert QUESTION in prompt
 
 
 def test_the_real_sample_pair_flows_through_the_endpoint(client, fake):
