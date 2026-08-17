@@ -222,6 +222,88 @@ _CORE_SECTIONS = """\
     The causal story. Use only D numbers from §5. Add no new claims."""
 
 
+_LEAN_PREAMBLE = """\
+A is the reference: it says what should happen.
+B is the subject: it is the thing that actually runs.
+Read B on its own first. Only then compare it with A.
+
+Each side is a list of parts with ids like A-3 and B-17.
+Parts marked "text NOT included" were not sent to you."""
+
+_LEAN_RULES = """\
+Cite every claim as [B-17 "one line copied exactly from that part"].
+The id, one space, then one whole line in double quotes. Nothing else.
+An id on its own is not a citation and is dropped, so [B-17] and [B-8, B-25]
+are both wrong. Never write a line number.
+
+Report only what could change the numbers the work reports about itself.
+Leave out anything dead, cosmetic, or unable to move a result.
+
+Two numbers may only be compared if they were produced the same way.
+Two numbers from the same side and the same run are always fair to compare."""
+
+_LEAN_SECTIONS = """\
+§0  TASK - what was asked, and whether A only describes or also runs.
+§1  SIDE A - what it is and what it claims.
+§2  SIDE B - what it is and what it does. Name the parts you were not sent.
+§3  CORRESPONDENCE - same work? FULL / PARTIAL / NONE. If NONE, stop here.
+§4  DEFECTS IN B ALONE - problems you can see without A. May be NONE.
+§5  REPORTED OUTCOMES - every number either side reports, and how it was made.
+§6  ARE THEY COMPARABLE - per pair: YES / NO / CANNOT TELL, and why.
+§7  DIVERGENCES - where A and B differ. Cite both sides for each one.
+§8  RANKING - the same items, largest effect on the result first.
+§9  DOES IT ADD UP - do the ranked items explain the gap in §5?
+    If not, give every honest reading rather than choosing one.
+§10 EXPLANATION - the causal story, using only items from §7.
+§11 WHAT COULD NOT BE DETERMINED - and what would settle it.
+§12 CORRECTIONS - concrete changes to B, biggest effect first.
+§13 NEXT STEP - one experiment, and what each outcome would mean."""
+
+_SCAN_PREAMBLE = """\
+You are reading one piece of work. There is nothing to compare it against.
+Say what is wrong with it.
+
+It is given as a list of parts with ids like B-17.
+Parts marked "text NOT included" were not sent to you."""
+
+_SCAN_RULES = """\
+Cite every claim as [B-17 "one line copied exactly from that part"].
+The id, one space, then one whole line in double quotes. Nothing else.
+An id on its own is not a citation and is dropped, so [B-17] and [B-8, B-25]
+are both wrong. Never write a line number.
+
+Report only what could change the numbers the work reports about itself.
+Leave out anything dead, cosmetic, or unable to move a result.
+
+Two numbers from the same run are always fair to compare. Subtract them when
+the difference says something the work does not."""
+
+_SCAN_SECTIONS = """\
+§0  WHAT THIS IS - what the work does, in a paragraph.
+§1  NUMBERS IT REPORTS - every number, how it was made, and what any two of
+    them say when compared.
+§2  PROBLEMS - worst first. For each: what, which part, why it matters, and
+    how sure you are. May be NONE."""
+
+_COMPARE_SECTIONS = """\
+§0  TASK - what was asked, and whether A only describes or also runs.
+§1  SIDE A - what it is and what it claims.
+§2  SIDE B - what it is and what it does. Name the parts you were not sent.
+§3  CORRESPONDENCE - same work? FULL / PARTIAL / NONE. If NONE, stop here.
+§4  DEFECTS IN B ALONE - carry over every problem listed under
+    "ALREADY FOUND IN SIDE B", then add any you find yourself.
+§5  REPORTED OUTCOMES - every number either side reports, and how it was made.
+§6  ARE THEY COMPARABLE - per pair: YES / NO / CANNOT TELL, and why.
+§7  DIVERGENCES - where A and B differ. Cite both sides for each one.
+§8  RANKING - §4 and §7 together, largest effect on the result first.
+§9  DOES IT ADD UP - do the ranked items explain the gap in §5?
+    If not, give every honest reading rather than choosing one.
+§10 EXPLANATION - the causal story, using only items from §7 and §4.
+§11 WHAT COULD NOT BE DETERMINED - and what would settle it.
+§12 CORRECTIONS - concrete changes to B, biggest effect first.
+§13 NEXT STEP - one experiment, and what each outcome would mean."""
+
+
 @dataclass(frozen=True, slots=True)
 class Instructions:
     name: str
@@ -233,21 +315,72 @@ def _numbers(text: str) -> list[int]:
     return sorted({int(found) for found in re.findall(r"§(\d+)", text)})
 
 
-def _instructions(name: str, sections: str) -> Instructions:
+_WALK_TAIL = (
+    "Where a section tells you to walk a part list, every id in that list "
+    "gets its own line, in order, including ids whose text was not sent to "
+    "you. Count the ids in the list and write that many lines. Most lines "
+    "will say nothing, and that is the expected result."
+)
+
+
+def _instructions(
+    name: str,
+    sections: str,
+    *,
+    preamble: str = _PREAMBLE,
+    rules: str = _RULES,
+    labels: str = _LABELS,
+    tail: str = _WALK_TAIL,
+) -> Instructions:
     listed = ", ".join(f"§{number}" for number in _numbers(sections))
 
-    header = "\n\n".join((_PREAMBLE, _RULES, _LABELS, f"OUTPUT\n\n{sections}"))
-    closing = (
-        f"Now write the report. Write these sections, in this order:\n{listed}\n\n"
-        "Cite with a part id and an exact quote. Never write a line number.\n"
-        "Write NONE for any section with nothing to report.\n\n"
-        "Where a section tells you to walk a part list, every id in that list "
-        "gets its own line, in order, including ids whose text was not sent to "
-        "you. Count the ids in the list and write that many lines. Most lines "
-        "will say nothing, and that is the expected result."
+    header = "\n\n".join(
+        part for part in (preamble, rules, labels, f"OUTPUT\n\n{sections}") if part
+    )
+    closing = "\n\n".join(
+        part
+        for part in (
+            f"Write these sections, in this order:\n{listed}",
+            "Write NONE for any section with nothing to report.",
+            tail,
+        )
+        if part
     )
     return Instructions(name, header, closing)
 
 
 FULL = _instructions("full", _FULL_SECTIONS)
 CORE = _instructions("core", _CORE_SECTIONS)
+
+REPORT = _instructions(
+    "report",
+    _LEAN_SECTIONS,
+    preamble=_LEAN_PREAMBLE,
+    rules=_LEAN_RULES,
+    labels="",
+    tail="",
+)
+SCAN = _instructions(
+    "scan",
+    _SCAN_SECTIONS,
+    preamble=_SCAN_PREAMBLE,
+    rules=_SCAN_RULES,
+    labels="",
+    tail="",
+)
+_COMPARE_PREAMBLE = """\
+A is the reference: it says what should happen.
+B is the subject: it is the thing that actually runs.
+B has already been read on its own; those findings are given to you below.
+
+Each side is a list of parts with ids like A-3 and B-17.
+Parts marked "text NOT included" were not sent to you."""
+
+COMPARE = _instructions(
+    "compare",
+    _COMPARE_SECTIONS,
+    preamble=_COMPARE_PREAMBLE,
+    rules=_LEAN_RULES,
+    labels="",
+    tail="",
+)
