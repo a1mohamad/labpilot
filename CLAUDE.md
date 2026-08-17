@@ -16,6 +16,14 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Model routing**](#model-routing--a-chain-per-task-not-a-model-per-task) ·
 [Thinking presets](#thinking-level--a-user-preset-never-a-per-model-switch) ·
 [**Why the fixes failed**](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17) ·
+[**THE ROOT CAUSE**](#the-root-cause-found-2026-08-17-session-10) ·
+[**THE LEAN REWRITE**](#the-lean-rewrite-measured-2026-08-17-session-10) ·
+[Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17) ·
+[Archived checklists](#the-deleted-checklists--archived-here-for-step-2-not-for-the-prompt) ·
+[New instructions](#what-the-new-instructions-must-ask) ·
+[Instruction bugs](#the-instruction-bugs-found-by-experiment-2026-08-17) ·
+[Thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) ·
+[**Prompt design rules**](#prompt-design-rules-earned-2026-08-17) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
@@ -380,26 +388,51 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. Slices 1–3 are DONE. Slice 4 is built and
-measured: citations are solved, coverage is not.**
-**Last updated 2026-08-17 (ninth session). Working branch: `feat/retrieval`.**
+**Phase: Step 0 — walking skeleton. Slices 1–3 are DONE. Slice 4's root cause is
+found and the instructions must be rebuilt.**
+**Last updated 2026-08-17 (tenth session). Working branch: `feat/retrieval`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> **The one open question:** slice 4's four prompt fixes were measured and
-> **did not work** — coverage stayed at 11/18. See
-> [Why the prompt fixes failed](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17).
-> The conclusion is that **enumeration was never the bottleneck; judgement is** —
-> which makes Step 2's agent loop a requirement, not a preference.
+> **Slice 4 is finished. The prompt layer has given what it can.**
+> Coverage went **11 → 13 of 19**, citations **misreported → ~99%**, and the
+> conclusion is now correct. The instructions went **12,620 bytes → 1,997**, and
+> the *shorter* one is the better one.
 >
-> **Do not start by tuning the prompt again.** Three attempts have now bought
-> citations 50% → 99% (real) and coverage 10 → 11 → 11 (nothing).
+> Read, in this order:
+> [The root cause](#the-root-cause-found-2026-08-17-session-10) ·
+> [The lean rewrite](#the-lean-rewrite-measured-2026-08-17-session-10) ·
+> [Prompt design rules](#prompt-design-rules-earned-2026-08-17).
 >
-> **Code state:** 193 unit tests, 18 smoke, ruff clean. 15-tier chain, 13 tiers
-> proven live. `labpilot/` holds `llm/`, `ingest/`, `retrieval/`, `prompts/`.
-> No database, no agent, no API, no UI.
+> **Next task: Step 1, retrieval.** The prompt layer is deep and every other
+> layer is untouched — that breaks this file's own *"never let one layer race
+> far ahead"* rule, and fixing it is the priority.
 >
-> **Honest progress: Step 0 ≈ 85%. The whole project ≈ 12%.**
+> **One cheap experiment is owed first (1 request):** run the lean `REPORT` on
+> `gemini-3.6-flash` and merge with the saved `3.5-flash` run. Their blind spots
+> are **disjoint**, so the union should reach ~17 of 19. See
+> [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
+>
+> **Code state:** 201 unit tests, 18 smoke, ruff clean. `instructions.py` holds
+> five templates: `FULL` and `CORE` (scored baselines, untouched) and the lean
+> `REPORT`, `SCAN`, `COMPARE`. `citations.py` gained `unescape`.
+> Still no database, no agent, no API, no UI.
+>
+> **Honest progress: Step 0 ≈ 90%. The whole project ≈ 13%.**
+
+> **2026-08-17, session 10 — no source changed, and it was the most productive
+> session so far: the coverage root cause was found by experiment.**
+> Three probes, three requests. **Session 9's conclusion was wrong** — the walks
+> were *printed*, not *executed*, and nobody read them. Removing side A entirely
+> and asking *"what could go wrong?"* recovered **five findings that seventeen
+> comparison runs had never found once**, including the one at B-77, the very
+> last chunk. Position, context and model strength are all eliminated as causes.
+> Read [The root cause](#the-root-cause-found-2026-08-17-session-10),
+> [the instruction bugs](#the-instruction-bugs-found-by-experiment-2026-08-17),
+> [thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) and
+> [the prompt design rules](#prompt-design-rules-earned-2026-08-17).
+> **The 11/18 measure is retired** — two of the eighteen change the result by
+> nothing, so `EXPECTED.md` needs an impact column.
 
 > **2026-08-17, session 9 — the chain was rebuilt on real quota numbers, and the
 > coverage question was finally answered.**
@@ -1090,11 +1123,27 @@ the diagnosis being wrong."* **It is 11.**
 split) and **lost #5** (the unfreeze off-by-one) — the word "unfreeze" does not
 appear anywhere in the post-fix answer, not even in the 78-line walk.
 
-**The walks ran.** 18 A-lines and 78 B-lines, complete, exactly as rule 6
-demanded. The fix was executed and produced nothing.
+~~**The walks ran.** 18 A-lines and 78 B-lines, complete, exactly as rule 6
+demanded. The fix was executed and produced nothing.~~
 
-> **Enumeration was never the bottleneck. Judgement is.**
-> The model can list all 78 parts of B and still not tell which of them matter.
+~~**Enumeration was never the bottleneck. Judgement is.**~~
+
+> **CORRECTED 2026-08-17, session 10. Both sentences above are wrong.**
+> **The walks were printed, not executed — and we never read them.**
+>
+> This file's own instruction was: *"Count the walk lines. If the walk has 40
+> lines, rule 6 was ignored and the fix did not actually run — that is a
+> different failure from the fix not working."* We counted. We stopped there.
+> Reading the lines shows three different empty shapes:
+>
+> ```
+> 21-24  B-45 / B-46 / B-47 ...        bare ids, no verdict at all
+> 23-50  B-38 | Decides MLflow parameter logging helpers, which A never mentions
+> 00-16  B-18 | nothing A does not already mention      ← B-18 does hold a finding
+> ```
+>
+> The count was right and the content was empty. **A shape check is not a
+> content check** — grading the shape is how a failed fix passed for three days.
 
 **Two new problems the fixes created:**
 
@@ -1122,8 +1171,26 @@ $$
 \textbf{the single call costs} \approx 7
 $$
 
-**So Step 2 is a requirement, not a design preference — and the numbers now say
-so.** Stop tuning the prompt.
+~~**So Step 2 is a requirement, not a design preference — and the numbers now say
+so.** Stop tuning the prompt.~~
+
+> **CORRECTED 2026-08-17, session 10.** The split above is real; the conclusion
+> drawn from it was not. *"The numbers now say so"* rested on **one** clean run —
+> every other post-fix run was truncated or litigating rule conflicts. And a
+> single call **did** find those seven, once the question changed. The 7 belonged
+> to the *question*, not to the *call*.
+>
+> **The explanation moved twice, each time right after a failure:**
+>
+> ```
+> session 7  "no prompt fixes the seven, it is Step 2"
+> session 7  retracted: "the prompt can, predict 15-16"
+> session 9  "the prompt cannot, Step 2 is a requirement"
+> ```
+>
+> That is the shape this file warns the *model* about in the §9 rule — bending
+> the reading so the story closes. We did it to ourselves. **When a conclusion
+> moves to protect a plan, re-read the artifacts before writing it down.**
 
 **Two things changed under this task on 2026-08-16, and both affect the
 measurement:**
@@ -1146,6 +1213,268 @@ instruction and it should be worth four findings.
 
 Do not touch `ingest/`, and do not improve `select()`. Measure **stuffed**, so
 retrieval is not a variable while the prompt is being changed.
+
+---
+
+## The root cause, found 2026-08-17 session 10
+
+*Three probes, three requests, no source changed. The probe script lives in the
+session scratchpad; the three answers are saved in `artifacts/` as
+`*_probe-*.md`.*
+
+### The finding, in one line
+
+> **We asked the model one question and graded it on four.**
+
+The prompt defined the job as *"check what A states against what B does."* The
+model did that job correctly in all seventeen runs. Everything B does that A
+never discusses was, by that definition, **not part of the job**.
+
+### The worked example — the same line, two answers
+
+`B_train.py` sets `VOCAB_SIZE = 20000`, and A says the vocabulary *"is capped at
+the 20,000 most frequent tokens."* Under the comparison question the model wrote:
+
+```
+A-5 | says: cap vocabulary at 20,000 | B: does it
+```
+
+**That answer is correct.** B matches A, so nothing is reported. Under a
+different question — *"is this a bad idea even though it works?"* — the same
+model, same context, wrote:
+
+```
+103,212 unique tokens in the data, cap 20,000
+-> 83,212 words (80.62%) become <UNK>, and <UNK> is masked out of attention
+```
+
+**One line of code. Two questions. Two correct answers. Only one is useful.**
+
+### The four questions, and what each one alone can find
+
+| Question | Finds | Did the old prompt ask it? |
+|---|---|---|
+| 1. Does B match A? | the 11 findings, all A-anchored | yes |
+| 2. What in B **breaks** on its own? | #17, #18, #12 | badly — `§4` had no method and always answered `NONE` |
+| 3. What in B **runs fine and is still bad**? | #14, #9, #6 | **no** |
+| 4. What do B's **own numbers** say when subtracted? | #10b | **no** |
+
+Every question returns findings the other three cannot see. We asked one and a
+half of them.
+
+### What the three probes measured
+
+All three: `gemini-3.6-flash`, all 78 parts of B, **no side A at all**, same
+citation rule, same hint list, same header/closing shape as `CORE`.
+
+| probe | change | finish | result |
+|---|---|---|---|
+| v1 HIGH | discovery framing | **`MAX_TOKENS`** | void — cut at B-38, §2–§4 never ran |
+| v1 MEDIUM | thinking → MEDIUM | `STOP` | **#17 and #18 found** — 0/17 before |
+| **v2 MEDIUM** | + §3 non-crash question, + §4 *"read every number block"* | `STOP` | **#14, #10b, #9, #6 found** · 167/171 citations resolve (**98%**) |
+
+**Seven `EXPECTED.md` findings recovered from B alone. Five of them had never
+appeared once in seventeen comparison runs.**
+
+### Three candidate causes, all eliminated by measurement
+
+| Candidate | How it died |
+|---|---|
+| **retrieval / missing context** | the stuffed runs sent all 96 chunks and still missed everything |
+| **lost in the middle** | `#17` sits at **B-77, the last chunk, 97% of the prompt**. Missed 17 times, then found — at the same position. `#10b` sits at **B-0, the first chunk**, and was missed too. The predicted U-shape never appeared |
+| **the model is too weak / one call has a ceiling** | the **same model**, at **lower** thinking, in **one call**, found the hardest ones once the question changed |
+
+**A position pattern did appear and it was a confound.** The four
+noticed-but-unjudged findings sat at 15–47% and the judged ones spread to 97% —
+but `P1` sat at 19%, inside the "unjudged" band, and *was* judged. Early parts of
+a training script are config and preprocessing, which is simply where quiet
+design choices live. **Kind of finding, not position, is the gate.**
+
+### The second failure — noticing without judging
+
+Probe v1 wrote the facts and never escalated them:
+
+```
+§3 table:  103,212 unique tokens  |  20,000 cap  |  unknown ratio 0.0049
+§3 then:   "do any two of these numbers disagree?"  ->  NONE
+```
+
+Two separate causes, both ours:
+
+1. **§2 asked only a crash question** — *"what input would make this behave
+   wrongly?"* #14, #15, #16 and #10b break on **no input**. They are invisible to
+   a crash question by construction.
+2. **§4 read one third of one chunk.** It listed every number from B-0's `DATA`
+   and `MODEL` blocks and **none** from its `RUN SUMMARY` block — so the train/val
+   F1 pair was never a candidate. Telling it *"read EVERY block of numbers"*
+   fixed it in one line.
+
+### The price: discovery framing manufactures bugs
+
+| framing | false positives |
+|---|---|
+| comparison — match text against text | almost none |
+| **discovery — judge code on its own** | **real, and ranked first** |
+
+Both false alarms are **odd-looking but correct** code:
+
+```
+DEVICE  = get_device.__func__()      # a @staticmethod called in the class body
+EMB_DIR = ROOT_DIR.parent.parent     # unusual, not wrong
+```
+
+`P1` was ranked **worst-first, `high` confidence**, claiming *"crashes execution
+immediately"*. It does not.
+
+**This file already predicted it**, for the correspondence gate: *"never put
+'tell me if they don't correspond' inside the main prompt — the model will find
+something, being unhelpful is against its training."* Writing
+`§5 PROBLEMS, WORST FIRST` guarantees problems. Some will be invented.
+
+Rule 2 existed to stop this (*general knowledge → "this is unusual", never "this
+is wrong"*) and did not fire, because the model claimed *"seen in the text"*. It
+did not hallucinate the code; it **misread** it and then escalated.
+
+> **Recall and precision move in opposite directions. Asking "find bugs" buys a
+> second obligation: "is this really a bug?"** That is a separate pass, and it is
+> a better argument for the Step 2 loop than the one this file used to make.
+
+### `EXPECTED.md` needs an impact column — "11 of 18" was grading noise
+
+Two of the eighteen change the result by nothing:
+
+| # | claim | real size |
+|---|---|---|
+| 15 | rows dropped when empty after the regex | the run summary says **`empty rows removed 3`** — of 404,290. **0.0007%** |
+| 16 | three layer-norm modules built, flags all `False` | ~1,636 of 11,633,737 parameters. **0.01%**, no gradient, no effect |
+
+**Skipping those two is good judgement, not a miss.** Ranked by impact, discovery
+framing found **every B-only finding that can move the outcome** and correctly
+ignored the two that cannot.
+
+Every coverage number in this file — 10/18, 11/18, the predicted 15–16, the
+"ceiling of 11" — treated a 4.1-F1 defect and a 3-row defect as equal. **Add an
+impact column before scoring anything again.**
+
+### Thinking burn, HIGH is not better, measured 2026-08-17
+
+Identical prompt, identical model, only `thinkingLevel` changed:
+
+| | visible answer | spent thinking | finish |
+|---|---|---|---|
+| HIGH | 2,253 | ~29,747 (**93%**) | **`MAX_TOKENS`** |
+| **MEDIUM** | **5,655** | ~26,345 | **`STOP`** |
+
+**MEDIUM produced 2.5× more report and a better one.** The user proposed MEDIUM;
+this file's author argued for HIGH "to hold one variable" and lost the run.
+
+This retires the note under [thinking presets](#thinking-level--a-user-preset-never-a-per-model-switch)
+that every measurement ran at HIGH. It also explains `20-42`, `20-45` and `21-24`
+— **four runs killed by thinking burn, not by provider failure.**
+
+> **More thinking is not more answer. Past some point it is less answer.**
+> `MEDIUM` is the new default for report-sized outputs; `HIGH` must be justified
+> by a measurement, not assumed.
+
+### The instruction bugs, found by experiment 2026-08-17
+
+Real defects in `instructions.py`, each with its evidence:
+
+1. **Rule 6 fights `§5`.** Rule 6: *write a line for every id, including ids you
+   did not read.* `§5`: *every line that is not "nothing" must become a row.* A
+   line reading `not in the text I was given` is neither, so it must become a row
+   with nothing to put in it. Run `2026-08-15_00-11` spent its **entire 32,000
+   token budget** arguing the deadlock with itself and produced no report:
+
+   ```
+   Wait, if we write `B-46 | not in the text I was given` in §3,
+   does it have to appear in §5?
+   Wait, is this "nothing"?
+   Wait, but we haven't read them!
+   ```
+
+2. **`§3 WALK SIDE B` never escapes A.** Its own template is
+   `does: <something this part decides that A never mentions>` and
+   `nothing A does not already mention`. The section meant to find B-only things
+   measures B against A in its own wording.
+
+3. **We gave an exit and it was taken.** Rule 3 *"NONE is a correct answer"* plus
+   `§4 may be NONE` produced `§4 PROBLEMS IN B ALONE: NONE` in **every** `FULL`
+   run.
+
+4. **`says nothing that can be checked` gets spent on A's best parts.** Run
+   `20-45`: `A-15 | says nothing that can be checked` (the results table) and
+   `A-16 | says nothing that can be checked` (the ablation table carrying −4.1,
+   −1.9, −1.4). The cheapest line went to the most valuable content.
+
+5. **A name is not a method.** `FULL §4` says *"problems that need no
+   reference"* → `NONE`, every run. `CORE §4` says *"what input would make this
+   behave wrongly? follow the value through, step by step"* → found real bugs.
+   Same model, same context.
+
+6. **Placement wastes the strongest position.** Measured on the stuffed prompt:
+
+   | block | tokens | position |
+   |---|---|---|
+   | header — rules, labels, **every section definition** | 2,052 | 0–5% |
+   | SIDE A | 4,789 | 5–22% |
+   | SIDE B | 21,036 | 22–99% |
+   | closing | **156** | **99.4%** |
+
+   `WALK SIDE B` — with the whole hint list — sits at **5.4%**. The last thing the
+   model reads before writing is *"count the ids in the list and write that many
+   lines."* **It counted lines.** The word "B" does not appear in the closing.
+
+### What the new instructions must ask
+
+`instructions.py` is rebuilt around the four questions, in this order. Probe v2
+proves one call can carry all four.
+
+| § | Question | Must say |
+|---|---|---|
+| walk | what each part **does** | one line per id, positional |
+| A | does B match A? | only when A exists; keep the citation rule unchanged |
+| **breaks** | what input makes this behave wrongly? | follow the value through, naming every part it passes |
+| **smells** | what runs fine and is still bad? | five sub-questions: built and never used · a cap that discards much of the input, *with the share* · removed or changed before use · a name that says one thing while the code does another · would a reviewer call this a bad idea. **"It runs" is not a reason to leave one out** |
+| **numbers** | what do the numbers say? | **read every block of numbers, not the first one you meet** · then subtract and divide pairs and show the arithmetic |
+| rank | worst first | **by impact on the outcome, not by confidence** |
+
+**Four things to carry over unchanged, because they are measured to work:**
+deterministic quoting (`[B-17 "…"]`, 98–99% resolve) · the positional walk as a
+*shape* · the evidence-basis wording of rule 2 · `MEDIUM` thinking.
+
+**Three things to fix while rebuilding:** delete the rule-6/`§5` deadlock · move
+the *what to look for* text next to the material or repeat it in the closing ·
+add a cheap precision pass, because discovery framing ranked a false alarm first.
+
+### Prompt design rules, earned 2026-08-17
+
+Transferable beyond LabPilot. Each one cost a real run.
+
+1. **Write the list of what you want to find first, then check the prompt asks
+   for each item.** We wanted bugs in B; nothing asked for bugs in B.
+2. **One question finds one kind of thing.** Do not expect a matching question to
+   find a judgement problem.
+3. **Give every question a method, not a name.** See instruction bug 5.
+4. **Never give an easy exit to a section whose job is to find things.**
+5. **Put the instruction near the material, and never spend the last position on
+   bookkeeping.** The end of a prompt is expensive.
+6. **Read your own rules against each other before sending one.** Ours
+   deadlocked and cost 32,000 tokens.
+7. **Grade content, never shape.** 78 lines is not 78 findings.
+8. **A demand for findings produces findings.** Budget for false positives
+   whenever you ask a model to judge rather than to match.
+9. **Delete before you add.** Every fix on 2026-08-17 that worked was a removal;
+   every addition made it worse. Cutting 12,620 bytes to 1,997 held coverage and
+   fixed the conclusion.
+10. **Separate judgment from contract.** Loosen advice all the way to nothing;
+    keep the parsed format and the logical gates exact. Cutting the citation
+    spec to one line cost 100% of citations.
+11. **Do not ban a comparison — require the caveat.** A refusal is not more
+    honest than a qualified number.
+
+> **A model does not find what is important. It finds what you asked for.**
+> **And the more you tell it, the less of its own judgment you get.**
 
 ---
 
@@ -4126,11 +4455,29 @@ claims, a short list early in the prompt) was found, and four of the seven misse
 are Type-3 — *things B does that A never mentions*, which requires walking a long
 list late in the context.
 
-> **One call cannot reliably find many things in a long text. The fix is many
-> small calls, not better sentences.**
+~~**One call cannot reliably find many things in a long text. The fix is many
+small calls, not better sentences.**~~
 
-**This turns the agent from a design choice into a requirement.** `verify` and
-`find_missing` are a loop for this reason, not for elegance.
+> **CORRECTED 2026-08-17, session 10.** Probe v2 asked **four** questions in
+> **one** call, on 22,753 tokens, and recovered seven findings — five of which
+> seventeen comparison runs never found. So the sentence above is not what our
+> own data shows. The accurate version:
+>
+> **One call can only be asked one thing at a time. The fix is more questions,
+> and small calls are how you ask them without the prompt collapsing.**
+>
+> The literature above is still right about the long-run limit. It was simply not
+> the binding constraint — the binding constraint was that we asked one question.
+
+**The agent is still a requirement, for two *measured* reasons** — neither of
+which is the old "one call is too weak":
+
+1. **Each question needs its own pass.** `verify`, `find_bugs` and `find_missing`
+   are three different questions, and today proved each one returns what the
+   others cannot see.
+2. **Discovery needs a precision pass after it.** Asking for bugs manufactures
+   some; `P1` was ranked first and was wrong. Nothing inside a single generative
+   pass can check its own output.
 
 *One line here was also wrong: "Step 0's ceiling is about 11 of 18, and chasing
 it further would be tuning to one fixture."* 11 is where **this** prompt stops,
@@ -4524,9 +4871,19 @@ shape. Translating vendor differences is what the provider abstraction is for.
 
 **Unverified, and it matters:** `gemini-3.5-flash-lite` **accepts**
 `thinkingLevel: HIGH` and returned `thoughts = 0`. It may ignore the setting
-entirely. Check before building a preset that depends on it. And every
-measurement so far ran at HIGH — **the preset values are a design, not a
-finding.**
+entirely. Check before building a preset that depends on it.
+
+~~And every measurement so far ran at HIGH — the preset values are a design, not
+a finding.~~ **Measured 2026-08-17: HIGH is the wrong default for a long
+answer.** On an identical prompt, HIGH spent 93% of a 32,000-token budget on
+thoughts and returned a truncated report; MEDIUM finished and wrote 2.5× more —
+see [thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17).
+
+**So the preset table above is wrong where it puts `explain_divergence` at
+`high`.** A knob that produces a *worse* answer when turned up is a broken knob.
+Re-derive the presets from measurement, and remember the preset must set
+`max_tokens` **and** the level together — that rule was already written here and
+is now confirmed by a run that violated it.
 
 ### Why this is an agent and not one LLM call
 
