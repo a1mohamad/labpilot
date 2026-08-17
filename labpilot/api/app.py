@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, UploadFile
 
 from labpilot.api.contracts import (
@@ -31,6 +32,8 @@ MAX_UPLOAD_BYTES = 1_000_000
 HTTP_UNPROCESSABLE = 422
 HTTP_TOO_LARGE = 413
 HTTP_UNAVAILABLE = 503
+
+load_dotenv()
 
 app = FastAPI(title="LabPilot", version="0.1.0")
 
