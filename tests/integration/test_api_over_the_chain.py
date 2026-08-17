@@ -14,8 +14,10 @@ import pytest
 import responses
 from fastapi.testclient import TestClient
 
-from labpilot.api import app, get_client
+from labpilot.api import ApiConfig, app, get_client
 from labpilot.llm import GeminiProvider, LLMClient
+
+COMPARE = f"{ApiConfig.PREFIX}/compare"
 
 BASE = "https://provider.test/v1beta/models"
 
@@ -63,15 +65,19 @@ def answered(model: str, text: str = "A and B agree.") -> dict:
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("TEST_API_KEY", "secret-key")
+    # The lifespan validates the real CHAIN, not the fake one injected below,
+    # and refuses to start when no tier has a key.
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
     monkeypatch.setattr("labpilot.llm.chain.time.sleep", lambda _seconds: None)
     app.dependency_overrides[get_client] = lambda: LLMClient(chain=CHAIN)
-    yield TestClient(app)
+    with TestClient(app) as running:
+        yield running
     app.dependency_overrides.clear()
 
 
 def post(client):
     return client.post(
-        "/compare",
+        COMPARE,
         files={"a": PAPER, "b": CODE},
         data={"question": QUESTION},
     )
@@ -150,9 +156,10 @@ def test_when_every_tier_fails_the_503_names_all_of_them(client):
     response = post(client)
 
     assert response.status_code == 503
-    detail = response.json()["detail"]
-    assert [one["tier"] for one in detail["attempts"]] == [1, 2, 3]
-    assert all("500" in one["error"] for one in detail["attempts"])
+    problem = response.json()["error"]
+    assert problem["code"] == "generation_unavailable"
+    assert [one["tier"] for one in problem["attempts"]] == [1, 2, 3]
+    assert all("500" in one["error"] for one in problem["attempts"])
 
 
 @responses.activate
