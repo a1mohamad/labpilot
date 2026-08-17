@@ -16,6 +16,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Model routing**](#model-routing--a-chain-per-task-not-a-model-per-task) ·
 [Thinking presets](#thinking-level--a-user-preset-never-a-per-model-switch) ·
 [**Why the fixes failed**](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17) ·
+[**Slice 4 DONE**](#slice-4--done-2026-08-17) ·
 [**THE ROOT CAUSE**](#the-root-cause-found-2026-08-17-session-10) ·
 [**THE LEAN REWRITE**](#the-lean-rewrite-measured-2026-08-17-session-10) ·
 [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17) ·
@@ -388,8 +389,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. Slices 1–3 are DONE. Slice 4's root cause is
-found and the instructions must be rebuilt.**
+**Phase: Step 0 — walking skeleton. Slices 1–4 are DONE. Slice 5, a bare FastAPI
+endpoint, is the last one.**
 **Last updated 2026-08-17 (tenth session). Working branch: `feat/retrieval`.**
 
 > ### START HERE IN A NEW SESSION
@@ -404,19 +405,27 @@ found and the instructions must be rebuilt.**
 > [The lean rewrite](#the-lean-rewrite-measured-2026-08-17-session-10) ·
 > [Prompt design rules](#prompt-design-rules-earned-2026-08-17).
 >
-> **Next task: Step 1, retrieval.** The prompt layer is deep and every other
-> layer is untouched — that breaks this file's own *"never let one layer race
-> far ahead"* rule, and fixing it is the priority.
+> **Next task: slice 5, a bare FastAPI endpoint.** It is the last box of the
+> walking skeleton and the only layer Step 0 has never touched. Keep it thin —
+> one POST over the existing pipeline. FastAPI is on the assumed-known list, so
+> it needs no teaching and should not take a session.
 >
-> **One cheap experiment is owed first (1 request):** run the lean `REPORT` on
-> `gemini-3.6-flash` and merge with the saved `3.5-flash` run. Their blind spots
-> are **disjoint**, so the union should reach ~17 of 19. See
+> **Two things are owed and are cheap. Do them when convenient, not first:**
+> **(1)** one request on `gemini-3.6-flash` with the lean `REPORT`, merged with
+> the saved `3.5-flash` run — their blind spots are **disjoint**, so the union
+> should reach ~17 of 19, see
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
+> **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** 201 unit tests, 18 smoke, ruff clean. `instructions.py` holds
+> **After slice 5, Step 0 is closed and Step 1 (retrieval) begins.** The prompt
+> layer is now deep while every other layer is untouched — that breaks this
+> file's own *"never let one layer race far ahead"* rule, and slice 5 plus
+> Step 1 is how it gets fixed.
+>
+> **Code state:** 207 unit tests, 18 smoke, ruff clean. `instructions.py` holds
 > five templates: `FULL` and `CORE` (scored baselines, untouched) and the lean
-> `REPORT`, `SCAN`, `COMPARE`. `citations.py` gained `unescape`.
-> Still no database, no agent, no API, no UI.
+> `REPORT`, `SCAN`, `COMPARE`. `citations.py` gained `unescape`; `builder.py`
+> gained the `prior` channel. Still no database, no agent, no API, no UI.
 >
 > **Honest progress: Step 0 ≈ 90%. The whole project ≈ 13%.**
 
@@ -861,8 +870,9 @@ six-provider client written in one go has six places to be wrong at once.
 1. ~~**Tier 1 alone returns text**~~ ✅ **done 2026-08-10**
 2. ~~The fallback loop + 429 backoff, all seven tiers~~ ✅ **done 2026-08-12**
 3. ~~Dumb retrieval — read one hardcoded paper + code pair from `data/samples/`~~ ✅ **done 2026-08-14**
-4. The single-pass comparison prompt ← **next**
-5. A bare FastAPI endpoint
+4. ~~The single-pass comparison prompt~~ ✅ **done 2026-08-17** — see
+   [Slice 4 — DONE](#slice-4--done-2026-08-17)
+5. A bare FastAPI endpoint ← **next**
 
 **What slice 1 shipped.** `labpilot/llm/` split by reason-to-change, not by size:
 
@@ -1096,6 +1106,63 @@ from a test that passes.
 
 **`max_tokens` needs ~8000, not 2000.** At 2000 the answer was cut mid-sentence,
 because Gemini spends part of the budget thinking.
+
+### Slice 4 — DONE 2026-08-17
+
+**What shipped.** `labpilot/prompts/` is finished for Step 0.
+
+| Module | State |
+|---|---|
+| `instructions.py` | five templates: `FULL`, `CORE` (frozen baselines) and the lean `REPORT`, `SCAN`, `COMPARE` |
+| `citations.py` | deterministic quoting plus `unescape()` for Markdown-escaped quotes |
+| `builder.py` | `build_prompt(..., prior=...)`, the channel that carries one pass's findings into the next |
+| `context.py`, `_ids.py` | unchanged since slice 3 |
+
+**The measured result, start of slice 4 to end:**
+
+| | before | after |
+|---|---|---|
+| findings | 10 of 19 (bare prompt) | **13 of 19**, 4 of the 5 that carry the story |
+| citations that resolve | reported ~50%, truly unknown | **~99%** |
+| the conclusion | wrong — subtracted two incomparable numbers | **correct**, with the bias named and quantified |
+| instruction size | grew to 12,620 bytes | **1,997** |
+
+**The four things slice 4 was asked for, and what happened to each:**
+
+1. **Instructions** — delivered, then rebuilt three times. The version that works
+   is the smallest one.
+2. **A citation mechanism that works** — delivered. Deterministic quoting was
+   right from the start; the reported failure rate was our own escaping bug.
+3. **A rule about comparing numbers** — delivered, then **found to be wrong** and
+   replaced. Requiring the caveat beats banning the comparison.
+4. **Real `max_tokens` and the `thinking` field** — delivered. `MEDIUM` beats
+   `HIGH`; 64,000 is needed for a full report.
+
+**What slice 4 taught that outlives it.** These are the paragraphs to re-read
+before designing any prompt in this project:
+[the root cause](#the-root-cause-found-2026-08-17-session-10) ·
+[the lean rewrite](#the-lean-rewrite-measured-2026-08-17-session-10) ·
+[prompt design rules](#prompt-design-rules-earned-2026-08-17).
+
+**Six tests were added at the close, each verified to fail when its invariant is
+broken** — not written to raise a count:
+
+| test | guards |
+|---|---|
+| `test_side_b_ids_do_not_move_when_side_a_is_absent` | the two-pass contract: `B-25` means one chunk with or without A |
+| `test_the_citation_shape_each_template_teaches_is_the_shape_we_parse` | the prompt cannot teach a format our regex will not read |
+| `test_the_time_budget_can_outlast_one_slow_call` | a 900 s call inside a 300 s budget can never finish |
+| three `prior` tests in `test_builder.py` | one pass's findings really reach the next |
+
+**Two limits to state plainly, so nobody re-derives them:**
+
+- **This is one fixture.** Every number in slice 4 comes from `quora_siamese`.
+  A second sample pair, in a different domain and language, is the only way to
+  tell a general prompt from a quora-shaped one. That belongs in Step 1.
+- **`13 of 19` is at or above commercial single-pass code review** (Codex 29%,
+  Copilot 34%, Cursor BugBot 41%, Augment 55% with full-codebase context and a
+  filtering layer). The remaining gain is **structural**, not verbal: different
+  models, and the agent loop at Step 2.
 
 ### Where to pick up — slice 4's coverage problem
 
