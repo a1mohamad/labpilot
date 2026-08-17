@@ -60,6 +60,17 @@ def client(fake, provider_key):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def lenient_client(fake, provider_key):
+    """TestClient re-raises server exceptions by default, so the 500 handler
+    never runs and cannot be observed. Only this client sees what a real
+    browser would see."""
+    app.dependency_overrides[get_client] = lambda: fake
+    with TestClient(app, raise_server_exceptions=False) as running:
+        yield running
+    app.dependency_overrides.clear()
+
+
 def post(client, *, a=PAPER, b=CODE, question=QUESTION):
     return client.post(COMPARE, files={"a": a, "b": b}, data={"question": question})
 

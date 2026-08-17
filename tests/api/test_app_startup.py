@@ -108,9 +108,11 @@ def test_the_probe_endpoints_stay_off_the_version_prefix():
     assert "/" in paths
 
 
-def test_the_documented_failures_are_the_ones_the_endpoint_can_raise():
-    responses = app.openapi()["paths"][f"{ApiConfig.PREFIX}/compare"]["post"][
-        "responses"
-    ]
+def test_the_openapi_schema_documents_the_error_envelope():
+    """The failure statuses themselves are checked against the ApiError
+    hierarchy in test_errors.py, which cannot go stale the way a hardcoded
+    list can."""
+    schemas = app.openapi()["components"]["schemas"]
 
-    assert {"200", "413", "422", "503"} <= set(responses)
+    assert "ErrorEnvelope" in schemas
+    assert "ErrorBody" in schemas
