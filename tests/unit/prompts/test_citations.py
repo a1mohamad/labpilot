@@ -1,5 +1,7 @@
+import re
+
 from labpilot.ingest import Chunk
-from labpilot.prompts import FULL, find_citations, resolve
+from labpilot.prompts import COMPARE, CORE, FULL, REPORT, SCAN, find_citations, resolve
 from labpilot.prompts.citations import unescape
 
 BODY = "def fit():\n    loss.backward()\n    step()"
@@ -113,3 +115,18 @@ def test_unescaping_never_rescues_a_quote_that_is_simply_wrong():
     chunks = _chunks("        LEARNING_RATE = 3e-4")
 
     assert resolve("B-0", "        LEARNING_RATE = 1e-3", chunks) is None
+
+
+def test_the_citation_shape_each_template_teaches_is_the_shape_we_parse():
+    """A prompt that teaches a format our regex cannot read gives 0% citations.
+
+    That is not hypothetical: cutting this rule to one line on 2026-08-17 made a
+    whole run unresolvable, because the model wrote the id without the quote.
+    """
+    for instructions in (FULL, CORE, REPORT, SCAN, COMPARE):
+        taught = find_citations(instructions.header)
+
+        assert taught, f"{instructions.name} teaches a shape we cannot parse"
+        for chunk_id, quote in taught:
+            assert re.fullmatch(r"[AB]-\d+", chunk_id), instructions.name
+            assert quote.strip(), instructions.name

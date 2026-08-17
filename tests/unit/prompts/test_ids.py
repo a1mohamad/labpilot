@@ -35,3 +35,20 @@ def test_numbering_continues_across_files_on_the_same_side():
 
 def test_no_chunks_gives_no_ids():
     assert assign_ids(()) == {}
+
+
+def test_side_b_ids_do_not_move_when_side_a_is_absent():
+    """The two-pass design sends B alone, then A and B together.
+
+    A citation the scan pass writes as B-1 must point at the same chunk when the
+    compare pass sees it. A shared counter across sides would break that
+    silently, and every carried-over finding would cite the wrong part.
+    """
+    side_a = (_chunk("A", 0), _chunk("A", 1))
+    side_b = (_chunk("B", 0), _chunk("B", 1), _chunk("B", 2))
+
+    alone = assign_ids(side_b)
+    together = assign_ids(side_a + side_b)
+
+    for name, chunk in alone.items():
+        assert together[name] is chunk, name
