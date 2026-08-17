@@ -17,6 +17,8 @@ Read the two rule sections first — they change *how* everything below is done.
 [Thinking presets](#thinking-level--a-user-preset-never-a-per-model-switch) ·
 [**Why the fixes failed**](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17) ·
 [**Slice 4 DONE**](#slice-4--done-2026-08-17) ·
+[**Slice 5 DONE — Step 0 closed**](#slice-5--done-2026-08-17) ·
+[The test that could not fail](#the-test-that-could-not-fail--2026-08-17) ·
 [**THE ROOT CAUSE**](#the-root-cause-found-2026-08-17-session-10) ·
 [**THE LEAN REWRITE**](#the-lean-rewrite-measured-2026-08-17-session-10) ·
 [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17) ·
@@ -389,45 +391,58 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: Step 0 — walking skeleton. Slices 1–4 are DONE. Slice 5, a bare FastAPI
-endpoint, is the last one.**
-**Last updated 2026-08-17 (tenth session). Working branch: `feat/retrieval`.**
+**Phase: STEP 0 IS CLOSED. All five slices are DONE. Step 1 (retrieval) is next.**
+**Last updated 2026-08-17 (eleventh session). Working branch: `feat/api`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> **Slice 4 is finished. The prompt layer has given what it can.**
-> Coverage went **11 → 13 of 19**, citations **misreported → ~99%**, and the
-> conclusion is now correct. The instructions went **12,620 bytes → 1,997**, and
-> the *shorter* one is the better one.
+> **The walking skeleton walks.** A real HTTP request now goes upload → chunk →
+> select → prompt → `LLMClient` → an answer with its citations resolved back to
+> real file and line numbers. Every box in the Step 0 diagram is touched.
 >
-> Read, in this order:
-> [The root cause](#the-root-cause-found-2026-08-17-session-10) ·
-> [The lean rewrite](#the-lean-rewrite-measured-2026-08-17-session-10) ·
-> [Prompt design rules](#prompt-design-rules-earned-2026-08-17).
+> **Next task: Step 1 — real retrieval.** Embeddings, pgvector, reranking. This
+> is the first of [the four gaps](#the-four-gaps-are-the-whole-point--teach-them-hardest-of-all),
+> so it gets the full teaching treatment and it should be slow on purpose.
 >
-> **Next task: slice 5, a bare FastAPI endpoint.** It is the last box of the
-> walking skeleton and the only layer Step 0 has never touched. Keep it thin —
-> one POST over the existing pipeline. FastAPI is on the assumed-known list, so
-> it needs no teaching and should not take a session.
+> **Three things are already decided and must be read before writing any code:**
+> [Retrieval design](#retrieval-design--recorded-2026-08-13) (the user's question
+> is never the search query) ·
+> [Chain 2](#chain-2--embedder-migration-not-fallback) (the embedder is a
+> migration, never a fallback) ·
+> [the three open questions](#three-open-questions--answer-them-at-step-1-with-measurements)
+> (settle `codestral-embed` vs `mistral-embed` by measurement first — if
+> `mistral-embed` wins, two of the three questions disappear).
 >
-> **Two things are owed and are cheap. Do them when convenient, not first:**
-> **(1)** one request on `gemini-3.6-flash` with the lean `REPORT`, merged with
-> the saved `3.5-flash` run — their blind spots are **disjoint**, so the union
-> should reach ~17 of 19, see
+> **Two Step 1 debts recorded elsewhere, easy to miss:** `select()` must fill
+> **A before B** (dropping part of A loses a statement we never learn exists),
+> and the outline must list **files, not chunks** — 2,000 chunks would cost
+> ~40,000 tokens, larger than the whole budget.
+>
+> **Two things are still owed and are cheap. Do them when convenient, not
+> first:** **(1)** one request on `gemini-3.6-flash` with the lean `REPORT`,
+> merged with the saved `3.5-flash` run — their blind spots are **disjoint**, so
+> the union should reach ~17 of 19, see
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **After slice 5, Step 0 is closed and Step 1 (retrieval) begins.** The prompt
-> layer is now deep while every other layer is untouched — that breaks this
-> file's own *"never let one layer race far ahead"* rule, and slice 5 plus
-> Step 1 is how it gets fixed.
+> **Code state:** **207 unit, 14 api, 18 smoke, ruff clean.** `labpilot/api/`
+> serves `POST /compare`. `instructions.py` holds five templates: `FULL` and
+> `CORE` (scored baselines, untouched) and the lean `REPORT`, `SCAN`, `COMPARE`.
+> Still **no database, no agent, no UI, no deployment, no fine-tuning dataset**.
 >
-> **Code state:** 207 unit tests, 18 smoke, ruff clean. `instructions.py` holds
-> five templates: `FULL` and `CORE` (scored baselines, untouched) and the lean
-> `REPORT`, `SCAN`, `COMPARE`. `citations.py` gained `unescape`; `builder.py`
-> gained the `prior` channel. Still no database, no agent, no API, no UI.
->
-> **Honest progress: Step 0 ≈ 90%. The whole project ≈ 13%.**
+> **Honest progress: Step 0 = 100%. The whole project ≈ 16%.**
+
+> **2026-08-17, session 11 — slice 5 shipped and Step 0 is closed.**
+> `labpilot/api/` serves one `POST /compare`: two uploads and a question in, the
+> answer plus the model that produced it, the tiers that failed, the chunk counts
+> per side, and **every citation resolved to a real file and line** out. 14 API
+> tests, no network, `LLMClient` swapped through a FastAPI dependency override.
+> **Mutation testing caught one of my own tests being self-fulfilling** — it
+> derived its payload size from the constant it was testing, so it passed against
+> a build with the limit raised 100×. See
+> [Slice 5 — DONE](#slice-5--done-2026-08-17) and
+> [the test that could not fail](#the-test-that-could-not-fail--2026-08-17).
+> Two dependencies were added: **`python-multipart` is runtime**, not dev.
 
 > **2026-08-17, session 10 — no source changed, and it was the most productive
 > session so far: the coverage root cause was found by experiment.**
@@ -872,7 +887,8 @@ six-provider client written in one go has six places to be wrong at once.
 3. ~~Dumb retrieval — read one hardcoded paper + code pair from `data/samples/`~~ ✅ **done 2026-08-14**
 4. ~~The single-pass comparison prompt~~ ✅ **done 2026-08-17** — see
    [Slice 4 — DONE](#slice-4--done-2026-08-17)
-5. A bare FastAPI endpoint ← **next**
+5. ~~A bare FastAPI endpoint~~ ✅ **done 2026-08-17** — see
+   [Slice 5 — DONE](#slice-5--done-2026-08-17)
 
 **What slice 1 shipped.** `labpilot/llm/` split by reason-to-change, not by size:
 
@@ -1163,6 +1179,171 @@ broken** — not written to raise a count:
   Copilot 34%, Cursor BugBot 41%, Augment 55% with full-codebase context and a
   filtering layer). The remaining gain is **structural**, not verbal: different
   models, and the agent loop at Step 2.
+
+## Slice 5 — DONE 2026-08-17
+
+**The last box of the walking skeleton. One `POST /compare` over the pipeline
+that already worked.** It took one short session, as predicted — FastAPI is on
+the assumed-known list, so the work was all in a handful of decisions.
+
+| Module | Holds |
+|---|---|
+| `labpilot/api/contracts.py` | the Pydantic **response** models — imports nothing else from the API |
+| `labpilot/api/app.py` | the app, the `LLMClient` dependency, the route, the failure branches |
+| `labpilot/api/__init__.py` | `app`, `get_client`, `MAX_UPLOAD_BYTES` |
+| `tests/api/test_compare.py` | 14 tests, no network, no quota |
+
+**The request is `multipart/form-data`** — two named `UploadFile` parameters `a`
+and `b`, plus `question` as a form field. Two *named* parameters rather than a
+list, because the side is then the parameter name and no `side` field is needed.
+That matches the two named slots in [the UI shape](#ui-shape--step-3-recorded-now).
+
+**The response carries what this file already required**, not what was
+convenient: `model` / `tier` / `attempts` because
+[the `LLMResult` rule](#llm-serving--fallback-chain) says the user must see which
+tier answered, `chunks` per side because `✓ 42 chunks` is what proves the file
+was really read, `finish_reason` because `MAX_TOKENS` means the report is cut and
+looks complete otherwise, and **the resolved citation list** — `source`, `line`,
+`text`, `unique` — because that is the one thing an endpoint adds over a print
+statement.
+
+### The four decisions worth keeping
+
+**1. The route is `def`, not `async def`.** Our transport is `requests`, which
+blocks. Inside `async def` a blocking call freezes the event loop and the server
+stops answering *everyone*; a plain `def` runs in a thread pool. This is a slice
+1 choice (`requests` for every tier) reaching forward into slice 5, and it is
+also why the body uses `upload.file.read()` and not `await upload.read()`.
+
+> **The transport you chose at the bottom decides the concurrency model at the
+> top.** Nothing warns you — the async version works perfectly under one user.
+
+**2. HTTP status codes are the API-layer form of an existing rule.** CLAUDE.md
+already says *"a caller's bug and a provider's failure are different
+exceptions."* This is where that becomes visible outside the process:
+
+| Raised | Status |
+|---|---|
+| `ValueError`, bad decode, missing extension, empty artifact, blank question | **422** |
+| upload over `MAX_UPLOAD_BYTES` | **413** |
+| `AllFreeTiersExhausted` | **503**, with the `attempts` list in the body |
+
+`LLMError` needs no branch — the fallback loop swallows it and it never escapes
+`LLMClient`. A prompt too large for every tier also arrives as
+`AllFreeTiersExhausted`, so 503 covers it honestly.
+
+**3. A missing file extension is a 422, not a default.** `chunk_text` picks its
+splitter from the suffix. Without one it falls back to recursive splitting — no
+AST boundaries, no function units, a quietly worse comparison, **and no error**.
+This is the [orphan-chunk failure](#five-failure-modes-to-test-against) arriving
+through the front door.
+
+> **Refuse the input you cannot handle well. A silent downgrade is worse than a
+> rejection, because nobody ever learns it happened.**
+
+**4. Size is checked against `upload.size` *before* the bytes are read.**
+Starlette knows the size once parsing finishes, so reading a 200MB upload merely
+to measure it would spend 200MB on a **512MB** box — see
+[the memory budget](#memory-budget--render-free-tier-512mb). The post-read check
+stays as a backstop for the case where `size` is `None`. 1MB is not a new number:
+it is [the repo-walk limit](#reading-a-repository--step-1-recorded-2026-08-11)
+applied at a different door.
+
+### Two dependencies, and one of them is runtime
+
+| Package | File | Why |
+|---|---|---|
+| **`python-multipart==0.0.32`** | **`requirements.txt`** | FastAPI cannot parse a form without it, and it is **not** a FastAPI dependency by default |
+| `httpx2==2.10.0` | `requirements-dev.txt` | `TestClient` needs it. Plain `httpx` works but Starlette 1.4.1 deprecates it and warns on every run |
+
+`fastapi` and `uvicorn` were already pinned — installed in Step 0 and unused
+until now. Pydantic 2.13.4 arrives with FastAPI, so the response models cost no
+new line.
+
+### `integration/` did NOT become real, and the reason is the cost rule
+
+The obvious reading is that an endpoint over four packages is an integration
+test. **In this repo it is not**, because
+[the folders split by cost](#layout--plan-the-shape-early-create-files-late), not
+by how many layers a test touches:
+
+| Folder | Means | Real yet? |
+|---|---|---|
+| `unit/` | no network, no database | yes |
+| **`api/`** | **`TestClient`, no network — runs by default** | **now** |
+| `integration/` | **real Supabase / real pgvector** | **Step 1** |
+| `smoke/` | spends API quota, opt-in only | yes |
+
+So the *textbook* integration test lives in `api/`:
+`test_the_real_sample_pair_flows_through_the_endpoint` uploads the actual
+`A_paper.md` and `B_train.py`, mocks only `LLMClient`, and asserts the chunk
+counts match `chunk_file`, that side B was genuinely trimmed (`sent < total`, so
+selection really ran), and that the prompt fits `PROMPT_BUDGET`. Real chunking,
+real selection, real prompt building, over real HTTP, **at zero quota cost**.
+
+**No API smoke test was added, deliberately.** `tests/smoke/test_pipeline_answers.py`
+already proves the pipeline answers, and the HTTP layer touches no provider — a
+weekly request would buy nothing. *"Do not add tests to raise a number"* applies
+to smoke tests hardest, because those ones cost quota.
+
+### The test that could not fail — 2026-08-17
+
+Every new invariant was broken on purpose to check its test noticed. Four of five
+did. **The size-limit test passed against a build with the limit raised 100×:**
+
+```python
+huge = b"x = 1\n" * (MAX_UPLOAD_BYTES // 3)   # ← the bug
+```
+
+The payload size was derived from **the constant under test**. Raise the limit
+and the payload grows with it, so the assertion could never fail. The 413 was
+genuinely ours and the test was green for three runs — it was simply not testing
+anything. Fixed with a **fixed literal** payload plus an explicit premise
+assertion (`assert len(huge) > MAX_UPLOAD_BYTES`) so the test fails loudly if the
+limit is ever raised past it, and a companion test pins the accepting side so the
+limit cannot silently drift to zero either.
+
+> **A test whose input is computed from the value it is checking cannot fail.
+> Every threshold test needs a literal on one side of the comparison.**
+
+This is [rule 7](#prompt-design-rules-earned-2026-08-17) — *grade content, never
+shape* — in its test-suite form, and the same mistake as *"the walks ran"* in
+session 9: a green signal was read without asking which cases produce it.
+**Mutation testing is the cheap fix, and it took one loop of five `sed`
+replacements.** Do it for every invariant this file claims to pin.
+
+### What slice 5 deliberately did not do
+
+Both are recorded rather than solved, and both belong to Step 3:
+
+- **The endpoint is synchronous.** A report can take minutes against
+  `DEFAULT_TOTAL_BUDGET = 300 s`; any proxy will kill it, Render especially. SSE
+  is already scheduled — see
+  [live progress events](#chain-3--reranker-true-fallback).
+- **The 1MB cap is enforced after Starlette has spooled the upload to disk.** A
+  true streaming limit belongs in nginx.
+
+No `/health` endpoint yet — it gets real content the day Docker exists.
+
+### Step 0, honestly closed
+
+| Slice | Shipped |
+|---|---|
+| 1 | tier 1 returns text |
+| 2 | the fallback chain, now 15 tiers and a five-way failure rule |
+| 3 | the chunker (permanent) and the dumb selector (throwaway) |
+| 4 | the prompt — 13 of 19 findings, ~99% citations, correct conclusion |
+| 5 | **`POST /compare`** |
+
+**What Step 0 proved:** the core idea produces something useful, and every layer
+connects. **What it did not prove:** that it works on anything but one fixture.
+`quora_siamese` is a single pair, in one domain, in one language. A second pair
+is the only way to tell a general system from a quora-shaped one, and it belongs
+in Step 1.
+
+**The layer-balance rule is satisfied again.** The prompt layer raced far ahead
+during slice 4; slice 5 brought the API up from nothing. Step 1 must now do the
+same for retrieval, which is still a hardcoded 50/50 positional split.
 
 ### Where to pick up — slice 4's coverage problem
 
