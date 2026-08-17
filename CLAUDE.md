@@ -19,7 +19,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**THE ROOT CAUSE**](#the-root-cause-found-2026-08-17-session-10) ·
 [**THE LEAN REWRITE**](#the-lean-rewrite-measured-2026-08-17-session-10) ·
 [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17) ·
-[Archived checklists](#the-deleted-checklists--archived-here-for-step-2-not-for-the-prompt) ·
+[Archived checklists](#the-deleted-checklists-archived-for-step-2-and-not-for-the-prompt) ·
 [New instructions](#what-the-new-instructions-must-ask) ·
 [Instruction bugs](#the-instruction-bugs-found-by-experiment-2026-08-17) ·
 [Thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) ·
@@ -1446,6 +1446,177 @@ deterministic quoting (`[B-17 "…"]`, 98–99% resolve) · the positional walk 
 **Three things to fix while rebuilding:** delete the rule-6/`§5` deadlock · move
 the *what to look for* text next to the material or repeat it in the closing ·
 add a cheap precision pass, because discovery framing ranked a false alarm first.
+
+## The lean rewrite, measured 2026-08-17 session 10
+
+*Everything above diagnosed the problem. This section is what fixed it, and the
+headline is uncomfortable: **the fix was deletion.***
+
+### The citation rate was never real, the bug was ours
+
+`resolve()` compared quotes literally. Inside a Markdown table the model escapes
+the pipe, so a **correct** quote failed to match:
+
+```
+model writes   [B-8 "SCHEDULER_TYPE = \"ReduceLROnPlateau\""]
+real line              SCHEDULER_TYPE = "ReduceLROnPlateau"
+```
+
+**77% of every "failed" citation was this.** Re-scored with a three-line
+`unescape()`, the whole history moves:
+
+| run | was | now |
+|---|---|---|
+| `full` 20-38 | 33% | **100%** |
+| `full` 21-08 | 31% | 91% |
+| `report` today | 62% | 91% |
+| `00-16` core | 79% | 97% |
+
+**`FULL` was never the "bad citation" template.** It writes more tables, so it
+tripped our bug more often. We judged a template on a defect in our own matcher.
+True invention is **1-9%**, not 20-37%.
+
+> **The 99% that made us confident came from the single most favourable run.**
+> Same error as *11/18* and *"FULL never finishes"*: reading a number without
+> asking which cases produce it.
+
+### Instruction bloat suppresses judgment, literature plus our own data
+
+The user proposed this; searching confirmed it.
+
+- **Models interpolate instructions, they do not select them** - *"LLMs execute
+  instructions probabilistically ... they interpolate between strategies **in
+  proportion to their textual weight**"*
+  ([Less Is More, 2604.18897](https://arxiv.org/html/2604.18897v1)).
+  **This is why "side A does not exist" failed.** A few dozen tokens cannot
+  outweigh thousands. Obedience is not the mechanism.
+- **Merging prompts yields the arithmetic mean, not the maximum** (same paper).
+  We merged `FULL`+`CORE`+`DISCOVER` into `REPORT` and got exactly that: 11, and
+  it *lost* `#17`, which `CORE` found.
+- **Collapse begins near 2KB.** Ours were 6.6-12.6KB.
+- **Detailed prompts bias toward inventing faults**
+  ([2508.12358](https://arxiv.org/html/2508.12358v1)) - that is `DEVICE` and
+  `PROJECT_DIM`, both correct code flagged at `high` confidence.
+- **Long checklists lower accuracy** - all 75 CWEs in one prompt *reduced*
+  detection ([2401.16310](https://arxiv.org/pdf/2401.16310)).
+
+Our own numbers said it first:
+
+```
+bare prompt,      0 bytes  ->  10 findings
+core,         6,558 bytes  ->  11
+report,      12,620 bytes  ->  11
+```
+
+**About 12KB of rules bought one finding over no rules at all.**
+
+### What to cut, and what must never be cut
+
+Cutting to 1,997 bytes kept coverage **and** fixed the conclusion, but broke two
+things. The split between them is the transferable rule:
+
+| kind | example | cut it? |
+|---|---|---|
+| judgment guidance | *"look for a cap that discards input"* | **yes**, the model does it better unprompted |
+| **format contract** | `[B-17 "exact line"]` | **no**, `resolve()` parses it. One line gave **0% citations** |
+| **logical gate** | a `NO` verdict constraining a later section | **no**, a constraint is not advice |
+
+I cut all three together. The contract needs about four lines, spelling out that
+an id alone is not a citation.
+
+### Rule 4 was wrong, not mis-scoped
+
+It said *"do not subtract them"* for any pair marked `NO`. But `EXPECTED.md`'s
+own required answer says *"the true gap is **wider than 2.5**"*, **which
+requires computing 2.5.** The rule forbade the correct answer.
+
+```
+banned    "they cannot be compared"             <- refuses to inform
+naive     "B is 2.5 behind"                     <- incomplete
+correct   "observed 2.5; B is inflated ~1.5 by
+           threshold leakage and helped by 10%
+           more training data, so the true gap
+           is larger"
+```
+
+The lean template reached the third **with no rule telling it to**, in all three
+passes. Replace the ban with: *when two numbers were produced differently, give
+the difference and say which way it is biased.*
+
+> **The fix for an incomplete statement is to complete it, not to ban it.**
+
+### Multi-pass, vary the model not the seed, measured 2026-08-17
+
+`temperature: 0` makes N passes worthless. Gemini returned **byte-identical**
+answers. Multi-pass needs sampling, which costs the repeatability rule.
+
+Three passes at `temperature 0.8`, lean `REPORT`, `gemini-3.5-flash`:
+
+```
+pass 1   11 findings      pass 2   11      pass 3   13
+union    13              <- no lift over the best single pass
+```
+
+**The variance is real** - 33 of 47 raw items appeared in only one pass - but the
+hard misses are **systematic per model**, not stochastic:
+
+| | `3.5-flash`, 6+ runs | `3.6-flash` |
+|---|---|---|
+| #12 / #14 / #18 / #10b | **never** | found |
+| `SKIP_CONNECTION` / loss-config / CUDA `Event` | found | never |
+
+> **Repeating one model cannot fix that model's blind spot.** Their blind spots
+> are disjoint, so one pass each should beat three passes of either. This
+> contradicts the langextract result (2 passes about 93%) **on our task**:
+> extraction variance is stochastic, judgement blind spots are not.
+
+### Score in three states, and weight by impact
+
+*(Raised by the user. Flat counting hid the real picture twice.)*
+
+| state | meaning |
+|---|---|
+| **judged** | named as a problem, with its effect |
+| **surfaced** | evidence on the page, uncommented. `0.9439` and `0.8226` listed side by side, gap never stated |
+| **absent** | not there in any form |
+
+And the 19 are not equal:
+
+| tier | which | note |
+|---|---|---|
+| **carries the story** | #11, #6, #1, #9, **#10b** | these *are* the causal explanation |
+| secondary | #7 #8 #2 #3 #4 #5 #12 #13 #14 #17 #18 | real, smaller |
+| **moves nothing** | #15 (3 rows of 404,290), #16 (0.01% of params) | must never reach a report |
+
+Today's union scored this way: **4 judged plus 1 surfaced of the 5 that carry the
+story**, 9 of 12 secondary, and 0 of the 2 that move nothing, correctly ignored.
+`EXPECTED.md` still needs these two columns before the next score.
+
+### The deleted checklists, archived for Step 2 and not for the prompt
+
+Cut because a long list *lowers* accuracy in one call. **They are still good
+thinking, and each becomes one small node prompt at Step 2**, where a node asks
+one question and the list is the whole task rather than a footnote.
+
+**What breaks** - what input would make this behave wrongly? Follow the value
+through, naming every part it passes.
+
+**What runs fine and is still bad** - is something built, computed or configured
+and then never used (a part behind an always-off flag counts) / is a cap so tight
+that much of the input is discarded (give the share) / is something removed or
+changed before use / does a name, comment, flag or default say one thing while
+the code does another / is a result tuned on the same material it is reported on
+/ would a reviewer call this a bad idea even though it works.
+
+**What the numbers say** - read *every* block of numbers, not the first one you
+meet / subtract and divide pairs and show the arithmetic.
+
+**Kinds** - contradiction, missing-in-B, missing-in-A, unclear-in-A, defect,
+**waste** (runs fine, still bad), scope, same-idea (not a difference).
+**Boxes** - input, procedure, measurement, environment, reporting.
+
+> **Do not paste these back into a single-call prompt.** That is exactly the
+> 12,620-byte version that scored no better than a bare one.
 
 ### Prompt design rules, earned 2026-08-17
 
