@@ -19,6 +19,10 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Slice 4 DONE**](#slice-4--done-2026-08-17) ·
 [**Slice 5 DONE — Step 0 closed**](#slice-5--done-2026-08-17) ·
 [**STEP 1 — THE PLAN, 8 slices**](#step-1--the-plan-recorded-2026-08-20) ·
+[**Slice 1 DONE — the embedder**](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) ·
+[Slice 1b plan](#slice-1b--more-embedders-and-why-it-moved-ahead-of-slice-2) ·
+[**Slice 1b DONE — and Google blocked**](#slice-1b--done-2026-08-20-and-google-is-blocked) ·
+[Hybrid search](#hybrid-search--decided-2026-08-20-built-in-slice-5) ·
 [**Hardening the API**](#hardening-and-what-running-it-for-real-exposed--2026-08-17) ·
 [**The API layout**](#the-api-layout--restructured-2026-08-17) ·
 [**The system-wide audit**](#the-system-wide-audit--2026-08-17) ·
@@ -396,8 +400,10 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 0 IS CLOSED. Step 1 is planned as EIGHT slices. Slice 1 is next.**
-**Last updated 2026-08-20 (twelfth session). Working branch: `main`, clean.**
+**Phase: STEP 1 SLICES 1 AND 1b ARE DONE. `codestral-embed` is the primary, by measurement.**
+**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 2 is next.**
+**⚠ GOOGLE IS UNREACHABLE FROM THIS LOCATION — six generator tiers are down. See slice 1b.**
+**Last updated 2026-08-20 (twelfth session). Working branch: `feat/embeddings`.**
 
 > ### START HERE IN A NEW SESSION
 >
@@ -405,8 +411,39 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > select → prompt → `LLMClient` → an answer with its citations resolved back to
 > real file and line numbers. Every box in the Step 0 diagram is touched.
 >
-> **Next task: Step 1 slice 1 — the embedder.** Step 1 is planned as **eight
-> slices**, and the plan is written down: read
+> **⚠ FIRST, CHECK THIS.** Google answers `400 FAILED_PRECONDITION — "User
+> location is not supported"` on **both** generation and embedding, from this
+> machine, as of 2026-08-20. It worked on 2026-08-17. That is a **per-request
+> country check**, not an account flag — most likely a VPN or a
+> location-switcher, which this file already warns against. Until it is fixed,
+> **six generator tiers and the Google embedder are unreachable** and the
+> weekly smoke run will fail on all of them. One command re-tests it; the probe
+> is in the slice 1b notes.
+>
+> **Next task: Step 1 slice 2 — read a repository.** Slices 1 and **1b** are
+> done: `labpilot/embed/` ships with **three** embedders across **two**
+> platforms, `base.py` is extracted, and `codestral-embed` won again on a
+> three-way measurement — **0.941 recall@5**, against BGE's 0.824 and
+> mistral-embed's 0.765. See
+> [slice 1](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) and
+> [slice 1b](#slice-1b--done-2026-08-20-and-google-is-blocked).
+>
+> **One real bug is open and belongs to slice 3:** `MAX_CHUNK_TOKENS` is
+> enforced on `chunk.text`, but what is embedded and reranked is
+> `chunk.embed_text` — text **plus header**. 3 of 78 chunks already exceed the
+> cap, which also breaks the Cohere rerank billing arithmetic.
+>
+> **Then slice 2 — read a repository**, which exists because **today's fixture
+> fits the prompt budget**: retrieval cannot be proven until a corpus is too
+> large to stuff. Slice 2 is also what finally measures the routing threshold
+> in [open question 2](#three-open-questions--answer-them-at-step-1-with-measurements).
+>
+> **`queries.json` is now the instrument for the whole of Step 1.** 17 graded
+> queries over `B_train.py`, ground truth stored as **line numbers** so it
+> survives any change to chunking. Re-score with it after every retrieval
+> change — it costs no generation quota.
+>
+> **Step 1 is planned as eight slices**, and the plan is written down: read
 > [Step 1 — the plan](#step-1--the-plan-recorded-2026-08-20) before anything
 > else. Retrieval is the first of
 > [the four gaps](#the-four-gaps-are-the-whole-point--teach-them-hardest-of-all),
@@ -1716,8 +1753,11 @@ same for retrieval, which is still a hardcoded 50/50 positional split.
 ## Step 1 — the plan, recorded 2026-08-20
 
 *Decided in session 12, before any Step 1 code was written. Step 0 was five
-slices. **Step 1 is eight.** Two of them exist only because the input edge is
-wider than Step 0 ever admitted.*
+slices. **Step 1 is nine** — it was planned as eight, and `1b` was inserted on
+2026-08-20 once slice 1 showed we had never called a second platform.*
+
+Two of the nine exist only because the input edge is wider than Step 0 ever
+admitted, and `1b` exists because slice 1 shipped on a single platform.
 
 ### Why Step 1 cannot be measured on today's fixture
 
@@ -1729,15 +1769,16 @@ slice 4 says *stuffed*, and it means retrieval currently changes nothing at all.
 > repository is therefore not an extra feature — it is what makes Step 1
 > measurable in the first place.
 
-### The eight slices
+### The nine slices
 
 | # | Slice | What it must prove | Teaching load |
 |---|---|---|---|
 | 1 | **Embed one chunk, and settle the model** | a vector comes back, and `codestral-embed` vs `mistral-embed` is decided **by measurement** | **heavy** — embeddings, cosine similarity, normalization |
+| **1b** | **More embedders** | Google and one open-weights model scored on `queries.json`; real rate limits recorded; `base.py` earned | medium |
 | 2 | **Read a repository** | folder, zip and git URL all become chunks, streamed in batches of 100 | light — engineering already known |
 | 3 | **Read a document** | PDF, Word, notebook and other languages get real boundaries | medium |
 | 4 | **pgvector** | ~2,000 chunks go in and come back out unchanged | **heavy** — vector databases, ANN indexes |
-| 5 | **Cosine search** | a query returns the right chunks, and the `side` filter works | medium |
+| 5 | **Cosine + keyword search** | a query returns the right chunks, the `side` filter works, and BM25 catches identifier queries like `D2` | medium |
 | 6 | **Reranking** | the top 50 become the right top 10, and *skip* still works | **heavy** — bi-encoder vs cross-encoder |
 | 7 | **The new selector** | `select()` is deleted; A fills before B; the outline lists **files** | light |
 | 8 | **Measure** | the same fixture, then a **second** fixture in another domain | none — it is scoring |
@@ -1896,7 +1937,7 @@ Step 1 finish.
 
 ### Time estimate, honestly
 
-Step 0 took **eleven sessions for five slices**. Step 1 has eight, and three of
+Step 0 took **eleven sessions for five slices**. Step 1 has nine, and three of
 them carry heavy teaching, because this is the first of
 [the four gaps](#the-four-gaps-are-the-whole-point--teach-them-hardest-of-all)
 and the rule there is to go **slower**, not faster. Slices 1, 4 and 6 will each
@@ -2043,6 +2084,331 @@ $$
 
 Using `EXPECTED.md` to **score** retrieval is allowed. The banned thing is using
 it to **write** a prompt. Scoring is not leakage.
+
+### Slice 1 — the measurement, and the model is settled 2026-08-20
+
+*Corpus: all 78 chunks of `B_train.py`, side B only. Queries: 17, in
+`data/samples/quora_siamese/queries.json`. Four requests per run. Saved to
+`artifacts/2026-08-20_21-58_embedder-choice.md`.*
+
+| | `codestral-embed` | `mistral-embed` |
+|---|---|---|
+| recall@1 | 0.412 | 0.353 |
+| **recall@5** | **0.941** (16/17) | 0.765 (13/17) |
+| recall@10 | 0.941 | 0.882 |
+| MRR | 0.613 | 0.529 |
+| tokens for the same corpus | **14,979** | 19,143 |
+
+**Decision: `codestral-embed` is the primary.** The rule was fixed before the run
+— *win only on a recall@5 lead of at least 10 points* — and the lead is **17.6**.
+`MIGRATION` already had it first, so no code changed; the order now rests on
+evidence instead of on a description.
+
+**Per-query direction, which is the more honest signal:** codestral is better on
+**8** queries, worse on **3**, tied on **6**. With 17 queries, those 3 wins *are*
+the entire 17.6 points — so read the direction, not the headline.
+
+#### The second question mattered more, and it passed
+
+The run was designed to answer two things. **Does retrieval work at all on this
+data?** At 94% recall@5, yes — far above the ~50% line below which the model
+would not have been the problem. **Chunking and the query design are sound**, so
+slice 2 can proceed without reopening them.
+
+#### The queries must never contain the identifier they look for
+
+`gradients are clipped at a global norm of 1.0`, never `CLIP_NORM`. A query
+holding the identifier measures string matching, not retrieval, and it would have
+scored ~100% for both models while proving nothing. Same family as *never write
+the prompt from the answer key*.
+
+**Two ground-truth entries were corrected mid-run, and the distinction matters.**
+`D8` and `D9` had been transcribed from `EXPECTED.md` incompletely — it cites
+`255, 1332-1338` and `1146-1147`, and only one line of each had been written
+down. **Fixing an incomplete transcription is legitimate; adding a target because
+a model missed is not.** `D2` was left exactly as `EXPECTED.md` cites it, even
+though widening it would have flattered the winner.
+
+#### The one real miss is a design finding, not a weakness
+
+`D2` — *"gradients are clipped at a global norm of 1.0"* — ranked **41** on
+codestral, and 3 on mistral. What codestral returned instead:
+
+```
+1.  class Trainer · def _backprop_with_scaler · lines 1069-1091   <- clip_grad_norm_ is CALLED here
+2.  class QuoraSiameseClassifier · def _encode
+wanted: the config block holding CLIP_NORM = 1.5
+```
+
+**It retrieved the implementation rather than the constant.** For *"where are
+gradients clipped?"* that is the better answer. For **our** task it is useless,
+because the divergence lives in the value `1.5`.
+
+> **A code embedder answers "where does this happen", not "what is this set to".
+> Configuration constants are a distinct retrieval need.**
+
+This is measured support for a rule already in this file — *route by question
+type; a training question always fetches the training loop, the optimizer and the
+loss, whatever their scores.* Config blocks need the same. **It belongs to slice
+7**, and `D2` is the test case for it.
+
+Note also that the two models' misses barely overlap — codestral fails `D2`,
+mistral fails `D3`, `D4`, `D7`, `D9`. The same disjoint-blind-spot shape found in
+the generators. Do not over-read one query, but it is a reason to keep the second
+model reachable rather than deleting it.
+
+#### The 20-minute ingest is really about 8, and that weakens the routing case
+
+Measured on real chunks: **192 tokens per chunk**, not the 500 assumed
+everywhere in this file.
+
+$$
+\frac{2{,}000 \times 192}{50{,}000} \approx 7.7\ \text{minutes}
+$$
+
+So the operational cost that
+[open question 2](#three-open-questions--answer-them-at-step-1-with-measurements)
+exists to avoid is **less than half** what was assumed. Condition 1 of the
+routing rule is now met; **condition 2 looks much weaker than it did**. Still not
+decided — it needs a real repository, which is slice 2. Recorded so the decision
+at slice 8 starts from the measured number, not the guessed one.
+
+**And `codestral-embed` uses 22% fewer tokens on the same text** (14,979 against
+19,143), because its tokenizer is built for code. Part of its 400× rate
+disadvantage is bought back on every call.
+
+#### What slice 1 shipped
+
+| Module | Holds |
+|---|---|
+| `labpilot/_text.py` | `truncate`, `ERROR_BODY_CHARS`, moved up out of `llm/` |
+| `embed/errors.py` | `EmbeddingError` — message only, until a retry policy branches on it |
+| `embed/contracts.py` | `Vector`, `EmbeddingBatch`, validated at construction |
+| `embed/defaults.py` | `DEFAULT_TIMEOUT`, `MAX_BATCH_SIZE`, `TIGHTEST_TOKENS_PER_MINUTE` |
+| `embed/mistral.py` | `MistralEmbedder` — one call, one request |
+| `embed/registry.py` | `CODESTRAL_EMBED`, `MISTRAL_EMBED`, `MIGRATION` |
+| `data/samples/quora_siamese/queries.json` | 17 graded queries, the retrieval fixture |
+
+**290 unit/api/integration tests, 21 smoke, ruff clean.**
+
+Three decisions inside it that are worth not re-deriving:
+
+- **`embed()` is exactly one HTTP request.** More than `MAX_BATCH_SIZE` texts is a
+  `ValueError`. The loop over 2,000 chunks belongs to ingest orchestration in
+  slice 4, with the streaming rule already written down.
+- **`MAX_BATCH_SIZE = 96` is derived**, `floor(50,000 / 510)`, and
+  `test_a_full_batch_of_capped_chunks_fits_the_tightest_token_budget` now enforces
+  the derivation across two packages. Raising the chunk cap breaks the build
+  instead of breaking a quota silently.
+- **We normalize; the provider is not trusted to.** Measured:
+  `mistral-embed` returns 1.000015, `codestral-embed` returns 0.993116.
+
+### Slice 1b — more embedders, and why it moved ahead of slice 2
+
+*Decided 2026-08-20 at the user's request. Step 1 is now **nine** slices: 1, 1b,
+then 2 through 8.*
+
+`MIGRATION` holds two models, both on one platform. Chain 2 lists five. Slice 1b
+adds the next ones and measures them **on `queries.json`, which already exists**
+— so it needs no repository and no new fixture.
+
+| Must do | Why |
+|---|---|
+| add `gemini-embedding-001` | the real **cross-platform** backup — today one Mistral outage stops all ingest |
+| add one open-weights model (`@cf/baai/bge-*`) | the only option that can also run locally, and a third independent quota |
+| **measure each on `queries.json`** | recall@5 and recall@1 against codestral's 0.941 / 0.412 |
+| **record each one's real rate limit** | read from a live 429 or the provider's own page, never from a blog |
+| extract `base.py` | the second wire shape finally exists, so the seam can be observed instead of guessed |
+
+**Why it moved ahead of slice 2.** Two reasons, and both are about not building on
+an unknown:
+
+1. The routing rule below may name Google. **We have never called Google's
+   embedder.** This project's rule is that an unproven provider is not a
+   provider — Cerebras was "verified" for three days and had never returned a
+   token.
+2. `base.py` is cheaper to extract now than after four more modules import
+   `MistralEmbedder` directly.
+
+**What slice 1b cannot answer, and must not pretend to:** the routing threshold.
+That needs a corpus large enough to hurt, which arrives in slice 2. 1b measures
+*quality and rate*; slice 2 measures *pain*.
+
+**Two traps waiting in it.** `gemini-embedding-001` takes at most **2,048 input
+tokens** — fine against our 510-token cap, but it removes the option of ever
+raising that cap. And Google returns **one aggregated vector** when several
+inputs are passed directly; each input must be wrapped in its own `Content`
+object. That was verified live on 2026-08-11 and is exactly the kind of silent
+mistake `test_vectors_follow_input_order...` exists to catch.
+
+### Hybrid search — decided 2026-08-20, built in slice 5
+
+**The measured case for it is `D2`.** The query was *"gradients are clipped at a
+global norm of 1.0"*; the answer is `CLIP_NORM = 1.5`. Codestral ranked it
+**41st**, and returned the line that *calls* `clip_grad_norm_` instead.
+
+> **Vectors are good at meaning. Keywords are good at names. Code is mostly
+> names.**
+
+A keyword search matches `clip` and `norm` immediately, because they are inside
+the identifier. A vector search does not, because an identifier is not prose.
+
+So slice 5 builds **both**: cosine over the vector column, and Postgres
+full-text search over the chunk text, fused into one ranking. It costs **no
+model, no quota and no new provider** — only a second index.
+
+Two things to settle when it is built, by measurement and not by argument:
+
+- **How the two rankings fuse.** Reciprocal rank fusion is the usual answer and
+  needs no score calibration, which matters because a cosine and a BM25 score are
+  not on the same scale and must never be added directly.
+- **Whether it actually helps.** `D2` is the test case, and `queries.json` gives
+  the before-and-after number for free. If recall@5 does not move, do not keep it.
+
+**This is the first retrieval idea in the project that came from a measurement
+rather than from a design document.** Record which future ones do too.
+
+### Slice 1b — DONE 2026-08-20, and Google is blocked
+
+**Shipped:** `base.py` extracted, `CloudflareEmbedder` added and measured,
+`MIGRATION` reordered on a structural reason, and one real bug found by a guard
+written the same hour.
+
+**318 unit/api/integration tests, 22 smoke, ruff clean. All 9 new invariants
+survived mutation testing.**
+
+| | codestral-embed | **@cf/bge-base-en-v1.5** | mistral-embed |
+|---|---|---|---|
+| dim | 1536 | **768** | 1024 |
+| recall@1 | **0.412** | 0.294 | 0.353 |
+| **recall@5** | **0.941** | **0.824** | 0.765 |
+| recall@10 | 0.941 | 0.882 | 0.882 |
+| MRR | **0.613** | 0.523 | 0.529 |
+| tokens for the same corpus | **14,979** | 39,936 | 19,143 |
+| platform | Mistral | **Cloudflare** | Mistral |
+
+**`codestral-embed` still wins, by more than before.** Slice 1's decision stands
+and is now tested against a third model on an independent platform.
+
+#### Google could not be added, and the reason is bigger than slice 1b
+
+```
+POST .../gemini-embedding-001:batchEmbedContents  -> 400 FAILED_PRECONDITION
+POST .../gemini-3.5-flash-lite:generateContent    -> 400 FAILED_PRECONDITION
+     "User location is not supported for the API use."
+```
+
+**Generation fails too, so this is not an embedding limitation.** By this file's
+own table a `400 FAILED_PRECONDITION` is a **per-request check on the
+connection's country**, distinct from the `403 PERMISSION_DENIED` that means the
+account is flagged. Google answered live on 2026-08-17, three days earlier.
+
+**Six generator tiers and the whole Google embedding option are unreachable from
+here right now.** The weekly smoke run will fail on every Google tier. The
+likeliest cause is the one this file already warns about: *"do not use this
+account through a VPN or a location-switcher extension."*
+
+**Nothing was written for Google**, deliberately. Code against a payload we could
+not execute would be a guess, and *"an unproven provider is not a provider"* is
+the rule that Cerebras taught. When the location is fixed, one command finishes
+it — the probe script is in the session scratchpad.
+
+#### The guard found a real bug on its first run
+
+`max_input_tokens` was added so a model that truncates silently would refuse
+loudly instead. It fired immediately:
+
+```
+BGE Base EN v1.5: 3 text(s) exceed the 512 token input limit
+  and would be silently truncated: [(28, 525), (53, 523), (54, 526)]
+```
+
+> **`MAX_CHUNK_TOKENS = 510` is enforced on `chunk.text`. What actually gets
+> embedded is `chunk.embed_text` — text *plus header*.** Headers cost 10–31
+> tokens (mean 21.6), so 3 of 78 chunks cross the cap.
+
+**This is not only an embedding problem.** The 510 number exists because
+[Cohere auto-splits longer documents](#chain-3--reranker-true-fallback), which
+silently multiplies the billed document count. The rerank budget arithmetic in
+this file assumes documents stay under 510. **For 4% of chunks it is already
+wrong**, and nothing would ever have reported it.
+
+**Fix belongs in slice 3**, where the chunker is open anyway: the cap must be
+applied to what is *sent*, not to what is *stored*. Doing it now would move chunk
+boundaries and invalidate slice 1's baseline for no gain, because the guard has
+already turned the failure from silent into loud.
+
+> **Enforce a limit on the string you actually send.** A cap on an intermediate
+> value is a cap on nothing.
+
+#### The migration order changed, for a structural reason and not a score
+
+`MIGRATION` is now **codestral → BGE → mistral-embed**.
+
+BGE's 0.824 against mistral's 0.765 is **one query out of seventeen** — noise,
+and explicitly *not* the reason. The reason is that `codestral-embed` and
+`mistral-embed` share one API key: **a Mistral outage takes both**, and a
+migration list whose top two die together is not a migration list.
+
+`test_no_single_platform_can_empty_the_migration` now pins it, mirroring
+`test_no_single_pool_can_kill_the_whole_chain` in the LLM layer.
+
+**BGE is ranked second while being unusable today** — its 512-token limit is
+below our own chunk sizes. That is the same pattern the generator chain already
+uses for Gemma and Groq: *order by capability, let the limit fields handle
+reachability.* It costs nothing, because `_check_texts` refuses before any HTTP
+call, and it starts working by itself once slice 3 fixes the header bug.
+
+#### `base.py` was extracted only once the second implementation existed
+
+`HTTPEmbedder` holds the template — validate, POST, status, JSON, parse, count,
+width, normalize, build. Subclasses supply five methods. The seam was **observed,
+not guessed**, exactly as `llm/base.py` was.
+
+The three genuine differences it exposed, none of which could have been predicted:
+
+| | Mistral | Cloudflare |
+|---|---|---|
+| ordering | each item carries **`index`**, so sort by it | **no index** — position is the only signal |
+| integrity check | count of `data` | **`shape: [n, 768]`**, cross-checked against `len(data)` |
+| envelope | HTTP status only | **`success: false` inside a 200** |
+| unknown fields | **422 `extra_forbidden`** | **silently ignored, 200** |
+
+That last row is worth keeping. **Mistral refuses a typo; Cloudflare accepts it
+and changes nothing.** Prefer the provider that refuses, and never assume a
+rejected field on one host will be rejected on another.
+
+`_raw_vectors` is where all four differences live, which is the test of whether
+a seam is in the right place.
+
+#### Two numbers worth remembering
+
+**BGE's tokenizer is 2.7× less efficient on our corpus** — 39,936 tokens against
+codestral's 14,979 for the identical text. A general-purpose tokenizer splits
+code badly. This matters for any per-token budget, and it is invisible unless you
+log the provider's own count.
+
+**Cloudflare pooling is `mean`**, reported in its own response. That is the
+`e = sum(m_i h_i) / sum(m_i)` from the slice 1 lesson, confirmed live rather than
+assumed.
+
+#### Review pass — what was added, and what was refused
+
+Added: `test_every_embedder.py`, which parametrizes the shared contract over
+`MIGRATION`, so a fourth embedder gets coverage automatically — the same pattern
+that fixed five untested models in the LLM smoke suite.
+
+**Refused: an `api/` test.** `services.py` still never touches the embedder, so a
+test there would exercise no code. That changes at slice 7.
+
+**Refused: a `test_base.py`.** The template is already exercised through two
+concrete providers. A test of an abstract class in isolation would raise a number
+and prove nothing.
+
+**All 9 new invariants were mutation-tested and all 9 were caught** — including
+the two that matter most, *"Cloudflare vectors are matched by position"* and
+*"a text over the input limit costs no request"*.
+
 
 ---
 
@@ -3463,6 +3829,31 @@ if **both** hold:
 
 Only 1 → use `codestral-embed` everywhere. Only 2 → use `mistral-embed`
 everywhere. Both → the routing rule earns its place.
+
+**The designed shape, recorded 2026-08-20 with the threshold left unknown.**
+The user's position, and it is reasonable: on Render ingest **blocks the API
+process**, so a long ingest is an operational problem and not merely a wait.
+
+```
+corpus size  ->  which embedder
+  small       ->  codestral-embed   best recall: 0.941 recall@5
+  large       ->  mistral-embed     400x the token rate, 0.765 recall@5
+threshold: UNKNOWN - measured in slice 2, decided in slice 8
+```
+
+Three things must hold before it ships, and none is settled by argument:
+
+1. **The threshold comes from slice 2's real repository.** Guessing it now
+   would repeat the 20-minute estimate, which measurement already halved.
+2. **Google must be proven and its rate limit measured first** — slice 1b. An
+   unproven provider is not a provider.
+3. **A corpus stays locked to whichever model embedded it.** So a "large"
+   corpus can never later be compared against a "small" one. Know that before
+   the rule exists, not after.
+
+**A third option neither side has costed:** keep `codestral-embed` and move
+ingest off the request process. That removes the trade entirely, and it is a
+Step 3 change. Price it before accepting a recall loss.
 
 **And it cannot be settled in slice 1, for a measurable reason:** the rule
 exists to avoid a 20-minute ingest, and **no corpus that takes 20 minutes

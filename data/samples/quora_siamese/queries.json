@@ -1,0 +1,176 @@
+[
+  {
+    "id": "D1",
+    "kind": "claim",
+    "source": "A §4.3",
+    "query": "the attention layer returns a weighted sum of the encoder hidden states",
+    "expects": [
+      601,
+      602,
+      603
+    ]
+  },
+  {
+    "id": "D2",
+    "kind": "claim",
+    "source": "A §5.2",
+    "query": "gradients are clipped at a global norm of 1.0",
+    "expects": [
+      238
+    ]
+  },
+  {
+    "id": "D3",
+    "kind": "claim",
+    "source": "A §4.5",
+    "query": "the loss uses label smoothing with epsilon 0.1",
+    "expects": [
+      205
+    ]
+  },
+  {
+    "id": "D4",
+    "kind": "claim",
+    "source": "A §5.2",
+    "query": "the optimizer uses a weight decay of 0.01",
+    "expects": [
+      257
+    ]
+  },
+  {
+    "id": "D5",
+    "kind": "claim",
+    "source": "A §5.2",
+    "query": "the token embeddings stay frozen for the first two epochs and are unfrozen from the third",
+    "expects": [
+      256,
+      1208,
+      1209
+    ]
+  },
+  {
+    "id": "D6",
+    "kind": "claim",
+    "source": "A §4.5",
+    "query": "the positive class is weighted by the ratio of negative to positive examples to handle imbalance",
+    "expects": [
+      561
+    ]
+  },
+  {
+    "id": "D7",
+    "kind": "claim",
+    "source": "A §5.2",
+    "query": "the learning rate warms up linearly over two epochs and then decays with a cosine schedule",
+    "expects": [
+      258
+    ]
+  },
+  {
+    "id": "D8",
+    "kind": "claim",
+    "source": "A §5.1",
+    "query": "the data is divided into training, development and test portions",
+    "expects": [
+      255,
+      1332,
+      1333,
+      1334,
+      1335,
+      1336,
+      1337,
+      1338
+    ]
+  },
+  {
+    "id": "D9",
+    "kind": "claim",
+    "source": "A §5.4",
+    "query": "the decision threshold is selected once on the development portion and then applied unchanged",
+    "expects": [
+      1146,
+      1147
+    ]
+  },
+  {
+    "id": "D10",
+    "kind": "claim",
+    "source": "A §5.3",
+    "query": "results are averaged over three random seeds with deterministic kernels enabled",
+    "expects": [
+      79,
+      316
+    ]
+  },
+  {
+    "id": "D11",
+    "kind": "checklist",
+    "source": "B only",
+    "query": "common function words are removed so the model cannot attend to them",
+    "expects": [
+      450,
+      677,
+      678,
+      679
+    ]
+  },
+  {
+    "id": "D12",
+    "kind": "checklist",
+    "source": "B only",
+    "query": "punctuation and unknown tokens are excluded from the attention mask",
+    "expects": [
+      452,
+      466,
+      467,
+      468,
+      469,
+      470
+    ]
+  },
+  {
+    "id": "D13",
+    "kind": "checklist",
+    "source": "B only",
+    "query": "an extra similarity feature is appended to the interaction vector before the classifier",
+    "expects": [
+      692
+    ]
+  },
+  {
+    "id": "D14",
+    "kind": "checklist",
+    "source": "B only",
+    "query": "the vocabulary keeps only the most frequent words and everything else becomes unknown",
+    "expects": [
+      149
+    ]
+  },
+  {
+    "id": "D15",
+    "kind": "checklist",
+    "source": "B only",
+    "query": "rows whose questions became empty during cleaning are removed from the dataframe",
+    "expects": [
+      417
+    ]
+  },
+  {
+    "id": "D16",
+    "kind": "checklist",
+    "source": "B only",
+    "query": "layer normalization is applied to the embeddings and the recurrent output",
+    "expects": [
+      627
+    ]
+  },
+  {
+    "id": "D17",
+    "kind": "checklist",
+    "source": "B only",
+    "query": "the optimizer receives separate parameter groups with their own learning rates",
+    "expects": [
+      1394
+    ]
+  }
+]
