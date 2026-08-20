@@ -21,7 +21,8 @@ Read the two rule sections first — they change *how* everything below is done.
 [**STEP 1 — THE PLAN, 8 slices**](#step-1--the-plan-recorded-2026-08-20) ·
 [**Slice 1 DONE — the embedder**](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) ·
 [Slice 1b plan](#slice-1b--more-embedders-and-why-it-moved-ahead-of-slice-2) ·
-[**Slice 1b DONE — and Google blocked**](#slice-1b--done-2026-08-20-and-google-is-blocked) ·
+[Slice 1b — Google blocked](#slice-1b--done-2026-08-20-and-google-is-blocked) ·
+[**Slice 1b DONE — five embedders**](#slice-1b-second-pass--five-embedders-and-cohere-is-the-surprise) ·
 [Hybrid search](#hybrid-search--decided-2026-08-20-built-in-slice-5) ·
 [**Hardening the API**](#hardening-and-what-running-it-for-real-exposed--2026-08-17) ·
 [**The API layout**](#the-api-layout--restructured-2026-08-17) ·
@@ -402,6 +403,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 **Phase: STEP 1 SLICES 1 AND 1b ARE DONE. `codestral-embed` is the primary, by measurement.**
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 2 is next.**
+**`labpilot/embed/` holds FIVE embedders across FIVE platforms. 346 tests, ruff clean.**
 **⚠ GOOGLE IS UNREACHABLE FROM THIS LOCATION — six generator tiers are down. See slice 1b.**
 **Last updated 2026-08-20 (twelfth session). Working branch: `feat/embeddings`.**
 
@@ -421,12 +423,16 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > is in the slice 1b notes.
 >
 > **Next task: Step 1 slice 2 — read a repository.** Slices 1 and **1b** are
-> done: `labpilot/embed/` ships with **three** embedders across **two**
-> platforms, `base.py` is extracted, and `codestral-embed` won again on a
-> three-way measurement — **0.941 recall@5**, against BGE's 0.824 and
-> mistral-embed's 0.765. See
+> done: `labpilot/embed/` ships **five** embedders across **five** platforms,
+> `base.py` is extracted, and `codestral-embed` is the primary on
+> **0.941 recall@5**. See
 > [slice 1](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) and
-> [slice 1b](#slice-1b--done-2026-08-20-and-google-is-blocked).
+> [the five-embedder result](#slice-1b-second-pass--five-embedders-and-cohere-is-the-surprise).
+>
+> **Read that second table before slice 6.** `embed-v4.0` is the best *ranker*
+> — perfect recall@10, best MRR — and stays last only because its quota is the
+> reranker's. And under a rerank pipeline **recall@10 matters more than
+> recall@5**, which is the number the current order rests on.
 >
 > **One real bug is open and belongs to slice 3:** `MAX_CHUNK_TOKENS` is
 > enforced on `chunk.text`, but what is embedded and reranked is
@@ -2274,8 +2280,9 @@ rather than from a design document.** Record which future ones do too.
 `MIGRATION` reordered on a structural reason, and one real bug found by a guard
 written the same hour.
 
-**318 unit/api/integration tests, 22 smoke, ruff clean. All 9 new invariants
-survived mutation testing.**
+**Superseded — Google and Cohere were added later the same day. The current
+numbers are in
+[the second pass](#slice-1b-second-pass--five-embedders-and-cohere-is-the-surprise).**
 
 | | codestral-embed | **@cf/bge-base-en-v1.5** | mistral-embed |
 |---|---|---|---|
@@ -2408,6 +2415,143 @@ and prove nothing.
 **All 9 new invariants were mutation-tested and all 9 were caught** — including
 the two that matter most, *"Cloudflare vectors are matched by position"* and
 *"a text over the input limit costs no request"*.
+
+### Slice 1b, second pass — five embedders, and Cohere is the surprise
+
+*Google and Cohere were added at the user's request after the three-way pass
+above. **The tables in that section are superseded by this one.***
+
+**290 unit · 49 api · 7 integration · 24 smoke · ruff clean. All 14 new
+invariants survived mutation testing.**
+
+| | codestral | **cohere v4** | bge-base | mistral | gemini |
+|---|---|---|---|---|---|
+| dim | 1536 | 1536 | 768 | 1024 | 3072 |
+| recall@1 | 0.412 | **0.529** | 0.294 | 0.353 | — |
+| **recall@5** | **0.941** | 0.882 | 0.824 | 0.765 | — |
+| **recall@10** | 0.941 | **1.000** | 0.882 | 0.882 | — |
+| **MRR** | 0.613 | **0.723** | 0.523 | 0.529 | — |
+| tokens, same corpus | 14,979 | **13,412** | 39,936 | 19,143 | — |
+| platform | Mistral | Cohere | Cloudflare | Mistral | Google ❌ |
+
+#### Cohere is the best ranker, and it stays last anyway
+
+This file already said *"Cohere is last on purpose, not because it is weak …
+on quality it would rank higher."* **That was an assertion. It is now measured.**
+
+`embed-v4.0` wins recall@1 (+11.7 points over codestral), wins MRR (+11.0), and
+is the only model with **perfect recall@10** — every target inside the top ten,
+never worse than 7th on any query. It is also the most token-efficient on our
+corpus.
+
+**And it still sits last in `MIGRATION`**, unchanged, because the reason was
+never quality: its 1,000 calls/month are **one bucket shared by chat, embed and
+rerank**, and Cohere is the reranker primary. A corpus embedded there keeps
+spending the rerank budget on every query, forever. The ceiling is now confirmed
+by the provider's own header, `x-endpoint-monthly-call-limit: 1000`.
+
+> **A model can be the best one and still be the wrong one.** Rank by the
+> resource that runs out, not only by the score.
+
+**Which metric should have decided this?** Under the planned pipeline —
+retrieve 50, rerank to 10 — **recall@10 matters more than recall@5**, because
+reranking fixes ordering but cannot recover a chunk retrieval never returned.
+On that measure Cohere is perfect and codestral is not. Slice 6 must re-read
+this table once a reranker exists; the current order rests on recall@5, which
+may be the wrong headline.
+
+#### The query/document asymmetry became real, and it may explain Cohere's lead
+
+Cohere's v2 embed **requires** `input_type`, so the distinction this file has
+described since 2026-08-13 could no longer be deferred. `embed()` now takes
+`task: Task = "document"`, and each provider translates it:
+
+| Provider | Wire form |
+|---|---|
+| Cohere | `input_type: search_document` / `search_query` |
+| Google | `taskType: RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY` |
+| Mistral, Cloudflare | no such field — the argument is ignored |
+
+**The only provider that has the asymmetry has the best ranking quality.** That
+is one data point, not proof — but it is the first evidence in this project that
+query–document asymmetry is worth paying for, and it is a reason to use Google's
+`taskType` the moment Google is reachable.
+
+`task` was deliberately **not** added during the first pass, when Google was the
+only candidate consumer and Google could not be called. A parameter with no
+working consumer is dead code; a parameter two providers translate is an
+interface.
+
+#### Google shipped unverified, on purpose, and is quarantined
+
+`GoogleEmbedder` is written from Google's documentation and **has never returned
+a vector**. `gemini-3.6-flash`, `gemini-3.5-flash-lite` and
+`gemini-embedding-001` all answer `400 FAILED_PRECONDITION — "User location is
+not supported"` from this connection, re-tested on request.
+
+This breaks the rule *an unproven provider is not a provider*, and it was shipped
+anyway at the user's explicit instruction. Three things make that safe rather
+than reckless:
+
+1. **`dim=3072` is documented, never observed.** If it is wrong, `_validated`
+   raises loudly on the first real call instead of storing a wrong-width vector.
+2. **The smoke test marks it `xfail(strict=False)`**, the same treatment as
+   GLM-5.2. The day the location is fixed it reports **XPASS**, which is the
+   signal that would otherwise never arrive.
+3. **Every wire detail is pinned by unit tests** — the key goes in
+   `x-goog-api-key` and never in `Authorization`, each text gets **its own
+   request object** (one request with several inputs returns a single aggregated
+   vector), and the task maps to `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`. All
+   three were mutation-tested.
+
+**Unverified fields to re-check the moment Google answers:** the real dimension,
+whether `batchEmbedContents` reports usage, and the real batch ceiling.
+
+#### The registry test earned itself within the hour
+
+`COHERE_API_KEY` was documented in `.env.example` and **not mapped in
+`smoke.yaml`**. `test_every_embedder_env_var_is_mapped_in_the_smoke_workflow`
+failed the moment Cohere joined `MIGRATION` — the identical failure shape as the
+2026-08-11 `OPENROUTE_API_KEY` typo, caught this time before it ever ran.
+
+A second detail worth remembering: the anchor edit failed twice because
+`smoke.yaml` **ended without a trailing newline**, so the last mapping line had
+no terminator. Text files that end mid-line break naive patching.
+
+#### Mutation testing found a decision that lived only in a comment
+
+Thirteen of fourteen mutations were caught. The survivor: pointing BGE at
+`MISTRAL_API_KEY` did **not** break
+`test_no_single_platform_can_empty_the_migration` — with five embedders across
+four platforms, that invariant genuinely still holds.
+
+The property actually claimed in `registry.py` was stronger, and untested:
+*BGE sits second because it is the only early entry on a different platform.*
+
+`test_the_two_best_embedders_do_not_share_a_platform` now pins it. **A migration
+is not a fallback** — recovering means re-embedding the whole corpus by hand, so
+if the top two die together that manual step is forced onto a model that is
+unmeasured, blocked, or paid out of the reranker's own bucket.
+
+> **The mutation did not reveal a broken test. It revealed a missing one.** A
+> design decision that lives only in a comment is a decision nothing defends.
+
+#### Provider differences, now four wire shapes deep
+
+| | Mistral | Cloudflare | Cohere | Google |
+|---|---|---|---|---|
+| auth | Bearer | Bearer | Bearer | **`x-goog-api-key`** |
+| batch field | `input` | `text` | `texts` | **one request object per text** |
+| ordering | **`index`** | position | position | position |
+| vectors at | `data[].embedding` | `result.data` | **`embeddings.float`** | `embeddings[].values` |
+| usage at | `usage` | `result.usage` | `meta.billed_units` | **absent — 0** |
+| integrity extra | — | **`shape`** | — | — |
+| envelope failure | — | **`success:false` in a 200** | — | — |
+| unknown field | **422** | **ignored** | — | — |
+
+All eight rows live inside `_raw_vectors`, `_payload` and `_prompt_tokens`.
+Nothing leaked into the shared template, which is the test of whether
+`base.py` was cut in the right place.
 
 
 ---
