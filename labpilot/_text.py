@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from labpilot.llm.defaults import ERROR_BODY_CHARS
+ERROR_BODY_CHARS = 300
 
 
 def truncate(text: str, limit: int = ERROR_BODY_CHARS) -> str:

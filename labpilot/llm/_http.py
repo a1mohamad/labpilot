@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 import requests
 
-from labpilot.llm._text import truncate
+from labpilot._text import truncate
 from labpilot.llm.errors import LLMError
 
 _MILLISECOND_EPOCH = 1e11

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from labpilot.llm._text import truncate
+from labpilot._text import truncate
 
 
 def test_truncate_leaves_short_text_alone():

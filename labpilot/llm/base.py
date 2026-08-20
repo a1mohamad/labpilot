@@ -8,8 +8,8 @@ from dataclasses import dataclass
 
 import requests
 
+from labpilot._text import truncate
 from labpilot.llm._http import error_from_response
-from labpilot.llm._text import truncate
 from labpilot.llm.contracts import LLMResult
 from labpilot.llm.defaults import (
     DEFAULT_MAX_TOKENS,

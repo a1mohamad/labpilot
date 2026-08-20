@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from labpilot.llm._text import truncate
+from labpilot._text import truncate
 from labpilot.llm.base import HTTPProvider
 from labpilot.llm.errors import LLMError
 
