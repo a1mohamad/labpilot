@@ -1906,6 +1906,144 @@ take more than one session: the lesson first, then the code.
 size — Step 0 was planned as five slices and stayed five, but every one of them
 grew larger than planned.
 
+### Slice 1 — what the embeddings endpoint really does, measured 2026-08-20
+
+*Mistral's docs site is JavaScript-rendered, so the API reference could not be
+fetched. The endpoint was probed directly instead — four requests, no meaningful
+quota. The probe script is in the session scratchpad.*
+
+| Question | Answer |
+|---|---|
+| does `input` take a list? | ✅ yes; each item returns `{embedding, index, object}` |
+| dimensions | `mistral-embed` **1024** · `codestral-embed` **1536** |
+| `output_dimension` | ✅ **works on `codestral-embed`** — asked 512, got 512 |
+| `input_type` / a query-vs-document flag | ❌ **does not exist** |
+| unknown fields | **rejected — `422 extra_forbidden`** |
+| rate headers on a 200 | `x-ratelimit-limit-req-minute: 60`, so 1 request/second |
+
+#### The two models disagree about normalization — so we must normalize
+
+```
+mistral-embed        norm = 1.000015    already unit length
+codestral-embed      norm = 0.993116    NOT unit length
+codestral @ 512      norm = 0.920005
+```
+
+**Trusting the provider would have been silently wrong.** `mistral-embed` looks
+fine, `codestral-embed` does not, and the difference is small enough that no
+error would ever be raised — every cosine score would simply be a little off.
+
+So every vector leaving `labpilot/embed/` is normalized **by us**, once, before
+it is returned. Then `cos(u, v)` is a plain dot product everywhere downstream and
+nothing later has to remember.
+
+> **Never assume a provider returns unit vectors. Measure the norm.** It is one
+> line, and it is the difference between cosine and "nearly cosine".
+
+#### Mistral rejects unknown fields, which is the good failure
+
+`input_type: "query"` returned **422 `extra_forbidden`**. Two consequences:
+
+- There is **no query/document asymmetry parameter** here, unlike Voyage
+  (`input_type`), Cohere (`search_query` / `search_document`) or E5/BGE (a text
+  prefix). One less thing to get wrong on this provider — and one more thing to
+  check when the migration ever moves to another.
+- A typo in our payload **fails loudly**. OpenRouter silently drops unknown
+  fields, which is the same mistake with no error. Prefer the provider that
+  refuses.
+
+#### `output_dimension` is real, and the model is Matryoshka-trained
+
+Both calls below embedded the **same text**, so the comparison is honest:
+
+```
+1536 dims  ->  norm 0.993116
+ 512 dims  ->  norm 0.920005
+```
+
+If every dimension carried equal information, keeping one third of them would
+leave about `sqrt(1/3) = 0.577` of the length. Instead:
+
+$$
+\left(\frac{0.920005}{0.993116}\right)^{2} = 0.86
+$$
+
+**The first 512 dimensions hold ~86% of the vector's energy, not 33%.** That is
+the signature of **Matryoshka Representation Learning** — early dimensions carry
+the meaning, later ones refine it.
+
+Three things follow, and the third is the one that matters:
+
+1. Truncating is a **gentle** trade, not random damage.
+2. **86% of the energy is not 86% of the retrieval quality.** Those are different
+   quantities. Only recall@k measures the real cost.
+3. It is a **recorded lever, not a slice 1 decision.** If 1536-dim storage ever
+   hurts, `codestral-embed` can be asked for 1024 — the same width as
+   `mistral-embed`, so one pgvector column type serves both.
+
+**But same dimension is not the same space.** Two different models at 1024 dims
+still cannot be compared. `output_dimension` solves the **storage** problem, never
+the **mixing** problem — every row still carries `embedding_model`, and a query
+must never cross models. It also does **not** help speed: the 50,000 tokens/minute
+limit counts *input*, so asking for fewer output dimensions changes nothing.
+
+#### The design decisions this settled
+
+| Decision | Answer | Reason |
+|---|---|---|
+| inherit `HTTPProvider`? | **no** | it is a *completion* template — `tier`, `context_window`, `max_output_tokens`, `finish_reason`. An embedder would fill four fields with fiction |
+| a `base.py` for embedders? | **not yet** | one implementation. It is earned when the Google embedder lands (slice 1b) |
+| what is reused | **`truncate` only**, promoted to `labpilot/_text.py` | two packages now read it — the same precedent as `estimate_tokens` moving to `labpilot/tokens.py` |
+| error type | **`EmbeddingError`**, built by us | one error vocabulary per layer; `error_from_response` returns `LLMError` and stays in `llm/` |
+| the registry name | **`MIGRATION`**, never `CHAIN` | a migration order is not a fallback loop. Calling it `CHAIN` invites the loop that must never exist |
+| ordering of results | **sort by `index`** | never trust position in `data`. A silent shift puts every vector on the wrong chunk |
+
+#### The failure branches, all real
+
+`ValueError` for a caller's bug, `EmbeddingError` for the provider — the existing
+rule, applied at a new layer.
+
+| Failure | Raise |
+|---|---|
+| empty list, or a blank string | **`ValueError`** |
+| `MISTRAL_API_KEY` missing · `RequestException` · non-200 · non-JSON | `EmbeddingError` |
+| `len(data) != len(texts)` | `EmbeddingError` — a length shift is silent and total |
+| dimension ≠ the declared `dim` | `EmbeddingError` — this is the mismatch detector Chain 2 asks for |
+| a zero vector | `EmbeddingError` — it cannot be normalized, and it is finding #18 in our own fixture |
+
+### The slice 1 measurement, and its decision rule written first
+
+**Two questions, not one**, and the second is the more important:
+
+1. Which model — `codestral-embed` or `mistral-embed`?
+2. **Does retrieval work at all on this data?** If recall@5 is under ~50% for
+   *both*, the model is not the problem — chunking or the query text is, and a
+   third model would teach nothing.
+
+**Ground truth:** ~15 pairs of *(query text, the line in `B_train.py` that answers
+it)*, in `data/samples/quora_siamese/queries.json`. Queries are `A_paper.md`
+claims, because claims are the real query source; the B-only findings get a short
+checklist phrase instead. Ground truth is stored as a **line number** and resolved
+to whichever chunk contains it, so the file survives any change to chunk
+boundaries.
+
+$$
+\text{recall@}k = \frac{1}{|Q|}\sum_{q} \mathbb{1}\big[\,r_q \le k\,\big]
+\qquad
+\text{MRR} = \frac{1}{|Q|}\sum_{q} \frac{1}{r_q}
+$$
+
+`r_q` is the rank of the correct chunk for query `q`.
+
+**The decision rule, fixed before any number exists:**
+
+> **`codestral-embed` wins only if its recall@5 is at least 10 points higher.**
+> Otherwise use `mistral-embed` — 1024 dims, 400× the token rate, one model
+> everywhere.
+
+Using `EXPECTED.md` to **score** retrieval is allowed. The banned thing is using
+it to **write** a prompt. Scoring is not leakage.
+
 ---
 
 ### Where to pick up — slice 4's coverage problem
@@ -3313,7 +3451,33 @@ corrected form of it.)* Estimate the tokens of **both artifacts together**; abov
 
 **Resolve question 1 first.** If `mistral-embed` wins, question 2 is moot.
 
-**3. How are two dimensions stored at once?** This is owed by the existing
+**The condition that decides it — written 2026-08-20, before any number
+exists, so it cannot be bent afterwards.** Routing by corpus size is real only
+if **both** hold:
+
+1. `codestral-embed` beats `mistral-embed` by **at least 10 points recall@5**
+   *(slice 1)*, **and**
+2. on a **real repository**, its ingest is slow enough to be an operational
+   problem on Render, where ingest holds the same 512MB process the API is
+   serving from *(slice 8)*.
+
+Only 1 → use `codestral-embed` everywhere. Only 2 → use `mistral-embed`
+everywhere. Both → the routing rule earns its place.
+
+**And it cannot be settled in slice 1, for a measurable reason:** the rule
+exists to avoid a 20-minute ingest, and **no corpus that takes 20 minutes
+exists yet**. The fixture is 96 chunks — about 3 seconds on either model. A
+repository-sized corpus arrives in slice 2, so **the decision date is slice
+8**. Slice 1 picks a default, not a policy.
+
+**3. How are two dimensions stored at once?** **Partly dissolved 2026-08-20:**
+`codestral-embed` accepts `output_dimension`, so it can return **1024** — the
+same width as `mistral-embed`, and therefore one pgvector column type for both.
+The *storage* problem shrinks; the **mixing** problem does not move at all, so
+`embedding_model` on every row is still required. See
+[slice 1's measurements](#slice-1--what-the-embeddings-endpoint-really-does-measured-2026-08-20).
+
+This is owed by the existing
 coexistence rule regardless of question 2. A pgvector index needs a fixed
 dimension per column, so the options are one table per dimension, or one table
 with `vector_1536` and `vector_1024` columns. Decide when the first second-model
