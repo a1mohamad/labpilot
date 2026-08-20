@@ -20,6 +20,8 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Slice 5 DONE — Step 0 closed**](#slice-5--done-2026-08-17) ·
 [**Hardening the API**](#hardening-and-what-running-it-for-real-exposed--2026-08-17) ·
 [**The API layout**](#the-api-layout--restructured-2026-08-17) ·
+[**The system-wide audit**](#the-system-wide-audit--2026-08-17) ·
+[**The page and the container**](#the-page-and-the-container--2026-08-17) ·
 [The test that could not fail](#the-test-that-could-not-fail--2026-08-17) ·
 [**THE ROOT CAUSE**](#the-root-cause-found-2026-08-17-session-10) ·
 [**THE LEAN REWRITE**](#the-lean-rewrite-measured-2026-08-17-session-10) ·
@@ -427,11 +429,13 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** **207 unit, 34 api, 6 integration, 19 smoke, ruff clean.**
+> **Code state:** **210 unit, 49 api, 6 integration, 19 smoke, ruff clean.**
 > `labpilot/api/` serves `POST /api/v1/compare` plus `/` and `/health`, built by
 > a `create_app()` factory with a lifespan, routers, services, a typed error
 > vocabulary and two ASGI middleware — see
-> [the API layout](#the-api-layout--restructured-2026-08-17).
+> [the API layout](#the-api-layout--restructured-2026-08-17). A static page is
+> mounted at `/ui` and `docker/Dockerfile` exists but has **never been built** —
+> see [the page and the container](#the-page-and-the-container--2026-08-17).
 > `instructions.py` holds five templates: `FULL` and `CORE` (scored baselines,
 > untouched) and the lean `REPORT`, `SCAN`, `COMPARE`.
 > Still **no database, no agent, no UI, no deployment, no fine-tuning dataset**.
@@ -1520,9 +1524,10 @@ rejected for size still comes back with a correlation ID.
 
 ### What the restructure did NOT add
 
-- **No `app.mount(...)`.** The lung project mounts `/static` for generated images
-  and `/ui` for a frontend. LabPilot has neither, and a mount pointing at nothing
-  is dead code. It arrives at Step 3 with the UI.
+- ~~**No `app.mount(...)`.**~~ **Added later the same day**, once there was
+  something to serve — see [the page and the container](#the-page-and-the-container--2026-08-17).
+  The rule it was refused under still holds: a mount pointing at nothing is dead
+  code, so `/ui` is mounted **only when the directory exists**.
 - **No docstrings.** This file's own rule puts documentation in a separate pass
   with the `documentarize` skill — which is why the two reference projects read
   the way they do. The code is drafted raw on purpose.
@@ -1546,7 +1551,126 @@ Every new invariant was broken on purpose. Two tests did not bite:
 > test did not.
 
 **Code state after the restructure: 207 unit, 34 api, 6 integration, 19 smoke,
-ruff clean.**
+ruff clean.** Two more passes followed the same day — the
+[system-wide audit](#the-system-wide-audit--2026-08-17) and
+[the page and the container](#the-page-and-the-container--2026-08-17) — taking it
+to **210 unit, 49 api, 6 integration, 19 smoke**.
+
+## The system-wide audit — 2026-08-17
+
+*Asked of the whole project once slice 5 closed: **which real failure is still
+unprotected?** Not "where is coverage thin". Four gaps, and **two were already
+broken**.*
+
+### `pydantic` and `starlette` were imported but never pinned
+
+```
+imported by labpilot/ : dotenv, fastapi, pydantic, requests, starlette
+requirements.txt      : fastapi, python-dotenv, python-multipart, requests, uvicorn
+```
+
+Both arrived transitively through FastAPI, so a FastAPI upgrade could have moved
+either version underneath us with nothing failing — and `starlette` is what both
+ASGI middleware are built on. This file already says `requirements.txt` holds
+**direct** dependencies; a direct import is a direct dependency.
+
+**CI cannot catch this by construction**: it installs `requirements-dev.txt`,
+which pulls the whole tree in regardless. Only a test that reads the imports can.
+
+### The API's own knobs were documented nowhere
+
+`MAX_UPLOAD_BYTES`, `MAX_REQUEST_BODY_BYTES`, `CORS_ALLOW_ORIGINS` (and later
+`FRONTEND_DIR`) are read from the environment by `ApiConfig` and appeared in no
+template. **A knob nobody knows about is a knob nobody can turn.** Same failure
+as `.env.example` claiming "~1,500 requests/day".
+
+### A test of mine that lied
+
+`test_the_documented_failures_are_the_ones_the_endpoint_can_raise` asserted
+
+```python
+assert {"200", "413", "422", "503"} <= set(responses)
+```
+
+A hardcoded set, compared with `<=`. Adding an `ApiError` with a new status would
+leave it green while OpenAPI misdescribed the endpoint. **Its name promised what
+it did not do.** It now derives the statuses from the `ApiError` hierarchy.
+
+### What went in
+
+| Test | Catches |
+|---|---|
+| `test_every_package_labpilot_imports_is_pinned` | a direct import missing from `requirements.txt` |
+| `test_every_requirement_is_pinned_to_an_exact_version` | a `>=` creeping in |
+| `test_every_environment_variable_the_code_reads_is_documented` | an undocumented knob |
+| `test_every_status_the_endpoint_can_raise_is_documented` | OpenAPI drifting from the error hierarchy |
+| `test_no_two_errors_share_a_code` | copy-paste making two failures indistinguishable |
+| `test_the_body_limit_middleware_speaks_the_same_envelope` | the hand-built JSON drifting from `ErrorEnvelope` |
+| `test_an_unexpected_exception_becomes_a_500_...` | the 500 handler, and that internals never leak |
+
+`tests/unit/test_packaging.py` reads `requirements.txt` and `.env.example` by
+AST-scanning `labpilot/`. It sits at the top of `unit/` because it crosses every
+package.
+
+**The 500 test needed a second client.** `TestClient` **re-raises server
+exceptions by default**, so the handler never runs and cannot be observed. Only
+`raise_server_exceptions=False` sees what a browser would.
+
+### Mutation testing caught a third loose assertion
+
+Five of six bit. The env-var one did not: it searched the whole file text, so a
+name still mentioned in a **neighbour's comment** counted as documented. It now
+matches a declaration line.
+
+> That is three in one day, all the same shape: **an assertion whose input can
+> satisfy it by accident.** Reading the tests caught none of them; mutating the
+> source caught all three. **Mutation testing is not optional here — it is the
+> only thing that has ever found these.**
+
+## The page and the container — 2026-08-17
+
+*Deliberately small, and deliberately throwaway. The real UI is Step 3.*
+
+| Path | Holds |
+|---|---|
+| `web/index.html` · `styles.css` · `app.js` | one static page, **no build step, no `node_modules`** |
+| `docker/Dockerfile` | `python:3.13-slim`, non-root, `HEALTHCHECK` on `/health` |
+| `.dockerignore` | never ships `.env`, `tests/`, `data/`, `artifacts/` |
+
+**Why plain HTML and not TypeScript yet.** The rewrite risk lives in **state**,
+not in the framework. A TS app that manages sessions, artifact slots and chat
+history must be rebuilt once Step 1 gives artifacts a real identity. A page that
+posts a form and prints the answer has almost no state to invalidate — throw away
+100 lines, not an app.
+
+**The page obeys the rules this file already set** for
+[the UI shape](#ui-shape--step-3-recorded-now): two **named** slots, the question
+box **prefilled and editable** (never a placeholder, because that text is also
+the retrieval query), `n/m chunks` per side, the model and tier that answered,
+and every citation as `B_train.py:1203` with `(not unique)` marked. `MAX_TOKENS`
+and any failed tier render as **warnings** — a truncated report otherwise looks
+complete.
+
+**Served from the same origin at `/ui`**, which is why `CORS_ALLOW_ORIGINS` can
+stay empty. The mount is conditional, so an API-only deployment simply does not
+ship `web/`.
+
+Four deliberate choices in the Dockerfile:
+
+- **`.env` is never copied.** Keys come from the platform, and `load_dotenv` does
+  not override what the environment already supplies.
+- **Runs as a non-root user.**
+- **`HEALTHCHECK` hits `/health`** — the endpoint added in the restructure.
+- **One worker.** Every extra worker is a full interpreter copy against a
+  [512MB ceiling](#memory-budget--render-free-tier-512mb), and the route is a
+  plain `def`, so uvicorn's thread pool already serves concurrent requests.
+
+**Not verified: `docker build` has never been run.** The file is straightforward,
+but unbuilt is unverified — treat it as a draft until an image exists.
+
+**Still unsolved, and it is the reason the real UI waits:** a report takes ~53
+seconds and the page can only show a spinner. Live tier-by-tier progress needs
+**SSE**, which is Step 3.
 
 ### Step 0, honestly closed
 
@@ -1557,6 +1681,18 @@ ruff clean.**
 | 3 | the chunker (permanent) and the dumb selector (throwaway) |
 | 4 | the prompt — 13 of 19 findings, ~99% citations, correct conclusion |
 | 5 | **`POST /api/v1/compare`** |
+| *after* | the API restructure · the system-wide audit · a static page and a Dockerfile |
+
+> ### STEP 0 IS COMPLETE — 2026-08-17
+>
+> All five slices shipped, and a real HTTP request now runs the whole pipeline
+> end to end: upload → chunk → select → prompt → `LLMClient` → an answer whose
+> citations resolve to real file and line numbers. **Proven live over uvicorn
+> against a real model**: `gemini-3.6-flash` at tier 2 after tier 1 returned 503,
+> `finish_reason: STOP`, 11,507 characters, **47 of 47 citations resolved**, in
+> 52.7 seconds.
+>
+> **284 tests — 210 unit, 49 api, 6 integration, 19 smoke — ruff clean.**
 
 **What Step 0 proved:** the core idea produces something useful, and every layer
 connects. **What it did not prove:** that it works on anything but one fixture.
