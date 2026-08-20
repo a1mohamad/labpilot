@@ -18,6 +18,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Why the fixes failed**](#the-prompt-fixes-were-measured-and-they-failed--2026-08-17) ·
 [**Slice 4 DONE**](#slice-4--done-2026-08-17) ·
 [**Slice 5 DONE — Step 0 closed**](#slice-5--done-2026-08-17) ·
+[**STEP 1 — THE PLAN, 8 slices**](#step-1--the-plan-recorded-2026-08-20) ·
 [**Hardening the API**](#hardening-and-what-running-it-for-real-exposed--2026-08-17) ·
 [**The API layout**](#the-api-layout--restructured-2026-08-17) ·
 [**The system-wide audit**](#the-system-wide-audit--2026-08-17) ·
@@ -395,8 +396,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 0 IS CLOSED. All five slices are DONE. Step 1 (retrieval) is next.**
-**Last updated 2026-08-17 (eleventh session). Working branch: `feat/api`.**
+**Phase: STEP 0 IS CLOSED. Step 1 is planned as EIGHT slices. Slice 1 is next.**
+**Last updated 2026-08-20 (twelfth session). Working branch: `main`, clean.**
 
 > ### START HERE IN A NEW SESSION
 >
@@ -404,9 +405,17 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > select → prompt → `LLMClient` → an answer with its citations resolved back to
 > real file and line numbers. Every box in the Step 0 diagram is touched.
 >
-> **Next task: Step 1 — real retrieval.** Embeddings, pgvector, reranking. This
-> is the first of [the four gaps](#the-four-gaps-are-the-whole-point--teach-them-hardest-of-all),
+> **Next task: Step 1 slice 1 — the embedder.** Step 1 is planned as **eight
+> slices**, and the plan is written down: read
+> [Step 1 — the plan](#step-1--the-plan-recorded-2026-08-20) before anything
+> else. Retrieval is the first of
+> [the four gaps](#the-four-gaps-are-the-whole-point--teach-them-hardest-of-all),
 > so it gets the full teaching treatment and it should be slow on purpose.
+>
+> **Two things the plan settled that are easy to miss.** Today's fixture
+> **fits** the prompt budget, so retrieval cannot be measured until a
+> repository is ingestible — that is why slice 2 exists. And `.ipynb` is
+> currently **accepted and silently mangled**, which is why slice 3 exists.
 >
 > **Three things are already decided and must be read before writing any code:**
 > [Retrieval design](#retrieval-design--recorded-2026-08-13) (the user's question
@@ -1704,6 +1713,201 @@ in Step 1.
 during slice 4; slice 5 brought the API up from nothing. Step 1 must now do the
 same for retrieval, which is still a hardcoded 50/50 positional split.
 
+## Step 1 — the plan, recorded 2026-08-20
+
+*Decided in session 12, before any Step 1 code was written. Step 0 was five
+slices. **Step 1 is eight.** Two of them exist only because the input edge is
+wider than Step 0 ever admitted.*
+
+### Why Step 1 cannot be measured on today's fixture
+
+The sample pair is ~20,400 tokens, the lean instructions ~2,000, and
+`PROMPT_BUDGET` is 26,000. **It fits.** That is why every measurement since
+slice 4 says *stuffed*, and it means retrieval currently changes nothing at all.
+
+> **A retrieval layer cannot be proven on a corpus that fits.** Reading a
+> repository is therefore not an extra feature — it is what makes Step 1
+> measurable in the first place.
+
+### The eight slices
+
+| # | Slice | What it must prove | Teaching load |
+|---|---|---|---|
+| 1 | **Embed one chunk, and settle the model** | a vector comes back, and `codestral-embed` vs `mistral-embed` is decided **by measurement** | **heavy** — embeddings, cosine similarity, normalization |
+| 2 | **Read a repository** | folder, zip and git URL all become chunks, streamed in batches of 100 | light — engineering already known |
+| 3 | **Read a document** | PDF, Word, notebook and other languages get real boundaries | medium |
+| 4 | **pgvector** | ~2,000 chunks go in and come back out unchanged | **heavy** — vector databases, ANN indexes |
+| 5 | **Cosine search** | a query returns the right chunks, and the `side` filter works | medium |
+| 6 | **Reranking** | the top 50 become the right top 10, and *skip* still works | **heavy** — bi-encoder vs cross-encoder |
+| 7 | **The new selector** | `select()` is deleted; A fills before B; the outline lists **files** | light |
+| 8 | **Measure** | the same fixture, then a **second** fixture in another domain | none — it is scoring |
+
+**The ordering rule is unchanged from Step 0: only one thing may be wrong at a
+time.** Three placements carry real weight:
+
+- **Slice 1 needs no database.** 96 chunks, a few hundred embed calls, cosine in
+  plain Python. That settles the **dimension** (1536 vs 1024) *before* any table
+  exists. A schema is expensive to change once rows exist; an in-memory test is
+  free.
+- **Slice 2 before slice 4**, so the database is filled with a real corpus rather
+  than with 96 chunks.
+- **Slice 3 before slice 4**, for the permanence reason below.
+
+**Slices 2 and 3 are the same idea — *turn whatever arrived into text* — and are
+still split**, because one is **many files of one kind** and the other is **one
+file of many kinds**. Different failures, so different slices.
+
+### What the input edge actually accepts today — read from the code 2026-08-20
+
+| Input | What happens now | Good? |
+|---|---|---|
+| `.md`, `.markdown` | header splitter | ✅ |
+| `.py` | AST splitter — functions and classes | ✅ |
+| `.txt` | recursive splitter | ✅ acceptable for prose |
+| `.pdf`, `.docx` | **422 — "is not UTF-8 text"** | refused, and that is honest |
+| **`.ipynb`** | **accepted, then cut blindly as raw JSON** | ❌ **silent downgrade** |
+| `.js`, `.cpp`, `.java`, `.r` … | accepted, cut blindly | ❌ silent downgrade |
+
+`SPLITTERS` in `labpilot/ingest/chunker.py` holds exactly three entries.
+Everything else falls to `split_recursive`.
+
+**Two defects this exposed, both real:**
+
+1. **The notebook case breaks this file's own rule.** A `.ipynb` is JSON, so it
+   decodes as UTF-8, passes the upload gate, and is then chunked as text — giving
+   chunks full of `"cell_type": "code"` and escaped newlines. Slice 5 wrote the
+   rule it violates: *"refuse the input you cannot handle well — a silent
+   downgrade is worse than a rejection, because nobody ever learns it happened."*
+   And the notebook splitter (*split on cells*) was **designed in the chunking
+   section and never built**.
+2. **`MAX_UPLOAD_BYTES` is 1,000,000.** A real paper PDF is usually 1–5MB, so the
+   limit alone would refuse most papers. It must rise in slice 3;
+   `MAX_REQUEST_BODY_BYTES` follows it automatically.
+
+> **A designed-but-unbuilt splitter is invisible, because the fallback always
+> answers.** The same shape as *"recording a limit is not enforcing it"*.
+
+### Loaders and splitters are two different jobs
+
+| Job | Question it answers | Where it lives |
+|---|---|---|
+| **Loader** | "give me text from these bytes" | **new** — `labpilot/loaders/` |
+| **Splitter** | "give me good boundaries in this text" | existing — `labpilot/ingest/` |
+
+PDF, Word and notebooks need **both**. A repository needs only the first.
+Keeping them apart means one PDF loader plus one prose splitter — never a
+PDF-shaped chunker.
+
+### Formats are Step 1, not Step 2, and the reason is permanence
+
+> **The chunker is permanent. Chunk boundaries decide what is possible, and
+> nothing downstream repairs them.** A corpus embedded with bad boundaries must
+> be re-chunked **and** re-embedded — the whole thing, not the difference.
+
+That is the entire argument for putting slice 3 before pgvector.
+
+**What slice 3 must cover, in priority order:**
+
+| Format | Priority | Library |
+|---|---|---|
+| **`.ipynb`** | **highest** — the user's own work is notebooks | **none** — stdlib `json` |
+| **`.pdf`** | **highest** — papers are PDFs | `pypdf`, pure Python, small |
+| `.docx` | medium — cheap to add | `python-docx` |
+| other code languages | low | **one** generic splitter, not one per language |
+
+Three notes that will otherwise be re-derived:
+
+- **For a notebook, read the outputs, not only the source.** This is the lesson
+  from building `quora_siamese`: the run summary numbers lived in the stored
+  outputs, and the first version of `A_paper.md` was invented because only the
+  code was read. The *"what do the numbers say?"* question needs those outputs.
+- **PDF extraction is lossy, and it must be measured rather than assumed.**
+  Two-column layouts interleave, equations become noise, tables collapse, and
+  section headers often do not survive — which degrades header splitting. A
+  **scanned** PDF has no text at all and must be **refused**: OCR models break
+  the [memory budget](#memory-budget--render-free-tier-512mb).
+- **Refuse what cannot be handled well.** Every new format either gets a real
+  loader or a clear 422. Never a silent fallback.
+
+### Do not use LangChain's document loaders — corrected 2026-08-20
+
+The [Architecture](#architecture--stack) bullet used to allow *"document loaders,
+text splitters, model interfaces"*. It was written before the
+[512MB budget](#memory-budget--render-free-tier-512mb) was measured, and the two
+rules now disagree. **The memory rule wins for loaders.**
+
+```
+langgraph            -> langgraph-checkpoint, langgraph-sdk,
+                        langgraph-prebuilt, pydantic  (+ langchain-core)
+langchain-core       -> small, and contains NO loaders
+langchain-community  -> SQLAlchemy, aiohttp, numpy, dataclasses-json, langchain
+                        ^ PyPDFLoader lives here, and only here
+```
+
+Three reasons, weakest first:
+
+1. **Output shape.** They return LangChain `Document` objects, which we would
+   convert to `Piece` / `Chunk` on every call.
+2. **Volume.** `langchain-community` costs ~120–200MB resident, against a ceiling
+   the API plus ingest already fills to ~290–370MB.
+3. **The one that settles it — LangChain does not contain the parser.**
+   `PyPDFLoader` requires `pypdf` to be installed anyway. So the choice is
+   `pypdf` against `pypdf` **plus** `langchain-community` plus its whole tree.
+
+**The argument that would overturn this:** if anything else ever needs
+`langchain-community`, the volume reason dies and only the weak shape reason
+remains. Today nothing else needs it — **LangGraph does not.**
+
+**Unverified, and it must be checked before Step 2:** the tree above is from
+memory, not from an install. Run `pip install langgraph` into a throwaway venv
+and read the real dependency list. *An estimate is not a measurement* — this
+file's own rule.
+
+### Cost per slice — this is what sets the pace
+
+| # | Generation quota spent | Note |
+|---|---|---|
+| 1 | **none** | embedding is a separate quota from chat |
+| 2 | **none** | pure file work |
+| 3 | **none** | pure file work |
+| 4 | **none** | database only |
+| 5 | almost none | a query embed is ~20 tokens |
+| 6 | **careful** | Cohere is 1,000 per **month**, shared with embed. Use the local ONNX reranker in tests |
+| 7 | a few | one end-to-end run |
+| 8 | **the expensive one** | full reports, and Flash models give **20 per day** |
+
+Slices 1 to 5 cost almost nothing. That is unusual, and it is the right place to
+move quickly.
+
+### A parallel track, not a slice
+
+Both are data, not code, and block nothing:
+
+1. **The second sample pair** — a different domain, a different language. It must
+   exist **before slice 8**, or Step 1 ends without knowing whether the system is
+   quora-shaped.
+2. **The impact column in `EXPECTED.md`** — owed from Step 0, costs no requests.
+
+### Explicitly not Step 1
+
+Claim extraction, the planner, per-capability query sources, the correspondence
+gate, LangGraph, MCP, web search. **All Step 2.** Keeping them out is what lets
+Step 1 finish.
+
+### Time estimate, honestly
+
+Step 0 took **eleven sessions for five slices**. Step 1 has eight, and three of
+them carry heavy teaching, because this is the first of
+[the four gaps](#the-four-gaps-are-the-whole-point--teach-them-hardest-of-all)
+and the rule there is to go **slower**, not faster. Slices 1, 4 and 6 will each
+take more than one session: the lesson first, then the code.
+
+**Expect 10 to 14 sessions.** And treat eight as the *shape*, not a promise about
+size — Step 0 was planned as five slices and stayed five, but every one of them
+grew larger than planned.
+
+---
+
 ### Where to pick up — slice 4's coverage problem
 
 *Written 2026-08-14, session 7. **This replaces the slice 4 plan below**, which
@@ -2800,9 +3004,13 @@ Never commit `.env`. Never put keys in code or in this file. Verify with
 ## Architecture & Stack
 
 - **Agent orchestration**: LangGraph as the core orchestrator. LangChain is used
-  **selectively** — document loaders, text splitters, model interfaces only.
-  Do **not** use LangChain's own agent/chain abstractions; orchestration belongs
-  to LangGraph. Not CrewAI for v1.
+  **selectively** — ~~document loaders,~~ text splitters and model interfaces
+  only. Do **not** use LangChain's own agent/chain abstractions; orchestration
+  belongs to LangGraph. Not CrewAI for v1.
+  **Document loaders were removed from this list on 2026-08-20** — they live in
+  `langchain-community`, which LangGraph does not need, and they require the
+  underlying parser to be installed anyway. See
+  [Do not use LangChain's document loaders](#do-not-use-langchains-document-loaders--corrected-2026-08-20).
 - **Vector DB**: Supabase Postgres + pgvector
 - **Experiment/observability tracking**: MLflow — both fine-tuning experiments
   and agent/RAG observability. Self-hosted or in-notebook; do **not** pay for a
@@ -4465,7 +4673,7 @@ search.** This is the same effect as "lost in the middle", one stage earlier.
 |---|---|---|
 | Markdown / paper | headers (`#`, `##`, `§`) | text scan |
 | Python | functions and classes | `ast.FunctionDef` / `ast.ClassDef` |
-| Notebook | cells | it is JSON — the author already chunked it |
+| Notebook | cells | it is JSON — the author already chunked it. **Designed here, never built — it lands in [Step 1 slice 3](#step-1--the-plan-recorded-2026-08-20)** |
 | anything else | recursive: `\n\n\n` → `\n\n` → `\n` → ` ` → chars | fallback |
 
 Header or AST splitting comes **first**; the size cap is a **second** pass. A
