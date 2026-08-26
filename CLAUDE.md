@@ -760,10 +760,17 @@ dead pool. Backoff honours `Retry-After` when present, otherwise
 $d_k = d_0 \cdot 2^{k}$ capped by `max_delay`.
 
 **`max_retries_per_tier = 1`, and that number came from arithmetic.** Worst case
-is $N \times ((R+1)\,T_{\text{timeout}} + \sum d_k)$; at `R=1` and a 180 s
-timeout that is $7 \times 361 \approx 42$ minutes. Nobody waits 42 minutes, so
-`DEFAULT_TOTAL_BUDGET = 300 s` enforces a real ceiling and every remaining tier
-is recorded as `skipped: time budget spent` rather than silently dropped.
+is $N \times ((R+1)\,T_{\text{timeout}} + \sum d_k)$; at `R=1`, fifteen tiers
+and the current 600 s read timeout that is $15 \times 1201 \approx 5$ hours.
+Nobody waits five hours, so **`DEFAULT_TOTAL_BUDGET = 900 s`** enforces a real
+ceiling and every remaining tier is recorded as `skipped: time budget spent`
+rather than silently dropped.
+
+*The numbers moved on 2026-08-17 and this paragraph moved with them: the read
+timeout went 180 s to 600 s and the budget 300 s to 900 s, together, because
+`DEFAULT_TOTAL_BUDGET` must never sit below `DEFAULT_TIMEOUT[1]` — see
+[the read timeout note](#constraints). The 42-minute figure was the old
+seven-tier arithmetic; the shape of the calculation is unchanged.*
 
 **Two kinds of math live in this file, and they are not the same.** The backoff
 formula and the pool-dead test each became one line of code. The 42-minute bound
@@ -1236,7 +1243,7 @@ broken** — not written to raise a count:
 |---|---|
 | `test_side_b_ids_do_not_move_when_side_a_is_absent` | the two-pass contract: `B-25` means one chunk with or without A |
 | `test_the_citation_shape_each_template_teaches_is_the_shape_we_parse` | the prompt cannot teach a format our regex will not read |
-| `test_the_time_budget_can_outlast_one_slow_call` | a 900 s call inside a 300 s budget can never finish |
+| `test_the_time_budget_can_outlast_one_slow_call` | `DEFAULT_TOTAL_BUDGET >= DEFAULT_TIMEOUT[1]` — a call allowed longer than the whole budget can never finish |
 | three `prior` tests in `test_builder.py` | one pass's findings really reach the next |
 
 **Two limits to state plainly, so nobody re-derives them:**
@@ -1480,7 +1487,7 @@ replacements.** Do it for every invariant this file claims to pin.
 Both are recorded rather than solved, and both belong to Step 3:
 
 - **The endpoint is synchronous.** A report can take minutes against
-  `DEFAULT_TOTAL_BUDGET = 300 s`; any proxy will kill it, Render especially. SSE
+  `DEFAULT_TOTAL_BUDGET = 900 s`; any proxy will kill it, Render especially. SSE
   is already scheduled — see
   [live progress events](#chain-3--reranker-true-fallback).
 - **The per-file cap is enforced after Starlette has spooled the upload to disk.**
@@ -4757,13 +4764,23 @@ Flash-Lite, Gemma and Groq. Same report count, far better report.
   Two corrections worth keeping: the refusal is **413**, not 429 — a status the
   chain treats as "next tier", which is correct. And the old note said "up to
   14,400 RPD"; the measured figure for `gpt-oss-120b` is **1,000**.
-- **A 180-second read timeout is too small for a report.** *(Found 2026-08-17.)*
-  `DEFAULT_TIMEOUT` is `(10.0, 180.0)`, and a stuffed report on a thinking model
-  needs longer — one measured answer spent 26,678 thought tokens before writing a
-  word. Two of three runs died on `Read timed out`, which looks exactly like a
-  dead provider in the logs and is not one. **Raise the read timeout with
-  `REPORT_MAX_TOKENS`, and remember `DEFAULT_TOTAL_BUDGET` (300 s) must move with
-  it** — a 600-second call inside a 300-second budget can never finish.
+- ~~**A 180-second read timeout is too small for a report.**~~ **FIXED — the
+  code now reads `DEFAULT_TIMEOUT = (10.0, 600.0)` and
+  `DEFAULT_TOTAL_BUDGET = 900.0`.** *(Found 2026-08-17, applied the same day;
+  this file went on saying it was owed until 2026-08-26.)* The original failure:
+  at 180 s a stuffed report on a thinking model died on `Read timed out`, twice
+  in three runs — one measured answer spent 26,678 thought tokens before writing
+  a word, and a timeout looks exactly like a dead provider in the logs. **The two
+  numbers were raised together, and that is the rule to keep:
+  `DEFAULT_TOTAL_BUDGET` must never sit below `DEFAULT_TIMEOUT[1]`**, or a call
+  the chain permits can never finish inside the budget the chain enforces.
+  `test_the_time_budget_can_outlast_one_slow_call` pins the inequality itself,
+  so both numbers may move freely as long as they move together.
+
+  > **A recorded fix is not a fix — and a recorded *applied* fix is not applied
+  > either, until the note says so.** Same shape as *"recording a limit is not
+  > enforcing it"*, one step later: here the code was right and the file was
+  > wrong for nine days, which is the direction nothing ever warns about.
 - **Modal is out of the chain entirely.** *(Decided 2026-08-11.)* The $30 is
   reserved for serving the fine-tuned model, which is the job nothing free can do.
   `MODAL_API_KEY` is therefore not needed by `chain.py`, and the chain ends at
