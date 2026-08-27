@@ -8,7 +8,7 @@ import pytest
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "labpilot"
 
 SHARED = frozenset({"tokens", "_text"})
-ADAPTERS = frozenset({"llm", "embed"})
+ADAPTERS = frozenset({"llm", "embed", "sources"})
 CORE = frozenset({"agent", "ingest", "prompts", "retrieval"})
 ENTRY = frozenset({"api"})
 
