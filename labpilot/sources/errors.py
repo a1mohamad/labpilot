@@ -11,3 +11,7 @@ class SourceTooLarge(SourceError):
 
 class SourceNotFound(SourceError):
     pass
+
+
+class UnsafeArchive(SourceError):
+    pass
