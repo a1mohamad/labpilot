@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 from labpilot.api.contracts import Artifact, Comparison
 from labpilot.api.errors import (
     ArtifactsTooLargeToCompare,
@@ -7,7 +9,7 @@ from labpilot.api.errors import (
     GenerationUnavailable,
     InvalidQuestion,
 )
-from labpilot.ingest import Chunk, Side, chunk_text
+from labpilot.ingest import Chunk, Side, chunk_file, chunk_text
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
     PROMPT_BUDGET,
@@ -17,6 +19,7 @@ from labpilot.prompts import (
     reserve,
 )
 from labpilot.retrieval import select
+from labpilot.sources import Source, walk
 from labpilot.tokens import estimate_tokens
 
 
@@ -69,3 +72,19 @@ def _prompt(
         )
 
     return prompt, selected
+
+
+def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
+    for found in walk(source):
+        try:
+            pieces = chunk_file(
+                found.path,
+                side=side,
+                artifact_id=source.name,
+                source=found.relpath,
+            )
+        except UnicodeDecodeError:
+            source.skipped["not utf-8"] = source.skipped.get("not utf-8", 0) + 1
+            continue
+
+        yield from pieces

@@ -15,3 +15,11 @@ class SourceNotFound(SourceError):
 
 class UnsafeArchive(SourceError):
     pass
+
+
+class UnsupportedURL(SourceError):
+    pass
+
+
+class CloneFailed(SourceError):
+    pass
