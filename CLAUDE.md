@@ -3,7 +3,7 @@
 Project instructions for Claude Code, and orientation for any human reader.
 Read the two rule sections first — they change *how* everything below is done.
 
-**Contents:** [Working Rules](#working-rules-read-first) · [Overview](#project-overview) ·
+**Contents:** [Working Rules](#working-rules-read-first) · [**Network precondition**](#network-precondition--check-the-exit-isp-before-any-llm-work) · [Overview](#project-overview) ·
 [Status](#current-status) · [Environment](#development-environment) ·
 [Conventions](#conventions) · [Architecture](#architecture--stack) ·
 [LLM Serving](#llm-serving--fallback-chain) · [The Three Chains](#the-three-chains--restructured-2026-08-11) ·
@@ -160,6 +160,57 @@ documentation held true.
 Also watch the wording. **"No charge" is not the same as "no card needed."**
 Several platforms perform a "$0 authorization" — they take no money, but a card
 is still required, so the account is still blocked.
+
+### Network precondition — check the exit ISP before any LLM work
+
+*Added 2026-08-27, at the user's request, after the 2026-08-20 "Google is dead"
+scare turned out to be the network and not the provider.*
+
+The user works through a VPN, so **the exit IP and ISP change between sessions
+and even between reconnects**. Some exits are refused by Google. That makes the
+network a **precondition of the work**, not a background detail — a refused exit
+looks exactly like a dead provider in the logs, and the whole of session 12 was
+spent writing "Google is blocked" into this file when Google was fine.
+
+**The rule, and it is deliberately narrow:**
+
+> **Before anything that calls a model — a smoke run, a live probe, a real
+> report, any Google endpoint — check the exit ISP first and say it out loud.
+> Never for ordinary work: reading code, writing tests, editing this file, and
+> running the mocked suite all need no check.**
+
+Claude runs the check and reports it; the user should not have to remember.
+
+**Step 1 — which exit are we on?** Costs nothing.
+
+```bash
+curl -s https://ipinfo.io/json
+```
+
+**Step 2 — does Google actually answer?** This is the verdict. `flash-lite` is
+500/day, so the probe is nearly free — and it must be a real `generateContent`.
+**`GET /v1beta/models` is not a valid probe**: it returned 200 all through the
+2026-08-11 account restriction, while every generation call was refused.
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent" -H "x-goog-api-key: $GOOGLE_API_KEY" -H 'Content-Type: application/json' -d '{"contents":[{"parts":[{"text":"say ok"}]}],"generationConfig":{"maxOutputTokens":2048}}'
+```
+
+| Result | Means |
+|---|---|
+| **200** | the exit is fine — proceed |
+| **400 `FAILED_PRECONDITION`** | **the exit IP**. Switch server or tunnel mode; the code is innocent |
+| **403 `PERMISSION_DENIED`** | **the account** is flagged. A different exit will not help |
+| **429** | quota, not network. Flash is 20/day |
+
+**The ISP name is a hint, never a verdict.** `AS58212 dataforest GmbH` was the
+refused exit on 2026-08-20 **and** the working exit on 2026-08-27. Same ISP,
+opposite outcome. Report the ISP because it is the thing the user recognises and
+can act on — but decide on the probe.
+
+> **When a provider looks dead, prove the network first.** It is two commands
+> and no quota, and it is the difference between a real finding and twelve
+> paragraphs of fiction.
 
 ---
 
@@ -404,8 +455,9 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: STEP 1 SLICES 1 AND 1b ARE DONE. `codestral-embed` is the primary, by measurement.**
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 2 is next.**
 **`labpilot/embed/` holds FIVE embedders across FIVE platforms. 346 tests, ruff clean.**
-**⚠ GOOGLE IS UNREACHABLE FROM THIS LOCATION — six generator tiers are down. See slice 1b.**
-**Last updated 2026-08-20 (twelfth session). Working branch: `feat/embeddings`.**
+**⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
+**Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
+**Last updated 2026-08-27 (thirteenth session). Working branch: `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
@@ -413,14 +465,29 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > select → prompt → `LLMClient` → an answer with its citations resolved back to
 > real file and line numbers. Every box in the Step 0 diagram is touched.
 >
-> **⚠ FIRST, CHECK THIS.** Google answers `400 FAILED_PRECONDITION — "User
-> location is not supported"` on **both** generation and embedding, from this
-> machine, as of 2026-08-20. It worked on 2026-08-17. That is a **per-request
-> country check**, not an account flag — most likely a VPN or a
-> location-switcher, which this file already warns against. Until it is fixed,
-> **six generator tiers and the Google embedder are unreachable** and the
-> weekly smoke run will fail on all of them. One command re-tests it; the probe
-> is in the slice 1b notes.
+> **⚠ FIRST, CHECK THIS — the exit ISP, before any call that spends an LLM or
+> touches Google.** The work runs through a VPN, so the exit IP changes between
+> sessions and Google refuses some exits. **Do not assume; probe.** The rule and
+> the two commands are in
+> [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).
+>
+> **The 2026-08-20 Google outage is OVER.** Measured 2026-08-27 on exit
+> `185.254.96.11`, **AS58212 dataforest GmbH**, Frankfurt:
+> `gemini-3.5-flash-lite:generateContent` → **200**, and
+> `gemini-embedding-001` → **200, dim 3072**. The embedder smoke test reported
+> **XPASS**, which is precisely the signal slice 1b built it to send. So all
+> six Google generator tiers and the Google embedder are reachable again.
+>
+> **And read this correction before repeating the old diagnosis.** The failing
+> exit on 2026-08-20 was also `dataforest GmbH`, and that same ISP answers 200
+> today. **So the ISP name is a hint, not a verdict** — what changed is the
+> tunnel mode and the exit IP, not the ISP. Probe the endpoint; never conclude
+> from the ISP alone.
+>
+> **One code follow-up is owed, and it is small.** `gemini-embedding-001` still
+> carries `xfail(strict=False)` in `tests/smoke/test_embedders.py`. Now that it
+> passes, the marker should come off — otherwise a future real failure is
+> recorded as an expected one.
 >
 > **Next task: Step 1 slice 2 — read a repository.** Slices 1 and **1b** are
 > done: `labpilot/embed/` ships **five** embedders across **five** platforms,
@@ -1843,14 +1910,23 @@ Everything else falls to `split_recursive`.
 
 ### Loaders and splitters are two different jobs
 
-| Job | Question it answers | Where it lives |
-|---|---|---|
-| **Loader** | "give me text from these bytes" | **new** — `labpilot/loaders/` |
-| **Splitter** | "give me good boundaries in this text" | existing — `labpilot/ingest/` |
+| Job | Question it answers | Layer | Where it lives |
+|---|---|---|---|
+| **Source** | "give me the **files**" — folder, zip, git URL | **adapter** | **new** — `labpilot/sources/` (slice 2) |
+| **Loader** | "give me **text** from these bytes" | core | **new** — `labpilot/loaders/` (slice 3) |
+| **Splitter** | "give me good **boundaries** in this text" | core | existing — `labpilot/ingest/` |
 
-PDF, Word and notebooks need **both**. A repository needs only the first.
+PDF, Word and notebooks need the last two. A repository needs only the first.
 Keeping them apart means one PDF loader plus one prose splitter — never a
 PDF-shaped chunker.
+
+**`sources/` is a top-level package, not a subpackage of `ingest/`, and the
+reason is the layer table above.** It runs `git clone`, extracts archives and
+walks the filesystem — it talks to the outside world, so it is an **adapter**
+and belongs beside `llm/` and `embed/`. `loaders/` is pure bytes-to-text logic
+and sits in **core** beside `ingest/`. *An earlier draft of this section put
+both inside `ingest/` on the grounds that they are "one pipeline". They are one
+pipeline and two layers, and the layer is what decides the folder.*
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
@@ -2327,6 +2403,17 @@ not execute would be a guess, and *"an unproven provider is not a provider"* is
 the rule that Cerebras taught. When the location is fixed, one command finishes
 it — the probe script is in the session scratchpad.
 
+> **RESOLVED 2026-08-27, and the diagnosis above was half wrong.** Google
+> answers **200** again — generation and embedding both. The refusal was never
+> about the account and never about the code, so that part held. But it was
+> also **not about the ISP**: the exit today is the *same* `dataforest GmbH`
+> that was refused on 2026-08-20. What changed was the tunnel mode and the exit
+> IP. **A `400 FAILED_PRECONDITION` is per-IP, and an ISP owns many IPs** — so
+> "this ISP is blocked" is a guess dressed as a measurement. The standing fix
+> is [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work):
+> probe the endpoint before every LLM session, and never conclude from the ISP
+> name.
+
 #### The guard found a real bug on its first run
 
 `max_input_tokens` was added so a model that truncates silently would refuse
@@ -2489,7 +2576,23 @@ only candidate consumer and Google could not be called. A parameter with no
 working consumer is dead code; a parameter two providers translate is an
 interface.
 
-#### Google shipped unverified, on purpose, and is quarantined
+#### Google shipped unverified, on purpose — and it was proven right 2026-08-27
+
+> **The quarantine is lifted.** `pytest tests/smoke/test_embedders.py --run-smoke`
+> now reports **`XPASS` for `gemini-embedding-001`** — the exact signal point 2
+> below was built to send, arriving seven days later. `dim = 3072` is
+> **observed**, so the documented number was correct and `_validated` never had
+> to fire. The remaining action is to **delete the `xfail` marker**, or a real
+> future failure will be filed as an expected one. The two fields still
+> unmeasured are unchanged: whether `batchEmbedContents` reports usage, and the
+> real batch ceiling.
+>
+> **What this vindicates is the *shape* of the gamble, not the gamble.** Shipping
+> unproven code was still against the rule. It was survivable only because every
+> wire detail was pinned by tests and the one unobservable number would have
+> raised loudly rather than storing a wrong-width vector. **Ship an unproven
+> provider only when its first real call must either work or crash — never when
+> it can quietly half-work.**
 
 `GoogleEmbedder` is written from Google's documentation and **has never returned
 a vector**. `gemini-3.6-flash`, `gemini-3.5-flash-lite` and
@@ -2511,8 +2614,9 @@ than reckless:
    vector), and the task maps to `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`. All
    three were mutation-tested.
 
-**Unverified fields to re-check the moment Google answers:** the real dimension,
-whether `batchEmbedContents` reports usage, and the real batch ceiling.
+**Unverified fields to re-check the moment Google answers:** ~~the real
+dimension~~ (**3072, confirmed 2026-08-27**), whether `batchEmbedContents`
+reports usage, and the real batch ceiling.
 
 #### The registry test earned itself within the hour
 
@@ -3464,6 +3568,77 @@ Line count is only a **symptom to investigate**, never the rule:
 package. Every layer imports them; they import no one. This is what prevents
 circular imports — the failure that forces a real reorganisation.
 
+### The four layers — measured 2026-08-27, enforced by a test
+
+*The user asked whether the growing folder list should be reorganised — into
+`rag/`, or into `shared/ adapters/ core/`. The question was answered by reading
+the real import graph rather than by opinion.*
+
+```
+tokens, _text   imported by everyone, import nothing
+embed           -> tokens, _text
+llm             -> tokens, _text
+ingest          -> tokens
+prompts         -> ingest
+retrieval       -> ingest
+api             -> everything
+```
+
+**No cycles. The layers were already there** — nobody had written them down.
+
+| layer | meaning | packages |
+|---|---|---|
+| **shared** | imported by all, imports nothing of ours | `tokens`, `_text` |
+| **adapters** | talk to the **outside world** — HTTP, disk, git, a database | `llm`, `embed`, later `sources`, `store`, `rerank` |
+| **core** | our own logic, no outside world | `ingest`, `prompts`, `retrieval`, later `agent` |
+| **entry** | wires everything together | `api` |
+
+The rule each layer obeys: **shared imports nothing · adapters import shared ·
+core imports shared and core · entry imports anything · nothing imports entry.**
+
+#### Why not a `rag/` folder, and why not nested layer folders — yet
+
+A `rag/` folder would hold `ingest` + `embed` + `retrieval`. But `embed` is an
+**adapter** (HTTP to Mistral) and `ingest` is **pure logic** — same topic,
+different kind. And `llm`, which shares every pattern with `embed`, would land
+in a different group.
+
+> **Group by what depends on what, not by what sounds related.** A folder's job
+> is to make a wrong import obvious; a topic folder cuts across the arrows and
+> hides one instead.
+
+**Nested layer folders (`shared/ adapters/ core/`) are the right shape and are
+still not built**, because they buy nothing a test does not already buy, and
+they cost a move of every file mid-project. **Revisit at Step 2**, when `agent/`
+lands and core reaches five packages — by then the test has kept the layers
+honest, so the move is mechanical rather than archaeological.
+
+#### The rule that actually matters
+
+> **A folder is a suggestion. A test is a rule.**
+
+Nothing stops `llm/` importing `api/` tomorrow. The folders would still look
+tidy and the design would be broken. So the layering is pinned by
+`tests/unit/test_architecture.py`, which parses every import in `labpilot/` and
+fails on a crossed line. It sits at the top of `unit/` beside
+`test_packaging.py`, because it crosses every package.
+
+**Every package must be assigned to a layer**, and an unassigned one fails the
+suite. That is the same *pin the exceptions by name* pattern as
+`OUTPUT_TOO_SMALL`: a new package cannot be added without someone deciding what
+it is.
+
+**Mutation testing deleted one of the four tests I wrote.** All four mutations
+were caught — an unclassified package, an adapter importing the API, a
+misclassified `api`, and a cycle inside core — but reading *which* test fired
+showed that `test_nothing_imports_the_entry_layer` **can never fail alone**:
+any importer able to reach `api` is already refused by the layer rule. It was
+deleted rather than kept as a comforting green line.
+
+> **"A mutation was caught" is not the check. "Which test caught it" is.** A
+> passing mutation run hid a dead test until the names were read — the same
+> mistake as counting walk lines instead of reading them.
+
 **Each package's `__init__.py` is its public API.** Re-export the names the rest
 of LabPilot may use. Outside code imports `from labpilot.llm import LLMClient`,
 never `from labpilot.llm.openai_compatible import ...`. Internal files can then
@@ -4011,6 +4186,52 @@ exists to avoid a 20-minute ingest, and **no corpus that takes 20 minutes
 exists yet**. The fixture is 96 chunks — about 3 seconds on either model. A
 repository-sized corpus arrives in slice 2, so **the decision date is slice
 8**. Slice 1 picks a default, not a policy.
+
+#### The pgvector dimension ceiling — measured 2026-08-27, and it binds
+
+*Run on the real Supabase free project (`LabPilot`), pgvector **0.8.2**. Not
+read from docs — the docs describe pgvector in general, and what matters is the
+version actually installed where we deploy.*
+
+| what | 3072 dimensions |
+|---|---|
+| `create table (v vector(3072))` | ✅ **stores fine** — storage is not the limit |
+| `hnsw` on `vector` | ❌ `54000: column cannot have more than 2000 dimensions` |
+| `ivfflat` on `vector` | ❌ **same error** — so it is a pgvector-wide cap, not an hnsw quirk |
+| `hnsw` on **`halfvec(3072)`** | ✅ **works** |
+| **`hnsw` on the expression `(v::halfvec(3072))`** | ✅ **works — and this is the answer** |
+
+**This is the constraint that actually decides the embedder, and no recall
+number can overrule it.** `gemini-embedding-001` returns **3072** dims. Without
+an index every query is a sequential scan over the whole corpus, which is fine
+at 78 chunks and useless at 2,000. **A model that cannot be indexed is not a
+candidate, however well it scores.**
+
+Three ways out, and each has a price that must be **measured**, not assumed:
+
+| option | keeps | costs |
+|---|---|---|
+| **expression index on `(v::halfvec(3072))`** | **full 32-bit storage** *and* a working index | half precision **inside the index only** |
+| `halfvec(3072)` column | one index, simplest schema | 16-bit **everywhere**, including storage |
+| **`outputDimensionality: 1536`** | plain `vector`, same width as codestral and cohere | a different vector; **recall must be re-scored**, and Google's docs say truncated vectors must be re-normalized |
+| no index | exact search | O(N) per query — dies past a few thousand chunks |
+
+**The expression index is the one to build if Google is ever chosen.** An
+**expression index** indexes the *result of a cast*, not the column: Postgres
+computes `v::halfvec(3072)` per row and indexes that copy. So the stored vector
+keeps full precision and only the search shortlist is approximate — which is
+exactly the shape the pipeline already wants, because
+[slice 6](#the-nine-slices) reranks the shortlist anyway. Two things it
+demands, and forgetting either silently disables the index: the query must be
+cast the same way (`v::halfvec(3072) <=> $1::halfvec(3072)`), and the operator
+class must be `halfvec_cosine_ops`.
+
+> **Check the index limit before the quality benchmark, not after.** We scored
+> five embedders on recall before asking whether the winner could be stored. The
+> cheap question was the deciding one.
+
+**Every other embedder is unaffected** — codestral 1536, cohere 1536, mistral
+1024, bge 768 all sit under 2000 and index as plain `vector`.
 
 **3. How are two dimensions stored at once?** **Partly dissolved 2026-08-20:**
 `codestral-embed` accepts `output_dimension`, so it can return **1024** — the
@@ -4850,7 +5071,7 @@ what blocks the next commit, then write the commit.
 | Platform | Role | Limits | Card? | Proven live? |
 |---|---|---|---|---|
 | **OpenRouter** | Generator t4 + t5 | 50/day, 20 RPM | No | ✅ 2026-08-10 |
-| **Google AI Studio** | Generator t1/t2/t3/t6/t8/t15, embedder backup | **per model**: Flash 20/day · Flash-Lite 500/day · Gemma 14,400/day | No — see restriction note | ✅ 2026-08-17 |
+| **Google AI Studio** | Generator t1/t2/t3/t6/t8/t15, **embedder t3 — now proven** | **per model**: Flash 20/day · Flash-Lite 500/day · Gemma 14,400/day | No — see restriction note | ✅ 2026-08-27 |
 | **Mistral** | Generator t4/t5/t7/t9, **embedder primary** | **per-model** TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-16 |
 | **Cohere** | **Reranker t1**, embedder last resort | 10 req/min rerank, **1,000 calls/month total** | No | ✅ 2026-08-11 |
 | **Voyage AI** | **Reranker t2** | **200M rerank tokens, one-time** · 4M TPM / 2,000 RPM | No | ✅ 2026-08-11 |
@@ -4964,7 +5185,7 @@ they were verified against the live model list.
 
 | What fires | Error | Meaning |
 |---|---|---|
-| Request comes from an unsupported country | `400 FAILED_PRECONDITION` — *"User location is not supported"* | checked **per request** |
+| Request comes from a refused **IP** | `400 FAILED_PRECONDITION` — *"User location is not supported"* | checked **per request**, on the IP — **not on the ISP**: one ISP's addresses can differ, measured 2026-08-27 |
 | Project or account is flagged | `403 PERMISSION_DENIED` — *"project has been denied access"* | applied **before** any request is judged |
 
 A per-request check cannot restrict a project that has made no requests. So the
@@ -4977,6 +5198,15 @@ try. `GOOGLE_API_KEY` in `.env` now belongs to that second account.
 switcher extension.** The flagged account was being used with one; the working
 account was not. A mismatch between account country and connection country is a
 standard anti-fraud trigger. Losing this account too would cost two tiers.
+
+**That rule cannot be obeyed literally here, so it is replaced by a check.**
+*(2026-08-27.)* The user works from behind a VPN and has no unproxied route to
+Google at all, so "do not use a VPN" is not an available option — the honest
+version is **"use an exit Google accepts, and prove it before every LLM
+session."** That is
+[the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).
+Keep the account-country warning as the reason a `403` would appear; the `400`
+is the exit, and it is the one that actually happens here.
 
 **And the general lesson, which cost an afternoon:** an issued API key is not a
 working API. Google was recorded as "created and verified" on 2026-08-08 and had
