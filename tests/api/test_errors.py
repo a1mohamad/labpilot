@@ -103,3 +103,22 @@ def test_an_unexpected_exception_becomes_a_500_in_the_same_envelope(
     assert problem(response)["code"] == "internal_error"
     assert "something nobody predicted" not in response.text, "never leak internals"
     ErrorEnvelope.model_validate(response.json())
+
+
+def test_a_broken_notebook_is_a_422_not_a_500(client):
+    # LoaderError is not an ApiError, so without the guard in services._cut a
+    # malformed .ipynb reaches the 500 handler and reads as our bug, not the
+    # user's file. Reachable only since .ipynb became an accepted upload.
+    response = client.post(
+        "/api/v1/compare",
+        files={
+            "a": ("paper.md", b"# Title\n\nsome text\n", "text/markdown"),
+            "b": ("run.ipynb", b"{not json at all", "application/json"),
+        },
+        data={"question": "compare these"},
+    )
+
+    assert response.status_code == 422
+    body = response.json()["error"]
+    assert body["code"] == "unreadable_upload"
+    assert "run.ipynb" in body["message"]

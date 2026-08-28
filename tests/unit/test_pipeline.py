@@ -88,3 +88,42 @@ def test_the_pipeline_gives_the_same_prompt_every_time(chunks, picked):
     second = build_prompt(chunks, picked, question=QUESTION, instructions=FULL)
 
     assert first == second
+
+
+def test_every_format_we_can_read_is_also_a_format_we_can_fetch():
+    # The slice 3 rule, enforced instead of written down: a suffix added to
+    # LOADERS or SPLITTERS but not to READABLE_SUFFIXES is a handler that
+    # sources/ silently skips, and a suffix added the other way round is a
+    # file walked in and then cut blindly.
+    from labpilot.ingest.chunker import LOADERS, SPLITTERS
+    from labpilot.sources.defaults import READABLE_SUFFIXES
+
+    assert set(LOADERS) <= READABLE_SUFFIXES
+    assert set(SPLITTERS) <= READABLE_SUFFIXES
+
+
+def test_a_notebook_is_loaded_before_it_is_split_whichever_door_it_arrives_by():
+    import json
+
+    from labpilot.ingest import chunk_text
+
+    raw = json.dumps(
+        {
+            "cells": [
+                {
+                    "cell_type": "code",
+                    "source": ["lr = 3e-4\n"],
+                    "outputs": [],
+                    "execution_count": 1,
+                }
+            ],
+            "nbformat": 4,
+        }
+    )
+
+    chunks = chunk_text(raw, source="run.ipynb", side="B", artifact_id="nb")
+
+    assert len(chunks) == 1
+    assert "lr = 3e-4" in chunks[0].text
+    assert '\n",' not in chunks[0].text
+    assert "cell 1 code" in chunks[0].header

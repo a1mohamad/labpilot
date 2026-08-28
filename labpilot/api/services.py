@@ -8,8 +8,10 @@ from labpilot.api.errors import (
     EmptyArtifact,
     GenerationUnavailable,
     InvalidQuestion,
+    UnreadableUpload,
 )
 from labpilot.ingest import Chunk, Side, chunk_file, chunk_text
+from labpilot.ingest.errors import LoaderError
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
     PROMPT_BUDGET,
@@ -43,12 +45,15 @@ def compare(
 
 
 def _cut(artifact: Artifact, *, side: Side, field: str) -> tuple[Chunk, ...]:
-    chunks = chunk_text(
-        artifact.text,
-        source=artifact.name,
-        side=side,
-        artifact_id=artifact.name,
-    )
+    try:
+        chunks = chunk_text(
+            artifact.text,
+            source=artifact.name,
+            side=side,
+            artifact_id=artifact.name,
+        )
+    except LoaderError as exc:
+        raise UnreadableUpload(f"{field} ({artifact.name}): {exc}") from exc
     if not chunks:
         raise EmptyArtifact(f"{field} ({artifact.name}) holds no text")
 
@@ -85,6 +90,9 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
             )
         except UnicodeDecodeError:
             source.skip("not utf-8")
+            continue
+        except LoaderError:
+            source.skip("unreadable document")
             continue
         except OSError:
             source.skip("unreadable file")

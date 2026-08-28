@@ -5,22 +5,35 @@ from dataclasses import replace
 from pathlib import Path
 
 from labpilot.ingest._markdown import split_markdown
+from labpilot.ingest._notebook import load_notebook, split_notebook
 from labpilot.ingest._python import split_python
 from labpilot.ingest._recursive import split_recursive
 from labpilot.ingest.contracts import Chunk, Piece, Side
 from labpilot.ingest.defaults import MAX_CHARS, MIN_CHARS
 
+# A loader turns the bytes of a file into the text we mean to read; a splitter
+# turns that text into boundaries. For .py and .md the two are the same act, so
+# only formats that are not already plain text need an entry here.
+LOADERS: dict[str, Callable[[str], str]] = {
+    ".ipynb": load_notebook,
+}
+
 SPLITTERS: dict[str, Callable[[str], list[Piece]]] = {
     ".md": split_markdown,
     ".markdown": split_markdown,
     ".py": split_python,
+    ".ipynb": split_notebook,
 }
 
 
 def chunk_text(
     text: str, *, source: str, side: Side, artifact_id: str
 ) -> tuple[Chunk, ...]:
-    pieces = _splitter_for(source)(text)
+    # Loading happens here, not in chunk_file, because an upload arrives as
+    # text through the API and would otherwise reach the splitter unloaded.
+    suffix = Path(source).suffix.lower()
+    text = _load(text, suffix)
+    pieces = _split(text, suffix)
     pieces = _merge_small(_enforce_cap(pieces), text.splitlines())
     return tuple(
         _chunk(piece, index, source=source, side=side, artifact_id=artifact_id)
@@ -40,8 +53,13 @@ def chunk_file(
     )
 
 
-def _splitter_for(source: str) -> Callable[[str], list[Piece]]:
-    return SPLITTERS.get(Path(source).suffix.lower(), split_recursive)
+def _load(text: str, suffix: str) -> str:
+    loader = LOADERS.get(suffix)
+    return loader(text) if loader else text
+
+
+def _split(text: str, suffix: str) -> list[Piece]:
+    return SPLITTERS.get(suffix, split_recursive)(text)
 
 
 def _enforce_cap(pieces: list[Piece]) -> list[Piece]:

@@ -20,6 +20,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Slice 4 DONE**](#slice-4--done-2026-08-17) ·
 [**Slice 5 DONE — Step 0 closed**](#slice-5--done-2026-08-17) ·
 [**STEP 1 — THE PLAN, 8 slices**](#step-1--the-plan-recorded-2026-08-20) ·
+[**Slice 3 — notebooks DONE**](#slice-3-first-half---done-2026-08-29-a-notebook-becomes-cells) ·
 [**Slice 1 DONE — the embedder**](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) ·
 [Slice 1b plan](#slice-1b--more-embedders-and-why-it-moved-ahead-of-slice-2) ·
 [Slice 1b — Google blocked](#slice-1b--done-2026-08-20-and-google-is-blocked) ·
@@ -454,9 +455,9 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b AND 2 ARE DONE. A real repository becomes chunks.**
-**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 3 — read a document — is next.**
-**`labpilot/sources/` clones, unzips and walks. 428 passed, 28 skipped, 2 xfailed.**
+**Phase: STEP 1 SLICES 1, 1b, 2 DONE — and slice 3's NOTEBOOK half is done.**
+**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 3 continues with `.pdf`, then `.docx`.**
+**A real notebook now becomes real cells. 453 passed, 28 skipped, 2 xfailed.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
 **Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
 **Last updated 2026-08-27 (thirteenth session). Working branch: `main`.**
@@ -491,16 +492,31 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > passes, the marker should come off — otherwise a future real failure is
 > recorded as an expected one.
 >
-> **Next task: Step 1 slice 3 — read a document.** Slices 1, 1b and **2** are
-> done. See [slice 2](#slice-2--done-2026-08-28-a-repository-becomes-chunks) and
-> [its audit](#the-slice-2-audit--2026-08-28).
+> **Next task: slice 3 continued — `.pdf`, then `.docx`, then other code
+> languages.** The **`.ipynb` half is DONE** — see
+> [slice 3, first half](#slice-3-first-half---done-2026-08-29-a-notebook-becomes-cells).
+> A real notebook went from 94 chunks of escaped JSON to **91 real cells and 38%
+> fewer tokens**.
 >
-> **Slice 3 has a target waiting for it.** `test_no_chunk_exceeds_the_hard_cap_once_its_header_is_added`
-> is `xfail(strict=True)` — the cap is enforced on `chunk.text` while
-> `chunk.embed_text` is what we send, and **43 of 1,094 real chunks exceed it**.
-> Fix the cap and the suite goes red until the marker is deleted. Slice 3 also
-> owes `.ipynb` and `.pdf`, and must add each new suffix to
-> `READABLE_SUFFIXES` **and** `SPLITTERS` together — never one alone.
+> **`.pdf` brings the one genuinely new idea in slice 3: lossy loading.** Every
+> input so far has been exact — a `.py` read as text *is* the file. PDF is not:
+> columns interleave, equations become noise, headers often vanish. For the
+> first time a loader can **succeed and still return garbage**, with nothing
+> raising. A **scanned** PDF has no text layer at all and must be refused, not
+> silently returned empty. `MAX_UPLOAD_BYTES` (1MB) must also rise, or most real
+> papers are refused before they are read.
+>
+> **The cap bug is still open and still `xfail(strict=True)`.**
+> `MAX_CHUNK_TOKENS` is enforced on `chunk.text` while `chunk.embed_text` is what
+> we send — **5 of 91 chunks** on the real notebook, 43 of 1,094 on the repo. It
+> was deliberately left alone: the fix must reserve header room *before*
+> splitting, threading a budget through `split_recursive`, and it moves
+> boundaries for **every** format. **The chunker is permanent — give that change
+> its own session and re-measure after it.**
+>
+> **The suffix rule is now a test.** `test_every_format_we_can_read_is_also_a_format_we_can_fetch`
+> fails the build if a suffix reaches `LOADERS`/`SPLITTERS` without
+> `READABLE_SUFFIXES`, or the reverse.
 >
 > **The audit's three defects are closed** — see
 > [how each was closed](#the-three-defects-and-how-each-was-closed--2026-08-28).
@@ -579,7 +595,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** **210 unit, 49 api, 6 integration, 19 smoke, ruff clean.**
+> **Code state:** **453 passed, 28 skipped, 2 xfailed, ruff clean.**
 > `labpilot/api/` serves `POST /api/v1/compare` plus `/` and `/health`, built by
 > a `create_app()` factory with a lifespan, routers, services, a typed error
 > vocabulary and two ASGI middleware — see
@@ -1994,6 +2010,140 @@ lossy where text splitting is not — but they stop being separate *folders*.
 
 > **A folder is for things that change apart. Two jobs that always change
 > together belong in one package, however different the jobs are.**
+
+## Slice 3, first half - DONE 2026-08-29: a notebook becomes cells
+
+**`.ipynb` was the one input this project *accepted and silently mangled*.** It
+is JSON, so it decoded as UTF-8, passed the upload gate, and was cut as text.
+Measured on the user's own `02-train.ipynb`, chunk 7 read:
+
+```
+_SIMILARITY_PARM\n",
+    "                     if "Q1" in param or "Q2" in param)\n",
+```
+
+### What the file actually is, measured
+
+```
+raw .ipynb          123,461 chars     41,154 est tokens
+  cell source        55,394   44.9%
+  output TEXT        28,280   22.9%   <- the run numbers live here
+  json scaffold      39,787   32.2%   <- pure noise
+```
+
+**Only 45% of a notebook file is the code.** The rest is JSON structure,
+escaping, and stored output.
+
+### The result, end to end on that notebook
+
+| | as raw JSON | loaded |
+|---|---|---|
+| chunks | 94 | **91** |
+| tokens | 45,756 | **28,451** |
+| chunks with escaped JSON | most | **0** |
+| chunks with a cell label | 0 | **91** |
+| chunks carrying run output | 0 | **23** |
+
+**38% fewer tokens for the same notebook.** Signal share is `alpha = f/s`, so
+cutting `s` by 38% raises it by `1/(1 - 0.38)`:
+
+$$
+\alpha_{\text{loaded}} \approx 1.6 \times \alpha_{\text{raw}}
+$$
+
+*The lesson delivered before the measurement predicted "roughly doubles". It is
+**1.6x**, not 2x. Recorded so the smaller true number is the one that survives.*
+
+### What shipped
+
+| module | job |
+|---|---|
+| `ingest/errors.py` | `LoaderError` - `ingest/` earns an error vocabulary, because a loader can fail on bad data where a splitter cannot |
+| `ingest/_notebook.py` | `load_notebook` (JSON -> text) and `split_notebook` (text -> cells) |
+| `ingest/_sections.py` | `to_pieces` - the section logic `_markdown` and `_notebook` both had |
+| `ingest/chunker.py` | a **`LOADERS` dict beside `SPLITTERS`**, applied in `chunk_text` |
+
+**453 passed, 28 skipped, 2 xfailed, ruff clean.**
+
+### Five decisions worth keeping
+
+**1. Loading runs in `chunk_text`, not `chunk_file`.** An upload arrives as
+*text* through `api/uploads.py`, never as a path. Loading in `chunk_file` would
+have fixed the repository door and left the API door mangling notebooks - and
+nothing would have said so.
+
+**2. Images are dropped by construction, not by a filter.** `display_data` reads
+only `data["text/plain"]`. An image output has no `text/plain`, so it yields
+`""` and disappears. There is no mime blocklist to keep up to date.
+
+**3. Outputs are kept, and that is the `quora_siamese` lesson applied.** The run
+numbers exist *only* in stored outputs; the first `A_paper.md` was invented
+because only cell source was read. `error` outputs are kept too, as
+`ValueError: shape mismatch` - a cell that **failed** is a divergence signal.
+`execution_count` is recorded as `run 7` or `not run`, because a cell that never
+ran may hold stale code.
+
+**4. `_join` joins with `""`, never `"\n"`.** nbformat stores each line *with*
+its trailing newline. Joining with `"\n"` doubles every line break - a silent,
+ugly bug that no exception reports.
+
+**5. The loader marks; the splitter cuts.** `load_notebook` writes
+`# %% cell 12 [code] run 7` and `split_notebook` cuts there. That keeps the two
+**jobs** separate while they share one package, and it means the splitter never
+needs the JSON.
+
+### Two real bugs the wiring created, both found by the review pass
+
+Neither existed before `.ipynb` became a supported input. Both are the same
+shape: **a new error type crossing an old boundary that does not know it.**
+
+| bug | was | now |
+|---|---|---|
+| a malformed `.ipynb` uploaded to `/compare` | **`LoaderError` is not an `ApiError`, so it reached the 500 handler** - our bug, not the user's file | **422 `unreadable_upload`** |
+| a malformed `.ipynb` inside a repository | `chunk_source` caught `UnicodeDecodeError` and `OSError` but **not** `LoaderError`, so **one bad notebook lost every file after it** - silently, because it is a generator | skipped and **counted** as `unreadable document` |
+
+The second is the slice 2 audit's *"one unreadable file aborted the whole
+ingest"* defect, **reintroduced through a newer door within one slice.**
+
+> **When you add an error type, walk every boundary that already catches
+> errors.** A new exception does not appear in an old `except` clause, and the
+> failure it causes is a 500 or a silent truncation - never a message naming the
+> real cause.
+
+### The registry rule is now a test, not a sentence
+
+This file said *"add each new suffix to `READABLE_SUFFIXES` **and** `SPLITTERS`
+together - never one alone."* That was prose, and prose rots.
+`test_every_format_we_can_read_is_also_a_format_we_can_fetch` asserts
+`set(LOADERS) <= READABLE_SUFFIXES` and the same for `SPLITTERS`. A suffix in
+one and not the other is now a red build:
+
+- in `LOADERS` but not readable -> a handler `sources/` silently skips
+- readable but no splitter -> a file walked in and then cut blindly
+
+### `_sections.py` - the extraction the rule prescribed
+
+`_markdown` and `_notebook` had **character-identical** `_sections` and
+`_pieces`. CLAUDE.md's layout rule says extract an abstraction *after the second
+case exists*; it now did. `to_pieces(lines, marks)` is shared, and each splitter
+supplies only *how it finds a boundary* - a regex for `#` headings, a regex for
+`# %%` cell marks. The existing tests passing unchanged is what proved the
+refactor safe.
+
+### What slice 3 has NOT done yet
+
+- **`.pdf`, `.docx`, and other code languages.** Next.
+- **The `MAX_CHUNK_TOKENS` cap still applies to `chunk.text`, not
+  `chunk.embed_text`.** On the real notebook, **5 of 91 chunks** exceed the cap
+  once the header is added. `test_no_chunk_exceeds_the_hard_cap_once_its_header_is_added`
+  is still `xfail(strict=True)` and still doing its job. **It was deliberately
+  not attempted at the end of a long session**: the fix has to reserve header
+  room *before* splitting, which means threading a budget through
+  `split_recursive`, and it moves chunk boundaries for **every** format. The
+  chunker is permanent - that change deserves its own pass with a re-measurement,
+  not a tired one.
+- **`MAX_UPLOAD_BYTES` is still 1MB.** It has to rise for PDFs; a notebook fits
+  (the real one is 123KB).
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
@@ -3933,12 +4083,20 @@ ask for it.
 **The procedure, five steps:**
 
 ```
+0. COMMIT FIRST, or copy the file aside      <- see the warning below
 1. edit the source to break EXACTLY what the test guards   (one line)
 2. run the suite
 3. read which test failed - not merely that one did
 4. git checkout -- <file>            (undo, always)
 5. report the outcome in the message that delivers the test
 ```
+
+> **Step 0 was learned by losing work, 2026-08-29.** `git checkout -- <file>`
+> restores the file to the last **commit**, not to the state before the
+> mutation. Mutating a file whose changes are **uncommitted** therefore deletes
+> them. It silently wiped a finished `LOADERS` wiring in `chunker.py` and
+> `sources/defaults.py`; only re-reading `git status` found it. **Commit before
+> mutating, or the undo step is a delete step.**
 
 **Three outcomes, and two of them are bugs:**
 
