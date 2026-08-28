@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from labpilot.ingest._notebook import load_notebook
+from labpilot.ingest._notebook import load_notebook, split_notebook
 from labpilot.ingest.errors import LoaderError
 
 
@@ -122,3 +122,56 @@ def test_cell_numbers_follow_the_notebook_even_when_a_cell_is_empty():
 def test_something_that_is_not_a_notebook_is_refused_never_returned_raw(raw):
     with pytest.raises(LoaderError):
         load_notebook(raw)
+
+
+def loaded(*cells: dict) -> str:
+    return load_notebook(notebook(*cells))
+
+
+def test_every_cell_becomes_exactly_one_piece():
+    text = loaded(code(["a = 1\n"]), markdown(["## Two\n"]), code(["b = 2\n"]))
+
+    pieces = split_notebook(text)
+
+    assert [piece.label for piece in pieces] == [
+        "cell 1 code",
+        "cell 2 markdown",
+        "cell 3 code",
+    ]
+
+
+def test_a_cell_keeps_its_marker_and_its_body_together():
+    pieces = split_notebook(loaded(code(["a = 1\n"], [stream(["done\n"])])))
+
+    assert pieces[0].text.startswith("# %% cell 1 [code]")
+    assert "a = 1" in pieces[0].text
+    assert "done" in pieces[0].text
+
+
+def test_line_numbers_point_at_the_real_lines():
+    text = loaded(code(["a = 1\n"]), code(["b = 2\n"]))
+    lines = text.splitlines()
+
+    for piece in split_notebook(text):
+        assert "\n".join(lines[piece.start_line - 1 : piece.end_line]) == piece.text
+
+
+def test_no_cell_is_lost_and_none_is_split_in_two():
+    cells = [code([f"x = {n}\n"]) for n in range(12)]
+
+    pieces = split_notebook(loaded(*cells))
+
+    assert len(pieces) == 12
+    for n in range(12):
+        assert f"x = {n}" in pieces[n].text
+
+
+def test_text_with_no_markers_yields_one_piece_not_zero():
+    pieces = split_notebook("just some text\nwith two lines")
+
+    assert len(pieces) == 1
+    assert pieces[0].label == ""
+
+
+def test_an_empty_notebook_yields_no_pieces():
+    assert split_notebook(load_notebook(notebook())) == []

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
+from labpilot.ingest.contracts import Piece
 from labpilot.ingest.errors import LoaderError
 
+CELL_MARK = re.compile(r"^# %% cell (\d+) \[(\w+)\]")
 OUTPUT_SEPARTOR = "# --- output ---"
 TEXT_MIME = "text/plain"
 
@@ -106,3 +109,53 @@ def _join(value: Any) -> str:
         # nbformat keeps every line's own trailing newline, so join with "".
         return "".join(part for part in value if isinstance(part, str))
     return ""
+
+
+def split_notebook(text: str) -> list[Piece]:
+    lines = text.splitlines()
+    return _pieces(lines, _sections(lines, _mark_lines(lines)))
+
+
+def _mark_lines(lines: list[str]) -> list[tuple[int, str]]:
+    marks = []
+    for index, line in enumerate(lines):
+        match = CELL_MARK.match(line)
+        if match:
+            marks.append((index, f"cell {match.group(1)} {match.group(2)}"))
+
+    return marks
+
+
+def _sections(
+    lines: list[str], marks: list[tuple[int, str]]
+) -> list[tuple[int, int, str]]:
+    if not marks:
+        return [(0, len(lines), "")]
+    sections = []
+    if marks[0][0] > 0:
+        sections.append((0, marks[0][0], ""))
+    for position, (index, label) in enumerate(marks):
+        end = marks[position + 1][0] if position + 1 < len(marks) else len(lines)
+        sections.append((index, end, label))
+    return sections
+
+
+def _pieces(lines: list[str], sections: list[tuple[int, int, str]]) -> list[Piece]:
+    pieces = []
+    for start, end, label in sections:
+        while start < end and not lines[start].strip():
+            start += 1
+        while end > start and not lines[end - 1].strip():
+            end -= 1
+        if start >= end:
+            continue
+        pieces.append(
+            Piece(
+                text="\n".join(lines[start:end]),
+                start_line=start + 1,
+                end_line=end,
+                label=label,
+            )
+        )
+
+    return pieces
