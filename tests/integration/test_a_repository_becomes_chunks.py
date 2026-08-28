@@ -98,3 +98,64 @@ def test_a_file_we_cannot_read_is_counted_and_does_not_stop_the_ingest(
 
     assert {chunk.source for chunk in chunks} == {"a.py", "z.py"}
     assert skipped == {"unreadable file": 1}
+
+
+def test_one_broken_notebook_does_not_abort_the_whole_ingest(tmp_path):
+    # The slice 2 audit fixed this for unreadable FILES. A document whose
+    # loader refuses is the same failure through a newer door: without the
+    # LoaderError guard, one bad .ipynb in a repository loses every file
+    # after it, silently, because chunk_source is a generator.
+    build(
+        tmp_path / "repo",
+        {
+            "a_first.py": "def first():\n    return 1\n",
+            "b_broken.ipynb": "{ this is not json",
+            "c_last.py": "def last():\n    return 2\n",
+        },
+    )
+
+    with open_folder(tmp_path / "repo") as source:
+        chunks = list(chunk_source(source, side="B"))
+
+    sources = {chunk.source for chunk in chunks}
+    assert sources == {"a_first.py", "c_last.py"}
+    assert source.skipped["unreadable document"] == 1
+
+
+def test_a_notebook_in_a_repository_becomes_real_cells(tmp_path):
+    import json
+
+    notebook = json.dumps(
+        {
+            "cells": [
+                {
+                    "cell_type": "markdown",
+                    "source": ["## Training\n", "We train for ten epochs.\n"],
+                },
+                {
+                    "cell_type": "code",
+                    "source": ["train(epochs=10)\n"],
+                    "outputs": [
+                        {
+                            "output_type": "stream",
+                            "name": "stdout",
+                            "text": ["final f1 0.8226\n"],
+                        }
+                    ],
+                    "execution_count": 4,
+                },
+            ],
+            "nbformat": 4,
+        }
+    )
+    build(tmp_path / "repo", {"research/train.ipynb": notebook})
+
+    with open_folder(tmp_path / "repo") as source:
+        chunks = list(chunk_source(source, side="B"))
+
+    joined = "\n".join(chunk.text for chunk in chunks)
+    assert "We train for ten epochs." in joined
+    assert "train(epochs=10)" in joined
+    assert "final f1 0.8226" in joined
+    assert '\n",' not in joined
+    assert all(chunk.source == "research/train.ipynb" for chunk in chunks)
