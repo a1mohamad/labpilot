@@ -24,6 +24,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Slice 1b — Google blocked](#slice-1b--done-2026-08-20-and-google-is-blocked) ·
 [**Slice 1b DONE — five embedders**](#slice-1b-second-pass--five-embedders-and-cohere-is-the-surprise) ·
 [Hybrid search](#hybrid-search--decided-2026-08-20-built-in-slice-5) ·
+[**Slice 8 decides embedder + reranker**](#slice-8-decides-the-embedder-and-the-reranker--recorded-2026-08-28) ·
 [**Hardening the API**](#hardening-and-what-running-it-for-real-exposed--2026-08-17) ·
 [**The API layout**](#the-api-layout--restructured-2026-08-17) ·
 [**The system-wide audit**](#the-system-wide-audit--2026-08-17) ·
@@ -505,10 +506,23 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > Two were fixed; the third is pinned by a second `xfail(strict=True)`, because
 > choosing its number is slice 7's decision, not slice 2's.
 >
-> **Read that second table before slice 6.** `embed-v4.0` is the best *ranker*
-> — perfect recall@10, best MRR — and stays last only because its quota is the
-> reranker's. And under a rerank pipeline **recall@10 matters more than
-> recall@5**, which is the number the current order rests on.
+> **Read that second table before slice 6 — and note that Google now leads it.**
+> `gemini-embedding-001` was scored on 2026-08-27 and is the **only model with
+> perfect recall@5** (1.000, against codestral's 0.941). It also ranks `D2`
+> **3rd where codestral ranks it 41st**, which was our worst known miss and the
+> motivating case for hybrid search. Its budget is now known too: **1,000/day
+> each for `gemini-embedding-001` and `gemini-embedding-2`**, on a pool separate
+> from the Flash generators — but only **30K tokens/minute**, which is tighter
+> than codestral's 50K, so it is *slower to ingest* while being *better at
+> recall*. `embed-v4.0` keeps the best MRR and is **backup only**, because its
+> quota is the reranker's. Under a rerank pipeline **recall@10 matters more than
+> recall@5**, which is the number the current `MIGRATION` order rests on.
+>
+> **`MIGRATION` is deliberately NOT reordered yet.** Google's three questions
+> belong to three different slices — can it be indexed (slice 4, the pgvector
+> 2000-dim ceiling), is it fast enough to ingest (the routing rule), does it rank
+> best on more than one fixture (slice 8). See
+> [slice 8 decides the embedder and the reranker](#slice-8-decides-the-embedder-and-the-reranker--recorded-2026-08-28).
 >
 > **One real bug is open and belongs to slice 3:** `MAX_CHUNK_TOKENS` is
 > enforced on `chunk.text`, but what is embedded and reranked is
@@ -1870,7 +1884,7 @@ slice 4 says *stuffed*, and it means retrieval currently changes nothing at all.
 | 5 | **Cosine + keyword search** | a query returns the right chunks, the `side` filter works, and BM25 catches identifier queries like `D2` | medium |
 | 6 | **Reranking** | the top 50 become the right top 10, and *skip* still works | **heavy** — bi-encoder vs cross-encoder |
 | 7 | **The new selector** | `select()` is deleted; A fills before B; the outline lists **files** | light |
-| 8 | **Measure** | the same fixture, then a **second** fixture in another domain | none — it is scoring |
+| 8 | **Measure** | the same fixture, then a **second** fixture in another domain — **and the embedder and reranker order is settled here, on real numbers** | none — it is scoring |
 
 **The ordering rule is unchanged from Step 0: only one thing may be wrong at a
 time.** Three placements carry real weight:
@@ -2017,6 +2031,56 @@ file's own rule.
 
 Slices 1 to 5 cost almost nothing. That is unusual, and it is the right place to
 move quickly.
+
+### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
+
+*Written at the user's request, before the second fixture exists, so the rule
+cannot be bent after the numbers arrive.*
+
+Every embedder number in this file comes from **17 hand-written queries over one
+Python file**. That is enough to pick a **default** and not enough to pick a
+**policy** — this file already says slice 1 *"picks a default, not a policy"*.
+Slice 8 is where both orders stop being provisional.
+
+| | measured today | slice 8 must have |
+|---|---|---|
+| queries | 17, one author, one file | **a new set, ~50+, written against several projects** |
+| corpora | `B_train.py` alone | **several real repositories, more than one language** |
+| embedders scored | 5 | the same 5, **plus `gemini-embedding-2`** |
+| **rerankers scored** | **zero** | **all four, plus the skip case** |
+
+**The reranker order has never been measured at all, and that is the bigger
+hole.** Chain 3 is ordered by *quota shape* — spend the bucket that renews, bank
+the one-time grant. That is a good tie-breaker and it is **no evidence** that
+they rank alike. Slice 6 builds reranking; **slice 8 is where its order stops
+being a guess.**
+
+**The decision rules, fixed now so a later number cannot bend them:**
+
+1. **Rank the embedder on recall@10, not recall@5.** The pipeline retrieves 50
+   and reranks to 10. Reranking fixes ordering; it can never recover a chunk
+   retrieval did not return.
+2. **A model that cannot be indexed is not a candidate**, whatever it scores —
+   the pgvector 2000-dimension ceiling is a hard gate, not a preference.
+3. **Rank by the resource that runs out**, not only by the score.
+4. **A query must never contain the identifier it is looking for**, or the test
+   measures string matching and everything scores ~100%.
+5. **Score with the answer key; never write the queries from it.** Scoring is
+   not leakage. Adding a target because a model missed it is.
+
+**Cohere is a backup for embedding, and that is now a decision, not a
+finding.** *(User's call, 2026-08-28.)* `embed-v4.0` wins MRR and ties perfect
+recall@10, and it still must not hold a corpus: its 1,000 calls/month is one
+bucket shared with rerank, and Cohere is the reranker primary. A corpus embedded
+there spends the rerank budget on every query for as long as the corpus lives.
+It stays reachable, and it is entered only when the models above it are gone.
+
+**What this section does not decide.** The `MIGRATION` order is not rewritten
+today on the strength of one 17-query fixture, however good Google's numbers
+are. Google's *storage* question belongs to slice 4, its *ingest speed* to the
+routing rule, and its *ranking* to slice 8. **Three separate questions, three
+separate slices** — collapsing them is how a default becomes a policy without
+anyone deciding it.
 
 ### A parallel track, not a slice
 
@@ -2527,15 +2591,21 @@ above. **The tables in that section are superseded by this one.***
 **290 unit · 49 api · 7 integration · 24 smoke · ruff clean. All 14 new
 invariants survived mutation testing.**
 
-| | codestral | **cohere v4** | bge-base | mistral | gemini |
+| | codestral | cohere v4 | bge-base | mistral | **gemini-embedding-001** |
 |---|---|---|---|---|---|
-| dim | 1536 | 1536 | 768 | 1024 | 3072 |
-| recall@1 | 0.412 | **0.529** | 0.294 | 0.353 | — |
-| **recall@5** | **0.941** | 0.882 | 0.824 | 0.765 | — |
-| **recall@10** | 0.941 | **1.000** | 0.882 | 0.882 | — |
-| **MRR** | 0.613 | **0.723** | 0.523 | 0.529 | — |
-| tokens, same corpus | 14,979 | **13,412** | 39,936 | 19,143 | — |
-| platform | Mistral | Cohere | Cloudflare | Mistral | Google ❌ |
+| dim | 1536 | 1536 | 768 | 1024 | **3072** |
+| recall@1 | 0.412 | **0.529** | 0.294 | 0.353 | **0.529** |
+| **recall@5** | 0.941 | 0.882 | 0.824 | 0.765 | **1.000** |
+| **recall@10** | 0.941 | **1.000** | 0.882 | 0.882 | **1.000** |
+| **MRR** | 0.613 | **0.723** | 0.523 | 0.529 | 0.690 |
+| tokens, same corpus | 14,979 | **13,412** | 39,936 | 19,143 | **not reported** |
+| platform | Mistral | Cohere | Cloudflare | Mistral | **Google ✅** |
+
+**The Google column was scored a week later, on 2026-08-27**, once the exit IP
+stopped being refused — saved as `artifacts/2026-08-27_22-23_google-embedder-scored.md`.
+`codestral-embed` was re-run in the same pass as a **control** and reproduced
+its 2026-08-20 numbers exactly (0.412 / 0.941 / 0.941 / MRR 0.613), so the two
+columns are comparable and the harness is not the variable.
 
 #### Cohere is the best ranker, and it stays last anyway
 
@@ -2562,6 +2632,44 @@ reranking fixes ordering but cannot recover a chunk retrieval never returned.
 On that measure Cohere is perfect and codestral is not. Slice 6 must re-read
 this table once a reranker exists; the current order rests on recall@5, which
 may be the wrong headline.
+
+#### Google was scored on 2026-08-27, and it leads on recall
+
+**`gemini-embedding-001` is the only model that put every target in the top 5.**
+recall@5 **1.000** against codestral's 0.941 and Cohere's 0.882; recall@10 also
+1.000, tying Cohere. Cohere keeps MRR (0.723 against 0.690), so Google ranks
+*more* targets highly while Cohere ranks the top one slightly better.
+
+**The result that matters most is `D2`, because it was our worst known miss.**
+The query is *"gradients are clipped at a global norm of 1.0"* and the answer is
+the constant `CLIP_NORM = 1.5`:
+
+```
+codestral-embed   rank 41    returned the line that CALLS clip_grad_norm_
+gemini-embedding  rank  3    returned the config block
+```
+
+This file used `D2` as the measured argument for building hybrid keyword search
+in slice 5 — *"vectors are good at meaning, keywords are good at names"*. **A
+better embedder just weakened part of that argument.** Hybrid search is still
+worth building and still cheap, but slice 5 must re-check whether it moves
+recall@5 **on top of Google**, not on top of codestral. If it does not, do not
+keep it.
+
+> **A weakness you designed a feature around may belong to the model, not to the
+> method.** Re-run the motivating case after any model change, or you ship a fix
+> for a problem that no longer exists.
+
+**Two costs Google carries that no other candidate does:**
+
+1. **It cannot be indexed as a plain `vector`.** 3072 dimensions is above
+   pgvector's 2000-dimension index ceiling, measured on the real Supabase
+   project. It needs an **expression index on `(v::halfvec(3072))`**, or
+   `outputDimensionality: 1536` — and that second option is a *different vector*,
+   so its recall would have to be re-scored. **This is a slice 4 decision.**
+2. **It reports no usage.** `batchEmbedContents` returns no usage block, so the
+   token cost of an ingest cannot be read from the response — only estimated.
+   Every other provider tells us.
 
 #### The query/document asymmetry became real, and it may explain Cohere's lead
 
@@ -4550,6 +4658,28 @@ rested on it.** The truth, read from the account's own
 | Gemini 3.7 / 3.6 / 3.5 / 3 Flash | 5 | 250K | **20 each** |
 | Gemini 3.5 / 3.1 Flash-Lite | 15 | 250K | **500 each** |
 | **Gemma 4 31B / 26B** | 30 | **16K** | **14,400 each** |
+| **Gemini Embedding 1 / 2** | **100** | **30K** | **1,000 each** |
+
+**The embedding row was read from the same page on 2026-08-28**, and it closes
+the gap slice 1b left open. Two things follow, and the second is the one that
+binds:
+
+- **There are two embedding models, each with its own 1,000/day.** Confirmed by
+  `GET /v1beta/models`: `gemini-embedding-001` **and** `gemini-embedding-2`
+  (plus a `-preview`). Quota is per model, so that is **2,000 embed requests a
+  day** — on a pool completely separate from the Flash generators.
+  **`gemini-embedding-2` has never been called and never been scored.**
+- **Requests are not the limit; 30K tokens/minute is.** Against codestral's
+  50K TPM, Google is the *tighter* of the two on ingest:
+
+$$
+T_{\text{ingest}} = \frac{2000 \times 192}{30{,}000} \approx 13 \ \text{minutes}
+\qquad \text{against codestral's} \approx 8
+$$
+
+  So "Google is better" is true of **recall** and false of **ingest speed**.
+  That is exactly the trade the corpus-size routing rule exists to settle, and
+  it now has a third candidate instead of two.
 
 Three things follow, and all three changed the design:
 
