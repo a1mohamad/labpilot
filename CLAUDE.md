@@ -1943,21 +1943,57 @@ Everything else falls to `split_recursive`.
 
 | Job | Question it answers | Layer | Where it lives |
 |---|---|---|---|
-| **Source** | "give me the **files**" — folder, zip, git URL | **adapter** | **new** — `labpilot/sources/` (slice 2) |
-| **Loader** | "give me **text** from these bytes" | core | **new** — `labpilot/loaders/` (slice 3) |
-| **Splitter** | "give me good **boundaries** in this text" | core | existing — `labpilot/ingest/` |
+| **Source** | "give me the **files**" — folder, zip, git URL | **adapter** | `labpilot/sources/` (slice 2) |
+| **Loader** | "give me **text** from these bytes" | core | **`labpilot/ingest/`, a `LOADERS` dict** (slice 3) |
+| **Splitter** | "give me good **boundaries** in this text" | core | `labpilot/ingest/`, the `SPLITTERS` dict |
 
 PDF, Word and notebooks need the last two. A repository needs only the first.
-Keeping them apart means one PDF loader plus one prose splitter — never a
-PDF-shaped chunker.
+Keeping the two **jobs** apart means one PDF loader plus one prose splitter —
+never a PDF-shaped chunker.
 
-**`sources/` is a top-level package, not a subpackage of `ingest/`, and the
-reason is the layer table above.** It runs `git clone`, extracts archives and
-walks the filesystem — it talks to the outside world, so it is an **adapter**
-and belongs beside `llm/` and `embed/`. `loaders/` is pure bytes-to-text logic
-and sits in **core** beside `ingest/`. *An earlier draft of this section put
-both inside `ingest/` on the grounds that they are "one pipeline". They are one
-pipeline and two layers, and the layer is what decides the folder.*
+**`sources/` is a top-level package, not a subpackage of `ingest/`.** It runs
+`git clone`, extracts archives and walks the filesystem — it talks to the
+outside world, so it is an **adapter** and belongs beside `llm/` and `embed/`.
+Putting a subprocess call inside a pure-logic package is exactly what
+`test_architecture.py` exists to prevent.
+
+#### Loaders live INSIDE `ingest/` — corrected 2026-08-28
+
+*An earlier draft of this section planned a separate `labpilot/loaders/`
+package. **The user rejected it and was right.** The correction is recorded
+here because the reasoning generalises.*
+
+**The layer argument does not apply.** It correctly separates `sources/`
+(adapter) from `ingest/` (core). But `loaders/` would be **core too** — the same
+layer as `ingest/` — so the rule that decides the `sources/` question decides
+nothing here. A rule reused outside the case it was made for is not evidence.
+
+**And this file's own layout rule settles it the other way:**
+
+> *"Two modules always edited together — they are one module."*
+
+Every new format touches both jobs at once. There is no `.pdf` loader without a
+`.pdf` splitter decision, and this file already states the pairing as a rule:
+*add each new suffix to `READABLE_SUFFIXES` **and** `SPLITTERS` together.* It is
+already true of the code, too — `chunk_file` reads and then splits in one
+function, so the loader is simply the half that `path.read_text()` occupies now.
+
+**The shape, which keeps the distinction and drops the folder:**
+
+```
+labpilot/ingest/
+    chunker.py      LOADERS dict  +  SPLITTERS dict, side by side
+    _notebook.py    load_notebook()  +  split_notebook()
+    _pdf.py         load_pdf()
+    _markdown.py    _python.py    _recursive.py   (existing)
+```
+
+**Two dicts, one per job, in one package.** Loading and splitting stay separate
+*jobs* — a loader may fail in ways a splitter cannot, and PDF extraction is
+lossy where text splitting is not — but they stop being separate *folders*.
+
+> **A folder is for things that change apart. Two jobs that always change
+> together belong in one package, however different the jobs are.**
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
@@ -2816,9 +2852,11 @@ git clone --depth 1 https://github.com/a1mohamad/labpilot
 ### The five decisions worth keeping
 
 **1. `sources/` is an adapter, not part of `ingest/`.** It runs `git`, extracts
-archives and walks the filesystem — it talks to the outside world. `loaders/`
-(slice 3) is pure bytes-to-text and belongs in **core**. *One pipeline, two
-layers, and the layer decides the folder.*
+archives and walks the filesystem — it talks to the outside world, so it is a
+different **layer** from the pure logic in `ingest/`. *One pipeline, two layers,
+and the layer decides the folder.* **Loading is a different story** — it is core,
+the same layer as splitting, so it lives **inside** `ingest/` as a `LOADERS`
+dict. See [loaders live inside ingest](#loaders-live-inside-ingest--corrected-2026-08-28).
 
 **2. The `with` shape exists for the other two.** A folder has nothing to clean
 up. `open_folder` is written first *because* it is trivial, so the shape is
