@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from labpilot.sources import walk
 from labpilot.sources.archive import _extract, open_zip
 from labpilot.sources.errors import SourceNotFound, SourceTooLarge, UnsafeArchive
-from labpilot.sources.walk import walk
 
 
 def make_zip(path: Path, entries: dict[str, str]) -> Path:

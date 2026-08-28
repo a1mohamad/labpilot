@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from labpilot.sources import walk
 from labpilot.sources.errors import SourceNotFound
 from labpilot.sources.folder import open_folder
-from labpilot.sources.walk import walk
 
 
 def test_the_folder_name_becomes_the_artifact_name(tmp_path):

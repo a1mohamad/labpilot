@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from labpilot.sources import walk
 from labpilot.sources.contracts import Source
 from labpilot.sources.defaults import MAX_FILE_BYTES
 from labpilot.sources.errors import SourceTooLarge
-from labpilot.sources.walk import walk
 
 
 def build(root: Path, files: dict[str, str]) -> Source:
@@ -57,7 +57,7 @@ def test_subfolders_are_sorted_even_when_the_filesystem_is_not(tmp_path, monkeyp
             visited.append(name)
             yield str(tmp_path / name), [], []
 
-    monkeypatch.setattr("labpilot.sources.walk.os.walk", unsorted_walk)
+    monkeypatch.setattr("labpilot.sources._walk.os.walk", unsorted_walk)
 
     list(walk(Source(name="repo", root=tmp_path)))
 
@@ -111,7 +111,7 @@ def test_a_file_over_the_size_limit_is_skipped_and_counted(tmp_path):
 
 
 def test_too_many_files_refuses_instead_of_truncating(tmp_path, monkeypatch):
-    monkeypatch.setattr("labpilot.sources.walk.MAX_FILES", 2)
+    monkeypatch.setattr("labpilot.sources._walk.MAX_FILES", 2)
     source = build(tmp_path, {"a.py": "1", "b.py": "2", "c.py": "3"})
 
     with pytest.raises(SourceTooLarge, match="more than 2 readable files"):
@@ -119,7 +119,7 @@ def test_too_many_files_refuses_instead_of_truncating(tmp_path, monkeypatch):
 
 
 def test_too_much_text_refuses_instead_of_truncating(tmp_path, monkeypatch):
-    monkeypatch.setattr("labpilot.sources.walk.MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr("labpilot.sources._walk.MAX_TOTAL_BYTES", 10)
     source = build(tmp_path, {"a.py": "12345", "b.py": "12345", "c.py": "12345"})
 
     with pytest.raises(SourceTooLarge, match="bytes of readable text"):

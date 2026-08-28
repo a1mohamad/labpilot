@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from labpilot.sources import walk
 from labpilot.sources.defaults import CLONE_TIMEOUT_SECONDS
 from labpilot.sources.errors import CloneFailed, UnsupportedURL
 from labpilot.sources.git import _repository_name, _validated, open_git
-from labpilot.sources.walk import walk
 
 REPO = "https://github.com/a1mohamad/labpilot"
 
