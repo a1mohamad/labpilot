@@ -156,14 +156,18 @@ def test_line_numbers_point_at_the_real_lines():
         assert "\n".join(lines[piece.start_line - 1 : piece.end_line]) == piece.text
 
 
-def test_no_cell_is_lost_and_none_is_split_in_two():
-    cells = [code([f"x = {n}\n"]) for n in range(12)]
+def test_pieces_never_overlap_so_a_cell_cannot_appear_twice():
+    cells = [code([f"x = {n:02d}\n"]) for n in range(12)]
 
     pieces = split_notebook(loaded(*cells))
 
     assert len(pieces) == 12
-    for n in range(12):
-        assert f"x = {n}" in pieces[n].text
+    for n, piece in enumerate(pieces):
+        assert f"x = {n:02d}" in piece.text
+        assert f"x = {n + 1:02d}" not in piece.text
+
+    for earlier, later in zip(pieces, pieces[1:], strict=False):
+        assert earlier.end_line < later.start_line
 
 
 def test_text_with_no_markers_yields_one_piece_not_zero():
