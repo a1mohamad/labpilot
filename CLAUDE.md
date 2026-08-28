@@ -452,9 +452,9 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1 AND 1b ARE DONE. `codestral-embed` is the primary, by measurement.**
-**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 2 is next.**
-**`labpilot/embed/` holds FIVE embedders across FIVE platforms. 346 tests, ruff clean.**
+**Phase: STEP 1 SLICES 1, 1b AND 2 ARE DONE. A real repository becomes chunks.**
+**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 3 — read a document — is next.**
+**`labpilot/sources/` clones, unzips and walks. 425 passed, 28 skipped, 1 xfailed.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
 **Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
 **Last updated 2026-08-27 (thirteenth session). Working branch: `main`.**
@@ -489,12 +489,22 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > passes, the marker should come off — otherwise a future real failure is
 > recorded as an expected one.
 >
-> **Next task: Step 1 slice 2 — read a repository.** Slices 1 and **1b** are
-> done: `labpilot/embed/` ships **five** embedders across **five** platforms,
-> `base.py` is extracted, and `codestral-embed` is the primary on
-> **0.941 recall@5**. See
-> [slice 1](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) and
-> [the five-embedder result](#slice-1b-second-pass--five-embedders-and-cohere-is-the-surprise).
+> **Next task: Step 1 slice 3 — read a document.** Slices 1, 1b and **2** are
+> done. See [slice 2](#slice-2--done-2026-08-28-a-repository-becomes-chunks) and
+> [its audit](#the-slice-2-audit--2026-08-28).
+>
+> **Slice 3 has a target waiting for it.** `test_no_chunk_exceeds_the_hard_cap_once_its_header_is_added`
+> is `xfail(strict=True)` — the cap is enforced on `chunk.text` while
+> `chunk.embed_text` is what we send, and **43 of 1,094 real chunks exceed it**.
+> Fix the cap and the suite goes red until the marker is deleted. Slice 3 also
+> owes `.ipynb` and `.pdf`, and must add each new suffix to
+> `READABLE_SUFFIXES` **and** `SPLITTERS` together — never one alone.
+>
+> **Three defects are open and each needs a source change**, listed at the end
+> of [the slice 2 audit](#still-unprotected-and-each-needs-a-source-change--not-a-test):
+> `os.walk` silently swallowing unreadable directories, `chunk_source` catching
+> only `UnicodeDecodeError`, and `MAX_ARCHIVE_BYTES` promising 50MB the API can
+> never deliver.
 >
 > **Read that second table before slice 6.** `embed-v4.0` is the best *ranker*
 > — perfect recall@10, best MRR — and stays last only because its quota is the
@@ -1855,7 +1865,7 @@ slice 4 says *stuffed*, and it means retrieval currently changes nothing at all.
 |---|---|---|---|
 | 1 | **Embed one chunk, and settle the model** | a vector comes back, and `codestral-embed` vs `mistral-embed` is decided **by measurement** | **heavy** — embeddings, cosine similarity, normalization |
 | **1b** | **More embedders** | Google and one open-weights model scored on `queries.json`; real rate limits recorded; `base.py` earned | medium |
-| 2 | **Read a repository** | folder, zip and git URL all become chunks, streamed in batches of 100 | light — engineering already known |
+| 2 | ~~**Read a repository**~~ ✅ **DONE 2026-08-28** | folder, zip and git URL all become chunks, streamed | light — engineering already known |
 | 3 | **Read a document** | PDF, Word, notebook and other languages get real boundaries | medium |
 | 4 | **pgvector** | ~2,000 chunks go in and come back out unchanged | **heavy** — vector databases, ANN indexes |
 | 5 | **Cosine + keyword search** | a query returns the right chunks, the `side` filter works, and BM25 catches identifier queries like `D2` | medium |
@@ -2664,6 +2674,208 @@ All eight rows live inside `_raw_vectors`, `_payload` and `_prompt_tokens`.
 Nothing leaked into the shared template, which is the test of whether
 `base.py` was cut in the right place.
 
+## Slice 2 — DONE 2026-08-28: a repository becomes chunks
+
+**Shipped:** `labpilot/sources/` — a **new adapter package** that turns a folder,
+a `.zip` or a git URL into files, plus `chunk_source` in `api/services.py` that
+turns those files into chunks. **Proven against real GitHub**, not only mocks.
+
+| module | job |
+|---|---|
+| `contracts.py` | `Source` (the artifact) · `SourceFile` (one file in it) |
+| `defaults.py` | the allowlist, the skip list, five limits |
+| `errors.py` | `SourceError` and five subclasses |
+| `_walk.py` | folder → files: prune, filter, count every skip, **yield** |
+| `folder.py` · `archive.py` · `git.py` | the three openers, one `with` shape |
+
+```
+git clone --depth 1 https://github.com/a1mohamad/labpilot
+  -> 100 files kept, 17 skipped (binary)
+  -> 1,094 chunks, 251,017 tokens, max 544
+  -> temp folder deleted
+  -> 5.2 seconds
+```
+
+**425 passed, 28 skipped, 1 xfailed, ruff clean.**
+
+### The five decisions worth keeping
+
+**1. `sources/` is an adapter, not part of `ingest/`.** It runs `git`, extracts
+archives and walks the filesystem — it talks to the outside world. `loaders/`
+(slice 3) is pure bytes-to-text and belongs in **core**. *One pipeline, two
+layers, and the layer decides the folder.*
+
+**2. The `with` shape exists for the other two.** A folder has nothing to clean
+up. `open_folder` is written first *because* it is trivial, so the shape is
+fixed before the cases that must delete a temp directory arrive.
+
+**3. Prune directories; never filter afterwards.** `os.walk` re-reads the
+`dirnames` list after our turn, so `dirnames[:] = sorted(...)` stops it
+descending. `node_modules` is 200,000 files we never stat. **The `[:]` is the
+whole trick** — `dirnames = [...]` moves our own label while `os.walk` keeps
+reading the list it still holds.
+
+**4. Sorting is correctness, not tidiness.** Chunk ids are positional. If folder
+order shifts between machines, `B-42` names a different file and two reports stop
+being comparable — which would throw away `temperature: 0` one layer lower.
+
+**5. Refuse; never truncate.** An oversized tree raises `SourceTooLarge`. Half a
+repository searched silently is the [orphan-chunk failure](#five-failure-modes-to-test-against)
+wearing a different hat.
+
+### The security work, and one claim of mine that measurement killed
+
+| danger | what we do |
+|---|---|
+| **`git clone ext::sh -c ...`** runs a shell command — a documented git transport | accept **only `https://`**, and pass argv as a **list** with `--`, never `shell=True` |
+| a symlink named `notes.py` pointing at our `.env` | `path.is_symlink()` → skip, and count it |
+| a zip bomb: 1MB compressed, 10GB unpacked | check the **declared** total, then count the **real** bytes while writing |
+| `git` hanging on a credential prompt | `GIT_TERMINAL_PROMPT=0`, plus a 120s timeout |
+
+**And the claim that was wrong.** This file's own plan said *"naive `extractall`
+writes outside your temp folder"*. Measured:
+
+```
+names in zip  : ['../../escaped.txt', 'C:/Windows/abs.txt', 'ok/good.py']
+files written : ['escaped.txt', 'Windows/abs.txt', 'ok/good.py']
+escaped above out? []
+```
+
+**CPython's `zipfile` already strips `..` and drive letters.** That is true of
+`tarfile` historically, not of `zipfile`. We still validate — but for a
+*different* reason: `extractall` **silently rewrites** the path, and a silent
+rewrite is the failure this project bans. We refuse the archive instead.
+
+> **Check the threat before writing the guard.** The guard survived; the reason
+> for it did not — and a wrong reason is what gets copied into the next project.
+
+### The Python trap that cost a red suite
+
+`sources/__init__.py` exports a function named `walk` from a module named
+`walk.py`. The `from ... import walk` **overwrites the module name with the
+function name** in the package namespace, so
+`monkeypatch.setattr("labpilot.sources.walk.MAX_FILES", ...)` resolved to the
+*function* and three tests died with
+`'function' object has no attribute 'MAX_FILES'`.
+
+Fixed by renaming to `_walk.py`, the convention every other package already
+follows (`_markdown`, `_python`, `_recursive`, `_http`, `_ids`).
+
+> **A package's public name and one of its module names must never be the same
+> word.** Nothing warns you — imports keep working, and only attribute-path
+> tools like `monkeypatch` ever notice.
+
+### What slice 2 deliberately did NOT do
+
+- **The endpoint still accepts only two uploaded files.** Wiring a zip or a URL
+  into `POST /api/v1/compare` would 413 immediately: the outline lists one line
+  per chunk, and 1,094 chunks cost roughly 22,000 tokens. That is slice 7.
+- **`chunk_source` is therefore unreachable from the app** — tested, but called
+  only by tests. Scaffolding with a scheduled consumer, not dead code.
+- **No zip integration test.** `test_archive.py` already runs zip → walk →
+  relpaths, and by then all three openers have produced the same `Source`.
+  *One test per distinct failure, not one per combination.*
+
+## The slice 2 audit — 2026-08-28
+
+*Run at the user's request, asking the same question as the
+[2026-08-17 audit](#the-system-wide-audit--2026-08-17): **which real failure is
+still unprotected?** Three findings, and measurement killed the second one.*
+
+### 1. A test whose name promised more than it checked
+
+```python
+def test_no_chunk_exceeds_the_hard_cap(...):
+    assert estimate_tokens(chunk.text) <= MAX_CHUNK_TOKENS
+```
+
+**What is sent to every embedder and reranker is `chunk.embed_text` — text plus
+header.** Measured on a real corpus:
+
+| | |
+|---|---|
+| max `chunk.text` | 497 |
+| **max `chunk.embed_text`** | **519** (`labpilot/` only) · **544** (whole repo) |
+| over the 510 cap | 2 of 232 · **43 of 1,094** |
+
+So the test was green while the cap was broken for the only string that matters
+— the same shape as `test_the_documented_failures_are_the_ones_the_endpoint_can_raise`
+in the last audit. **A test named after an invariant must check that invariant,
+not a cousin of it.**
+
+Fixed two ways, neither of which hides the defect:
+
+- renamed to `test_no_chunk_text_exceeds_the_hard_cap` — an honest name
+- added `test_no_chunk_exceeds_the_hard_cap_once_its_header_is_added`, marked
+  **`xfail(strict=True)`**. It fails today. **When slice 3 moves the cap onto the
+  string we actually send, it XPASSes and the suite goes red**, forcing someone
+  to delete the marker. Verified by mutation: making `embed_text` drop the header
+  turns it into `[XPASS(strict)] 1 failed`.
+
+> `xfail(strict=True)` is how a **known bug we own** stays visible.
+> `strict=False` is for things outside our control — a dead provider, a blocked
+> region.
+
+### 2. The batch-budget claim — flagged, then killed by measurement
+
+`test_a_full_batch_of_capped_chunks_fits_the_tightest_token_budget` reasons from
+`MAX_BATCH_SIZE × MAX_CHUNK_TOKENS ≤ TIGHTEST_TOKENS_PER_MINUTE`, and finding 1
+means that bound is not actually held. It looked like a second defect. It is not:
+
+```
+claimed  96 x 510 = 48,960 <= 50,000
+real worst batch of 96 = 27,310    ok
+```
+
+Real chunks average **229** tokens, nowhere near the 510 bound. **The derivation
+is formally void and practically safe**, so the test stays as it is. A
+replacement measuring real chunks was written and then **deleted**: a 1.8×
+margin makes it a number, not a guard.
+
+### 3. Nothing checked that our chunks fit the embedders we ship
+
+`BGE Base EN v1.5` declares `max_input_tokens=512`. An embedder whose limit sits
+below `MAX_CHUNK_TOKENS` can never embed this corpus at all — `_check_texts`
+would refuse every call, loudly and uselessly.
+
+`test_every_embedder_can_take_a_chunk_at_our_cap` now parametrizes over
+`MIGRATION` and fails the build instead. Mutation-verified by lowering BGE to
+256. **This is the downstream consequence of finding 1, caught at build time
+rather than at runtime.**
+
+### Measured while auditing, and it corrects this file
+
+**Streaming saves 2×, not the 73MB this file implies.**
+
+```
+4,108 chunks in the working tree
+streamed     : 4.7 MB peak
+materialised : 9.9 MB peak
+```
+
+The 73MB figure was about **vectors**, not chunks, so the rule is right and its
+payoff is deferred to slice 4. Recorded so nobody re-derives it — and so the
+streaming rule is not quietly over-sold.
+
+### Still unprotected, and each needs a source change — not a test
+
+**These are open.** They were found by the audit and deliberately not fixed in
+slice 2, because each changes behaviour and slice 2 was already closed.
+
+1. **`os.walk` silently swallows unreadable directories.** Its default is
+   `onerror=None`. On Render (Linux) a permission-denied subdirectory disappears
+   with no entry in `source.skipped`, breaking this project's own *"nothing may
+   be dropped silently"* rule. **Fix: pass an `onerror` callback that records
+   into `source.skipped`.**
+2. **`chunk_source` catches only `UnicodeDecodeError`.** A `PermissionError` or
+   any other `OSError` on one file aborts the whole ingest — likely whenever
+   `open_folder` runs on a live working tree, with an editor or an antivirus
+   holding a file. `_reason_to_skip` has the same exposure: `stat()` raises if a
+   file vanishes between listing and reading.
+3. **`MAX_ARCHIVE_BYTES` (50MB) can never arrive through the API**, whose
+   `MAX_REQUEST_BODY_BYTES` is about 2MB. The constants promise something the
+   system cannot deliver. Harmless today because the endpoint accepts no
+   archive — **settle it in slice 7**, when it starts to.
 
 ---
 

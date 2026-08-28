@@ -5,6 +5,7 @@ import pytest
 from labpilot.embed import MAX_BATCH_SIZE, MIGRATION
 from labpilot.embed.base import HTTPEmbedder
 from labpilot.embed.errors import EmbeddingError
+from labpilot.ingest.defaults import MAX_CHUNK_TOKENS
 
 CASES = pytest.mark.parametrize(
     "embedder", MIGRATION, ids=lambda embedder: embedder.model
@@ -46,3 +47,14 @@ def test_every_embedder_refuses_without_credentials_and_costs_no_request(
 
     with pytest.raises(EmbeddingError, match="is not set"):
         embedder.embed(["hello"])
+
+
+@CASES
+def test_every_embedder_can_take_a_chunk_at_our_cap(embedder):
+    """A model whose input limit is below our chunk cap can never embed this
+    corpus at all. It would be refused by _check_texts on every call, which is
+    loud but useless - the mistake belongs in the build, not at runtime."""
+    if embedder.max_input_tokens is None:
+        pytest.skip("no declared input limit")
+
+    assert embedder.max_input_tokens >= MAX_CHUNK_TOKENS
