@@ -3953,8 +3953,8 @@ a single day (2026-08-17), all the same shape — an assertion whose input was
 computed from the value under test, so it could never fail:
 
 ```python
-huge = b"x = 1\n" * (MAX_UPLOAD_BYTES // 3)      # raise the limit, payload grows
-over = b"x" * (MAX_REQUEST_BODY_BYTES + 1)       # same bug, hours later
+huge = b"x = 1\n" * (MAX_UPLOAD_BYTES // 3)  # raise the limit, payload grows
+over = b"x" * (MAX_REQUEST_BODY_BYTES + 1)  # same bug, hours later
 ```
 
 **Reading the tests caught none of them. Mutating the source caught all three.**
@@ -4230,6 +4230,22 @@ fails in CI for no real reason — so `ruff.toml`, `requirements-dev.txt`, and
 **CI verifies; it never fixes.** Auto-fixing in CI means the pipeline pushes
 commits to your branch, which needs write access and hides the problem instead of
 showing it. So CI runs `ruff check .`, `ruff format --check .`, `pytest -q`.
+
+**`CLAUDE.md` is CI-checked source, not prose — found the hard way 2026-08-28.**
+`ruff format` formats Python code blocks **inside Markdown files**, so a
+` ```python ` fence in this file is held to the same standard as `labpilot/`.
+A block whose inline comments were aligned with six spaces instead of PEP 8's
+two turned CI red:
+
+```
+--> CLAUDE.md:3956:46      1 file would be reformatted, 113 files already formatted
+```
+
+Two consequences. **Write every ` ```python ` fence here as real formatted
+Python** — or tag the fence with no language when it is pseudo-code, which is
+what most blocks in this file already do. And **run all three CI commands before
+saying a change is clean**; `pytest -q` alone passed happily while
+`ruff format --check .` was failing.
 
 **Two workflows, and the split is about quota:**
 
