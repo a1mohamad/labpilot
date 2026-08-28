@@ -50,7 +50,7 @@ def test_directories_are_visited_in_sorted_order(tmp_path):
 def test_subfolders_are_sorted_even_when_the_filesystem_is_not(tmp_path, monkeypatch):
     visited: list[str] = []
 
-    def unsorted_walk(root):
+    def unsorted_walk(root, **kwargs):
         dirnames = ["zebra", "alpha", "middle"]
         yield str(tmp_path), dirnames, []
         for name in dirnames:
@@ -124,3 +124,35 @@ def test_too_much_text_refuses_instead_of_truncating(tmp_path, monkeypatch):
 
     with pytest.raises(SourceTooLarge, match="bytes of readable text"):
         list(walk(source))
+
+
+def test_an_unreadable_directory_is_counted_and_not_silently_dropped(
+    tmp_path, monkeypatch
+):
+    def refusing_walk(root, **kwargs):
+        kwargs["onerror"](PermissionError(13, "Permission denied", str(root)))
+        yield str(tmp_path), [], ["a.py"]
+
+    monkeypatch.setattr("labpilot.sources._walk.os.walk", refusing_walk)
+    (tmp_path / "a.py").write_text("x = 1", encoding="utf-8")
+    source = Source(name="repo", root=tmp_path)
+
+    assert relpaths(source) == ["a.py"]
+    assert source.skipped == {"unreadable directory": 1}
+
+
+def test_a_file_that_cannot_be_inspected_is_counted_and_does_not_stop_the_walk(
+    tmp_path, monkeypatch
+):
+    source = build(tmp_path, {"locked.py": "x = 1", "fine.py": "y = 2"})
+    real_stat = Path.stat
+
+    def refusing_stat(self, *args, **kwargs):
+        if self.name == "locked.py":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", refusing_stat)
+
+    assert relpaths(source) == ["fine.py"]
+    assert source.skipped == {"unreadable file": 1}

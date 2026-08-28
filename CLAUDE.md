@@ -454,7 +454,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 **Phase: STEP 1 SLICES 1, 1b AND 2 ARE DONE. A real repository becomes chunks.**
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 3 — read a document — is next.**
-**`labpilot/sources/` clones, unzips and walks. 425 passed, 28 skipped, 1 xfailed.**
+**`labpilot/sources/` clones, unzips and walks. 428 passed, 28 skipped, 2 xfailed.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
 **Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
 **Last updated 2026-08-27 (thirteenth session). Working branch: `main`.**
@@ -500,11 +500,10 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > owes `.ipynb` and `.pdf`, and must add each new suffix to
 > `READABLE_SUFFIXES` **and** `SPLITTERS` together — never one alone.
 >
-> **Three defects are open and each needs a source change**, listed at the end
-> of [the slice 2 audit](#still-unprotected-and-each-needs-a-source-change--not-a-test):
-> `os.walk` silently swallowing unreadable directories, `chunk_source` catching
-> only `UnicodeDecodeError`, and `MAX_ARCHIVE_BYTES` promising 50MB the API can
-> never deliver.
+> **The audit's three defects are closed** — see
+> [how each was closed](#the-three-defects-and-how-each-was-closed--2026-08-28).
+> Two were fixed; the third is pinned by a second `xfail(strict=True)`, because
+> choosing its number is slice 7's decision, not slice 2's.
 >
 > **Read that second table before slice 6.** `embed-v4.0` is the best *ranker*
 > — perfect recall@10, best MRR — and stays last only because its quota is the
@@ -2696,7 +2695,7 @@ git clone --depth 1 https://github.com/a1mohamad/labpilot
   -> 5.2 seconds
 ```
 
-**425 passed, 28 skipped, 1 xfailed, ruff clean.**
+**428 passed, 28 skipped, 2 xfailed, ruff clean.**
 
 ### The five decisions worth keeping
 
@@ -2857,25 +2856,46 @@ The 73MB figure was about **vectors**, not chunks, so the rule is right and its
 payoff is deferred to slice 4. Recorded so nobody re-derives it — and so the
 streaming rule is not quietly over-sold.
 
-### Still unprotected, and each needs a source change — not a test
+### The three defects, and how each was closed — 2026-08-28
 
-**These are open.** They were found by the audit and deliberately not fixed in
-slice 2, because each changes behaviour and slice 2 was already closed.
+*Found by the audit, fixed the same day at the user's request. All three
+mutation-tested: removing each guard breaks exactly one test.*
 
-1. **`os.walk` silently swallows unreadable directories.** Its default is
-   `onerror=None`. On Render (Linux) a permission-denied subdirectory disappears
-   with no entry in `source.skipped`, breaking this project's own *"nothing may
-   be dropped silently"* rule. **Fix: pass an `onerror` callback that records
-   into `source.skipped`.**
-2. **`chunk_source` catches only `UnicodeDecodeError`.** A `PermissionError` or
-   any other `OSError` on one file aborts the whole ingest — likely whenever
-   `open_folder` runs on a live working tree, with an editor or an antivirus
-   holding a file. `_reason_to_skip` has the same exposure: `stat()` raises if a
-   file vanishes between listing and reading.
-3. **`MAX_ARCHIVE_BYTES` (50MB) can never arrive through the API**, whose
-   `MAX_REQUEST_BODY_BYTES` is about 2MB. The constants promise something the
-   system cannot deliver. Harmless today because the endpoint accepts no
-   archive — **settle it in slice 7**, when it starts to.
+**1. `os.walk` silently swallowed unreadable directories.** ✅ **FIXED.** Its
+default is `onerror=None`, so on Linux a permission-denied subdirectory vanished
+with no entry in `source.skipped` — breaking this project's own *"nothing may be
+dropped silently"* rule. `walk` now passes an `onerror` callback that records
+`unreadable directory`.
+
+> **A default that ignores errors is a silent-drop waiting to happen.** Read the
+> default of every traversal API you use; `os.walk` never told us.
+**2. One unreadable file aborted the whole ingest.** ✅ **FIXED**, in both
+places it could happen. `chunk_source` caught only `UnicodeDecodeError`, and
+`_reason_to_skip` could raise from `stat()` if a file vanished between listing
+and reading — likely on a live working tree with an editor or an antivirus
+holding a file. Both now catch `OSError` and count `unreadable file`.
+
+The fix also removed a real inefficiency: `_reason_to_skip` called `stat()` and
+then `walk` called it **again**. It is now `_inspect`, returning
+`(reason, size)` from **one** `stat`, using `S_ISREG` instead of a second
+`is_file()` syscall.
+
+**`Source.skip(reason)` was added in the same pass**, because two layers were
+each hand-writing `skipped[reason] = skipped.get(reason, 0) + 1`. Counting
+belongs to the object that owns the count.
+**3. `MAX_ARCHIVE_BYTES` (50MB) can never arrive through the API**, whose
+`MAX_REQUEST_BODY_BYTES` is about 2MB. ⏸ **Pinned, not fixed** — and that is the
+right answer. "Fixing" it means choosing whether the archive limit falls or the
+upload limit rises, and that is a policy for a feature that does not exist yet;
+inventing a number now would be a guess dressed as a decision.
+
+So the **invariant** is written down instead, as
+`test_an_archive_we_accept_must_be_able_to_reach_us` marked
+`xfail(strict=True)`. Slice 7 cannot wire an archive into the endpoint without
+the suite turning red.
+
+> **A limit the system can never reach is a lie.** When you cannot yet choose
+> the number, pin the relationship the numbers must satisfy.
 
 ---
 

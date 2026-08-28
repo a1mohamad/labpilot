@@ -77,3 +77,24 @@ def test_ids_across_a_repository_do_not_collide(tmp_path):
 
     assert len(assigned) == len(chunks)
     assert sorted(assigned) == sorted(f"B-{index}" for index in range(len(chunks)))
+
+
+def test_a_file_we_cannot_read_is_counted_and_does_not_stop_the_ingest(
+    tmp_path, monkeypatch
+):
+    build(tmp_path / "repo", {"a.py": "x = 1", "locked.py": "y = 2", "z.py": "z = 3"})
+    real_read_text = Path.read_text
+
+    def refusing_read(self, *args, **kwargs):
+        if self.name == "locked.py":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", refusing_read)
+
+    with open_folder(tmp_path / "repo") as source:
+        chunks = list(chunk_source(source, side="B"))
+        skipped = dict(source.skipped)
+
+    assert {chunk.source for chunk in chunks} == {"a.py", "z.py"}
+    assert skipped == {"unreadable file": 1}

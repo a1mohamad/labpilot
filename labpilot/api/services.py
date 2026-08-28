@@ -84,7 +84,10 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
                 source=found.relpath,
             )
         except UnicodeDecodeError:
-            source.skipped["not utf-8"] = source.skipped.get("not utf-8", 0) + 1
+            source.skip("not utf-8")
+            continue
+        except OSError:
+            source.skip("unreadable file")
             continue
 
         yield from pieces
