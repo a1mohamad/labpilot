@@ -5,7 +5,8 @@ Read the two rule sections first — they change *how* everything below is done.
 
 **Contents:** [Working Rules](#working-rules-read-first) · [**Network precondition**](#network-precondition--check-the-exit-isp-before-any-llm-work) · [Overview](#project-overview) ·
 [Status](#current-status) · [Environment](#development-environment) ·
-[Conventions](#conventions) · [Architecture](#architecture--stack) ·
+[Conventions](#conventions) · [**Mutation testing**](#mutation-testing--claudes-standing-job-and-it-runs-unasked) ·
+[Architecture](#architecture--stack) ·
 [LLM Serving](#llm-serving--fallback-chain) · [The Three Chains](#the-three-chains--restructured-2026-08-11) ·
 [**The five-way rule**](#how-the-chain-decides--the-five-way-rule) ·
 [**Real quota numbers**](#the-real-free-tier-numbers--measured-2026-08-16-and-they-overturned-a-lot) ·
@@ -518,10 +519,17 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > quota is the reranker's. Under a rerank pipeline **recall@10 matters more than
 > recall@5**, which is the number the current `MIGRATION` order rests on.
 >
-> **`MIGRATION` is deliberately NOT reordered yet.** Google's three questions
-> belong to three different slices — can it be indexed (slice 4, the pgvector
-> 2000-dim ceiling), is it fast enough to ingest (the routing rule), does it rank
-> best on more than one fixture (slice 8). See
+> **The pgvector gate is PASSED — measured 2026-08-28 on the real project.** An
+> `hnsw` index on the expression `(v::halfvec(3072))` builds, **a query really
+> uses it** (`Index Scan`, 64.7 ms against a seq scan's 326.0 ms at 2,000 rows),
+> and half precision cost **0 of 10** in ranking overlap. Storage is 2× a
+> 1536-dim model: 42 MB + 16 MB per 2,000 chunks, so ~8 corpora fit the free
+> 500 MB. **Slice 4 must assert the query PLAN, not the result** — writing the
+> `ORDER BY` the natural way silently falls back to a full scan.
+>
+> **`MIGRATION` is deliberately NOT reordered yet.** Two of Google's three
+> questions remain — is it fast enough to ingest (30K TPM, the routing rule), and
+> does it rank best on more than one fixture (slice 8). See
 > [slice 8 decides the embedder and the reranker](#slice-8-decides-the-embedder-and-the-reranker--recorded-2026-08-28).
 >
 > **One real bug is open and belongs to slice 3:** `MAX_CHUNK_TOKENS` is
@@ -3864,6 +3872,91 @@ opposite ways, and both are rejected here:
 once and ask only *"which real failure is still unprotected?"* Add what is
 genuinely missing. Do not add tests to raise a number.
 
+### Mutation testing — Claude's standing job, and it runs unasked
+
+*Added 2026-08-28, at the user's request, and the reason is worth stating
+plainly: **Claude writes the tests in this project.** So the user cannot be the
+one who remembers to check whether those tests are real. The obligation sits
+with whoever wrote the test, and that is Claude.*
+
+This is the same shape as
+[the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work):
+Claude performs the check and reports the result; the user should never have to
+ask for it.
+
+**The rule, deliberately narrow:**
+
+> **Whenever a test is written that pins an *invariant* — a rule that must
+> always hold, not one example — break the thing it guards,
+> run the suite, read WHICH test fired, then undo. Report the result before the
+> commit. Never for ordinary tests: one happy path, one failure branch, a
+> parametrized value list — those need no mutation.**
+
+**The procedure, five steps:**
+
+```
+1. edit the source to break EXACTLY what the test guards   (one line)
+2. run the suite
+3. read which test failed - not merely that one did
+4. git checkout -- <file>            (undo, always)
+5. report the outcome in the message that delivers the test
+```
+
+**Three outcomes, and two of them are bugs:**
+
+| Result | Verdict |
+|---|---|
+| the new test failed | ✅ real. Keep it |
+| **nothing failed** | ❌ **the test is fake.** Fix it, then re-mutate |
+| **something else failed, the new one never fires alone** | ❌ **the new test is dead.** Delete it |
+
+**The evidence this is not optional.** Three self-fulfilling tests were found in
+a single day (2026-08-17), all the same shape — an assertion whose input was
+computed from the value under test, so it could never fail:
+
+```python
+huge = b"x = 1\n" * (MAX_UPLOAD_BYTES // 3)      # raise the limit, payload grows
+over = b"x" * (MAX_REQUEST_BODY_BYTES + 1)       # same bug, hours later
+```
+
+**Reading the tests caught none of them. Mutating the source caught all three.**
+And the rule *"a threshold test needs a literal on one side"* was written into
+this file **and violated again within hours** — which is exactly why a written
+rule is not enough and a performed check is.
+
+**Step 3 is the one people skip.** *"A mutation was caught"* is not the check;
+*"which test caught it"* is. That question deleted
+`test_nothing_imports_the_entry_layer`, which could never fail on its own
+because the layer rule always fired first — a comforting green line that tested
+nothing.
+
+**Do not reach for `mutmut` or `cosmic-ray`.** Automated mutation testing
+mutates everything and is slow over 400+ tests on an
+[8GB machine](#hardware-limits--important). The targeted manual version costs
+seconds, because the invariant that was just written is already known.
+
+#### The `mutation-test` skill — scheduled, not yet written
+
+The checklist above becomes a **skill** (`SKILL.md`): written once, fired every
+time a new invariant is written. A skill is *reusable instructions loaded on
+demand*; this file is 5,000 lines and always loaded, which makes any single rule
+inside it easy to skim past. **The gain is not new ability — it is a rule that
+does not get skipped.**
+
+**Write it after slice 3, not before.** Slice 3 produces new invariants (the
+token cap moving onto `embed_text`, the notebook and PDF splitters), so its
+content comes from real cases rather than a guess — the same rule this project
+already applies to `base.py`: *extract the abstraction after the second case
+exists.*
+
+**And skills stay out of LabPilot itself.** They are a Claude-platform feature,
+while the chain runs on Google, Mistral, OpenRouter and Cloudflare — the same
+provider-neutrality argument that rejected the Claude Agent SDK. The Step 2
+[capability library](#the-capability-library) is already this idea implemented
+across providers, with one deliberate difference: **our planner chooses in
+code**, because *"never burn a generation call to decide how to spend generation
+calls."*
+
 ### Layout — plan the shape early, create files late
 Reorganising a project is cheap on day one and expensive in month three, because
 by then imports, tests, and habits all point at the old shape. So the **map** is
@@ -4555,6 +4648,63 @@ Three ways out, and each has a price that must be **measured**, not assumed:
 | `halfvec(3072)` column | one index, simplest schema | 16-bit **everywhere**, including storage |
 | **`outputDimensionality: 1536`** | plain `vector`, same width as codestral and cohere | a different vector; **recall must be re-scored**, and Google's docs say truncated vectors must be re-normalized |
 | no index | exact search | O(N) per query — dies past a few thousand chunks |
+
+#### The workaround was proven end to end - measured 2026-08-28
+
+*Run in the Supabase SQL editor on the real `LabPilot` project, on **2,000 rows
+of random `vector(3072)`**. Random vectors are the hardest case for approximate
+search, because real embeddings cluster and random ones do not.*
+
+| # | Question | Result |
+|---|---|---|
+| 2 | does the ceiling really bite? | **yes** - `54000: column cannot have more than 2000 dimensions for hnsw index` |
+| 3 | does the expression index build? | **yes** |
+| 4 | **does a query USE it?** | **yes** - `Index Scan using probe_hnsw on probe`, **64.7 ms** |
+| 5 | what does the natural form do? | **`Seq Scan on probe`, 326.0 ms - no error, no warning** |
+| 6 | what does half precision cost? | **nothing measurable - 10 of 10 overlap with exact full-precision search** |
+| 7 | what does it cost to store? | **42 MB table + 16 MB index**, for 2,000 rows |
+
+**So Google is storable, searchable and indexable. The gate is passed.** This
+upgrades `gemini-embedding-001` from *"blocked by an unproven workaround"* to a
+real candidate - the ranking question then belongs to slice 8.
+
+**The trap is real, and it is exactly 5x today.** Rows 4 and 5 differ only in
+how the query is written:
+
+```sql
+order by v::halfvec(3072) <=> $1::halfvec(3072)   -- Index Scan,  64.7 ms
+order by v <=> $1                                 -- Seq Scan,   326.0 ms
+```
+
+$$
+\frac{326.0}{64.7} \approx 5\times \quad \text{at 2,000 rows}
+$$
+
+**And 5x is the smallest the gap will ever be.** An index scan grows like
+`log N`, a sequential scan like `N`, so at 20,000 chunks the same mistake costs
+an order of magnitude. It produces **no error and no warning** - which is why
+slice 4 must assert the plan, not the result.
+
+> **Write the query the way the index was built, or the index is decoration.**
+> The failure is silent, and correctness never changes - only speed. Nothing
+> tells you except `EXPLAIN`.
+
+**What row 6 does and does not prove.** It compares the top 10 through
+`halfvec` against the top 10 at full `float32`, and they are identical. That
+settles **precision loss**: halving the bits did not move a single result. It
+does *not* settle HNSW's own graph recall at real scale, which is tuned with
+`hnsw.ef_search` and is a separate slice 4 job.
+
+**Storage is the one real cost, and it is 2x.** 3072 dims store at ~21 KB a row
+once page and TOAST overhead is counted, against ~10 KB for a 1536-dim model:
+
+$$
+\frac{500 \text{ MB free tier}}{58 \text{ MB per 2,000-chunk corpus}} \approx 8
+\text{ corpora}
+$$
+
+Enough for the project, and worth watching. A 1536-dim model roughly doubles
+that headroom.
 
 **The expression index is the one to build if Google is ever chosen.** An
 **expression index** indexes the *result of a cast*, not the column: Postgres
