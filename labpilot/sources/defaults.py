@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-READABLE_SUFFIXES = frozenset({".py", ".md", ".markdown", ".txt", ".rst", ".ipynb"})
+READABLE_SUFFIXES = frozenset(
+    {".py", ".md", ".markdown", ".txt", ".rst", ".ipynb", ".pdf"}
+)
 
 SKIP_DIRECTORIES = frozenset(
     {
@@ -28,7 +30,7 @@ SKIP_DIRECTORIES = frozenset(
     }
 )
 
-MAX_FILE_BYTES = 1_000_000
+MAX_FILE_BYTES = 5_000_000
 MAX_TOTAL_BYTES = 20_000_000
 MAX_FILES = 20_000
 
