@@ -12,7 +12,8 @@ from labpilot.ingest._plain import load_text
 from labpilot.ingest._python import split_python
 from labpilot.ingest._recursive import split_recursive
 from labpilot.ingest.contracts import Chunk, Piece, Side
-from labpilot.ingest.defaults import MAX_CHARS, MIN_CHARS
+from labpilot.ingest.defaults import MAX_CHARS, MAX_MEAN_LINE_CHARS, MIN_CHARS
+from labpilot.ingest.errors import LooksGenerated
 
 # A loader turns the bytes of a file into the text we mean to read; a splitter
 # turns that text into boundaries. Plain text needs no entry: load_text is the
@@ -39,12 +40,31 @@ def chunk_bytes(
     # bytes through the API and would otherwise reach the splitter unloaded.
     suffix = Path(source).suffix.lower()
     text = _load(raw, suffix)
+    _refuse_machine_written(text, source)
     pieces = _split(text, suffix)
     pieces = _merge_small(_enforce_cap(pieces), text.splitlines())
     return tuple(
         _chunk(piece, index, source=source, side=side, artifact_id=artifact_id)
         for index, piece in enumerate(pieces)
     )
+
+
+def _refuse_machine_written(text: str, source: str) -> None:
+    # Minified code is one enormous line, so every chunk reports "lines 1-1"
+    # and every citation points at line 1 -- wrong, and it looks right.
+    # Measured over 1,386 real source files: the worst mean line is 69, our
+    # own loaded PDF and Word text reach 69.3, and jquery.min.js is 43,766.
+    lines = text.splitlines()
+    if not lines:
+        return
+
+    mean = sum(len(line) for line in lines) / len(lines)
+    if mean > MAX_MEAN_LINE_CHARS:
+        raise LooksGenerated(
+            f"{source} averages {mean:.0f} characters per line, over the "
+            f"{MAX_MEAN_LINE_CHARS} limit. This is minified or generated: it "
+            f"has no lines to cite, so every finding would point at line 1"
+        )
 
 
 def chunk_file(

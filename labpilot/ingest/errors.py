@@ -7,3 +7,7 @@ class LoaderError(Exception):
 
 class NotUtf8Text(LoaderError):
     pass
+
+
+class LooksGenerated(LoaderError):
+    pass

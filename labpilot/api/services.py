@@ -13,6 +13,7 @@ from labpilot.api.errors import (
 from labpilot.ingest import (
     Chunk,
     LoaderError,
+    LooksGenerated,
     NotUtf8Text,
     Side,
     chunk_bytes,
@@ -96,6 +97,9 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
             )
         except NotUtf8Text:
             source.skip("not utf-8")
+            continue
+        except LooksGenerated:
+            source.skip("generated or minified")
             continue
         except LoaderError:
             source.skip("unreadable document")

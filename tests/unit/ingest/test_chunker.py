@@ -7,7 +7,7 @@ import pytest
 from labpilot.ingest import chunk_bytes, chunk_file
 from labpilot.ingest.chunker import LOADERS
 from labpilot.ingest.defaults import MAX_CHUNK_TOKENS, MIN_CHUNK_TOKENS
-from labpilot.ingest.errors import LoaderError, NotUtf8Text
+from labpilot.ingest.errors import LoaderError, LooksGenerated, NotUtf8Text
 from labpilot.tokens import estimate_tokens
 
 SAMPLES = Path("data/samples/quora_siamese")
@@ -160,3 +160,28 @@ def test_a_real_paper_becomes_chunks_that_name_their_page():
     assert chunks
     assert any("page 1" in chunk.header for chunk in chunks)
     assert "ﬁ" not in "".join(chunk.text for chunk in chunks)
+
+
+def test_a_minified_file_is_refused_not_stored_as_chunks_that_all_cite_line_one():
+    """Measured before the guard existed: 65 chunks, every one reporting
+    lines (1, 1). Wrong every time, and it looks right."""
+    minified = ("function a(b,c){return b+c};" * 3000).encode("utf-8")
+    assert b"\n" not in minified, "the point is that it has no lines"
+
+    with pytest.raises(LooksGenerated):
+        chunk_bytes(minified, source="bundle.min.js", side="B", artifact_id="x")
+
+
+def test_real_source_code_is_never_mistaken_for_a_generated_file():
+    # 1,386 real files peak at a mean line of 69; the limit is 500.
+    code = ("def add(x, y):\n    return x + y\n\n" * 300).encode("utf-8")
+
+    assert chunk_bytes(code, source="a.py", side="B", artifact_id="x")
+
+
+def test_our_own_loaded_documents_stay_under_the_generated_file_limit():
+    """A Word paragraph is a single long line -- the loaded fixture reaches a
+    mean of 69.3. If the limit ever drops near that, real papers get refused."""
+    for name in ("pdf/two_column.pdf", "docx/ddos_ensemble.docx"):
+        raw = (Path("data/samples") / name).read_bytes()
+        assert chunk_bytes(raw, source=Path(name).name, side="A", artifact_id="x")

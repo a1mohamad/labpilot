@@ -177,3 +177,23 @@ def test_a_real_paper_in_a_repository_is_ingested_not_skipped_as_too_big(tmp_pat
     assert skipped == {}
     assert {chunk.source for chunk in chunks} == {"docs/paper.pdf", "train.py"}
     assert any("page 1" in chunk.header for chunk in chunks)
+
+
+def test_a_minified_file_is_skipped_and_counted_while_the_rest_is_ingested(tmp_path):
+    """The one that matters: a repo full of good code plus one bundle must
+    lose the bundle and keep everything else, with the skip counted."""
+    repo = build(
+        tmp_path / "repo",
+        {
+            "app.js": "function add(a, b) {\n  return a + b\n}\n",
+            "main.go": "package main\n\nfunc main() {\n\tprintln(1)\n}\n",
+            "bundle.min.js": "function a(b,c){return b+c};" * 3000,
+        },
+    )
+
+    with open_folder(repo) as source:
+        chunks = list(chunk_source(source, side="B"))
+        skipped = dict(source.skipped)
+
+    assert {chunk.source for chunk in chunks} == {"app.js", "main.go"}
+    assert skipped == {"generated or minified": 1}
