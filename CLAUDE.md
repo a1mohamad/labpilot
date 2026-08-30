@@ -21,8 +21,9 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Slice 5 DONE — Step 0 closed**](#slice-5--done-2026-08-17) ·
 [**STEP 1 — THE PLAN, 8 slices**](#step-1--the-plan-recorded-2026-08-20) ·
 [**Slice 3 — notebooks DONE**](#slice-3-first-half---done-2026-08-29-a-notebook-becomes-cells) ·
+[**Loaders take bytes DONE**](#loaders-take-bytes--done-2026-08-30) ·
 [**Slice 3 — the PDF theory**](#slice-3-second-half--pdf-the-theory-recorded-2026-08-30) ·
-[**Loaders take bytes**](#loaders-take-bytes--decided-2026-08-30) ·
+[Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
 [**Slice 1 DONE — the embedder**](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) ·
 [Slice 1b plan](#slice-1b--more-embedders-and-why-it-moved-ahead-of-slice-2) ·
 [Slice 1b — Google blocked](#slice-1b--done-2026-08-20-and-google-is-blocked) ·
@@ -462,13 +463,14 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2 DONE — and slice 3's NOTEBOOK half is done.**
+**Phase: STEP 1 SLICES 1, 1b, 2 DONE — slice 3's NOTEBOOK half AND its BYTES refactor are done.**
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 3 continues with `.pdf`, then `.docx`.**
-**A real notebook now becomes real cells. 453 passed, 28 skipped, 2 xfailed.**
+**Every loader now takes bytes, so a binary format finally has a door.**
+**463 passed, 28 skipped, 2 xfailed.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
 **Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
-**`.pdf` is PLANNED, NOT BUILT — the loader signature is decided, see [option A](#loaders-take-bytes--decided-2026-08-30).**
-**Last updated 2026-08-30 (fourteenth session). Working branch: `main`.**
+**`.pdf` is the NEXT thing to write, and NOTHING BLOCKS IT — see [what shipped](#loaders-take-bytes--done-2026-08-30).**
+**Last updated 2026-08-30 (fifteenth session). Working branch: `feat/documents`.**
 
 > ### START HERE IN A NEW SESSION
 >
@@ -502,17 +504,23 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > **red** where the old marker reported a silent green `xfailed`, and the full
 > suite plus both ruff commands stay clean.
 >
-> **Next task: slice 3 continued — `.pdf`, then `.docx`, then other code
-> languages.** The **`.ipynb` half is DONE** — see
-> [slice 3, first half](#slice-3-first-half---done-2026-08-29-a-notebook-becomes-cells).
-> A real notebook went from 94 chunks of escaped JSON to **91 real cells and 38%
-> fewer tokens**.
+> **Next task: `.pdf`, then `.docx`, then other code languages.** Two of slice
+> 3's four jobs are DONE. The **`.ipynb` loader** — see
+> [slice 3, first half](#slice-3-first-half---done-2026-08-29-a-notebook-becomes-cells),
+> where a real notebook went from 94 chunks of escaped JSON to **91 real cells
+> and 38% fewer tokens**. And the **bytes refactor**, which every remaining
+> format depends on — see
+> [loaders take bytes — DONE](#loaders-take-bytes--done-2026-08-30).
 >
 > **`.pdf` is now PLANNED and the blocking decision is made. Read
 > [the PDF theory](#slice-3-second-half--pdf-the-theory-recorded-2026-08-30)
 > before writing a line of it** — it is the mechanism, the math, and the two
-> failures that are silent. The signature question is settled:
-> **[loaders take bytes](#loaders-take-bytes--decided-2026-08-30)**.
+> failures that are silent. The signature question is no longer merely settled,
+> it is **BUILT** — see
+> **[loaders take bytes — DONE](#loaders-take-bytes--done-2026-08-30)**.
+> `LOADERS` is `Callable[[bytes], str]`, `chunk_bytes` replaced `chunk_text`,
+> and `load_text` is the default and the project's only decoder. **`.pdf` is now
+> one new module plus one dict entry, and no door question returns.**
 >
 > **`.pdf` brings the one genuinely new idea in slice 3: lossy loading.** Every
 > input so far has been exact — a `.py` read as text *is* the file. PDF is not:
@@ -617,7 +625,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** **453 passed, 28 skipped, 2 xfailed, ruff clean.**
+> **Code state:** **463 passed, 28 skipped, 2 xfailed, ruff clean.**
 > `labpilot/api/` serves `POST /api/v1/compare` plus `/` and `/health`, built by
 > a `create_app()` factory with a lifespan, routers, services, a typed error
 > vocabulary and two ASGI middleware — see
@@ -1441,7 +1449,7 @@ exceptions."* This is where that becomes visible outside the process:
 `LLMClient`. A prompt too large for every tier also arrives as
 `AllFreeTiersExhausted`, so 503 covers it honestly.
 
-**3. A missing file extension is a 422, not a default.** `chunk_text` picks its
+**3. A missing file extension is a 422, not a default.** `chunk_bytes` picks its
 splitter from the suffix. Without one it falls back to recursive splitting — no
 AST boundaries, no function units, a quietly worse comparison, **and no error**.
 This is the [orphan-chunk failure](#five-failure-modes-to-test-against) arriving
@@ -2083,13 +2091,13 @@ $$
 | `ingest/errors.py` | `LoaderError` - `ingest/` earns an error vocabulary, because a loader can fail on bad data where a splitter cannot |
 | `ingest/_notebook.py` | `load_notebook` (JSON -> text) and `split_notebook` (text -> cells) |
 | `ingest/_sections.py` | `to_pieces` - the section logic `_markdown` and `_notebook` both had |
-| `ingest/chunker.py` | a **`LOADERS` dict beside `SPLITTERS`**, applied in `chunk_text` |
+| `ingest/chunker.py` | a **`LOADERS` dict beside `SPLITTERS`**, applied in `chunk_bytes` |
 
 **453 passed, 28 skipped, 2 xfailed, ruff clean.**
 
 ### Five decisions worth keeping
 
-**1. Loading runs in `chunk_text`, not `chunk_file`.** An upload arrives as
+**1. Loading runs in `chunk_bytes`, not `chunk_file`.** An upload arrives as
 *text* through `api/uploads.py`, never as a path. Loading in `chunk_file` would
 have fixed the repository door and left the API door mangling notebooks - and
 nothing would have said so.
@@ -2320,6 +2328,9 @@ threshold in this file.
 
 ### Loaders take bytes — decided 2026-08-30
 
+> **BUILT the same day — the reasoning below is kept, the outcome is in
+> [loaders take bytes — DONE](#loaders-take-bytes--done-2026-08-30).**
+
 **The blocking discovery: `LOADERS` is typed `Callable[[str], str]`, and there is
 no valid `str` to hand a PDF loader.** Both doors decode UTF-8 *before* the
 loader runs, so a real paper dies at the door as "not UTF-8 text" and our loader
@@ -2395,6 +2406,128 @@ precisely how the notebook bugs happened.
 
 **Other code languages need no loader at all** — they are plain text, and this
 file already requires **one** generic splitter rather than one per language.
+
+### Loaders take bytes — DONE 2026-08-30
+
+*Option A shipped the same day it was decided. **463 passed, 28 skipped,
+2 xfailed, ruff clean.** No behaviour changed for any existing format — this is
+plumbing, and its whole value is that `.pdf` now has somewhere to go.*
+
+| module | change |
+|---|---|
+| `ingest/errors.py` | **`NotUtf8Text(LoaderError)`** — a second error type, and it earns its place below |
+| `ingest/_plain.py` | **new.** `load_text(raw: bytes) -> str` — the default loader, and the project's only decoder |
+| `ingest/_notebook.py` | `load_notebook` takes bytes and decodes on its first line |
+| `ingest/chunker.py` | `LOADERS: dict[str, Callable[[bytes], str]]`; **`chunk_text` renamed `chunk_bytes`**; `chunk_file` reads bytes |
+| `ingest/__init__.py` | the errors join the public door, so `api/` stops reaching into `ingest.errors` |
+| `api/contracts.py` | `Artifact.text: str` -> **`Artifact.raw: bytes`** |
+| `api/uploads.py` | stops decoding entirely — the door now owns only HTTP concerns |
+| `api/services.py` | calls `chunk_bytes`; `chunk_source` catches `NotUtf8Text` **before** `LoaderError` |
+
+**`_load` and `_split` are now the same shape, which is the test of the seam:**
+
+```
+_load(raw, suffix)    ->  LOADERS.get(suffix, load_text)(raw)
+_split(text, suffix)  ->  SPLITTERS.get(suffix, split_recursive)(text)
+```
+
+**The rename is deliberate.** `chunk_text` taking `bytes` would be a lie, and
+keeping both names would be a second door — the exact option-B shape that
+produced both slice-3 wiring bugs.
+
+#### Centralising the decoder found a live bug nobody was looking for
+
+Measured while writing the loader:
+
+```
+with BOM   ast.parse FAILED: invalid non-printable character U+FEFF
+plain      ast.parse OK
+```
+
+A UTF-8 **byte-order mark** — the three bytes `EF BB BF` that Windows editors
+prepend — makes `ast.parse` fail. `_python.py` catches `SyntaxError` and falls
+back to `split_recursive`. So **a Python file saved with a BOM lost every
+function and class boundary, silently.** Both splitters, measured:
+
+```
+python    no BOM -> labels ['def add']      BOM -> labels ['']
+markdown  no BOM -> labels ['Method']       BOM -> labels ['']
+```
+
+One invisible character damages **three** stages: the AST splitter, the `^#`
+header regex, and citations — because `chunk.text` must be a verbatim slice of
+the file's lines, and a BOM sits *inside* line 1.
+
+The fix is four letters: decode with **`utf-8-sig`**, never `utf-8`. It strips
+one leading BOM and is byte-identical to `utf-8` when there is none. It cannot
+change *whether* a file decodes — verified on latin-1 bytes and a PNG header,
+which fail identically under both. **Only decode with it; when writing it ADDS a
+BOM**, so the one `.encode("utf-8")` in `body_limit.py` must stay plain.
+
+> **One decoder is one place to be right.** Two doors decoding separately gave
+> this bug two places to hide, and it had been live since slice 3 began.
+
+#### Why there are two error types and not one
+
+`NotUtf8Text` exists because `chunk_source` **branches** on it, and an existing
+test already pins the branch: `skipped == {"not utf-8": 1}`. Collapsing the two
+would have turned a green test red for the wrong reason, and lost a genuinely
+reachable bucket in the walk's report — `walk` screens by **suffix**, not by
+content, so a latin-1 `.py` really does reach the chunker.
+
+**The `except` order carries the whole distinction, and Python never warns you.**
+`NotUtf8Text` is a subclass, so it must be caught **first**. Reversed, the
+specific clause is dead code and every encoding problem is filed as
+`unreadable document`.
+
+#### Two bugs, and the second one is the lesson
+
+| bug | cost | cause |
+|---|---|---|
+| `load_text` was missing its `return` | **61 failed, 15 errors** | the decode ran and its value was discarded, so every caller received `None` |
+| a test mocked `Path.read_text` | 1 failed | `chunk_file` now calls `read_bytes`, so the mock intercepted nothing |
+
+The first looks frightening and is trivial. Grouping the failures by message
+showed **every one of the 76 said `None` or `NoneType`**. One word fixed all of
+them.
+
+> **Group failures by their message before reading any of them.** Sixty-one
+> failures carrying one message is one bug, not sixty-one.
+
+The second is the one to keep. The guard was never broken — `read_bytes` raises
+`PermissionError`, which is an `OSError`, which `chunk_source` still catches.
+Only the **test's aim** was stale.
+
+> **When you move an I/O call, every test that mocked the old call stops testing
+> anything.** Here it failed loudly, so we caught it. A looser assertion would
+> have left the guard untested and the suite green.
+
+A smaller trap sat inside it: `monkeypatch.setattr(Path, "read_text", ...)` names
+the method as a **string**, so renaming the variable beside it changed nothing.
+**A mocked name written as a string is invisible to every rename** — search for
+the string, not the variable.
+
+#### The invariant that will pay for itself at `.pdf`
+
+`test_a_loader_refuses_what_it_cannot_read_with_our_own_error` parametrizes over
+`LOADERS` and hands each one a PNG header: a registered loader must raise
+`LoaderError`, never crash and never return junk. **`.pdf` and `.docx` inherit it
+the day they are added** — the same pattern that fixed five untested models in
+the smoke suite.
+
+Note it is deliberately *not* "every loader refuses non-UTF-8 bytes". A PDF
+loader must accept binary; what it must never do is fail in a way we do not own.
+
+#### What `.pdf` costs now
+
+```
+labpilot/ingest/_pdf.py      load_pdf(raw: bytes) -> str      <- new module
+labpilot/ingest/chunker.py   LOADERS[".pdf"] = load_pdf       <- one line
+```
+
+Plus `READABLE_SUFFIXES` and `SPLITTERS`, **together**, or
+`test_every_format_we_can_read_is_also_a_format_we_can_fetch` goes red. **No
+door question has to be answered again.**
 
 ### What `.pdf` still owes before it is written
 
@@ -6751,7 +6884,7 @@ remaining piece of slice 3.
 | `_markdown.py` | header split |
 | `_python.py` | AST split |
 | `chunker.py` | picks a splitter, runs pass 2, attaches metadata |
-| `__init__.py` | `chunk_file`, `chunk_text` — the only door |
+| `__init__.py` | `chunk_file`, `chunk_bytes` — the only door |
 
 **Two types, and the split is by reason to change.** A splitter sees only text,
 so it returns a `Piece` (text, lines, label). The chunker knows the artifact, so
