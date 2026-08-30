@@ -6,6 +6,7 @@ from pathlib import Path
 
 from labpilot.ingest._markdown import split_markdown
 from labpilot.ingest._notebook import load_notebook, split_notebook
+from labpilot.ingest._pdf import load_pdf, split_pdf
 from labpilot.ingest._plain import load_text
 from labpilot.ingest._python import split_python
 from labpilot.ingest._recursive import split_recursive
@@ -17,6 +18,7 @@ from labpilot.ingest.defaults import MAX_CHARS, MIN_CHARS
 # default, so only formats that are not already text appear here.
 LOADERS: dict[str, Callable[[bytes], str]] = {
     ".ipynb": load_notebook,
+    ".pdf": load_pdf,
 }
 
 SPLITTERS: dict[str, Callable[[str], list[Piece]]] = {
@@ -24,6 +26,7 @@ SPLITTERS: dict[str, Callable[[str], list[Piece]]] = {
     ".markdown": split_markdown,
     ".py": split_python,
     ".ipynb": split_notebook,
+    ".pdf": split_pdf,
 }
 
 
