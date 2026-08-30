@@ -6,7 +6,7 @@ from fastapi import UploadFile
 
 from labpilot.api.config import ApiConfig
 from labpilot.api.contracts import Artifact
-from labpilot.api.errors import UnnamedUpload, UnreadableUpload, UploadTooLarge
+from labpilot.api.errors import UnnamedUpload, UploadTooLarge
 
 
 def read_artifact(upload: UploadFile, *, field: str) -> Artifact:
@@ -14,15 +14,11 @@ def read_artifact(upload: UploadFile, *, field: str) -> Artifact:
     if not Path(name).suffix:
         raise UnnamedUpload(
             f"{field} needs a filename with an extension: the extension "
-            f"chooses the splitter, and without one the file is cut blindly"
+            f"chooses the loader and the splitter, and without one the file "
+            f"is cut blindly"
         )
 
-    raw = _read_within_limit(upload, field=field, name=name)
-
-    try:
-        return Artifact(name=name, text=raw.decode("utf-8"))
-    except UnicodeDecodeError as exc:
-        raise UnreadableUpload(f"{field} ({name}) is not UTF-8 text") from exc
+    return Artifact(name=name, raw=_read_within_limit(upload, field=field, name=name))
 
 
 def _read_within_limit(upload: UploadFile, *, field: str, name: str) -> bytes:
