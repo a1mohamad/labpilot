@@ -4,8 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from labpilot.ingest import chunk_file, chunk_text
+from labpilot.ingest import chunk_bytes, chunk_file
+from labpilot.ingest.chunker import LOADERS
 from labpilot.ingest.defaults import MAX_CHUNK_TOKENS, MIN_CHUNK_TOKENS
+from labpilot.ingest.errors import LoaderError, NotUtf8Text
 from labpilot.tokens import estimate_tokens
 
 SAMPLES = Path("data/samples/quora_siamese")
@@ -91,7 +93,9 @@ def test_text_is_a_verbatim_slice_of_the_lines_it_cites(name):
 
 
 def test_a_merged_chunk_keeps_the_blank_lines_between_its_parts():
-    chunks = chunk_text(CODE, source="tiny.py", side="B", artifact_id="t")
+    chunks = chunk_bytes(
+        CODE.encode("utf-8"), source="tiny.py", side="B", artifact_id="t"
+    )
     lines = CODE.splitlines()
     merged = next(c for c in chunks if "class Holder" in c.text)
     assert merged.text == "\n".join(lines[merged.start_line - 1 : merged.end_line])
@@ -103,16 +107,46 @@ def test_an_oversized_definition_is_numbered_into_parts(code_chunks):
 
 
 def test_a_bare_class_header_merges_with_what_follows_it():
-    chunks = chunk_text(CODE, source="tiny.py", side="B", artifact_id="t")
+    chunks = chunk_bytes(
+        CODE.encode("utf-8"), source="tiny.py", side="B", artifact_id="t"
+    )
     holder = next(c for c in chunks if "class Holder" in c.text)
     assert "def one" in holder.text
 
 
 def test_an_unknown_extension_falls_back_to_the_recursive_splitter():
-    chunks = chunk_text("word " * 400, source="notes.txt", side="A", artifact_id="t")
+    chunks = chunk_bytes(
+        ("word " * 400).encode("utf-8"), source="notes.txt", side="A", artifact_id="t"
+    )
     assert chunks
     assert all("·" not in chunk.header.split(" · lines")[0] for chunk in chunks)
 
 
 def test_an_empty_file_yields_no_chunks():
-    assert chunk_text("", source="empty.py", side="B", artifact_id="t") == ()
+    assert chunk_bytes(b"", source="empty.py", side="B", artifact_id="t") == ()
+
+
+def test_a_byte_order_mark_changes_nothing_about_the_chunks():
+    plain = chunk_bytes(
+        CODE.encode("utf-8"), source="tiny.py", side="B", artifact_id="t"
+    )
+    marked = chunk_bytes(
+        "\ufeff".encode("utf-8") + CODE.encode("utf-8"),
+        source="tiny.py",
+        side="B",
+        artifact_id="t",
+    )
+
+    assert [chunk.header for chunk in marked] == [chunk.header for chunk in plain]
+    assert [chunk.text for chunk in marked] == [chunk.text for chunk in plain]
+
+
+def test_bytes_that_are_not_utf8_are_refused_by_the_one_decoder():
+    with pytest.raises(NotUtf8Text):
+        chunk_bytes(b"# caf\xe9\nx = 1\n", source="a.py", side="B", artifact_id="t")
+
+
+@pytest.mark.parametrize("suffix", sorted(LOADERS))
+def test_a_loader_refuses_what_it_cannot_read_with_our_own_error(suffix):
+    with pytest.raises(LoaderError):
+        LOADERS[suffix](b"\x89PNG\r\n\x1a\n\x00\x00 not a document at all")
