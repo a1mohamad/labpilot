@@ -9,6 +9,7 @@ from labpilot.sources.defaults import (
     MAX_ARCHIVE_BYTES,
     MAX_FILE_BYTES,
     READABLE_SUFFIXES,
+    SECRET_SUFFIXES,
     SKIP_DIRECTORIES,
 )
 
@@ -68,3 +69,9 @@ def test_the_popular_languages_are_all_readable():
         ".yaml",
     ):
         assert suffix in READABLE_SUFFIXES
+
+
+def test_no_secret_suffix_is_also_readable():
+    """One rule, both doors: a credentials file must be refused by the walk
+    and by the upload endpoint, and the two lists must never disagree."""
+    assert not (SECRET_SUFFIXES & READABLE_SUFFIXES)
