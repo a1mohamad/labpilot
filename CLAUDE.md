@@ -24,6 +24,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Loaders take bytes DONE**](#loaders-take-bytes--done-2026-08-30) ·
 [**`.pdf` DONE — 24 papers**](#pdf--done-2026-08-30-measured-on-24-real-papers) ·
 [**`.docx` DONE — 18 files**](#docx--done-2026-08-30-measured-on-18-real-word-files) ·
+[**Languages + the overlap fix**](#other-code-languages--done-2026-08-31-and-the-overlap-bug-they-exposed) ·
 [**Slice 3 — the PDF theory**](#slice-3-second-half--pdf-the-theory-recorded-2026-08-30) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
 [**Slice 1 DONE — the embedder**](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) ·
@@ -466,9 +467,9 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 ## Current Status
 
 **Phase: STEP 1 SLICES 1, 1b, 2 DONE — slice 3 has done NOTEBOOKS, the BYTES refactor, and `.pdf`.**
-**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 3 has ONE job left: other code languages.**
-**Papers now arrive as PDF or Word, and every bad variant is refused rather than stored.**
-**496 passed, 28 skipped, 2 xfailed.**
+**Step 1 is NINE slices: 1 · 1b · 2 … 8. SLICE 3 IS COMPLETE. Slice 4 (pgvector) is next.**
+**Notebooks, PDF, Word and 50 code suffixes all ingest; every bad variant is refused, not stored.**
+**502 passed, 28 skipped, 2 xfailed.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
 **Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
 **`.pdf` is DONE and measured on 24 real papers — see [what shipped](#pdf--done-2026-08-30-measured-on-24-real-papers).**
@@ -627,7 +628,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** **496 passed, 28 skipped, 2 xfailed, ruff clean.**
+> **Code state:** **502 passed, 28 skipped, 2 xfailed, ruff clean.**
 > `labpilot/api/` serves `POST /api/v1/compare` plus `/` and `/health`, built by
 > a `create_app()` factory with a lifespan, routers, services, a typed error
 > vocabulary and two ASGI middleware — see
@@ -2948,6 +2949,182 @@ different input.
 - **`.doc` (the old binary format) is not supported** and is not in
   `READABLE_SUFFIXES`. It is not a ZIP, so it refuses loudly.
 - Tables arrive as one paragraph per cell, which reads as a vertical list.
+
+## Other code languages — DONE 2026-08-31, and the overlap bug they exposed
+
+*The last job in slice 3, and the smallest: these files are plain text, so they
+need **no loader** and **no splitter** — only suffixes. Looking at real code to
+confirm that, however, exposed a chunker defect that had been live since slice
+3 began. **502 passed, 28 skipped, 2 xfailed, ruff clean.***
+
+### 57 suffixes, no code
+
+`sources/defaults.py` now splits its registry in two:
+
+```
+CODE_SUFFIXES       50   .js .ts .java .go .rs .cpp .cs .rb .php .swift .kt
+                         .r .jl .m .sql .sh .yaml .toml ... and .py
+DOCUMENT_SUFFIXES    7   .md .markdown .txt .rst .ipynb .pdf .docx
+READABLE_SUFFIXES        the union
+```
+
+**Three deliberate exclusions, each pinned by a test:**
+
+| excluded | why |
+|---|---|
+| **`.env`** | **holds API keys.** Must never be read, chunked, embedded, or sent to a provider |
+| `.json` | a dataset is usually `.json`, and a pretty-printed one has short lines, so the generated-file guard would not catch it |
+| `.csv`, `.xml`, `.lock` | data and generated output, not source |
+
+`test_a_file_that_could_hold_secrets_or_data_is_never_readable` fires alone when
+`.json` is added. The `.env` case also trips an older test only because `env` is
+a skipped *directory* name — a coincidence, which is why the `.json` mutation is
+the one that proves the guard.
+
+### No splitter, and that was measured
+
+Real Go through `split_recursive`: 38 chunks, 534-1496 characters, correct line
+numbers. Blank lines between functions already give roughly function-level
+breaks. **A per-language splitter would be toil for no measured gain.**
+
+### The minified-file guard
+
+Adding `.js` opens a door the walk never had: it filters by **suffix and size
+only**, with no name filter at all, so `bundle.min.js` walks straight in.
+Measured before any guard existed:
+
+```
+a minified bundle -> 65 chunks, every one reporting lines (1, 1)
+a chunk reads:  'e[f]=e[f]*2}return e};function a(b,c){return b+'
+```
+
+**Correct the wording that first went into this file:** those citations are not
+*wrong*. A chunk that lives on line 1 truthfully reports line 1, and `resolve()`
+finds the quote. They are **useless** — a finding "at line 1" of an 87KB single
+line locates nothing. That still justifies a refusal; it is a different claim.
+
+**The threshold moved once, and the first number was bad.** It started at 500
+mean characters per line, chosen from source code alone:
+
+```
+1,386 real source files    mean 31.8, p99 47.5, worst 69.0
+286 real prose files       worst mean 176.5
+```
+
+Prose was never measured, and unwrapped Markdown goes higher still — 500 was a
+false-refusal waiting to happen, and it fired immediately on an existing test.
+So the number is now **derived from the thing that actually breaks**:
+
+```python
+MAX_MEAN_LINE_CHARS = MAX_CHARS  # 1,530
+```
+
+A mean line longer than one whole chunk means chunks live *inside* a line.
+Margins: 8.7x above the worst prose, 22x above the worst code and above our own
+loaded PDF and Word text, 28x below jquery.min.js at 43,766.
+
+> **When a threshold refuses honest input, do not nudge it — anchor it to the
+> thing that breaks.** Same lesson as the PDF letter-ratio, one week apart.
+
+`LooksGenerated(LoaderError)` gives the walk a distinct count
+(`generated or minified`) and the API a 422. In a repository it is a **counted
+skip, not a silent drop**; on upload it is a refusal, because `CompareResponse`
+has no warnings channel to put a softer answer in.
+
+### The gap this guard does NOT close, stated plainly
+
+It is a **file-level** rule. One enormous line inside an otherwise normal file
+passes it, and still damages the file:
+
+```
+600 normal lines + one 60,000-character line
+mean = 106  -> passes
+41 of 91 chunks stuck inside line 601
+```
+
+Refusing the whole file would throw away 550 good lines, so refusing is the
+wrong answer here. Those chunks are correctly located and merely low-resolution.
+**Left alone on purpose, and recorded so it is not rediscovered as a surprise.**
+
+---
+
+## The overlap fix — 10.8% of chunks began inside a word
+
+*Found while reading real Go, not by any test.*
+
+```
+chunk 2 of context.go:  'ntextRequestKey ContextKeyType = 0'    <- "Co" left behind
+chunk 2 of _classes.py: 'om abc import ABCMeta, abstractmet'    <- "fr" left behind
+```
+
+`_pack` set each chunk's start to `block_start - OVERLAP_CHARS` — a **raw
+character count**. It lands wherever it lands.
+
+```
+before   24 of 222 chunks began mid-word   (10.8%)
+after     0 of 226                          (0.0%)
+```
+
+The fix is `_snap`: move the overlap start back to the beginning of a line, or
+failing that past a space, never below the floor that keeps the chunk inside
+`MAX_CHARS`. Six lines.
+
+### The test that promised both ends and checked one
+
+`test_a_word_is_never_cut_in_half` existed the whole time, and passed:
+
+```python
+assert all(p.text.endswith("word") for p in split_recursive(LONG_TEXT))
+```
+
+**`endswith` only.** Its name promised both ends of the chunk; it checked one,
+and the unchecked end was exactly where the bug lived. It is now
+`test_a_piece_never_begins_or_ends_inside_a_word`, asserting a real word
+boundary at both ends, and reverting `_snap` makes it — and only it — go red.
+
+> **The same family as `test_no_chunk_text_exceeds_the_hard_cap`.** A test named
+> after an invariant must check the whole invariant, not the convenient half.
+> Both were found by asking what the name claims, not by reading the assertion.
+
+**A correction worth keeping:** my first replacement asserted
+`startswith("word")` and failed — because every paragraph in the fixture
+legitimately begins with the word `"paragraph"`. The code was right and the new
+assertion was wrong. *Read the failure before blaming the code.*
+
+### The re-score, which is why the fix was safe to make now
+
+Chunk boundaries moved (`B_train.py` 78 -> 79 chunks), so slice 1's numbers
+described chunks that no longer exist. Re-run on `queries.json` with
+`codestral-embed`:
+
+```
+after    recall@1 0.412   @5 0.941   @10 0.941   MRR 0.623
+before   recall@1 0.412   @5 0.941   @10 0.941   MRR 0.613
+```
+
+**Identical recall, MRR slightly up.** `D2` is still rank 42, the same known
+miss. So the fix removed every mid-word chunk and cost nothing.
+
+**It was cheap only because nothing is embedded yet.** No database, no stored
+corpus, nothing deployed — the sole cost was four embedding requests. The same
+change after slice 4 would mean re-embedding every corpus. **Fix chunk
+boundaries before pgvector exists, or not at all.**
+
+### `scripts/score_retrieval.py` is now committed
+
+Slice 1's scorer lived in a session scratchpad and was **lost**, so this session
+rewrote it from nothing to answer a question CLAUDE.md says to ask after *every*
+retrieval change. It is now a file in the repository.
+
+```
+PYTHONPATH=. python scripts/score_retrieval.py
+```
+
+Four embedding requests, no generation quota.
+
+> **A measurement you cannot repeat is a number, not a result.** If this file
+> tells the next session to re-measure, the instrument belongs in the repository
+> beside the fixture.
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
