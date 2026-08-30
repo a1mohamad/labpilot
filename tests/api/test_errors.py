@@ -30,7 +30,8 @@ def test_the_error_hierarchy_is_not_empty():
 @pytest.mark.parametrize("failure", raisable(), ids=lambda cls: cls.__name__)
 def test_every_error_declares_a_real_status_and_its_own_code(failure):
     assert failure.status in HTTP_CODES
-    assert failure.code and failure.code == failure.code.lower()
+    assert failure.code
+    assert failure.code == failure.code.lower()
     assert " " not in failure.code
 
 
@@ -69,7 +70,7 @@ def test_the_body_limit_middleware_speaks_the_same_envelope(client):
     """The middleware builds its JSON by hand, because it answers before the
     application and its handlers exist. That hand-built body is the one thing
     that can drift away from ErrorEnvelope without anything noticing."""
-    over = b"x" * 3_000_000
+    over = b"x" * 11_000_000
     assert len(over) > ApiConfig.MAX_REQUEST_BODY_BYTES, "must exceed the ceiling"
 
     response = client.post(
