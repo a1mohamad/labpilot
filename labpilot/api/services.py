@@ -10,8 +10,14 @@ from labpilot.api.errors import (
     InvalidQuestion,
     UnreadableUpload,
 )
-from labpilot.ingest import Chunk, Side, chunk_file, chunk_text
-from labpilot.ingest.errors import LoaderError
+from labpilot.ingest import (
+    Chunk,
+    LoaderError,
+    NotUtf8Text,
+    Side,
+    chunk_bytes,
+    chunk_file,
+)
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
     PROMPT_BUDGET,
@@ -46,8 +52,8 @@ def compare(
 
 def _cut(artifact: Artifact, *, side: Side, field: str) -> tuple[Chunk, ...]:
     try:
-        chunks = chunk_text(
-            artifact.text,
+        chunks = chunk_bytes(
+            artifact.raw,
             source=artifact.name,
             side=side,
             artifact_id=artifact.name,
@@ -88,7 +94,7 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
                 artifact_id=source.name,
                 source=found.relpath,
             )
-        except UnicodeDecodeError:
+        except NotUtf8Text:
             source.skip("not utf-8")
             continue
         except LoaderError:
