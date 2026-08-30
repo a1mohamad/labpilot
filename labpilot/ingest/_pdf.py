@@ -90,7 +90,7 @@ def split_pdf(text: str) -> list[Piece]:
 
 
 def _mark_lines(lines: list[str]) -> list[Mark]:
-    marks = list[Mark] = []
+    marks: list[Mark] = []
     for index, line in enumerate(lines):
         match = PAGE_MARK.match(line)
         if match:

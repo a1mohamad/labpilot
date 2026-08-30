@@ -69,7 +69,7 @@ def test_the_body_limit_middleware_speaks_the_same_envelope(client):
     """The middleware builds its JSON by hand, because it answers before the
     application and its handlers exist. That hand-built body is the one thing
     that can drift away from ErrorEnvelope without anything noticing."""
-    over = b"x" * 3_000_000
+    over = b"x" * 11_000_000
     assert len(over) > ApiConfig.MAX_REQUEST_BODY_BYTES, "must exceed the ceiling"
 
     response = client.post(

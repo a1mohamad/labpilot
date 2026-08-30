@@ -32,7 +32,7 @@ def test_health_does_not_spend_a_provider_request(client, fake):
 def test_a_body_over_the_whole_request_limit_is_refused_before_parsing(client):
     # A literal, never derived from the constant under test: a payload sized
     # from MAX_REQUEST_BODY_BYTES grows with it and the assertion can never fail.
-    over = b"x" * 3_000_000
+    over = b"x" * 11_000_000
     assert over and len(over) > ApiConfig.MAX_REQUEST_BODY_BYTES, "must exceed it"
 
     response = client.post(
