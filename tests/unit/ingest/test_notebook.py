@@ -8,8 +8,10 @@ from labpilot.ingest._notebook import load_notebook, split_notebook
 from labpilot.ingest.errors import LoaderError
 
 
-def notebook(*cells: dict) -> str:
-    return json.dumps({"cells": list(cells), "nbformat": 4, "nbformat_minor": 5})
+def notebook(*cells: dict) -> bytes:
+    return json.dumps(
+        {"cells": list(cells), "nbformat": 4, "nbformat_minor": 5}
+    ).encode("utf-8")
 
 
 def code(source, outputs=None, execution_count=1) -> dict:
@@ -117,7 +119,14 @@ def test_cell_numbers_follow_the_notebook_even_when_a_cell_is_empty():
 
 @pytest.mark.parametrize(
     "raw",
-    ["", "not json at all", "[1, 2, 3]", '{"nbformat": 4}', '{"cells": "nope"}'],
+    [
+        b"",
+        b"not json at all",
+        b"[1, 2, 3]",
+        b'{"nbformat": 4}',
+        b'{"cells": "nope"}',
+        b'{"cells": [], "title": "caf\xe9"}',
+    ],
 )
 def test_something_that_is_not_a_notebook_is_refused_never_returned_raw(raw):
     with pytest.raises(LoaderError):
