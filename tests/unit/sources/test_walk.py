@@ -101,7 +101,7 @@ def test_a_symlinked_file_is_skipped(tmp_path):
 
 
 def test_a_file_over_the_size_limit_is_skipped_and_counted(tmp_path):
-    huge = "x" * 1_000_001
+    huge = "x" * 5_000_001
     assert len(huge.encode("utf-8")) > MAX_FILE_BYTES
 
     source = build(tmp_path, {"big.py": huge, "small.py": "x = 1"})
