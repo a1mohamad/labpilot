@@ -61,7 +61,7 @@ def test_a_binary_upload_is_rejected_as_not_text(client):
 
 
 def test_an_upload_over_the_size_limit_is_rejected(client):
-    huge = b"x = 1\n" * 200_000
+    huge = b"x = 1\n" * 900_000
     assert len(huge) > ApiConfig.MAX_UPLOAD_BYTES, "must exceed the real limit"
 
     response = post(client, b=("big.py", huge, "text/x-python"))
