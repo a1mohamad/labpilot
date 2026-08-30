@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from labpilot.ingest import chunk_bytes
 from labpilot.ingest._docx import load_docx
 from labpilot.ingest.defaults import MAX_DOCX_XML_BYTES
 from labpilot.ingest.errors import LoaderError
@@ -93,3 +94,14 @@ def test_a_decompression_bomb_is_refused_before_it_is_unpacked():
 
     with pytest.raises(LoaderError, match="bomb"):
         load_docx(bomb)
+
+
+def test_a_word_paper_becomes_chunks_through_the_registry():
+    # Every other test in this file calls load_docx directly, so none of them
+    # notices if .docx is missing from LOADERS. This one goes through the door.
+    raw = PAPER.read_bytes()
+
+    chunks = chunk_bytes(raw, source="paper.docx", side="A", artifact_id="paper")
+
+    assert chunks
+    assert "train_test_split" in "".join(chunk.text for chunk in chunks)
