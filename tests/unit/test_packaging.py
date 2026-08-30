@@ -17,6 +17,23 @@ ENV_EXAMPLE = pathlib.Path(".env.example")
 
 READERS = {("os", "getenv"), ("os", "environ", "get")}
 
+SAMPLES = pathlib.Path("data/samples")
+SOURCES = SAMPLES / "SOURCES.md"
+THIRD_PARTY_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".pptx", ".zip"}
+
+# Packages that cannot fit the 512MB instance the API and ingest share.
+TOO_HEAVY_TO_DEPLOY = {
+    "torch",
+    "torchvision",
+    "tensorflow",
+    "transformers",
+    "sentence-transformers",
+    "langchain-community",
+    "onnxruntime-gpu",
+    "scipy",
+    "spacy",
+}
+
 
 def _modules() -> list[ast.Module]:
     return [
@@ -117,3 +134,47 @@ def test_every_environment_variable_the_code_reads_is_documented():
     missing = sorted(environment_variables_read() - declared)
 
     assert not missing, f"read by labpilot/ but not declared in .env.example: {missing}"
+
+
+def test_no_runtime_requirement_would_blow_the_memory_budget():
+    """CLAUDE.md calls installing torch "the single decision that would end the
+    free tier instantly": ~800MB installed, 300-500MB resident, against a hard
+    512MB Render ceiling that ingest and the API already share. The rule has
+    been prose since 2026-08-11 and nothing enforced it.
+
+    Runtime only. requirements-dev.txt may hold heavy packages -- the local
+    ONNX reranker is deliberately a dev dependency that never ships.
+    """
+    installed = {
+        line.split("==", 1)[0].strip().lower()
+        for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+
+    fatal = sorted(installed & TOO_HEAVY_TO_DEPLOY)
+
+    assert not fatal, (
+        f"{fatal} in requirements.txt would not fit the 512MB instance. "
+        f"Use an ONNX or hosted equivalent, or make it a dev dependency."
+    )
+
+
+def test_every_committed_fixture_names_its_source_and_its_licence():
+    """A binary in data/samples/ is in git history forever and cannot be
+    audited afterwards. SOURCES.md is where provenance lives, and its own rule
+    -- record the source and licence in the same commit -- had nothing
+    enforcing it.
+    """
+    documented = SOURCES.read_text(encoding="utf-8")
+
+    undocumented = sorted(
+        path.name
+        for path in SAMPLES.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in THIRD_PARTY_SUFFIXES
+        and path.name not in documented
+    )
+
+    assert not undocumented, (
+        f"committed to data/samples/ but not recorded in SOURCES.md: {undocumented}"
+    )
