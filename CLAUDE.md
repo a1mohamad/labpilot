@@ -469,13 +469,32 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: STEP 1 SLICES 1, 1b, 2 DONE — slice 3 has done NOTEBOOKS, the BYTES refactor, and `.pdf`.**
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. SLICE 3 IS COMPLETE. Slice 4 (pgvector) is next.**
 **Notebooks, PDF, Word and 50 code suffixes all ingest; every bad variant is refused, not stored.**
-**502 passed, 28 skipped, 2 xfailed.**
+**505 passed, 28 skipped, 2 xfailed.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
 **Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
 **`.pdf` is DONE and measured on 24 real papers — see [what shipped](#pdf--done-2026-08-30-measured-on-24-real-papers).**
 **Last updated 2026-08-30 (fifteenth session). Working branch: `main`.**
 
 > ### START HERE IN A NEW SESSION
+>
+> > ## ⛔ BEFORE SLICE 4: WRITE THE `mutation-test` SKILL FIRST
+> >
+> > **This was agreed at the end of slice 3 and is the first task of the next
+> > session — before any pgvector work.** The checklist already exists in
+> > [Mutation testing](#mutation-testing--claudes-standing-job-and-it-runs-unasked);
+> > it becomes a `SKILL.md` so it is loaded on demand instead of being skimmed
+> > past in a 6,000-line file.
+> >
+> > **Slice 3 is exactly the evidence it was waiting for.** The rule said to
+> > write it *after* slice 3 so its content comes from real cases, and slice 3
+> > produced them: a mutation that was a **no-op** (`ET.ParseError` is a
+> > `SyntaxError`), a test that **never fired alone** and was deleted, a
+> > **fake** parametrized test that 63 green cases hid, a `git checkout --`
+> > that **deleted work** because a branch moved underneath it, and a test
+> > whose name promised both ends of a chunk while checking one.
+> >
+> > The skill must carry all five, plus the procedure's real step 0:
+> > **copy the file aside; never restore a mutation with git.**
 >
 > **The walking skeleton walks.** A real HTTP request now goes upload → chunk →
 > select → prompt → `LLMClient` → an answer with its citations resolved back to
@@ -628,7 +647,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** **502 passed, 28 skipped, 2 xfailed, ruff clean.**
+> **Code state:** **505 passed, 28 skipped, 2 xfailed, ruff clean.**
 > `labpilot/api/` serves `POST /api/v1/compare` plus `/` and `/health`, built by
 > a `create_app()` factory with a lifespan, routers, services, a typed error
 > vocabulary and two ASGI middleware — see
@@ -3125,6 +3144,54 @@ Four embedding requests, no generation quota.
 > **A measurement you cannot repeat is a number, not a result.** If this file
 > tells the next session to re-measure, the instrument belongs in the repository
 > beside the fixture.
+
+### The slice 3 closing review — one door had no guard at all
+
+*Run as the last act of slice 3, asking the standing question across the whole
+system rather than across the new code. **505 passed, 28 skipped, 2 xfailed.***
+
+**Web files were an omission, not a decision.** `.html`, `.css`, `.scss`,
+`.sass`, `.less`, `.vue`, `.svelte` and `.htm` were simply never listed, and it
+was the user who noticed. Measured safe: real `.css` peaks at a max line of 746
+and `.html` at 287, both far under the 1,530 guard, while `.min.css` is still
+caught. `CODE_SUFFIXES` is now 58.
+
+#### The finding: `.env` was refused by one door and accepted by the other
+
+`READABLE_SUFFIXES` keeps a credentials file out of a **repository walk**. The
+**upload endpoint** never consulted it — `read_artifact` checked only that a
+filename *has* a suffix:
+
+```
+walk    prod.env  ->  skipped, "unreadable type"
+upload  prod.env  ->  accepted, chunked, sent to a model provider
+```
+
+**That is the whole reason `.env` is excluded**, and half of it was missing.
+`SECRET_SUFFIXES` now lives in `sources/defaults.py` — `.env`, `.pem`, `.key`,
+`.p12`, `.pfx`, `.keystore`, `.jks` — and the door raises a typed
+`SecretUpload` (422, `secret_upload`).
+
+> **An allowlist protects the door that reads it.** When a rule exists for a
+> security reason, walk every entrance before believing it is enforced.
+
+Three tests, all mutation-verified: dropping the door guard fires the API test
+alone; making `.pem` readable fires `test_no_secret_suffix_is_also_readable`
+alone. (`.env` also trips an older test, but only because `env` happens to be a
+skipped *directory* name — which is why `.pem` is the honest mutation.)
+
+#### One test I wrote in the same pass was fake, and the mutation proved it
+
+`test_a_readable_suffix_with_no_loader_is_really_plain_text` parametrized over
+63 suffixes and looked thorough. Declaring `.zip` readable with no loader **did
+not fail it** — because the test feeds *text* and every loaderless suffix
+resolves to `load_text`, so the assertion could never fail. 63 green cases
+proving nothing.
+
+**Deleted.** The suite went 567 -> 505, which is the right direction.
+
+> **A parametrized test is not 63 tests.** It is one assertion run 63 times, and
+> if the assertion is trivially true it is trivially true 63 times over.
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
