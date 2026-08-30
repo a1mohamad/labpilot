@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from labpilot.ingest import chunk_file
+from labpilot.ingest import chunk_bytes, chunk_file
 from labpilot.prompts import (
     FULL,
     PROMPT_BUDGET,
@@ -105,8 +105,6 @@ def test_every_format_we_can_read_is_also_a_format_we_can_fetch():
 def test_a_notebook_is_loaded_before_it_is_split_whichever_door_it_arrives_by():
     import json
 
-    from labpilot.ingest import chunk_text
-
     raw = json.dumps(
         {
             "cells": [
@@ -121,7 +119,9 @@ def test_a_notebook_is_loaded_before_it_is_split_whichever_door_it_arrives_by():
         }
     )
 
-    chunks = chunk_text(raw, source="run.ipynb", side="B", artifact_id="nb")
+    chunks = chunk_bytes(
+        raw.encode("utf-8"), source="run.ipynb", side="B", artifact_id="nb"
+    )
 
     assert len(chunks) == 1
     assert "lr = 3e-4" in chunks[0].text
