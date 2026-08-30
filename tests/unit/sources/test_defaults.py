@@ -38,3 +38,33 @@ def test_no_readable_suffix_is_also_a_skipped_directory():
 )
 def test_an_archive_we_accept_must_be_able_to_reach_us():
     assert MAX_ARCHIVE_BYTES <= ApiConfig.MAX_REQUEST_BODY_BYTES
+
+
+def test_a_file_that_could_hold_secrets_or_data_is_never_readable():
+    """.env holds API keys and must never be read, chunked, embedded, or sent
+    to a provider. .json is usually a dataset, and a pretty-printed one has
+    short lines, so the generated-file guard would not catch it either."""
+    for suffix in (".env", ".json", ".csv", ".xml", ".lock"):
+        assert suffix not in READABLE_SUFFIXES
+
+
+def test_the_popular_languages_are_all_readable():
+    for suffix in (
+        ".js",
+        ".ts",
+        ".java",
+        ".go",
+        ".rs",
+        ".cpp",
+        ".cs",
+        ".rb",
+        ".php",
+        ".swift",
+        ".kt",
+        ".r",
+        ".jl",
+        ".sql",
+        ".sh",
+        ".yaml",
+    ):
+        assert suffix in READABLE_SUFFIXES
