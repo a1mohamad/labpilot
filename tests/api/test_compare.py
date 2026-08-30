@@ -268,3 +268,13 @@ def test_a_scanned_pdf_is_a_422_that_says_why(client):
     assert response.status_code == 422
     assert problem(response)["code"] == "unreadable_upload"
     assert "scanned" in problem(response)["message"]
+
+
+def test_a_credentials_file_is_refused_at_the_upload_door(client):
+    """READABLE_SUFFIXES keeps .env out of a repository walk, but the API door
+    only ever checked that a suffix EXISTS -- so prod.env used to upload fine
+    and its contents would reach a model provider."""
+    response = post(client, b=("prod.env", b"MISTRAL_API_KEY=sk-real\n", "text/plain"))
+
+    assert response.status_code == 422
+    assert problem(response)["code"] == "secret_upload"
