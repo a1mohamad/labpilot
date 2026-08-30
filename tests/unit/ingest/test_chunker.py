@@ -150,3 +150,13 @@ def test_bytes_that_are_not_utf8_are_refused_by_the_one_decoder():
 def test_a_loader_refuses_what_it_cannot_read_with_our_own_error(suffix):
     with pytest.raises(LoaderError):
         LOADERS[suffix](b"\x89PNG\r\n\x1a\n\x00\x00 not a document at all")
+
+
+def test_a_real_paper_becomes_chunks_that_name_their_page():
+    raw = (Path("data/samples/pdf") / "two_column.pdf").read_bytes()
+
+    chunks = chunk_bytes(raw, source="paper.pdf", side="A", artifact_id="paper")
+
+    assert chunks
+    assert any("page 1" in chunk.header for chunk in chunks)
+    assert "ﬁ" not in "".join(chunk.text for chunk in chunks)
