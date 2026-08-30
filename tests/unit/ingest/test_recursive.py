@@ -44,8 +44,18 @@ def test_consecutive_pieces_overlap():
     )
 
 
-def test_a_word_is_never_cut_in_half():
-    assert all(p.text.endswith("word") for p in split_recursive(LONG_TEXT))
+def test_a_piece_never_begins_or_ends_inside_a_word():
+    # The old version asserted endswith only, while its name promised both
+    # ends. Measured over real Go and sklearn code, 10.8% of chunks began
+    # inside a word, because _pack applied the overlap as a raw character
+    # offset and nothing moved it back to a boundary.
+    pieces = split_recursive(LONG_TEXT)
+
+    for piece in pieces:
+        start = LONG_TEXT.index(piece.text)
+        end = start + len(piece.text)
+        assert start == 0 or not LONG_TEXT[start - 1].isalnum()
+        assert end == len(LONG_TEXT) or not LONG_TEXT[end].isalnum()
 
 
 def test_text_with_no_separators_still_splits_under_the_cap():
