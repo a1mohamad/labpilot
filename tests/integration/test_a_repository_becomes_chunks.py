@@ -159,3 +159,21 @@ def test_a_notebook_in_a_repository_becomes_real_cells(tmp_path):
     assert "final f1 0.8226" in joined
     assert '\n",' not in joined
     assert all(chunk.source == "research/train.ipynb" for chunk in chunks)
+
+
+def test_a_real_paper_in_a_repository_is_ingested_not_skipped_as_too_big(tmp_path):
+    """Real papers are 0.8-2.2MB. If MAX_FILE_BYTES ever falls back to 1MB the
+    walk drops them as 'too big' -- and a skip raises nothing, so the corpus
+    would quietly lose every paper it was given."""
+    repo = build(tmp_path / "repo", {"train.py": "def train():\n    return 1\n"})
+    paper = Path("data/samples/pdf/one_column.pdf")
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "paper.pdf").write_bytes(paper.read_bytes())
+
+    with open_folder(repo) as source:
+        chunks = list(chunk_source(source, side="A"))
+        skipped = dict(source.skipped)
+
+    assert skipped == {}
+    assert {chunk.source for chunk in chunks} == {"docs/paper.pdf", "train.py"}
+    assert any("page 1" in chunk.header for chunk in chunks)
