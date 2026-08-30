@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 READABLE_SUFFIXES = frozenset(
-    {".py", ".md", ".markdown", ".txt", ".rst", ".ipynb", ".pdf"}
+    {".py", ".md", ".markdown", ".txt", ".rst", ".ipynb", ".pdf", ".docx"}
 )
 
 SKIP_DIRECTORIES = frozenset(
