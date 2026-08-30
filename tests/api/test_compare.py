@@ -227,3 +227,22 @@ def test_the_real_sample_pair_flows_through_the_endpoint(client, fake):
     assert "A-0" in prompt
     assert "B-0" in prompt
     assert estimate_tokens(prompt) <= PROMPT_BUDGET
+
+
+def test_a_file_the_door_no_longer_decodes_still_reaches_the_loader_intact(
+    client, fake
+):
+    """The door stopped decoding, so a byte-order mark now reaches the
+    chunker. It must not survive into the text, or every citation shifts."""
+    body = "def add(x, y):\n    return x + y\n"
+    marked = "\ufeff".encode("utf-8") + body.encode("utf-8")
+    fake.result = LLMResult(
+        text='B adds [B-0 "return x + y"].', model="fake-model", tier=1
+    )
+
+    response = post(client, b=("b.py", marked, "text/x-python"))
+
+    assert response.status_code == 200
+    cited = response.json()["citations"]["resolved_list"][0]
+    assert cited["line"] == 2
+    assert cited["text"] == "    return x + y"
