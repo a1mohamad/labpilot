@@ -90,7 +90,7 @@ def test_a_file_we_cannot_read_is_counted_and_does_not_stop_the_ingest(
             raise PermissionError(13, "Permission denied", str(self))
         return real_read_bytes(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_text", refusing_read)
+    monkeypatch.setattr(Path, "read_bytes", refusing_read)
 
     with open_folder(tmp_path / "repo") as source:
         chunks = list(chunk_source(source, side="B"))
