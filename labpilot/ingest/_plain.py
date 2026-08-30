@@ -8,6 +8,6 @@ def load_text(raw: bytes) -> str:
     # utf-8 when there is none. A BOM left in place makes ast.parse fail,
     # which drops a Python file to the recursive splitter with nothing raised.
     try:
-        raw.decode("utf-8-sig")
+        return raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise NotUtf8Text(f"not UTF-8 text: {exc}") from exc
