@@ -467,7 +467,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: STEP 1 SLICES 1, 1b, 2 DONE — slice 3 has done NOTEBOOKS, the BYTES refactor, and `.pdf`.**
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 3 continues with `.docx`, then other languages.**
 **A real two-column paper now becomes real chunks, and three kinds of bad PDF are refused.**
-**479 passed, 28 skipped, 2 xfailed.**
+**480 passed, 28 skipped, 2 xfailed.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
 **Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
 **`.pdf` is DONE and measured on 24 real papers — see [what shipped](#pdf--done-2026-08-30-measured-on-24-real-papers).**
@@ -626,7 +626,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 > [Multi-pass](#multi-pass-vary-the-model-not-the-seed-measured-2026-08-17).
 > **(2)** the impact column in `EXPECTED.md`, which costs no requests.
 >
-> **Code state:** **479 passed, 28 skipped, 2 xfailed, ruff clean.**
+> **Code state:** **480 passed, 28 skipped, 2 xfailed, ruff clean.**
 > `labpilot/api/` serves `POST /api/v1/compare` plus `/` and `/health`, built by
 > a `create_app()` factory with a lifespan, routers, services, a typed error
 > vocabulary and two ASGI middleware — see
@@ -2539,7 +2539,7 @@ door question has to be answered again.**
 ## `.pdf` — DONE 2026-08-30, measured on 24 real papers
 
 *The theory was written in session 14 and never touched a library. This is what
-happened when it did. **479 passed, 28 skipped, 2 xfailed, ruff clean.** All four
+happened when it did. **480 passed, 28 skipped, 2 xfailed, ruff clean.** All four
 new invariants were mutation-tested and all four fired.*
 
 **The user refused a one-paper conclusion, and that refusal changed the code
@@ -2687,6 +2687,48 @@ requires, so raising a limit fails loudly instead of passing forever.
 
 The last one also proved the fallback stays **loud**: with no loader a PDF fails
 as "not UTF-8", never silently.
+
+### The review pass — three tests written, two deleted
+
+*Run at the close of `.pdf`, asking only the standing question: **which real
+failure is still unprotected?** Three candidates were written, mutation-tested,
+and **two were deleted for being dead.* **480 passed, 28 skipped, 2 xfailed.**
+
+**Kept — it fires alone:**
+`test_a_real_paper_in_a_repository_is_ingested_not_skipped_as_too_big`. Real
+papers are 0.8-2.2MB, and `MAX_FILE_BYTES` had to rise to 5MB for the
+**repository** door. Nothing tied that constant to a real file: only
+`MAX_FILE_BYTES <= MAX_UPLOAD_BYTES`, which is two constants agreeing with each
+other. Reverting the limit to 1MB makes this test — and **only** this test — go
+red. Without it, every paper inside a repository would be dropped as `too big`,
+and a skip raises nothing.
+
+**Deleted — a PDF cap test and a PDF verbatim-slice test.** Both looked
+reasonable and both failed the real question. Seven mutations were tried,
+including three aimed at PDF alone:
+
+```
+cap pass never splits          -> fired with 3 existing tests
+parts lose the line offset     -> fired with 4 existing tests
+pages joined with one newline  -> nothing fired
+the page mark is dropped       -> fired 5 tests, NEITHER new one
+_readable stops stripping      -> nothing fired
+merge uses raw, not loaded     -> only an EXISTING test fired
+```
+
+**Neither ever fired alone.** The quora fixture already exercises both
+invariants — `class Trainer` is 5,300 tokens against a 1,530-character cap — so
+running the same assertions over a second corpus adds a number and no
+protection.
+
+> **A new corpus is not a new invariant.** Re-asserting a rule you already test,
+> on different data, buys nothing. Only a rule nothing else checks is worth a
+> test — and the way to find out is to break the code, not to read the test.
+
+Also refused deliberately: a *"broken PDF in a repository is skipped and
+counted"* test. It is the same `except LoaderError` branch the notebook test
+already pins, so it would be one test per **combination** rather than per
+failure.
 
 ### A process failure worth more than the code
 
