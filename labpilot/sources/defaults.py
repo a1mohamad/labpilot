@@ -57,6 +57,15 @@ CODE_SUFFIXES = frozenset(
         ".zsh",
         ".ps1",
         ".sql",
+        # web
+        ".html",
+        ".htm",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        ".vue",
+        ".svelte",
         # config: this is where a paper's hyperparameters actually live
         ".yaml",
         ".yml",
@@ -64,6 +73,12 @@ CODE_SUFFIXES = frozenset(
         ".ini",
         ".cfg",
     }
+)
+
+# Never readable through ANY door. .env holds API keys, and the rest are
+# private keys: reading one means sending it to a model provider.
+SECRET_SUFFIXES = frozenset(
+    {".env", ".pem", ".key", ".p12", ".pfx", ".keystore", ".jks"}
 )
 
 DOCUMENT_SUFFIXES = frozenset(
