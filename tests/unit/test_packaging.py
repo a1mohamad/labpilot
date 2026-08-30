@@ -16,7 +16,6 @@ REQUIREMENTS = pathlib.Path("requirements.txt")
 ENV_EXAMPLE = pathlib.Path(".env.example")
 
 READERS = {("os", "getenv"), ("os", "environ", "get")}
-
 SAMPLES = pathlib.Path("data/samples")
 SOURCES = SAMPLES / "SOURCES.md"
 THIRD_PARTY_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".pptx", ".zip"}
