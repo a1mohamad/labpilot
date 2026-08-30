@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from labpilot.ingest._docx import load_docx
 from labpilot.ingest._markdown import split_markdown
 from labpilot.ingest._notebook import load_notebook, split_notebook
 from labpilot.ingest._pdf import load_pdf, split_pdf
@@ -19,6 +20,7 @@ from labpilot.ingest.defaults import MAX_CHARS, MIN_CHARS
 LOADERS: dict[str, Callable[[bytes], str]] = {
     ".ipynb": load_notebook,
     ".pdf": load_pdf,
+    ".docx": load_docx,
 }
 
 SPLITTERS: dict[str, Callable[[str], list[Piece]]] = {
