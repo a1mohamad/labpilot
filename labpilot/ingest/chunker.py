@@ -6,15 +6,16 @@ from pathlib import Path
 
 from labpilot.ingest._markdown import split_markdown
 from labpilot.ingest._notebook import load_notebook, split_notebook
+from labpilot.ingest._plain import load_text
 from labpilot.ingest._python import split_python
 from labpilot.ingest._recursive import split_recursive
 from labpilot.ingest.contracts import Chunk, Piece, Side
 from labpilot.ingest.defaults import MAX_CHARS, MIN_CHARS
 
 # A loader turns the bytes of a file into the text we mean to read; a splitter
-# turns that text into boundaries. For .py and .md the two are the same act, so
-# only formats that are not already plain text need an entry here.
-LOADERS: dict[str, Callable[[str], str]] = {
+# turns that text into boundaries. Plain text needs no entry: load_text is the
+# default, so only formats that are not already text appear here.
+LOADERS: dict[str, Callable[[bytes], str]] = {
     ".ipynb": load_notebook,
 }
 
@@ -26,13 +27,13 @@ SPLITTERS: dict[str, Callable[[str], list[Piece]]] = {
 }
 
 
-def chunk_text(
-    text: str, *, source: str, side: Side, artifact_id: str
+def chunk_bytes(
+    raw: bytes, *, source: str, side: Side, artifact_id: str
 ) -> tuple[Chunk, ...]:
     # Loading happens here, not in chunk_file, because an upload arrives as
-    # text through the API and would otherwise reach the splitter unloaded.
+    # bytes through the API and would otherwise reach the splitter unloaded.
     suffix = Path(source).suffix.lower()
-    text = _load(text, suffix)
+    text = _load(raw, suffix)
     pieces = _split(text, suffix)
     pieces = _merge_small(_enforce_cap(pieces), text.splitlines())
     return tuple(
@@ -45,17 +46,16 @@ def chunk_file(
     path: str | Path, *, side: Side, artifact_id: str, source: str | None = None
 ) -> tuple[Chunk, ...]:
     path = Path(path)
-    return chunk_text(
-        path.read_text(encoding="utf-8"),
+    return chunk_bytes(
+        path.read_bytes(),
         source=source or path.name,
         side=side,
         artifact_id=artifact_id,
     )
 
 
-def _load(text: str, suffix: str) -> str:
-    loader = LOADERS.get(suffix)
-    return loader(text) if loader else text
+def _load(raw: bytes, suffix: str) -> str:
+    return LOADERS.get(suffix, load_text)(raw)
 
 
 def _split(text: str, suffix: str) -> list[Piece]:
