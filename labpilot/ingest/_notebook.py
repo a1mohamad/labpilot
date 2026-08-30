@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any
 
+from labpilot.ingest._plain import load_text
 from labpilot.ingest._sections import Mark, to_pieces
 from labpilot.ingest.contracts import Piece
 from labpilot.ingest.errors import LoaderError
@@ -13,7 +14,7 @@ OUTPUT_SEPARTOR = "# --- output ---"
 TEXT_MIME = "text/plain"
 
 
-def load_notebook(raw: str) -> str:
+def load_notebook(raw: bytes) -> str:
     blocks = []
     for number, cell in enumerate(_cells(raw), start=1):
         block = _cell_text(cell, number=number)
@@ -24,7 +25,7 @@ def load_notebook(raw: str) -> str:
 
 def _cells(raw: str) -> list[Any]:
     try:
-        notebook = json.loads(raw)
+        notebook = json.loads(load_text(raw))
     except json.JSONDecodeError as exc:
         raise LoaderError(f"not valid as JSON, so not a notebook: {exc}") from exc
 
