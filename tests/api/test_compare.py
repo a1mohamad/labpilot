@@ -6,6 +6,7 @@ from labpilot.llm import AllFreeTiersExhausted, Attempt, LLMResult
 from labpilot.prompts import PROMPT_BUDGET, REPORT
 from labpilot.tokens import estimate_tokens
 from tests.api.conftest import ANSWER, QUESTION, SAMPLES, post, problem
+from tests.unit.ingest.test_pdf import a_pdf_with_no_text_layer
 
 
 def test_compare_returns_the_answer_and_the_model_that_produced_it(client):
@@ -60,7 +61,7 @@ def test_a_binary_upload_is_rejected_as_not_text(client):
 
 
 def test_an_upload_over_the_size_limit_is_rejected(client):
-    huge = b"x = 1\n" * 200_000
+    huge = b"x = 1\n" * 900_000
     assert len(huge) > ApiConfig.MAX_UPLOAD_BYTES, "must exceed the real limit"
 
     response = post(client, b=("big.py", huge, "text/x-python"))
@@ -246,3 +247,24 @@ def test_a_file_the_door_no_longer_decodes_still_reaches_the_loader_intact(
     cited = response.json()["citations"]["resolved_list"][0]
     assert cited["line"] == 2
     assert cited["text"] == "    return x + y"
+
+
+def test_a_pdf_upload_is_read_as_a_document_not_refused_as_binary(client, fake):
+    """Before the bytes refactor a PDF died at the door as 'not UTF-8 text'."""
+    raw = (SAMPLES.parent / "pdf" / "two_column.pdf").read_bytes()
+    fake.result = LLMResult(text="No citation.", model="fake-model", tier=1)
+
+    response = post(client, a=("paper.pdf", raw, "application/pdf"))
+
+    assert response.status_code == 200
+    assert response.json()["chunks"]["A"]["total"] > 1
+
+
+def test_a_scanned_pdf_is_a_422_that_says_why(client):
+    response = post(
+        client, a=("scan.pdf", a_pdf_with_no_text_layer(), "application/pdf")
+    )
+
+    assert response.status_code == 422
+    assert problem(response)["code"] == "unreadable_upload"
+    assert "scanned" in problem(response)["message"]
