@@ -9,7 +9,7 @@ from labpilot.llm import LLMResult
 @dataclass(frozen=True, slots=True)
 class Artifact:
     name: str
-    text: str
+    raw: bytes
 
 
 @dataclass(frozen=True, slots=True)
