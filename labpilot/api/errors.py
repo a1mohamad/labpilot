@@ -27,6 +27,11 @@ class UnnamedUpload(ApiError):
     code = "unnamed_upload"
 
 
+class SecretUpload(ApiError):
+    status = 422
+    code = "secret_upload"
+
+
 class EmptyArtifact(ApiError):
     status = 422
     code = "empty_artifact"
