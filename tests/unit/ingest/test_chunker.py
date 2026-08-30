@@ -115,9 +115,12 @@ def test_a_bare_class_header_merges_with_what_follows_it():
 
 
 def test_an_unknown_extension_falls_back_to_the_recursive_splitter():
+    prose = (("word " * 20).strip() + "\n") * 100
+
     chunks = chunk_bytes(
-        ("word " * 400).encode("utf-8"), source="notes.txt", side="A", artifact_id="t"
+        prose.encode("utf-8"), source="notes.txt", side="A", artifact_id="t"
     )
+
     assert chunks
     assert all("·" not in chunk.header.split(" · lines")[0] for chunk in chunks)
 
