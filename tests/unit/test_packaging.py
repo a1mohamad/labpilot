@@ -92,7 +92,7 @@ def test_every_package_labpilot_imports_is_pinned():
     requirements-dev.txt, which pulls the whole tree in regardless.
     """
     pinned = {
-        line.split("==")[0].strip().lower().replace("-", "_")
+        line.split("==")[0].split("[")[0].strip().lower().replace("-", "_")
         for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.startswith("#")
     }
