@@ -1,4 +1,5 @@
 fastapi==0.141.1
+psycopg[binary]==3.2.12
 pydantic==2.13.4
 pypdf==6.16.2
 python-dotenv==1.2.2
