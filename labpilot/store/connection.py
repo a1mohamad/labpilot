@@ -26,7 +26,7 @@ def connect(url: str | None = None) -> Generator[psycopg.Connection]:
     try:
         opened = psycopg.connect(url or database_url(), connect_timeout=CONNECT_TIMEOUT)
     except psycopg.Error as exc:
-        raise ConnectionFailed(f"could not reach theda database: {exc}") from exc
+        raise ConnectionFailed(f"could not reach the database: {exc}") from exc
 
     with opened as conn:
         yield conn
