@@ -18,8 +18,8 @@ same shape - an assertion whose input was computed from the value under test,
 so it could never fail:
 
 ```python
-huge = b"x = 1\n" * (MAX_UPLOAD_BYTES // 3)   # raise the limit, payload grows
-over = b"x" * (MAX_REQUEST_BODY_BYTES + 1)    # same bug, hours later
+huge = b"x = 1\n" * (MAX_UPLOAD_BYTES // 3)  # raise the limit, payload grows
+over = b"x" * (MAX_REQUEST_BODY_BYTES + 1)  # same bug, hours later
 ```
 
 **Reading the tests caught none of them. Mutating the source caught all three.**
@@ -132,7 +132,7 @@ literal on one side, plus an explicit premise assertion:
 
 ```python
 huge = b"x" * 6_000_000
-assert len(huge) > MAX_UPLOAD_BYTES   # fails loudly if the limit is ever raised
+assert len(huge) > MAX_UPLOAD_BYTES  # fails loudly if the limit is ever raised
 ```
 
 **A test that calls the function directly instead of through the registry.**
