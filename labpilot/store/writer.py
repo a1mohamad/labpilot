@@ -8,7 +8,7 @@ import psycopg
 from labpilot.store.contracts import ArtifactRecord, ChunkRecord
 from labpilot.store.defaults import INSERT_BATCH_SIZE
 
-_INSERT_ARTIFACT = """"
+_INSERT_ARTIFACT = """
     insert into artifacts (id, name, side, embedding_model, dim)
     values (%s, %s, %s, %s, %s)
 """
@@ -17,7 +17,7 @@ _INSERT_CHUNK = """
     insert into chunks
         (artifact_id, chunk_index, text, header, source,
         start_line, end_line, v)
-    values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    values (%s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 
