@@ -6,6 +6,7 @@ from labpilot.store.errors import (
     NotConfigured,
     StoreError,
 )
+from labpilot.store.writer import write_artifact
 
 __all__ = [
     "ArtifactRecord",
@@ -19,4 +20,5 @@ __all__ = [
     "connect",
     "create_schema",
     "database_url",
+    "write_artifact",
 ]
