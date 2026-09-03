@@ -41,15 +41,15 @@ def write_artifact(
             ),
         )
 
-    for batch in batched(chunks, INSERT_BATCH_SIZE):
-        cur.executemany(_INSERT_CHUNK, [_row(artifact, c) for c in batch])
-        written += len(batch)
+        for batch in batched(chunks, INSERT_BATCH_SIZE):
+            cur.executemany(_INSERT_CHUNK, [_row(artifact, c) for c in batch])
+            written += len(batch)
 
-    if written == 0:
-        raise ValueError(
-            f"artifact {artifact.id!r} has no chunks: storing it would "
-            f"give a corpus that returns empty results and says nothing"
-        )
+        if written == 0:
+            raise ValueError(
+                f"artifact {artifact.id!r} has no chunks: storing it would "
+                f"give a corpus that returns empty results and says nothing"
+            )
 
     return written
 
