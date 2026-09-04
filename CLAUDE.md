@@ -27,6 +27,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Languages + the overlap fix**](#other-code-languages--done-2026-08-31-and-the-overlap-bug-they-exposed) ·
 [**Slice 3 — the PDF theory**](#slice-3-second-half--pdf-the-theory-recorded-2026-08-30) ·
 [**SLICE 4 — the theory + schema**](#slice-4--the-theory-recorded-2026-09-03) ·
+[**SLICE 4 first half DONE — the store**](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
 [**Slice 1 DONE — the embedder**](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) ·
 [Slice 1b plan](#slice-1b--more-embedders-and-why-it-moved-ahead-of-slice-2) ·
@@ -467,49 +468,69 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3 DONE. SLICE 4 IS PLANNED AND NOT YET CODED.**
-**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is next, and its theory is decided.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3 DONE. SLICE 4 IS HALF BUILT — steps 1 and 2 of 5.**
+**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is in progress on `feat/store`.**
+**The table and the WRITE PATH exist and are proven against the real Supabase project.**
+**`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer.**
+**531 passed, 28 skipped, 2 xfailed. 10 of 10 mutations verified real.**
+**NEXT IS `search.py` — exact search, which is the INSTRUMENT that scores the index in step 4.**
 **Notebooks, PDF, Word and 58 code suffixes all ingest; every bad variant is refused, not stored.**
-**505 passed, 28 skipped, 2 xfailed.**
-**The `mutation-test` skill EXISTS — `.claude/skills/mutation-test/SKILL.md`, written 2026-09-03.**
+**The `mutation-test` skill EXISTS and FIRED — `.claude/skills/mutation-test/SKILL.md`.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
-**Google is reachable again as of 2026-08-27, and `gemini-embedding-001` is now PROVEN live at 3072 dim.**
-**`.pdf` is DONE and measured on 24 real papers — see [what shipped](#pdf--done-2026-08-30-measured-on-24-real-papers).**
-**Slice 4's schema and its exact-vs-ANN decision order are recorded — read
-[slice 4, the theory](#slice-4--the-theory-recorded-2026-09-03) before writing a line of it.**
-**Last updated 2026-09-03 (sixteenth session). Working branch: `main` — `feat/store` is NOT yet created.**
+**Slice 4 calls NO model, so the ISP probe is NOT needed for it. A database is not a model.**
+**`DATABASE_URL` now exists in `.env` — SESSION POOLER, port 5432. Direct connection is IPv6-only and DEAD from here.**
+**Read [slice 4, the theory](#slice-4--the-theory-recorded-2026-09-03) then
+[slice 4, what is built](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path).**
+**Last updated 2026-09-04 (seventeenth session). Working branch: `feat/store`, NOT merged.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ✅ THE `mutation-test` SKILL IS WRITTEN — the slice 4 gate is lifted
+> > ## ▶ SLICE 4 CONTINUES HERE — the write path is done, search is not
 > >
-> > `.claude/skills/mutation-test/SKILL.md`, 157 lines, created 2026-09-03. It
-> > carries the five-step procedure (step 0 is **copy the file aside; never
-> > restore a mutation with git**), the three verdicts, and all five slice 3
-> > cases. It is committed as `17db968`; only a ruff comment-spacing fix is
-> > outstanding.
+> > **Session 17 built steps 1 and 2 of the five-step decision order.** The
+> > table, the connection and the writer exist and are proven against the real
+> > database. Read
+> > [what is built and what was measured](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path)
+> > before writing a line, then
+> > [the theory](#slice-4--the-theory-recorded-2026-09-03) for the plan.
 > >
-> > **It does not load until a new session starts**, because skills are read at
-> > startup. The rule still binds regardless: it is also written in
-> > [Mutation testing](#mutation-testing--claudes-standing-job-and-it-runs-unasked).
+> > **The next task is `labpilot/store/search.py` — EXACT search.** Not an
+> > index. Exact search is the correct answer by definition, so it is the only
+> > instrument that can score HNSW in step 4:
+> >
+> > ```
+> > select chunk_index, text, header, source, start_line, end_line,
+> >        1 - (v <=> %s) as score
+> > from chunks
+> > where artifact_id = %s
+> > order by v <=> %s
+> > limit %s
+> > ```
+> >
+> > Three things it must get right: **`<=>` is cosine DISTANCE, not
+> > similarity**, so smallest wins and `order by` takes no `desc`; it needs a
+> > **`ModelMismatch` guard** comparing the artifact's `embedding_model` with
+> > the model that embedded the query, because searching across two models
+> > returns numbers and not meaning, silently; and `SearchHit` has to be added
+> > to `store/contracts.py`, which deliberately does not have it yet.
+> >
+> > **Then, in order:** step 3 partition-per-artifact + HNSW · step 4 measure
+> > recall and latency **with the real `WHERE artifact_id` filter** · step 5
+> > decide which ships. Do not skip to the index. If HNSW loses, keep the code
+> > anyway — it exists to close a skill gap, and the measurement is the lesson.
 >
-> > ## ▶ SLICE 4 STARTS HERE — the theory is done, the code is not
+> > ## ⚠ TWO DEBTS SLICE 4 OWES BEFORE IT CLOSES
 > >
-> > **Session 16 wrote no code on purpose.** Lessons 1–3 were delivered
-> > (vector databases · HNSW · the schema) and they produced real decisions,
-> > including two changes to things this file had already recorded. **Read
-> > [slice 4, the theory](#slice-4--the-theory-recorded-2026-09-03) first.**
+> > **1. CI never runs the database tests.** There is no `DATABASE_URL` secret
+> > on GitHub, so all ten `tests/integration/test_store_*.py` tests skip in CI
+> > and only ever run locally. A test that never runs is close to a test that
+> > does not exist. Add the repository secret at the close of slice 4.
 > >
-> > **Neither of the first two steps has been done.** The next session must:
-> >
-> > 1. `git checkout -b feat/store`
-> > 2. add `psycopg[binary]==3.2.12` to **`requirements.txt`** (runtime)
-> > 3. add `DATABASE_URL` to `.env.example` — **port 5432, never 6543**
-> > 4. run the throwaway connection probe, and report the pgvector version
-> >
-> > The user will create the Supabase connection string. **No `DATABASE_URL`
-> > exists yet**, so nothing can be verified against a real database until it
-> > does.
+> > **2. `services.py` still does not write anything.** `write_artifact` is
+> > reachable only from tests. The `Chunk` + vector -> `ChunkRecord`
+> > translation belongs in `api/services.py`, because entry is the only layer
+> > allowed to import both `ingest/` and `store/`. That is slice 7 work, and
+> > until then the store is scaffolding with a scheduled consumer.
 >
 > **The walking skeleton walks.** A real HTTP request now goes upload → chunk →
 > select → prompt → `LLMClient` → an answer with its citations resolved back to
@@ -3507,7 +3528,257 @@ chunking. `scripts/score_retrieval.py` runs it for four embedding requests.
   assumes codestral won.
 - **Exact vs HNSW.** Step 5 of the order above, on our numbers.
 - **`hnsw.ef_search`, `m`, `ef_construction`.** Defaults until measured.
-- Whether an undimensioned `vector` column really works on our Supabase project.
+- ~~Whether an undimensioned `vector` column really works on our Supabase
+  project.~~ **ANSWERED 2026-09-04: it works, and it cannot be indexed. See
+  below.**
+
+## Slice 4, first half — DONE 2026-09-04: the table and the write path
+
+*Steps 1 and 2 of the five-step decision order. **531 passed, 28 skipped,
+2 xfailed, ruff clean. 10 of 10 mutations verified real.** Branch `feat/store`,
+not merged. Nothing here calls a model, so no ISP probe was needed — the network
+precondition is narrow on purpose, and a database is not a model.*
+
+### The connection: the direct string is dead from here, and the dashboard says why
+
+The plan said *"port 5432, never 6543"*. That rule survived. What did **not**
+survive is the assumption that we would use the **direct connection**:
+
+```
+db.<project-ref>.supabase.co   ->  does not resolve, IPv4 OR IPv6
+supabase.com                   ->  resolves
+<project-ref>.supabase.co      ->  resolves
+aws-0-eu-central-1.pooler...   ->  resolves, and CONNECTS
+```
+
+DNS is healthy; only that one hostname is missing. The dashboard states the
+cause plainly — *"Direct connections use IPv6 by default"*, with a **paid**
+IPv4 add-on as the fix. So the answer is the **session pooler**:
+
+```
+postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+```
+
+**Three things about that string are easy to get wrong.** The port must be
+**5432** (session mode); 6543 is transaction mode and rejects the prepared
+statements psycopg3 uses by default, failing as `prepared statement "_pg3_0"
+already exists` — which reads like a bug in our code. The **user is not
+`postgres`** but `postgres.<project-ref>`, because one pooler serves many
+projects and the username is how it routes. And the region is not guessable: it
+was found by probing, since a wrong region answers `Tenant or user not found`.
+
+> **Read the connection string, never the tab label.** The Connect dialog's
+> default tab is a JavaScript SDK page with no Postgres string on it at all.
+
+### What was measured, and it settles the schema
+
+Every claim slice 4's theory marked UNVERIFIED was run against the real project
+(PostgreSQL **17.6**, pgvector **0.8.2**, already installed — no
+`CREATE EXTENSION` needed):
+
+| probe | result |
+|---|---|
+| `create table (v vector)` — no width | works, and really holds a 3-dim and a 5-dim vector in one column |
+| `<=>` on that column | works |
+| **hnsw on it** | **fails** — `column does not have dimensions` |
+| hnsw on `vector(3072)` | **fails** — `cannot have more than 2000 dimensions` |
+| hnsw on `(v::halfvec(3072))` | works — the 2026-08-28 workaround holds |
+| `idle_in_transaction_session_timeout` | **0 — no limit** |
+| `statement_timeout` | **2 min**, per statement |
+| a column literally named `text` | parses |
+
+**So Shape A is real: one table, one undimensioned column, no index.** That is
+exactly right for steps 1–2, because exact search needs no index — and it keeps
+slice 8 free to choose the embedder, which a `vector(1536)` column would
+silently decide for it.
+
+**The timeout row is what makes the write path legal.** With
+`idle_in_transaction_session_timeout = 0`, one transaction may stay open while
+we wait on the embedder between batches. Had it been 60 s, the streaming design
+would have had to change. *It was worth two seconds to check.*
+
+### pgvector is float4 — vectors do NOT come back unchanged
+
+Slice 4's stated goal is *"~2,000 chunks go in and come back out unchanged"*.
+Measured:
+
+```
+sent 0.3333333333333333  ->  read back 0.33333334
+sent 0.1234567890123456  ->  read back 0.12345679
+max absolute error ~6.7e-9
+```
+
+**Text comes back exactly. Vectors come back to about 7 significant digits**,
+because the `vector` type is float4. This is harmless for ranking — the
+2026-08-28 gate showed even *16-bit* `halfvec` cost 0 of 10 in ranking overlap,
+and float4 is far more precise — but it must never be asserted as equality, and
+it was recorded nowhere. `test_the_vectors_survive_only_to_float4_precision`
+now pins it, **including an assertion that it is NOT exact**, so a future
+session cannot "fix" a bug that does not exist.
+
+### What shipped
+
+| module | holds |
+|---|---|
+| `store/contracts.py` | `ArtifactRecord`, `ChunkRecord`, `Vector`, `Side` |
+| `store/errors.py` | `StoreError` · `NotConfigured` · `ModelMismatch` · `ConnectionFailed` |
+| `store/defaults.py` | `CONNECT_TIMEOUT`, `INSERT_BATCH_SIZE` |
+| `store/schema.sql` | the two tables, Shape A |
+| `store/connection.py` | `database_url`, `connect`, `create_schema` |
+| `store/writer.py` | `write_artifact` — one transaction, streamed |
+
+### `store/` may not import `embed/` or `ingest/`, and that shaped everything
+
+`store/` is an **adapter**, so `test_architecture.py` lets it import only
+`tokens` and `_text`. It therefore cannot accept an `ingest.Chunk`, and cannot
+import `Vector` from `embed.contracts` — a sibling adapter.
+
+That is the rule working, not an obstacle. Two adapters that know each other's
+types are welded together, and then neither can be replaced. `embed()` already
+obeys it: it takes `Sequence[str]`, never `Chunk`.
+
+So the store owns its own record types, and **`api/services.py` does the
+translation**, because entry is the only layer allowed to import both:
+
+```
+bytes -> str -> Chunk -> vector -> ChunkRecord -> Postgres
+                            ^ embed(chunk.embed_text)
+```
+
+`Vector = tuple[float, ...]` is **duplicated** rather than promoted to the
+shared layer. The precedents for promotion (`truncate`, `estimate_tokens`) were
+**behaviour**, where two copies drift apart and cause a bug. A structural type
+alias cannot drift into a bug, so a shared module holding one alias would buy
+no protection.
+
+### The schema, and the three columns that are absent on purpose
+
+`embedding_model` and `dim` sit on **`artifacts`**, not on `chunks` — the
+change slice 4's theory made, now built. One artifact has one model, so its
+rows *cannot* disagree and there is nothing left to detect.
+
+> **Put a rule where it cannot be broken, not where it can be checked.**
+
+**No `side` column**: one artifact has one side, so `artifact_id` decides it and
+the side filter *is* the artifact filter — one predicate, not two.
+**No `chunk_count`**: `count(*)` gives it, and a second copy of the truth
+drifts. **No index on `artifact_id`**: it is the primary key's leading column,
+so `where artifact_id = $1` already uses that B-tree; a second index would be a
+second copy of the same thing.
+
+`on delete cascade` is load-bearing, not decoration — it is what makes
+re-ingest **idempotent**, because the writer's leading `delete from artifacts`
+clears the chunks with it.
+
+### Streaming and atomicity are not in conflict — and indentation is the boundary
+
+The write path has two requirements that read like opposites. **Memory:** 2,000
+vectors of 1,536 floats as Python lists is ~73 MB against a 512 MB box that is
+also serving the API, so we hold `INSERT_BATCH_SIZE = 96` at a time
+(~4.7 MB peak) and every one of the 2,000 is still stored. **Atomicity:** dying
+at chunk 1,200 must leave nothing, because half a corpus answers confidently and
+raises nothing.
+
+They only look opposed because they are about different things:
+**streaming is about Python objects; the transaction is about the database.**
+So the batches run *inside* one `conn.transaction()`.
+
+**And this was not theoretical.** The loop was first typed **outside** the
+`with` block. The symptom was lucky — `psycopg.InterfaceError: the cursor is
+closed`. Had the cursor stayed open, every chunk would have committed
+separately, atomicity would have been gone, and **nothing would have raised**.
+
+> **Four spaces of indentation decided whether the write was atomic.** A
+> correctness property with no error message attached needs a test, not care.
+
+`INSERT_BATCH_SIZE = 96` matches `embed`'s `MAX_BATCH_SIZE` numerically and is
+**derived independently**, from the same memory budget — `store/` cannot import
+`embed/`, and the two limits answer different questions.
+
+### How a vector crosses the wire
+
+Four forms were tested and all four work, including a plain Python list and
+scientific notation — which normalized vectors need. We use `str(list(vector))`:
+stdlib only, no numpy, and it is what the `pgvector` package would have produced
+anyway. **Reading back returns a `str`, not a list**, so search must parse if it
+ever needs the vector itself — it should not.
+
+### Testing: a new cost class, and a gap named rather than hidden
+
+Database tests cost **no API quota** but need a live Postgres, so `--run-smoke`
+is the wrong gate. They carry a `database` marker and **skip on a missing
+`DATABASE_URL`**, and `.env` is loaded **inside the fixture only** — five
+`tests/unit/embed/` files manipulate env vars, and a global `load_dotenv()` in
+`conftest.py` would change what they see.
+
+They run in their own `labpilot_test` **schema**, dropped at teardown, so real
+data is never touched. The fixture connection is **autocommit**, because
+otherwise one deliberate `CheckViolation` poisons the transaction and every
+later test dies with *"current transaction is aborted"*. `conn.transaction()`
+was verified to still begin and roll back under autocommit, so the atomicity
+test is real and not decorative.
+
+**One file was typed into `tests/unit/store/` and moved.** `unit/` means no
+network and no database; a test hitting Supabase is not a unit test whatever it
+covers.
+
+> **The gap, stated rather than hidden: CI has no `DATABASE_URL`, so all ten
+> database tests always skip there.** A test that never runs is close to a test
+> that does not exist. Add the repository secret before slice 4 closes.
+
+### Mutation results — 10 of 10 real
+
+```
+M1  schema: drop ON DELETE CASCADE       -> test_deleting_an_artifact_deletes_its_chunks
+M2  schema: pin the column to vector(3)  -> test_one_vector_column_holds_two_different_widths
+M3  schema: drop IF NOT EXISTS           -> test_applying_the_schema_again_keeps_the_data
+M4  schema: drop the side CHECK          -> test_the_database_refuses_a_side_that_is_not_a_or_b
+M5  connection: put the URL in the error -> test_our_error_never_repeats_the_url_we_were_given
+M6  connection: drop `from exc`          -> test_a_driver_failure_..._keeps_the_cause
+M7  contracts: delete the side guard     -> test_a_side_that_is_not_a_or_b_is_refused
+M8  writer: drop the leading DELETE      -> test_writing_the_same_artifact_twice_replaces_it
+M9  writer: loop outside the transaction -> test_a_failure_midway_leaves_nothing_behind
+M10 writer: drop the width check         -> test_a_vector_of_the_wrong_width_is_refused
+```
+
+M5 printed the exact leak it prevents:
+
+```
+could not reach postgresql://postgres.abc:hunter2SECRET@host.example:5432/...
+```
+
+**But note what that test does and does not claim.** It pins that *we* never
+repeat the URL. Whether **psycopg** leaks a password was measured separately and
+live — it does not, on a bad password or a bad host — which is why no scrubbing
+code exists. *Check the threat before writing the guard*, the same lesson
+`zipfile` taught in slice 2.
+
+M2 is the one that guards a **decision** rather than a behaviour: if anyone
+later writes `v vector(1536)`, that test goes red and forces the conversation
+about which embedder won, instead of the choice being made silently by an edit.
+
+### One small defect the new dependency exposed
+
+`test_every_package_labpilot_imports_is_pinned` split each requirement on `==`
+and never learned about **extras**, so `psycopg[binary]==3.2.12` was stored
+under a name the import `psycopg` could never match. `.split("[")[0]` fixes it,
+and check C of the mutation run confirmed the looser parser did **not** make the
+test blind — deleting the dependency still fails it.
+
+> **Loosening a parser can quietly kill a test's ability to fail.** Always
+> re-run the case the test exists to catch, not only the case you just allowed.
+
+### What the first half deliberately did NOT do
+
+- **No index.** Step 3, and it must not come before the exact baseline that
+  scores it.
+- **No search.** Step 2 of the order and the next task; `SearchHit` is
+  deliberately absent from `contracts.py` until its consumer exists.
+- **No wiring into `services.py`.** `write_artifact` is reachable only from
+  tests — scaffolding with a scheduled consumer, exactly as `chunk_source` was
+  after slice 2.
+- **No connection pool.** `psycopg_pool` is a separate package; one connection
+  per operation is right until something measures otherwise.
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
@@ -5318,6 +5589,7 @@ Copy `.env.example` to `.env` and fill in real values.
 | `COHERE_API_KEY` | **Reranker tier 1**, embedder last resort | dashboard.cohere.com — trial key, no card |
 | `VOYAGE_API_KEY` | **Reranker tier 2** — 200M free rerank tokens, one-time | dash.voyageai.com — no card |
 | `CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` | Reranker t3, embedder t4, generator t7 | dash.cloudflare.com — token needs **both** `Workers AI - Read` and `Workers AI - Edit`. The **account ID goes in the URL path**, which is why this is the only provider needing two variables |
+| **`DATABASE_URL`** | **The pgvector store (slice 4)** | Supabase → Connect → **Session pooler**. Port **5432**, never 6543 — transaction mode rejects the prepared statements psycopg3 uses. User is `postgres.<project-ref>`, not `postgres`. The **direct** connection is IPv6-only and does not resolve from here |
 | ~~`CEREBRAS_API_KEY`~~ | **Dead** — the API now requires a card (`402`) | — |
 | ~~`MODAL_API_KEY`~~ | No longer a chain tier. Step 4 only, for serving the fine-tuned model | modal.com |
 
@@ -5594,7 +5866,7 @@ api             -> everything
 | layer | meaning | packages |
 |---|---|---|
 | **shared** | imported by all, imports nothing of ours | `tokens`, `_text` |
-| **adapters** | talk to the **outside world** — HTTP, disk, git, a database | `llm`, `embed`, later `sources`, `store`, `rerank` |
+| **adapters** | talk to the **outside world** — HTTP, disk, git, a database | `llm`, `embed`, `sources`, `store`, later `rerank` |
 | **core** | our own logic, no outside world | `ingest`, `prompts`, `retrieval`, later `agent` |
 | **entry** | wires everything together | `api` |
 
