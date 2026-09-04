@@ -473,9 +473,11 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
 **`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search.**
 **544 passed, 28 skipped, 2 xfailed. Mutation-tested at every step.**
-**The FLAKY SUITE IS FIXED — 20 full runs, 0 failures. It was the test fixture, not `store/`:
-a pooler reset silently threw away `set search_path` and writes landed in the REAL schema. See
-[the flaky suite](#the-flaky-suite-and-the-two-causes-behind-it--2026-09-04).**
+**The FLAKY SUITE IS FIXED — THREE causes, all in the test fixture, none in `store/`:
+a pooler reset threw away `set search_path` silently · a pooled connection was held per module ·
+and every run shared ONE schema name, so two runs at once deleted each other's tables.
+Verified with CONCURRENT runs, which is the case the first "20 green runs" never touched. See
+[the flaky suite](#the-flaky-suite-and-the-three-causes-behind-it--2026-09-0405).**
 **NEXT IS STEP 3 — partition per artifact + HNSW. Steps 1-2 (table, write path, EXACT search) are DONE.**
 **Notebooks, PDF, Word and 58 code suffixes all ingest; every bad variant is refused, not stored.**
 **The `mutation-test` skill EXISTS and FIRED — `.claude/skills/mutation-test/SKILL.md`.**
@@ -530,7 +532,7 @@ a pooler reset silently threw away `set search_path` and writes landed in the RE
 > > was the obvious fix and is the wrong one: CI runs on every push, and two
 > > concurrent jobs sharing one database would both
 > > `drop schema labpilot_test cascade`, which is exactly
-> > [the flake](#the-flaky-suite-and-the-two-causes-behind-it--2026-09-04)
+> > [the flake](#the-flaky-suite-and-the-three-causes-behind-it--2026-09-0405)
 > > reintroduced by concurrency. Verified locally against a real container:
 > > **533 passed in ~15s**, against ~40s over the VPN to Supabase.
 > > `test_ci_really_runs_the_database_tests` fails the build if the workflow
@@ -3726,7 +3728,7 @@ is the wrong gate. They carry a `database` marker and **skip on a missing
 They run in their own `labpilot_test` **schema**, dropped at teardown, so real
 data is never touched. **That sentence was FALSE when it was written, and it
 took a week to notice — see
-[the flaky suite](#the-flaky-suite-and-the-two-causes-behind-it--2026-09-04).**
+[the flaky suite](#the-flaky-suite-and-the-three-causes-behind-it--2026-09-0405).**
 The fixture connection is **autocommit**, because
 otherwise one deliberate `CheckViolation` poisons the transaction and every
 later test dies with *"current transaction is aborted"*. `conn.transaction()`
@@ -3741,7 +3743,7 @@ covers.
 > database tests always skip there.** A test that never runs is close to a test
 > that does not exist. Add the repository secret before slice 4 closes.
 
-### The flaky suite, and the two causes behind it — 2026-09-04
+### The flaky suite, and the three causes behind it — 2026-09-04/05
 
 *The user reported it plainly: **"every time I run the full test, one test
 fails... after running 4 or 5 times all pass, without doing anything."** That is
@@ -3801,6 +3803,50 @@ dead connection. Three changes:
 | **`delete from artifacts`** per test, never `truncate` | truncate needs ACCESS EXCLUSIVE, conflicts with even a SELECT, and blocked on a pooled lock until the 2min `statement_timeout` — the folder went **28s -> 238s** |
 
 **Measured after: 20 full runs, 0 failures**, and the folder is back to ~35s.
+
+#### Cause 3 — one schema name shared by every run, found 2026-09-05
+
+**The user reported the flake again after causes 1 and 2 were called fixed.**
+That call was wrong: twenty green runs *in one terminal* proved nothing about
+two runs at once, and the suite was still being run from the VS Code Testing
+panel at the same time as the terminal.
+
+The signature is unmistakable once seen — two statements on **one** connection
+landing in different worlds:
+
+```
+insert into artifacts ('cas')   -> OK
+insert into chunks    ('cas')   -> relation "chunks" does not exist
+```
+
+plus writes that read back empty, and `duplicate key (id)=(s1)`. Every run used
+the **same hardcoded `labpilot_test`**, and every run began with
+`drop schema ... cascade`. So run B deleted run A's tables mid-test, between
+its `create schema` and its `create_schema(conn)`.
+
+**Reproduced on demand**, which is what turned it from a ghost into a bug:
+
+```
+two concurrent pytest processes, shared schema name -> 2 failed / 4 failed
+the same two, one schema per run                    -> 39 passed / 39 passed
+three at once                                       -> all green, no leftovers
+two FULL suites at once                             -> 544 passed, twice
+```
+
+The fix is one line: `labpilot_test_{pid}_{token_hex(3)}`, so no run can name,
+or drop, another run's schema. Teardown removes only what it created.
+
+> **"It passes on my machine, twenty times" is not evidence about
+> concurrency.** Every one of those runs tested the same single-writer case.
+> The bug lived in the case never exercised.
+
+> **A shared mutable name is a shared mutable resource.** `labpilot_test` was a
+> global variable with a `DROP` attached, and it read like a constant.
+
+**This is the same defect CI was already protected from** — the workflow gives
+each job its own container precisely so two pushes cannot fight over one
+database. The reasoning was applied to CI and not to the machine it was written
+on.
 
 #### Two mutations, both verified
 

@@ -7,8 +7,6 @@ from labpilot.store import create_schema
 
 pytestmark = pytest.mark.database
 
-SCHEMA = "labpilot_test"
-
 
 def test_applying_the_schema_again_keeps_the_data(db):
     with db.cursor() as cur:
@@ -51,7 +49,7 @@ def test_one_vector_column_holds_two_different_widths(db):
         cur.execute("delete from artifacts where id = 'w'")
 
 
-def test_the_test_schema_survives_a_session_reset(db):
+def test_the_test_schema_survives_a_session_reset(db, schema_name):
     # The flake this pins, measured 2026-09-04: Supabase's pooler recycles ONE
     # backend across connections and resets session state. A runtime
     # `set search_path` is wiped by that reset and bare `artifacts` then
@@ -62,7 +60,7 @@ def test_the_test_schema_survives_a_session_reset(db):
     with db.cursor() as cur:
         cur.execute("reset all")
         cur.execute("select current_schema()")
-        assert cur.fetchone()[0] == SCHEMA
+        assert cur.fetchone()[0] == schema_name
 
 
 def test_a_dropped_connection_is_reopened(live_connection):
