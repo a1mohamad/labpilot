@@ -9,3 +9,7 @@ CONNECT_TIMEOUT = 15
 # from that budget, NOT from the embedder's MAX_BATCH_SIZE -- store/ may not
 # import embed/, and the two limits answer different questions.
 INSERT_BATCH_SIZE = 96
+# Retrieve wide, then rerank to ~10. Reranking fixes the ORDER of what came
+# back; it can never recover a chunk the search did not return, so the wide
+# number belongs here and not at the rerank step.
+SEARCH_LIMIT = 50

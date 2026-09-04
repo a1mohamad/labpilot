@@ -15,3 +15,7 @@ class ModelMismatch(StoreError):
 
 class ConnectionFailed(StoreError):
     pass
+
+
+class UnknownArtifact(StoreError):
+    pass
