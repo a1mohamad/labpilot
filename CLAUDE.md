@@ -472,7 +472,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is in progress on `feat/store`.**
 **The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
 **`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search.**
-**544 passed, 28 skipped, 2 xfailed. Mutation-tested at every step.**
+**545 passed, 28 skipped, 1 xfailed. Mutation-tested at every step.**
 **The FLAKY SUITE IS FIXED — THREE causes, all in the test fixture, none in `store/`:
 a pooler reset threw away `set search_path` silently · a pooled connection was held per module ·
 and every run shared ONE schema name, so two runs at once deleted each other's tables.
@@ -608,13 +608,12 @@ Verified with CONCURRENT runs, which is the case the first "20 green runs" never
 > **mechanism**; it does not prove the **library**. Get a genuine two-column
 > arXiv paper before choosing any threshold.
 >
-> **The cap bug is still open and still `xfail(strict=True)`.**
-> `MAX_CHUNK_TOKENS` is enforced on `chunk.text` while `chunk.embed_text` is what
-> we send — **5 of 91 chunks** on the real notebook, 43 of 1,094 on the repo. It
-> was deliberately left alone: the fix must reserve header room *before*
-> splitting, threading a budget through `split_recursive`, and it moves
-> boundaries for **every** format. **The chunker is permanent — give that change
-> its own session and re-measure after it.**
+> ~~**The cap bug is still open**~~ **— FIXED 2026-09-05, and the timing was the
+> whole point. See
+> [the chunk cap fix](#the-chunk-cap-fix--2026-09-05-the-last-cheap-moment).**
+> The cap is now reserved for the header *before* splitting, `split_recursive`
+> takes a budget, and **0 of 4,889 chunks** across the whole repository exceed
+> it. Recall did not move.
 >
 > **The suffix rule is now a test.** `test_every_format_we_can_read_is_also_a_format_we_can_fetch`
 > fails the build if a suffix reaches `LOADERS`/`SPLITTERS` without
@@ -2824,8 +2823,8 @@ the only symptom was 25 collection errors.
 - **~~`.docx`~~ DONE — see [the .docx results](#docx--done-2026-08-30-measured-on-18-real-word-files).
   Only **other code languages** remain: they are plain text, need no loader at
   all, and need only **one** generic splitter.**
-- **The `MAX_CHUNK_TOKENS` cap bug is still untouched** and still
-  `xfail(strict=True)`. It still deserves its own session.
+- ~~**The `MAX_CHUNK_TOKENS` cap bug is still untouched**~~ **DONE 2026-09-05 —
+  see [the chunk cap fix](#the-chunk-cap-fix--2026-09-05-the-last-cheap-moment).**
 
 ## `.docx` — DONE 2026-08-30, measured on 18 real Word files
 
@@ -4031,6 +4030,90 @@ angle, so the test says what it means.
 - **No caller.** `search` is reachable only from tests until slice 7 wires
   `api/services.py`, which is the only layer allowed to import both `ingest/`
   and `store/`.
+
+## The chunk cap fix — 2026-09-05, the last cheap moment
+
+*The oldest known bug in the project, carried as `xfail(strict=True)` since
+2026-08-28. Fixed now for one reason: **the fix moves chunk boundaries**, and
+nothing is stored yet. `write_artifact` still has no caller outside tests, so
+re-chunking costs four embedding requests. After slice 7 wires ingest, the same
+change would mean re-chunking **and re-embedding every stored corpus**.*
+
+> **Fix chunk boundaries before pgvector holds anything, or not at all.**
+
+### The bug
+
+`MAX_CHUNK_TOKENS = 510` was enforced on `chunk.text`. What is actually sent to
+the embedder and the reranker is `chunk.embed_text` — **header plus text**. So
+the cap applied to the smaller half of the string.
+
+| | before | after |
+|---|---|---|
+| `B_train.py` | 2 of 79 over, worst **526** | 0 of 82, worst **504** |
+| whole repository | 43 of 1,094 over | **0 of 4,889**, worst **509** |
+
+Two real consequences, not cosmetic: **BGE Base** declares a 512-token input
+limit and refuses those chunks outright, and **Cohere auto-splits** any
+document over 510, silently multiplying the billed rerank documents that this
+file's budget arithmetic assumes.
+
+### The fix — reserve the header before you cut, not after
+
+The header could not simply be measured, because it is built **after** every
+size decision and contains two things the split has not decided yet: the
+`part i/n` suffix, and the line numbers.
+
+So `_reserve` is deliberately **pessimistic**. It always allows for
+`part 999/999` and for the widest line numbers the file can produce, then
+`_budget = MAX_CHARS - _reserve`. Over-reserving costs a few characters of
+chunk; under-reserving is the bug.
+
+`split_recursive` now takes `max_chars`, threaded through `_blocks` and
+`_pack`. One detail that is easy to miss: `_pack`'s target had to become
+`min(TARGET_CHARS, max_chars)`, because `TARGET_CHARS` (1,500) sits just under
+the old cap and would otherwise ignore a shrunken budget entirely.
+
+**`_merge_small` had to learn the same budget.** A merge that only checked
+`MAX_CHARS` could rebuild exactly the oversized chunk the split had just
+avoided — the guard has to exist on both sides of the boundary decision.
+
+### Re-scored, because boundaries moved
+
+`B_train.py` went 79 -> 82 chunks, so slice 1's numbers described chunks that no
+longer exist. Re-run with `scripts/score_retrieval.py` — four embedding
+requests, no generation quota:
+
+```
+after    recall@1 0.412   @5 0.941   @10 0.941   MRR 0.608
+before   recall@1 0.412   @5 0.941   @10 0.941   MRR 0.613
+```
+
+**Recall is identical.** MRR moved by 0.005, which is one query moving one
+place on a 17-query fixture. `D2` is still the known miss at rank 46. So the
+cap is now honest and retrieval quality is unchanged.
+
+### Mutation results — 2 of 3, and the survivor is honest
+
+```
+no header room reserved at all   -> the cap test, ALONE   (this was the bug)
+packing target ignores the budget -> the cap test + the recursive fallback test
+the +1 for the newline dropped    -> NOTHING
+```
+
+The `+1` accounts for the newline `embed_text` puts between header and text.
+Nothing pins it, because the reserve is pessimistic enough that one character
+of slack never shows on these fixtures. **It is kept as correctness in
+principle and recorded as untested**, rather than described as something the
+suite guards.
+
+### The other xfail stays
+
+`test_an_archive_we_accept_must_be_able_to_reach_us` is still
+`xfail(strict=True)`: `MAX_ARCHIVE_BYTES` is 50MB against a body limit of about
+10MB. Fixing it means choosing **which number moves**, and the endpoint accepts
+no archive at all yet — that is slice 7's decision, and inventing the number
+now would be a guess dressed as one. Only its `reason` was refreshed: it still
+said "about 2MB", from before `MAX_UPLOAD_BYTES` rose to 5MB for PDFs.
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 

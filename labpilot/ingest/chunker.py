@@ -41,8 +41,15 @@ def chunk_bytes(
     suffix = Path(source).suffix.lower()
     text = _load(raw, suffix)
     _refuse_machine_written(text, source)
-    pieces = _split(text, suffix)
-    pieces = _merge_small(_enforce_cap(pieces), text.splitlines())
+
+    # The cap has to be spent on what we SEND, and what we send is
+    # chunk.embed_text - the header plus the text. Reserve the header's worst
+    # case first, or the cap silently applies to the smaller half.
+    lines = text.splitlines()
+    digits = len(str(max(len(lines), 1)))
+
+    pieces = _split(text, suffix, max_chars=MAX_CHARS - _reserve(source, "", digits))
+    pieces = _merge_small(_enforce_cap(pieces, source, digits), lines, source, digits)
     return tuple(
         _chunk(piece, index, source=source, side=side, artifact_id=artifact_id)
         for index, piece in enumerate(pieces)
@@ -83,17 +90,43 @@ def _load(raw: bytes, suffix: str) -> str:
     return LOADERS.get(suffix, load_text)(raw)
 
 
-def _split(text: str, suffix: str) -> list[Piece]:
-    return SPLITTERS.get(suffix, split_recursive)(text)
+def _split(text: str, suffix: str, *, max_chars: int) -> list[Piece]:
+    # A format splitter cuts on structure and cannot take a budget; anything
+    # it leaves oversized is handled by _enforce_cap, which knows the label.
+    splitter = SPLITTERS.get(suffix)
+    if splitter is None:
+        return split_recursive(text, max_chars=max_chars)
+    return splitter(text)
 
 
-def _enforce_cap(pieces: list[Piece]) -> list[Piece]:
+def _reserve(source: str, label: str, digits: int) -> int:
+    """Characters the header could take for this piece, at its very worst.
+
+    Deliberately pessimistic: it always allows for a `part i/n` suffix and for
+    the widest line numbers the file can produce, so the budget can be fixed
+    BEFORE the split decides either of them. Over-reserving costs a few
+    characters of chunk; under-reserving is the bug this exists to remove.
+    """
+    widest = "9" * digits
+    parts = [source, label, "part 999/999", f"lines {widest}-{widest}"]
+    # +1 for the newline embed_text puts between the header and the text.
+    return len("[" + " · ".join(part for part in parts if part) + "]") + 1
+
+
+def _budget(source: str, label: str, digits: int) -> int:
+    return MAX_CHARS - _reserve(source, label, digits)
+
+
+def _enforce_cap(pieces: list[Piece], source: str, digits: int) -> list[Piece]:
     kept: list[Piece] = []
     for piece in pieces:
-        if len(piece.text) <= MAX_CHARS:
+        budget = _budget(source, piece.label, digits)
+        if len(piece.text) <= budget:
             kept.append(piece)
             continue
-        parts = split_recursive(piece.text, start_line=piece.start_line)
+        parts = split_recursive(
+            piece.text, start_line=piece.start_line, max_chars=budget
+        )
         total = len(parts)
         for position, part in enumerate(parts, start=1):
             label = _part_label(piece.label, position, total)
@@ -106,14 +139,16 @@ def _part_label(label: str, position: int, total: int) -> str:
     return f"{label} · {part}" if label else part
 
 
-def _merge_small(pieces: list[Piece], lines: list[str]) -> list[Piece]:
+def _merge_small(
+    pieces: list[Piece], lines: list[str], source: str, digits: int
+) -> list[Piece]:
     merged = list(pieces)
     index = 0
     while index < len(merged):
         if len(merged[index].text) >= MIN_CHARS:
             index += 1
             continue
-        target = _merge_target(merged, index, lines)
+        target = _merge_target(merged, index, lines, source, digits)
         if target is None:
             index += 1
             continue
@@ -123,20 +158,25 @@ def _merge_small(pieces: list[Piece], lines: list[str]) -> list[Piece]:
     return merged
 
 
-def _merge_target(pieces: list[Piece], index: int, lines: list[str]) -> int | None:
+def _merge_target(
+    pieces: list[Piece], index: int, lines: list[str], source: str, digits: int
+) -> int | None:
     candidates = [
         neighbour
         for neighbour in (index + 1, index - 1)
         if 0 <= neighbour < len(pieces)
-        and _fits(pieces[index], pieces[neighbour], lines)
+        and _fits(pieces[index], pieces[neighbour], lines, source, digits)
     ]
     if not candidates:
         return None
     return max(candidates, key=lambda n: _shared_label(pieces[index], pieces[n]))
 
 
-def _fits(one: Piece, other: Piece, lines: list[str]) -> bool:
-    return len(_span_text(one, other, lines)) <= MAX_CHARS
+def _fits(one: Piece, other: Piece, lines: list[str], source: str, digits: int) -> bool:
+    # A merge must not create the very chunk the cap exists to prevent, so it
+    # is measured against the same header-aware budget as a split.
+    kept = _join(one, other, lines).label
+    return len(_span_text(one, other, lines)) <= _budget(source, kept, digits)
 
 
 def _span_text(one: Piece, other: Piece, lines: list[str]) -> str:

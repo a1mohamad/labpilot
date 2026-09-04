@@ -33,9 +33,11 @@ def test_no_readable_suffix_is_also_a_skipped_directory():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="MAX_ARCHIVE_BYTES is 50MB while the API body limit is about 2MB, so "
-    "an archive that size can never arrive. Harmless today because the endpoint "
-    "accepts no archive; slice 7 must settle which number moves.",
+    reason="MAX_ARCHIVE_BYTES is 50MB while the API body limit is about 10MB "
+    "(2 x MAX_UPLOAD_BYTES, which rose to 5MB for PDFs on 2026-08-30), so an "
+    "archive that size can never arrive. Harmless today because the endpoint "
+    "accepts no archive at all; slice 7 must settle which number moves, and "
+    "inventing one before the feature exists would be a guess.",
 )
 def test_an_archive_we_accept_must_be_able_to_reach_us():
     assert MAX_ARCHIVE_BYTES <= ApiConfig.MAX_REQUEST_BODY_BYTES

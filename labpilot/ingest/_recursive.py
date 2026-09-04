@@ -12,10 +12,12 @@ TARGET_CHARS = CHUNK_SIZE * CHARS_PER_TOKEN
 OVERLAP_CHARS = CHUNK_OVERLAP * CHARS_PER_TOKEN
 
 
-def split_recursive(text: str, *, start_line: int = 1) -> list[Piece]:
+def split_recursive(
+    text: str, *, start_line: int = 1, max_chars: int = MAX_CHARS
+) -> list[Piece]:
     if not text.strip():
         return []
-    spans = _pack(text, _blocks(text, 0, len(text), 0))
+    spans = _pack(text, _blocks(text, 0, len(text), 0, max_chars), max_chars)
     newlines = _newline_offsets(text)
     pieces = []
     for start, end in spans:
@@ -32,17 +34,19 @@ def split_recursive(text: str, *, start_line: int = 1) -> list[Piece]:
     return pieces
 
 
-def _blocks(text: str, start: int, end: int, depth: int) -> list[tuple[int, int]]:
-    if end - start <= MAX_CHARS:
+def _blocks(
+    text: str, start: int, end: int, depth: int, max_chars: int
+) -> list[tuple[int, int]]:
+    if end - start <= max_chars:
         return [(start, end)]
     if depth >= len(SEPARATORS):
-        return [(i, min(i + MAX_CHARS, end)) for i in range(start, end, MAX_CHARS)]
+        return [(i, min(i + max_chars, end)) for i in range(start, end, max_chars)]
     parts = _split_on(text, start, end, SEPARATORS[depth])
     if len(parts) == 1:
-        return _blocks(text, start, end, depth + 1)
+        return _blocks(text, start, end, depth + 1, max_chars)
     blocks = []
     for part_start, part_end in parts:
-        blocks.extend(_blocks(text, part_start, part_end, depth + 1))
+        blocks.extend(_blocks(text, part_start, part_end, depth + 1, max_chars))
     return blocks
 
 
@@ -58,15 +62,20 @@ def _split_on(text: str, start: int, end: int, separator: str) -> list[tuple[int
     return spans or [(start, end)]
 
 
-def _pack(text: str, blocks: list[tuple[int, int]]) -> list[tuple[int, int]]:
+def _pack(
+    text: str, blocks: list[tuple[int, int]], max_chars: int
+) -> list[tuple[int, int]]:
+    # The target must stay under the cap, or a shrunken budget would be
+    # ignored by the packing loop and only caught by the hard split below it.
+    target = min(TARGET_CHARS, max_chars)
     spans = []
     chunk_start, chunk_end = blocks[0]
     for block_start, block_end in blocks[1:]:
-        if block_end - chunk_start <= TARGET_CHARS:
+        if block_end - chunk_start <= target:
             chunk_end = block_end
             continue
         spans.append((chunk_start, chunk_end))
-        floor = max(chunk_start, block_end - MAX_CHARS)
+        floor = max(chunk_start, block_end - max_chars)
         chunk_start = _snap(text, max(floor, block_start - OVERLAP_CHARS), floor)
         chunk_end = block_end
     spans.append((chunk_start, chunk_end))
