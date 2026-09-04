@@ -522,12 +522,21 @@ a pooler reset silently threw away `set search_path` and writes landed in the RE
 > > decide which ships. Do not skip to the index. If HNSW loses, keep the code
 > > anyway — it exists to close a skill gap, and the measurement is the lesson.
 >
-> > ## ⚠ TWO DEBTS SLICE 4 OWES BEFORE IT CLOSES
+> > ## ⚠ ONE DEBT SLICE 4 OWES BEFORE IT CLOSES
 > >
-> > **1. CI never runs the database tests.** There is no `DATABASE_URL` secret
-> > on GitHub, so all ten `tests/integration/test_store_*.py` tests skip in CI
-> > and only ever run locally. A test that never runs is close to a test that
-> > does not exist. Add the repository secret at the close of slice 4.
+> > ~~**1. CI never runs the database tests.**~~ **CLOSED 2026-09-04.** CI now
+> > runs a **`pgvector/pgvector:pg17` service container**, not the real
+> > project, and **no secret is needed** — so it works on forks too. A secret
+> > was the obvious fix and is the wrong one: CI runs on every push, and two
+> > concurrent jobs sharing one database would both
+> > `drop schema labpilot_test cascade`, which is exactly
+> > [the flake](#the-flaky-suite-and-the-two-causes-behind-it--2026-09-04)
+> > reintroduced by concurrency. Verified locally against a real container:
+> > **533 passed in ~15s**, against ~40s over the VPN to Supabase.
+> > `test_ci_really_runs_the_database_tests` fails the build if the workflow
+> > ever loses `DATABASE_URL` or the pgvector service — because a `database`
+> > test **skips itself** when the variable is absent, so the suite goes green
+> > while running none of them.
 > >
 > > **2. `services.py` still does not write anything.** `write_artifact` is
 > > reachable only from tests. The `Chunk` + vector -> `ChunkRecord`
@@ -6146,11 +6155,22 @@ what most blocks in this file already do. And **run all three CI commands before
 saying a change is clean**; `pytest -q` alone passed happily while
 `ruff format --check .` was failing.
 
+**CI brings its own database — 2026-09-04.** A `pgvector/pgvector:pg17`
+service container, `DATABASE_URL` set at job level, and one step that installs
+the extension into `public` so the shape matches Supabase. **No secret**, so
+pull requests from forks work. Do **not** point CI at the real project: every
+push would share one database, and two concurrent jobs both running
+`drop schema labpilot_test cascade` is the 2026-09-04 flake with a new cause.
+
+> **The tests that most need CI are the ones that skip when it is not
+> configured.** A `database` test is green-by-absence, so "CI passes" said
+> nothing about ten of them for a week.
+
 **Two workflows, and the split is about quota:**
 
 | Workflow | Trigger | Runs | Cost |
 |---|---|---|---|
-| `ci.yml` | every push and PR | lint + unit tests | **zero** — every test is mocked |
+| `ci.yaml` | every push and PR | lint + unit + **database** tests | **zero** — no provider is called |
 | `smoke.yml` | manual button + Mondays 06:00 UTC | smoke only | ~1 request/week |
 
 The weekly smoke run exists for one reason: **free models disappear without

@@ -7,6 +7,29 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # A container per job, NOT the real Supabase project. CI runs on every
+    # push, and two concurrent jobs sharing one database would both run
+    # `drop schema labpilot_test cascade` - which is the flake fixed on
+    # 2026-09-04, reintroduced by concurrency. A container also needs no
+    # secret, so it works on pull requests from forks.
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/labpilot
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: labpilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -14,6 +37,16 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements-dev.txt
+
+      # pgvector lives in `public` on Supabase, so put it there here too.
+      # Left to schema.sql it would be created inside labpilot_test and
+      # dropped with it, which is not the shape we run against for real.
+      - name: install pgvector into public
+        run: >-
+          python -c "import os, psycopg;
+          psycopg.connect(os.environ['DATABASE_URL'], autocommit=True).execute(
+          'create extension if not exists vector')"
+
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
