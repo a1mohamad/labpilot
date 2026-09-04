@@ -472,7 +472,10 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is in progress on `feat/store`.**
 **The table and the WRITE PATH exist and are proven against the real Supabase project.**
 **`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer.**
-**531 passed, 28 skipped, 2 xfailed. 10 of 10 mutations verified real.**
+**533 passed, 28 skipped, 2 xfailed. 12 of 12 mutations verified real.**
+**The FLAKY SUITE IS FIXED — 20 full runs, 0 failures. It was the test fixture, not `store/`:
+a pooler reset silently threw away `set search_path` and writes landed in the REAL schema. See
+[the flaky suite](#the-flaky-suite-and-the-two-causes-behind-it--2026-09-04).**
 **NEXT IS `search.py` — exact search, which is the INSTRUMENT that scores the index in step 4.**
 **Notebooks, PDF, Word and 58 code suffixes all ingest; every bad variant is refused, not stored.**
 **The `mutation-test` skill EXISTS and FIRED — `.claude/skills/mutation-test/SKILL.md`.**
@@ -3534,7 +3537,7 @@ chunking. `scripts/score_retrieval.py` runs it for four embedding requests.
 
 ## Slice 4, first half — DONE 2026-09-04: the table and the write path
 
-*Steps 1 and 2 of the five-step decision order. **531 passed, 28 skipped,
+*Steps 1 and 2 of the five-step decision order. **533 passed, 28 skipped,
 2 xfailed, ruff clean. 10 of 10 mutations verified real.** Branch `feat/store`,
 not merged. Nothing here calls a model, so no ISP probe was needed — the network
 precondition is narrow on purpose, and a database is not a model.*
@@ -3712,7 +3715,10 @@ is the wrong gate. They carry a `database` marker and **skip on a missing
 `conftest.py` would change what they see.
 
 They run in their own `labpilot_test` **schema**, dropped at teardown, so real
-data is never touched. The fixture connection is **autocommit**, because
+data is never touched. **That sentence was FALSE when it was written, and it
+took a week to notice — see
+[the flaky suite](#the-flaky-suite-and-the-two-causes-behind-it--2026-09-04).**
+The fixture connection is **autocommit**, because
 otherwise one deliberate `CheckViolation` poisons the transaction and every
 later test dies with *"current transaction is aborted"*. `conn.transaction()`
 was verified to still begin and roll back under autocommit, so the atomicity
@@ -3725,6 +3731,93 @@ covers.
 > **The gap, stated rather than hidden: CI has no `DATABASE_URL`, so all ten
 > database tests always skip there.** A test that never runs is close to a test
 > that does not exist. Add the repository secret before slice 4 closes.
+
+### The flaky suite, and the two causes behind it — 2026-09-04
+
+*The user reported it plainly: **"every time I run the full test, one test
+fails... after running 4 or 5 times all pass, without doing anything."** That is
+the worst kind of suite — one that is not telling you the truth. Two independent
+causes, both in the test fixture, neither in `store/`.*
+
+**The instrument that found it: log `pg_backend_pid()` on every connection.**
+12 separate client connections across 6 full runs all reported **one** backend,
+`pid=833757`. Supabase puts a pooler (Supavisor) in front of Postgres and
+recycles one server process, resetting session state between checkouts.
+
+#### Cause 1 — session state is not a place to keep isolation
+
+The fixture isolated itself with a runtime `set search_path to labpilot_test,
+public`. Measured on the real project:
+
+```
+runtime SET     -> after RESET ALL: '"$user", public, extensions'   LOST
+startup option  -> after RESET ALL: 'labpilot_test,public'          KEPT
+```
+
+A pooler reset throws a runtime `SET` away and **restores a startup option**.
+So the fix is to send the search path as a libpq **startup parameter**
+(`options=-c search_path=...`), which is part of establishing the session.
+
+**And the loss was SILENT**, because `public.artifacts` and `public.chunks`
+existed — left behind by an earlier session. When the path was lost, bare
+`artifacts` resolved to the **real** schema. The proof was sitting in the
+database: `public.chunks` held exactly `w1/0, w1/1, w1/2`, the three rows from
+the test that had reported **0 rows**. The write went to `public`, the read to
+`labpilot_test`.
+
+Those stale tables were dropped, so a future loss fails loudly with *"relation
+does not exist"* instead of writing to the real schema.
+
+> **Isolation that lives in session state is isolation a pooler can revoke.**
+> Put it in the connection's startup parameters, where a reset restores it
+> rather than discarding it.
+
+#### Cause 2 — a pooled connection is not a durable resource
+
+With cause 1 fixed the suite still failed about 1 run in 10, but now **loudly**:
+
+```
+psycopg.OperationalError: server closed the connection unexpectedly
+db = <psycopg.Connection [BAD] at 0x...>
+```
+
+The fixture was **module-scoped**, so it held one connection across a whole
+module. When the pooler dropped it, every later test in that module inherited a
+dead connection. Three changes:
+
+| change | why |
+|---|---|
+| **pre-ping** — check the connection before handing it out, reopen if dead | reopening per test is also correct but costs **~2s each** on this link; the ping costs ~0.3s |
+| **one retry** on the first statement of each test | the connection can die *between* the ping and the next statement |
+| **`delete from artifacts`** per test, never `truncate` | truncate needs ACCESS EXCLUSIVE, conflicts with even a SELECT, and blocked on a pooled lock until the 2min `statement_timeout` — the folder went **28s -> 238s** |
+
+**Measured after: 20 full runs, 0 failures**, and the folder is back to ~35s.
+
+#### Two mutations, both verified
+
+```
+runtime SET instead of the startup option -> test_the_test_schema_survives_a_session_reset  (1 failed, 28 passed)
+pre-ping always claims healthy            -> test_a_dropped_connection_is_reopened
+search path never applied                 -> RuntimeError "Refusing to touch the real schema"
+```
+
+The third is a **refusal guard** in the fixture: if `current_schema()` is not
+`labpilot_test` after setup, it raises instead of creating the tables somewhere
+else. Without it the tests write to the real schema and still report green.
+
+#### Three lessons
+
+> **A flaky test is not a weak test — it is a test whose environment you have
+> not modelled.** The pooler was invisible in every green run.
+
+> **A wrong hypothesis costs nothing if you test it.** Two of mine died on
+> contact: `create table if not exists` binding to `public` (it respects the
+> target schema), and the pooler dropping `SET` between cursors (it does not —
+> only a reset does). Both were disproved by one probe each.
+
+> **Fixing a silent failure often reveals a second one.** Cause 2 was always
+> there; it only became visible once cause 1 stopped hiding it behind wrong
+> answers.
 
 ### Mutation results — 10 of 10 real
 
