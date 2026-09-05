@@ -468,7 +468,11 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3 DONE. SLICE 4 shipped its code; its INDEX decision moved to slice 8.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4 DONE. NEXT IS SLICE 5 — hybrid keyword search.**
+**SLICE 4 CLOSES SHIPPING EXACT SEARCH. The index is PROVEN better (HNSW, `ef_search=100`,
+30-110x, recall 1.00 on five real repos) and is DEFERRED to slice 8, not rejected: an index
+needs a fixed dimension, which is the embedder's choice, and two 24k repos with indexes at
+1536-dim need ~1GB against a 500MB tier. Nothing is stored yet, so adding it later is free.**
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is COMPLETE on `feat/store`, not merged.**
 **The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
 **`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search.**
