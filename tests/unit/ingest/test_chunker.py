@@ -43,12 +43,6 @@ def test_no_chunk_text_exceeds_the_hard_cap(code_chunks, paper_chunks):
         assert estimate_tokens(chunk.text) <= MAX_CHUNK_TOKENS
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the cap is enforced on chunk.text, but embed_text is what is sent. "
-    "Slice 3 must move the check onto the string we actually send; when it "
-    "does, this XPASSes and the marker must be deleted.",
-)
 def test_no_chunk_exceeds_the_hard_cap_once_its_header_is_added(
     code_chunks, paper_chunks
 ):
