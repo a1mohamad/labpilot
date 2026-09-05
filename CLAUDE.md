@@ -484,8 +484,10 @@ HNSW with `ef_search = 100`, proven on FIVE REAL REPOSITORIES (81,493 chunks rea
 1.5x the table and two 24k repos at 1536-dim would need ~1GB against a 500MB tier; `halfvec`
 is the lever. See
 [the index decision](#the-index-decision--settled-2026-09-05-on-five-real-repositories).**
-**⚠ OPEN DEFECT: `MAX_BATCH_SIZE = 96` exceeds Mistral's PER-REQUEST token limit on real
-repos (dask, fastapi refused with code 3210). Batching needs a halve-and-retry.**
+**~~OPEN DEFECT: `MAX_BATCH_SIZE = 96` exceeds Mistral's PER-REQUEST token limit~~ FIXED
+2026-09-05 — `embed.embed_batches()` halves and re-sends on a refusal that names tokens,
+and remembers the smaller size. Proven on the exact dask batch that failed: `embed()` alone
+is refused, `embed_batches()` returns all 96 vectors in two requests.**
 **⚠ THE SUPABASE INSTANCE WAS TAKEN DOWN 2026-09-05 by a 30k-row HNSW build with
 `maintenance_work_mem=512MB`. Restart it from the dashboard; run benchmarks on a LOCAL container.**
 **Notebooks, PDF, Word and 58 code suffixes all ingest; every bad variant is refused, not stored.**
@@ -4390,8 +4392,19 @@ measured **59,466** real tokens.
 
 > **An estimate is not a budget.** Batching on an estimate that can be wrong in
 > the dangerous direction needs a retry that halves and re-sends, not a bigger
-> constant. `embed/` does not have one yet — **this is an open defect**, and
-> ingest will hit it on real repositories.
+> constant.
+
+**FIXED the same day: `embed/batching.py`.** `embed_batches()` sends one request
+per yielded batch, halves on a refusal that names tokens, and **remembers the
+smaller size** — going back to the full size would earn the same refusal again,
+and every refusal costs a request. Any other failure is raised at once, because
+retrying a bad key smaller only wastes requests.
+
+It is matched on the word *token* rather than Mistral's code 3210, so it stays
+true for the other four providers. Proven on the exact batch that failed:
+`embed()` alone is refused; `embed_batches()` returns all 96 vectors in two
+requests of 48. Four mutations were verified, and the test that found the
+remembering bug was written before the code did it.
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
