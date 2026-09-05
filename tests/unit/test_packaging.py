@@ -14,6 +14,7 @@ import sys
 SOURCE = pathlib.Path("labpilot")
 REQUIREMENTS = pathlib.Path("requirements.txt")
 ENV_EXAMPLE = pathlib.Path(".env.example")
+CI_WORKFLOW = pathlib.Path(".github/workflows/ci.yaml")
 
 READERS = {("os", "getenv"), ("os", "environ", "get")}
 SAMPLES = pathlib.Path("data/samples")
@@ -176,4 +177,24 @@ def test_every_committed_fixture_names_its_source_and_its_licence():
 
     assert not undocumented, (
         f"committed to data/samples/ but not recorded in SOURCES.md: {undocumented}"
+    )
+
+
+def test_ci_really_runs_the_database_tests():
+    """A `database` test skips itself when DATABASE_URL is missing.
+
+    So CI without a database does not fail - it reports green while running
+    none of them, which is how ten store tests sat unexercised for a week.
+    A container, not the real project: CI runs on every push, and two
+    concurrent jobs sharing one database would both drop the test schema.
+    """
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "DATABASE_URL:" in workflow, (
+        "CI sets no DATABASE_URL, so every `database` test will skip there "
+        "and the suite will pass without running one of them."
+    )
+    assert "pgvector/pgvector" in workflow, (
+        "CI must bring its own pgvector service. Pointing it at the real "
+        "project makes concurrent jobs fight over the same test schema."
     )
