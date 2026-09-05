@@ -1,4 +1,5 @@
 from labpilot.embed.base import HTTPEmbedder
+from labpilot.embed.batching import embed_batches, looks_like_too_many_tokens
 from labpilot.embed.cloudflare import CloudflareEmbedder
 from labpilot.embed.cohere import CohereEmbedder
 from labpilot.embed.contracts import EmbeddingBatch, Task, Vector
@@ -32,4 +33,6 @@ __all__ = [
     "MistralEmbedder",
     "Task",
     "Vector",
+    "embed_batches",
+    "looks_like_too_many_tokens",
 ]
