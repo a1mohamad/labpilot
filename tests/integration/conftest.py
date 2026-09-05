@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -11,7 +12,17 @@ from dotenv import load_dotenv
 
 from labpilot.store import connect, create_schema, database_url
 
-TEST_SCHEMA = "labpilot_test"
+# One schema PER RUN, never a shared name. Measured 2026-09-05: two test runs
+# against the same database - a terminal and the VS Code Testing panel, or two
+# terminals - each ran `drop schema ... cascade` on the SAME schema, so one run
+# deleted the other's tables mid-test. Reproduced on demand by starting two
+# pytest processes at once: both failed, with `relation "chunks" does not
+# exist`, writes that read back empty, and duplicate primary keys.
+#
+# The name carries the pid so a leftover schema can be traced to the run that
+# made it. Nothing here ever drops a schema it did not create - that is what
+# made the shared name unsafe.
+TEST_SCHEMA = f"labpilot_test_{os.getpid()}_{secrets.token_hex(3)}"
 
 
 def with_search_path(url: str, schema: str) -> str:
@@ -66,6 +77,11 @@ def schema_url() -> Iterator[str]:
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(f"drop schema if exists {TEST_SCHEMA} cascade")
+
+
+@pytest.fixture(scope="session")
+def schema_name() -> str:
+    return TEST_SCHEMA
 
 
 def _responds(conn: psycopg.Connection) -> bool:
