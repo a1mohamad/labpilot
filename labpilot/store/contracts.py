@@ -31,3 +31,14 @@ class ChunkRecord:
     end_line: int
     vector: Vector
     header: str = ""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SearchHit:
+    chunk_index: int
+    text: str
+    source: str
+    start_line: int
+    end_line: int
+    score: float
+    header: str = ""
