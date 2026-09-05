@@ -468,15 +468,36 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3 DONE. SLICE 4 IS HALF BUILT — steps 1 and 2 of 5.**
-**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is in progress on `feat/store`.**
-**The table and the WRITE PATH exist and are proven against the real Supabase project.**
-**`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer.**
-**533 passed, 28 skipped, 2 xfailed. 12 of 12 mutations verified real.**
-**The FLAKY SUITE IS FIXED — 20 full runs, 0 failures. It was the test fixture, not `store/`:
-a pooler reset silently threw away `set search_path` and writes landed in the REAL schema. See
-[the flaky suite](#the-flaky-suite-and-the-two-causes-behind-it--2026-09-04).**
-**NEXT IS `search.py` — exact search, which is the INSTRUMENT that scores the index in step 4.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4 DONE. NEXT IS SLICE 5 — hybrid keyword search.**
+**SLICE 4 SHIPS EXACT SEARCH — the user's decision, 2026-09-05, with one named condition.**
+**At the REAL target of 1k-10k chunks per artifact, exact is 7-34ms against a ~50s report, is
+recall 1.00 BY DEFINITION, and costs 2.5x less storage. HNSW is faster and was measured on five
+real repositories, but speed is not what we are short of. SLICE 8 RE-MEASURES IT on real
+artifacts, and TIME is the only thing that can overturn it — not recall, not storage. See
+[the final decision](#the-final-decision--exact-search-ships-2026-09-05).**
+**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is COMPLETE on `feat/store`, not merged.**
+**The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
+**`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search.**
+**559 passed, 28 skipped, 1 xfailed. Mutation-tested at every step.**
+**⚠ SLICE 7 MUST READ THIS FIRST: `api/services.py` catches NOTHING from `store/` or
+`embed/`, so wiring them sends `UnknownArtifact`, `ModelMismatch`, `ConnectionFailed`,
+`NotConfigured` and `EmbeddingError` straight to the 500 handler. Third time this shape
+is predictable — see [the closing review](#the-slice-4-closing-review--2026-09-05).**
+**The FLAKY SUITE IS FIXED — THREE causes, all in the test fixture, none in `store/`:
+a pooler reset threw away `set search_path` silently · a pooled connection was held per module ·
+and every run shared ONE schema name, so two runs at once deleted each other's tables.
+Verified with CONCURRENT runs, which is the case the first "20 green runs" never touched. See
+[the flaky suite](#the-flaky-suite-and-the-three-causes-behind-it--2026-09-0405).**
+**HNSW IS NOT REJECTED, IT IS ON THE SHELF WITH ITS NUMBERS: `ef_search = 100`, 30-110x
+faster at recall 1.00, measured on 81,493 really-embedded chunks from five real repositories.
+`halfvec` and a partition-per-artifact are the shape to build IF slice 8 says exact is too slow.
+SLICE 8's JOB GREW: embedder ranking + reranker ranking + **exact vs HNSW on real artifacts**.**
+**~~OPEN DEFECT: `MAX_BATCH_SIZE = 96` exceeds Mistral's PER-REQUEST token limit~~ FIXED
+2026-09-05 — `embed.embed_batches()` halves and re-sends on a refusal that names tokens,
+and remembers the smaller size. Proven on the exact dask batch that failed: `embed()` alone
+is refused, `embed_batches()` returns all 96 vectors in two requests.**
+**⚠ THE SUPABASE INSTANCE WAS TAKEN DOWN 2026-09-05 by a 30k-row HNSW build with
+`maintenance_work_mem=512MB`. Restart it from the dashboard; run benchmarks on a LOCAL container.**
 **Notebooks, PDF, Word and 58 code suffixes all ingest; every bad variant is refused, not stored.**
 **The `mutation-test` skill EXISTS and FIRED — `.claude/skills/mutation-test/SKILL.md`.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
@@ -522,12 +543,21 @@ a pooler reset silently threw away `set search_path` and writes landed in the RE
 > > decide which ships. Do not skip to the index. If HNSW loses, keep the code
 > > anyway — it exists to close a skill gap, and the measurement is the lesson.
 >
-> > ## ⚠ TWO DEBTS SLICE 4 OWES BEFORE IT CLOSES
+> > ## ⚠ ONE DEBT SLICE 4 OWES BEFORE IT CLOSES
 > >
-> > **1. CI never runs the database tests.** There is no `DATABASE_URL` secret
-> > on GitHub, so all ten `tests/integration/test_store_*.py` tests skip in CI
-> > and only ever run locally. A test that never runs is close to a test that
-> > does not exist. Add the repository secret at the close of slice 4.
+> > ~~**1. CI never runs the database tests.**~~ **CLOSED 2026-09-04.** CI now
+> > runs a **`pgvector/pgvector:pg17` service container**, not the real
+> > project, and **no secret is needed** — so it works on forks too. A secret
+> > was the obvious fix and is the wrong one: CI runs on every push, and two
+> > concurrent jobs sharing one database would both
+> > `drop schema labpilot_test cascade`, which is exactly
+> > [the flake](#the-flaky-suite-and-the-three-causes-behind-it--2026-09-0405)
+> > reintroduced by concurrency. Verified locally against a real container:
+> > **533 passed in ~15s**, against ~40s over the VPN to Supabase.
+> > `test_ci_really_runs_the_database_tests` fails the build if the workflow
+> > ever loses `DATABASE_URL` or the pgvector service — because a `database`
+> > test **skips itself** when the variable is absent, so the suite goes green
+> > while running none of them.
 > >
 > > **2. `services.py` still does not write anything.** `write_artifact` is
 > > reachable only from tests. The `Chunk` + vector -> `ChunkRecord`
@@ -597,13 +627,12 @@ a pooler reset silently threw away `set search_path` and writes landed in the RE
 > **mechanism**; it does not prove the **library**. Get a genuine two-column
 > arXiv paper before choosing any threshold.
 >
-> **The cap bug is still open and still `xfail(strict=True)`.**
-> `MAX_CHUNK_TOKENS` is enforced on `chunk.text` while `chunk.embed_text` is what
-> we send — **5 of 91 chunks** on the real notebook, 43 of 1,094 on the repo. It
-> was deliberately left alone: the fix must reserve header room *before*
-> splitting, threading a budget through `split_recursive`, and it moves
-> boundaries for **every** format. **The chunker is permanent — give that change
-> its own session and re-measure after it.**
+> ~~**The cap bug is still open**~~ **— FIXED 2026-09-05, and the timing was the
+> whole point. See
+> [the chunk cap fix](#the-chunk-cap-fix--2026-09-05-the-last-cheap-moment).**
+> The cap is now reserved for the header *before* splitting, `split_recursive`
+> takes a budget, and **0 of 4,889 chunks** across the whole repository exceed
+> it. Recall did not move.
 >
 > **The suffix rule is now a test.** `test_every_format_we_can_read_is_also_a_format_we_can_fetch`
 > fails the build if a suffix reaches `LOADERS`/`SPLITTERS` without
@@ -1999,7 +2028,7 @@ slice 4 says *stuffed*, and it means retrieval currently changes nothing at all.
 | 5 | **Cosine + keyword search** | a query returns the right chunks, the `side` filter works, and BM25 catches identifier queries like `D2` | medium |
 | 6 | **Reranking** | the top 50 become the right top 10, and *skip* still works | **heavy** — bi-encoder vs cross-encoder |
 | 7 | **The new selector** | `select()` is deleted; A fills before B; the outline lists **files** | light |
-| 8 | **Measure** | the same fixture, then a **second** fixture in another domain — **and the embedder and reranker order is settled here, on real numbers** | none — it is scoring |
+| 8 | **Measure** | the same fixture, then a **second** fixture in another domain — **the embedder order, the reranker order, AND exact-vs-HNSW are all settled here, on real numbers** | none — it is scoring |
 
 **The ordering rule is unchanged from Step 0: only one thing may be wrong at a
 time.** Three placements carry real weight:
@@ -2813,8 +2842,8 @@ the only symptom was 25 collection errors.
 - **~~`.docx`~~ DONE — see [the .docx results](#docx--done-2026-08-30-measured-on-18-real-word-files).
   Only **other code languages** remain: they are plain text, need no loader at
   all, and need only **one** generic splitter.**
-- **The `MAX_CHUNK_TOKENS` cap bug is still untouched** and still
-  `xfail(strict=True)`. It still deserves its own session.
+- ~~**The `MAX_CHUNK_TOKENS` cap bug is still untouched**~~ **DONE 2026-09-05 —
+  see [the chunk cap fix](#the-chunk-cap-fix--2026-09-05-the-last-cheap-moment).**
 
 ## `.docx` — DONE 2026-08-30, measured on 18 real Word files
 
@@ -3717,7 +3746,7 @@ is the wrong gate. They carry a `database` marker and **skip on a missing
 They run in their own `labpilot_test` **schema**, dropped at teardown, so real
 data is never touched. **That sentence was FALSE when it was written, and it
 took a week to notice — see
-[the flaky suite](#the-flaky-suite-and-the-two-causes-behind-it--2026-09-04).**
+[the flaky suite](#the-flaky-suite-and-the-three-causes-behind-it--2026-09-0405).**
 The fixture connection is **autocommit**, because
 otherwise one deliberate `CheckViolation` poisons the transaction and every
 later test dies with *"current transaction is aborted"*. `conn.transaction()`
@@ -3732,7 +3761,7 @@ covers.
 > database tests always skip there.** A test that never runs is close to a test
 > that does not exist. Add the repository secret before slice 4 closes.
 
-### The flaky suite, and the two causes behind it — 2026-09-04
+### The flaky suite, and the three causes behind it — 2026-09-04/05
 
 *The user reported it plainly: **"every time I run the full test, one test
 fails... after running 4 or 5 times all pass, without doing anything."** That is
@@ -3792,6 +3821,50 @@ dead connection. Three changes:
 | **`delete from artifacts`** per test, never `truncate` | truncate needs ACCESS EXCLUSIVE, conflicts with even a SELECT, and blocked on a pooled lock until the 2min `statement_timeout` — the folder went **28s -> 238s** |
 
 **Measured after: 20 full runs, 0 failures**, and the folder is back to ~35s.
+
+#### Cause 3 — one schema name shared by every run, found 2026-09-05
+
+**The user reported the flake again after causes 1 and 2 were called fixed.**
+That call was wrong: twenty green runs *in one terminal* proved nothing about
+two runs at once, and the suite was still being run from the VS Code Testing
+panel at the same time as the terminal.
+
+The signature is unmistakable once seen — two statements on **one** connection
+landing in different worlds:
+
+```
+insert into artifacts ('cas')   -> OK
+insert into chunks    ('cas')   -> relation "chunks" does not exist
+```
+
+plus writes that read back empty, and `duplicate key (id)=(s1)`. Every run used
+the **same hardcoded `labpilot_test`**, and every run began with
+`drop schema ... cascade`. So run B deleted run A's tables mid-test, between
+its `create schema` and its `create_schema(conn)`.
+
+**Reproduced on demand**, which is what turned it from a ghost into a bug:
+
+```
+two concurrent pytest processes, shared schema name -> 2 failed / 4 failed
+the same two, one schema per run                    -> 39 passed / 39 passed
+three at once                                       -> all green, no leftovers
+two FULL suites at once                             -> 544 passed, twice
+```
+
+The fix is one line: `labpilot_test_{pid}_{token_hex(3)}`, so no run can name,
+or drop, another run's schema. Teardown removes only what it created.
+
+> **"It passes on my machine, twenty times" is not evidence about
+> concurrency.** Every one of those runs tested the same single-writer case.
+> The bug lived in the case never exercised.
+
+> **A shared mutable name is a shared mutable resource.** `labpilot_test` was a
+> global variable with a `DROP` attached, and it read like a constant.
+
+**This is the same defect CI was already protected from** — the workflow gives
+each job its own container precisely so two pushes cannot fight over one
+database. The reasoning was applied to CI and not to the machine it was written
+on.
 
 #### Two mutations, both verified
 
@@ -3872,6 +3945,716 @@ test blind — deleting the dependency still fails it.
   after slice 2.
 - **No connection pool.** `psycopg_pool` is a separate package; one connection
   per operation is right until something measures otherwise.
+
+## Slice 4, step 2 — DONE 2026-09-05: exact search
+
+*The baseline, and the **instrument** that will score HNSW in step 4. There is
+no index and that is deliberate: exact search is the correct answer **by
+definition**, so there is nothing else to grade an approximate index against.*
+**544 passed, 28 skipped, 2 xfailed, ruff clean. 5 full runs, 0 failures.**
+
+| module | added |
+|---|---|
+| `store/search.py` | `search(conn, artifact_id, query, *, model, limit)` |
+| `store/contracts.py` | `SearchHit` — the hit plus its `score` |
+| `store/errors.py` | `UnknownArtifact` |
+| `store/defaults.py` | `SEARCH_LIMIT = 50` — retrieve wide, rerank to ~10 |
+
+### `<=>` is DISTANCE, so `order by` takes no `desc`
+
+Cosine distance: **smallest is nearest**. `score = 1 - distance` flips it back
+to similarity for the reader. The two agree — the smallest distance *is* the
+biggest score — so sorting either way returns the same rows.
+
+**We sort the distance anyway, and the reason is step 3.** pgvector recognises
+exactly one shape:
+
+```sql
+order by v <=> q            -- an index CAN serve this
+order by 1 - (v <=> q) desc -- it CANNOT; silent full scan
+```
+
+Wrapping the distance in `1 - (...)` hides it from the planner. Same answers,
+no error, no warning — and 5x slower at 2,000 rows already (measured
+2026-08-28). **So `score` is a label that rides along, never a sort key.**
+
+### The guard that matters: two embedding spaces do not compare
+
+`search` takes `model: str` and refuses when it differs from the artifact's
+`embedding_model`. Without it a codestral corpus searched with a Gemini query
+returns confident nonsense and **raises nothing**. `store/` may not import
+`embed/`, so the model arrives as a plain string — the layering rule doing its
+job.
+
+`UnknownArtifact` exists for the same reason: returning `()` for a corpus that
+was never stored is indistinguishable from *"nothing matched"*.
+
+### The `::vector` cast is NOT required — and I claimed it was
+
+The comment in an earlier draft said the cast was load-bearing: the vector
+crosses the wire as text, and unlike the writer there is no `vector` column to
+infer from. **The mutation disproved it.** Removing both casts: **10 passed.**
+psycopg3 sends the parameter as `unknown` and Postgres coerces it.
+
+The casts stay as belt-and-braces — a driver that ever typed the parameter as
+`text` would make `vector <=> text` fail to resolve — but the comment now says
+so, and **no test pretends to pin it**.
+
+> **A mutation that survives is not always a bad test. Sometimes it is a false
+> claim in a comment.** The test suite was right; the explanation was wrong.
+
+### Mutation results — 7 real, 1 survivor, 3 broken mutations
+
+```
+order by ... DESC                  -> 4 order-dependent tests    (nearest-first, scores, citation, limit)
+score = raw distance               -> test_the_scores_fall_as_the_chunks_turn_away   ALONE
+filter matches every artifact      -> test_only_the_named_artifact_is_searched       ALONE
+model guard disabled               -> test_a_query_from_a_different_model_is_refused ALONE
+missing artifact returns ()        -> test_an_unknown_artifact_is_refused...         ALONE
+width check disabled               -> test_a_query_of_the_wrong_width_is_refused     ALONE
+limit guard disabled               -> test_a_limit_that_returns_nothing...           ALONE
+::vector removed                   -> NOTHING. The claim was wrong, not the test
+```
+
+**Three mutations were themselves broken, and each looked like a result.**
+Deleting the `where` line left 4 parameters for 3 placeholders, so it failed on
+a parameter-count error. Replacing it with `%s is not null` failed on
+`IndeterminateDatatype`. And a guard mutation written with 8 spaces of
+indentation where the code has 4 **never applied at all** — the anchor was not
+found, the suite passed, and it read exactly like a surviving mutation.
+
+> **Assert the anchor before trusting a mutation.** `s.replace(old, new)` on a
+> string that is not there is a silent no-op, and a silent no-op is
+> indistinguishable from a test that cannot fail.
+
+### The fixture geometry is arithmetic, not a guess
+
+Four chunks placed by hand against the query `[1, 0, 0]`:
+
+| chunk | vector | distance | score |
+|---|---|---|---|
+| 0 | `[1, 0, 0]` | 0.0 | **1.0** |
+| 1 | `[0.9, 0.436, 0]` | ~0.1 | ~0.9 |
+| 2 | `[0, 1, 0]` | 1.0 | 0.0 |
+| 3 | `[-1, 0, 0]` | 2.0 | **-1.0** |
+
+The expected order is `0, 1, 2, 3` and a stray `desc` returns exactly
+`3, 2, 1, 0`. **Nothing here is a magic number** — every value follows from the
+angle, so the test says what it means.
+
+### What step 2 deliberately did NOT do
+
+- **No index.** Step 3, and it must not come before the baseline that scores it.
+- **No hybrid keyword search.** Slice 5.
+- **No caller.** `search` is reachable only from tests until slice 7 wires
+  `api/services.py`, which is the only layer allowed to import both `ingest/`
+  and `store/`.
+
+## The chunk cap fix — 2026-09-05, the last cheap moment
+
+*The oldest known bug in the project, carried as `xfail(strict=True)` since
+2026-08-28. Fixed now for one reason: **the fix moves chunk boundaries**, and
+nothing is stored yet. `write_artifact` still has no caller outside tests, so
+re-chunking costs four embedding requests. After slice 7 wires ingest, the same
+change would mean re-chunking **and re-embedding every stored corpus**.*
+
+> **Fix chunk boundaries before pgvector holds anything, or not at all.**
+
+### The bug
+
+`MAX_CHUNK_TOKENS = 510` was enforced on `chunk.text`. What is actually sent to
+the embedder and the reranker is `chunk.embed_text` — **header plus text**. So
+the cap applied to the smaller half of the string.
+
+| | before | after |
+|---|---|---|
+| `B_train.py` | 2 of 79 over, worst **526** | 0 of 82, worst **504** |
+| whole repository | 43 of 1,094 over | **0 of 4,889**, worst **509** |
+
+Two real consequences, not cosmetic: **BGE Base** declares a 512-token input
+limit and refuses those chunks outright, and **Cohere auto-splits** any
+document over 510, silently multiplying the billed rerank documents that this
+file's budget arithmetic assumes.
+
+### The fix — reserve the header before you cut, not after
+
+The header could not simply be measured, because it is built **after** every
+size decision and contains two things the split has not decided yet: the
+`part i/n` suffix, and the line numbers.
+
+So `_reserve` is deliberately **pessimistic**. It always allows for
+`part 999/999` and for the widest line numbers the file can produce, then
+`_budget = MAX_CHARS - _reserve`. Over-reserving costs a few characters of
+chunk; under-reserving is the bug.
+
+`split_recursive` now takes `max_chars`, threaded through `_blocks` and
+`_pack`. One detail that is easy to miss: `_pack`'s target had to become
+`min(TARGET_CHARS, max_chars)`, because `TARGET_CHARS` (1,500) sits just under
+the old cap and would otherwise ignore a shrunken budget entirely.
+
+**`_merge_small` had to learn the same budget.** A merge that only checked
+`MAX_CHARS` could rebuild exactly the oversized chunk the split had just
+avoided — the guard has to exist on both sides of the boundary decision.
+
+### Re-scored, because boundaries moved
+
+`B_train.py` went 79 -> 82 chunks, so slice 1's numbers described chunks that no
+longer exist. Re-run with `scripts/score_retrieval.py` — four embedding
+requests, no generation quota:
+
+```
+after    recall@1 0.412   @5 0.941   @10 0.941   MRR 0.608
+before   recall@1 0.412   @5 0.941   @10 0.941   MRR 0.613
+```
+
+**Recall is identical.** MRR moved by 0.005, which is one query moving one
+place on a 17-query fixture. `D2` is still the known miss at rank 46. So the
+cap is now honest and retrieval quality is unchanged.
+
+### Mutation results — 2 of 3, and the survivor is honest
+
+```
+no header room reserved at all   -> the cap test, ALONE   (this was the bug)
+packing target ignores the budget -> the cap test + the recursive fallback test
+the +1 for the newline dropped    -> NOTHING
+```
+
+The `+1` accounts for the newline `embed_text` puts between header and text.
+Nothing pins it, because the reserve is pessimistic enough that one character
+of slack never shows on these fixtures. **It is kept as correctness in
+principle and recorded as untested**, rather than described as something the
+suite guards.
+
+### The other xfail stays
+
+`test_an_archive_we_accept_must_be_able_to_reach_us` is still
+`xfail(strict=True)`: `MAX_ARCHIVE_BYTES` is 50MB against a body limit of about
+10MB. Fixing it means choosing **which number moves**, and the endpoint accepts
+no archive at all yet — that is slice 7's decision, and inventing the number
+now would be a guess dressed as one. Only its `reason` was refreshed: it still
+said "about 2MB", from before `MAX_UPLOAD_BYTES` rose to 5MB for PDFs.
+
+## Slice 4, steps 3-5 — first measurement, and its conclusion was WRONG
+
+> **OVERTURNED the same day. Read
+> [the corrected measurement](#the-index-question-remeasured--2026-09-05-hnsw-wins-at-real-repo-size)
+> first.** The numbers below are real; the *inputs* were not. Both the
+> corpus size (1,000 rows) and the vectors (uniform random) were
+> unrepresentative, and each one alone was enough to invert the answer.
+
+*Step 3 was written as "partition per artifact + HNSW". It was built and
+measured on a throwaway schema, **not** put in `schema.sql` — an index needs a
+fixed width, and choosing one would have chosen the embedder that slice 8 owns.
+The schema stays Shape A.*
+
+### The numbers, on 10,000 rows across 10 artifacts, `vector(1536)`
+
+| approach | latency | recall@10 | did the planner USE it? |
+|---|---|---|---|
+| **exact — B-tree on `artifact_id`, then sort** | **8.0 ms** | **1.00** by definition | — |
+| shared HNSW over every artifact | 8.0 ms | 1.00 | **no — ignored, 76s to build, 57MB** |
+| partial HNSW, one index per artifact | 8.0 ms | 1.00 | **no — ignored** |
+| the same, forced with `enable_sort = off` | 1.2 ms | **0.82** | yes |
+| **partitioned + HNSW per partition** | **1.4 ms** | **0.82** | **yes** |
+
+**The decision (step 5): ship exact search. Build no index.**
+
+### Why, in the order the reasons actually weigh
+
+1. **8 ms is already fast, and it is exact.** The plan's own arithmetic guessed
+   ~160 ms. Measured, it is **18x cheaper than estimated**.
+2. **Cost follows rows PER ARTIFACT, not corpus size.** Measured: 1,000 chunks
+   8.0 ms - 2,000 chunks 16.1 ms - 5,000 chunks 40.3 ms. A repository is ~1,000
+   to 5,000 chunks and the filter is always `WHERE artifact_id = $1`, so adding
+   artifacts costs nothing. **This is the whole reason the industry's
+   filtered-search problem is not ours.**
+3. **The only variant the planner will use costs 18% of recall.** End to end
+   that is `0.941 x 0.82 = 0.77`, against 0.941 exact — a real loss for 6.6 ms.
+4. **Postgres refuses the index on its own**, before and after `ANALYZE`. Both
+   non-partitioned index shapes were built, sat there, and were never chosen:
+   sorting 1,000 rows is genuinely cheaper than walking a graph and discarding
+   90% of it. Partitioning is the only shape that gets used, because partition
+   pruning removes the predicate and leaves a plain top-k inside one partition.
+5. **Partitioning is not free**: **216 ms of DDL per ingest**, a lock, and
+   partition lifecycle to maintain.
+
+> **The index was never the question. "How many rows does one query actually
+> touch?" was.** At ~1,000 it is not worth an approximation.
+
+**Revisit when one artifact passes roughly 20,000 chunks** — exact would then
+be ~160 ms and the trade changes. Nothing else moves the answer.
+
+### Two measurement mistakes, both mine, both caught before they were believed
+
+**1. Every row had the same vector.** The generator was
+
+```sql
+select ..., (select array_agg(random()) from generate_series(1,1536))
+from generate_series(0, 9999) i
+```
+
+The inner subquery never references `i`, so Postgres evaluated it **once** and
+gave all 10,000 rows an identical vector. It was caught by a sanity check that
+should have been the first thing written: distances within one artifact came
+back `min 0.000  avg 0.000  max 0.000`. The fix is a correlated `LATERAL`
+(`generate_series(1, 1536 + 0*i)`).
+
+**2. A recall of 1.00 that could not have been anything else.** The first
+partial-index run computed its "truth" **after** creating the index, so it
+compared the index against itself. Truth is now taken **before any vector index
+exists**, and the same measurement then reported **0.82**.
+
+> **A benchmark is code, and it fails the same way tests do.** Both mistakes
+> produced confident, publishable-looking numbers. The generator bug also
+> quietly voids the "10 of 10 overlap" claim from the 2026-08-28 gate, which
+> used the same shape.
+
+**And a fixture note worth keeping:** uniform `random()` puts every vector in
+the positive orthant, where all pairs sit near 0.75 cosine and "nearest" is
+noise. `random() - 0.5` spreads them over the sphere. Random vectors remain the
+**hardest** case for HNSW, so 0.82 is a floor — real embeddings cluster and
+would score better. The latency argument does not depend on that.
+
+### What this does NOT decide
+
+The embedder. `schema.sql` is untouched, `v` is still an undimensioned
+`vector`, and slice 8 still chooses. If a 3072-dim model wins and an index is
+ever wanted, the `(v::halfvec(3072))` expression index measured on 2026-08-28
+is the route — but on today's numbers no index is wanted at all.
+
+## The index question, remeasured — 2026-09-05: HNSW wins at real repo size
+
+*The first pass concluded "exact ships, no index". **That was wrong**, and it
+was wrong for two independent reasons, both in the fixture rather than in the
+database. Re-run on a local `pgvector/pgvector:pg17` container so a free-tier
+instance was never the variable.*
+
+### What a real artifact actually holds — measured on real repositories
+
+| repository | chunks |
+|---|---|
+| **FastAPI** | **24,364** (14.7 MB of text) |
+| Django | **REFUSED** — over our own 20 MB `MAX_TOTAL_BYTES` |
+| requests | 924 |
+
+**So 1,000 chunks is not the normal case, it is the small case.** The first
+measurement sized every artifact at 1,000 rows and concluded from that.
+
+### The corrected numbers, on CLUSTERED vectors, `vector(1536)`
+
+| chunks in one artifact | exact | HNSW | speedup | recall@10 |
+|---|---|---|---|---|
+| 1,000 | 6.7 ms | *index not used* | 1x | 1.00 |
+| 5,000 | 30.7 ms | **0.55 ms** | **56x** | **1.00** |
+| 15,000 | 75.8 ms | **1.24 ms** | **61x** | **1.00** |
+| 30,000 | 144.3 ms | **1.38 ms** | **104x** | **0.98** |
+
+**At real repository size HNSW is 50-100x faster and costs nothing measurable
+in recall.** Only at ~1,000 rows does the planner ignore it, and there exact is
+already 6.7 ms, so nothing is lost either way.
+
+### Why the first answer was wrong — the fixture, twice
+
+**1. Uniform random vectors are DEGENERATE, not merely "hard".** In 1,536
+dimensions independent uniform coordinates are nearly orthogonal and nearly
+equidistant, so there is no neighbourhood structure for a graph to exploit and
+the "true" top-10 is a set of near-ties. Same table size, same index, only the
+data changed:
+
+```
+30,000 rows, uniform random   ->  recall@10 = 0.04
+30,000 rows, clustered        ->  recall@10 = 0.98
+```
+
+**0.04 is not a measurement of HNSW. It is a measurement of noise.** The
+earlier 0.82 figure came from the same family of fixture and must not be quoted
+either.
+
+**2. The corpus was sized at the small end.** Exact search does not degrade
+gently: 6.7 ms at 1,000 rows, 144 ms at 30,000 locally — and **10,019 ms** at
+30,000 on the Supabase free tier, where 184 MB of vectors stop fitting the
+cache and every query goes to disk. The deployment target matters as much as
+the algorithm.
+
+> **A benchmark answers the question its fixture asks.** Ours asked "is an
+> index worth it for a small artifact of meaningless vectors?" — and answered
+> that correctly. It was not the question the project has.
+
+### The operational lesson, learned the expensive way
+
+Building the 30,000-row HNSW on the real Supabase project with
+`maintenance_work_mem = 512MB` **took the instance down**, and it did not come
+back on its own. The index itself built in 176 s; the connection died during
+the `ANALYZE` after it.
+
+> **Never size a benchmark to the machine you wish you had.** A free tier has
+> the memory a free tier has, and a benchmark that kills the database is not a
+> measurement, it is an outage. Run this class of work on a local container.
+
+### What this changes, and what it does not
+
+**Changed:** an index is now expected to be worth building. **Not changed:**
+`schema.sql` is untouched and `v` is still an undimensioned `vector`, because
+an index still needs a fixed width and that is still slice 8's choice. Nothing
+is stored yet, so adding the index costs nothing when the embedder is settled.
+
+**The decision therefore moves to slice 8**, taken together with the embedder,
+and the shape to build is the one the planner will actually use — a partition
+or a partial index per artifact, since a shared graph over every artifact is
+skipped in favour of a B-tree.
+
+## THE INDEX DECISION — settled 2026-09-05 on five real repositories
+
+*The user refused a synthetic answer and asked for five real repositories
+between 10k and 25k chunks. **81,493 chunks were really embedded** with
+`mistral-embed` (1024-dim, 22.7M tokens, ~45 minutes) and loaded into a local
+`pgvector:pg17` container. Not the real project — see
+[the outage](#the-index-question-remeasured--2026-09-05-hnsw-wins-at-real-repo-size).*
+
+### Speed and recall: HNSW wins, and it is not close
+
+| repo | chunks | exact | HNSW | speedup | recall@10 |
+|---|---|---|---|---|---|
+| pytest | 9,929 | 33.7 ms | 0.53 ms | 64x | 1.00 |
+| dask | 11,527 | 33.7 ms | 0.44 ms | 76x | 1.00 |
+| pydantic | 13,153 | 34.2 ms | 0.40 ms | 86x | 1.00 |
+| scikit-learn | 22,520 | 55.6 ms | 1.86 ms | 30x | 1.00 |
+| **FastAPI** | **24,364** | **107.9 ms** | **0.98 ms** | **110x** | **1.00** |
+
+### The query shape decides recall, and the default `ef_search` is too low
+
+Those 1.00s used queries that were **copies of stored rows** — the easiest case,
+because the query is already a node in the graph. Re-run with queries that are
+NOT in the corpus:
+
+| query | pydantic | scikit-learn | FastAPI |
+|---|---|---|---|
+| a stored chunk | 1.00 | 1.00 | 1.00 |
+| **blend of two chunks** (realistic) | 0.94 | 0.98 | **0.86** |
+| chunk + random noise (unrealistic) | 0.58 | 0.40 | 0.50 |
+
+The noise row is not a fair test — random noise pushes a vector off the
+embedding manifold, which an embedded question never does. **The blend is the
+fair proxy**, and 0.86 on FastAPI is a real loss.
+
+**`hnsw.ef_search` recovers it completely.** On FastAPI, the worst case:
+
+```
+ef_search =  40 (default)   1.37 ms   recall 0.86    59x
+ef_search = 100             1.93 ms   recall 1.00    42x   <- ship this
+ef_search = 200             3.61 ms   recall 1.00    22x
+```
+
+> **A default is not a measurement.** pgvector ships `ef_search = 40`, and at
+> our size that quietly costs 14% of recall. Half a millisecond buys it back.
+
+### The cost nobody had priced: the index is bigger than the table
+
+| repo | chunks | table | HNSW index | total | x1.5 at 1536-dim |
+|---|---|---|---|---|---|
+| pytest | 9,929 | 56 MB | 81 MB | 137 MB | 205 MB |
+| pydantic | 13,153 | 74 MB | 108 MB | 181 MB | 272 MB |
+| scikit-learn | 22,520 | 126 MB | 184 MB | 310 MB | 465 MB |
+| **FastAPI** | **24,364** | **136 MB** | **200 MB** | **336 MB** | **504 MB** |
+
+**The index is ~1.5x the table.** At codestral's 1536 dimensions, ONE FastAPI-
+sized repo plus its index is **504 MB — the entire Supabase free tier**, and
+LabPilot compares **two** artifacts.
+
+```
+two 24k-chunk repos, 1536-dim, exact   ~408 MB   fits
+two 24k-chunk repos, 1536-dim, HNSW   ~1008 MB   DOES NOT FIT
+```
+
+### The decision
+
+**HNSW, with `ef_search = 100` — and storage must be solved first.**
+
+The speed/recall case is settled: 30-110x faster at recall 1.00 on five real
+corpora. Nothing about that is marginal. But it is **not free**, and on the free
+tier storage binds before latency does — 108 ms of retrieval is nothing against
+a report that takes ~50 seconds.
+
+**The lever is `halfvec`**, already measured on 2026-08-28 as costing **0 of 10**
+in ranking overlap. Half precision halves both table and index, which brings two
+24k repos with indexes to ~500 MB. That is the shape to build at slice 8, where
+the embedder and its dimension are chosen together.
+
+> **The right question was never "is HNSW faster". It is "what runs out
+> first".** Here it is disk, not milliseconds.
+
+### A real bug this found in our own embedder
+
+Three of the five repos **failed to embed**:
+
+```
+HTTP 400 code 3210  "Too many tokens overall, split into more batches"  (dask, fastapi)
+HTTP 429            backend_out_of_capacity                             (scikit-learn)
+```
+
+`MAX_BATCH_SIZE = 96` is derived as `floor(50,000 / 510)` from the **per-minute**
+token limit. Mistral also enforces a **per-request** limit, and our `chars / 3`
+estimate under-counts real tokens badly enough to cross it: the batch that was
+refused estimated **46,162** tokens, while a batch Mistral had already **accepted**
+measured **59,466** real tokens.
+
+> **An estimate is not a budget.** Batching on an estimate that can be wrong in
+> the dangerous direction needs a retry that halves and re-sends, not a bigger
+> constant.
+
+**FIXED the same day: `embed/batching.py`.** `embed_batches()` sends one request
+per yielded batch, halves on a refusal that names tokens, and **remembers the
+smaller size** — going back to the full size would earn the same refusal again,
+and every refusal costs a request. Any other failure is raised at once, because
+retrying a bad key smaller only wastes requests.
+
+It is matched on the word *token* rather than Mistral's code 3210, so it stays
+true for the other four providers. Proven on the exact batch that failed:
+`embed()` alone is refused; `embed_batches()` returns all 96 vectors in two
+requests of 48. Four mutations were verified, and the test that found the
+remembering bug was written before the code did it.
+
+## The slice 4 closing review — 2026-09-05
+
+*Run across the whole system, not across the new code, asking only the standing
+question: **which real failure is still unprotected?** Two gaps found, two tests
+added, **one candidate rejected because a linter already covers it**, and one
+predictable future bug recorded instead of fixed.*
+**559 passed, 28 skipped, 1 xfailed. Both new invariants mutation-tested.**
+
+### Gap 1 — the entire API-quota gate rested on a decorator
+
+`tests/conftest.py` skips by **marker alone**:
+
+```python
+if "smoke" in item.keywords:
+    item.add_marker(skip_smoke)
+```
+
+So a smoke test written without `@pytest.mark.smoke` runs **on every push** and
+spends real provider quota. Nothing checked it, and nothing would report it —
+the suite would simply be slower and the quota would be gone.
+
+`test_every_smoke_test_carries_the_smoke_marker` parses each file in
+`tests/smoke/` and fails the build if any test function is unmarked. It reads
+module-level `pytestmark` as well as decorators, so either style passes.
+
+> **A cost gate that depends on remembering is not a gate.** The rule was
+> written in this file and enforced by nothing.
+
+### Gap 2 — nothing stopped a default-run test from loading real credentials
+
+`load_dotenv` is the first step of reaching a real service. Measured across the
+whole suite, it appears **only** in `tests/integration/conftest.py` and
+`tests/smoke/` — exactly the cost split this file describes. Nothing held it
+there.
+
+`test_no_default_test_loads_real_credentials` fails if a file under
+`tests/unit/` or `tests/api/` loads `.env`. Both folders run on every push.
+
+**It pins a property the suite already has**, rather than asking for a change —
+which is the cheapest kind of invariant to add and the easiest to lose.
+
+### Rejected — and the reason is worth more than the test would have been
+
+A third test was written and **deleted**: *"every name in each package's
+`__all__` is importable"*, modelled on the existing
+`test_every_public_name_is_importable` in `unit/llm/`.
+
+**Ruff already catches it.** `F822 — undefined name in `__all__`` is part of the
+`F` rule set, which `ruff.toml` has enabled since day one. The test would have
+duplicated a check that already runs on every commit, in the editor, in
+pre-commit and in CI.
+
+> **Before adding a test, ask what already fails when the rule is broken.** A
+> linter, a type checker or an existing test may hold it — and a second guard on
+> the same failure is a number, not protection.
+
+*The `llm` one predates the ruff config and is left alone; deleting it would be
+churn for nothing.*
+
+### Recorded, not fixed — the boundary slice 7 will break
+
+`api/services.py` catches `LoaderError`, `NotUtf8Text`, `LooksGenerated`,
+`OSError` and `AllFreeTiersExhausted`. It knows **nothing** about `StoreError`
+or `EmbeddingError`.
+
+So the moment slice 7 wires the store, every one of `UnknownArtifact`,
+`ModelMismatch`, `ConnectionFailed`, `NotConfigured` and `EmbeddingError` lands
+in the **500 handler** — reported as *our* bug rather than as the user's input
+or a provider outage.
+
+**This is the third time this exact shape is predictable.** Slice 3 hit it twice
+in one day: a malformed notebook reached the 500 handler, and then the same
+error inside `chunk_source` silently truncated an entire repository walk.
+
+> **When you add an error type, walk every boundary that already catches
+> errors.** No handler is written today because nothing calls the store yet —
+> a handler with no caller is dead code. But slice 7 must not discover this by
+> watching a 500.
+
+**Slice 7's checklist, then:** map `NotConfigured` and `ConnectionFailed` to a
+**503** (our infrastructure is down, like `AllFreeTiersExhausted`), and
+`UnknownArtifact` and `ModelMismatch` to a **422** or a 500 depending on whether
+the caller could have avoided it. Decide it there, with the caller in front of
+you.
+
+## THE FINAL DECISION — exact search ships, 2026-09-05
+
+*The user's call, after refusing three of my answers in a row and being right
+every time. Recorded with the reasoning, the condition that would overturn it,
+and the four things I had wrong.*
+
+> **Exact search ships. HNSW is on the shelf with its numbers.**
+> **Slice 8 re-measures both on real artifacts. TIME is the only thing that can
+> overturn this — not recall, and not storage.**
+
+### Why exact wins at OUR size
+
+The target is **1,000 to 10,000 chunks per artifact**, not the 24k-30k stress
+cases. At that size:
+
+| | exact | HNSW |
+|---|---|---|
+| 1,000 chunks | **6.7 ms** | *the planner refuses the index* |
+| 5,000 chunks | 30.7 ms | 0.55 ms |
+| 9,929 chunks (pytest, real vectors) | **33.7 ms** | 0.53 ms |
+| recall@10 | **1.00 by definition** | 1.00 only at `ef_search = 100` |
+| storage per row, 1536-dim | **8 KB** | **20 KB** |
+
+1. **34 ms against a ~50 second report is 0.07%.** We are not short of time.
+2. **Recall 1.00 needs no tuning.** HNSW at pgvector's default `ef_search = 40`
+   silently lost **14%** on FastAPI. Five embedders would mean five tunings,
+   each needing its own re-measurement.
+3. **Storage is 2.5x cheaper**, and storage is what runs out first.
+4. **Below ~1,000 rows Postgres will not use the index anyway**, so much of the
+   target range cannot benefit from it at all.
+
+Published guidance agrees at this scale: under roughly 50k vectors the gap is
+negligible, and the operational simplicity of no index tuning outweighs the
+speedup.
+
+### The ONE condition that reopens it
+
+**Slice 8 measures exact vs HNSW on real artifacts, inside the full RAG system.**
+If exact is genuinely too slow there, the answer changes to HNSW, or to a
+platform with more RAM, or both.
+
+**Time is the only admissible reason.** Recall cannot overturn it — exact is
+1.00 by definition. Storage cannot overturn it — exact is the cheaper of the two.
+
+### Four things I had WRONG, and the user corrected every one
+
+**1. "The index changes speed, not correctness."** **False.** Index recall below
+1.00 means different chunks reach the model, so the report can differ. That is
+correctness, and it belongs to this slice — not to slices 5-8.
+
+**2. "The index decision belongs to slice 8 with the embedder."** **False.**
+Slice 8 ranks the embedders; it does not decide *whether* to use them. All five
+models stay — one primary, four backups, permanently. So the index was **our
+call today**, and deferring it was avoidance dressed as sequencing.
+
+**3. "The index costs 1.5x."** **It costs 2.5x, and it never stops.** The 1.5x
+was the index measured against the table alone. Per row at 1536-dim: vector
+8 KB, graph +12 KB, **total 20 KB**. And it grows with **every row, forever** —
+an index is never a one-time cost.
+
+**4. Storage is per ROW, not per artifact.** A row *is* a chunk, so chunks
+matter completely; how they are grouped does not:
+
+```
+2 artifacts x 10,000 chunks  =  20,000 rows
+5 artifacts x  4,000 chunks  =  20,000 rows      <- identical storage
+```
+
+Measured: **~8.2 KB of index per row** whether it is one graph over everything
+or one graph per artifact. Partitioning changes *where* the rows are cut, never
+*how many* there are.
+
+> **An index is a trade, never a saving.** Spend storage, buy time. If you are
+> not short of time, you are paying for nothing. I recommended HNSW **before I
+> had measured storage at all**, which is why the answer moved twice.
+
+### And one constraint I mis-attributed
+
+**Render's 512 MB is the API process's RAM. It is not the database.** The HNSW
+graph would live in Postgres, so Render never constrained it. Two different
+machines, two different budgets.
+
+## Free vector-database platforms — verified 2026-09-05
+
+*Every row read from the provider's OWN pricing page. Blog and aggregator lists
+were searched first and are **not** the source — this project has been burned by
+them three times (Beam, Cerebrium, Saturn Cloud).*
+
+| Platform | Free storage | RAM | Card? | Other limits |
+|---|---|---|---|---|
+| **Supabase** *(ours)* | 500 MB | **500 MB** | not stated | **paused after 1 week idle**, 2 projects |
+| **Neon** | 0.5 GB/project | **up to 8 GB** | **no credit card, permanent, not a trial** | 100 projects, 100 CU-hours, sleeps after 5 min |
+| **Qdrant Cloud** | **4 GB disk** | 1 GB | not stated | 0.5 vCPU, free forever |
+| **Pinecone** | **2 GB** | — | not stated | 5 indexes, 2M writes/mo, 1M reads/mo |
+| **Zilliz Cloud** | ~1M vectors @768-dim | — | not stated | 5 collections, 1 cluster per org |
+| **Upstash Vector** | 1 GB | — | card on upgrade | **max 1,536 dim**, 10K queries/day |
+
+### Three findings that outrank the storage numbers
+
+**1. Supabase's binding limit is RAM, not disk — its own page says 500 MB.**
+That is exactly why a 30k-row exact query took **10 seconds** there and 150 ms
+on a local container. **Neon offers up to 8 GB at the same 0.5 GB storage**,
+which is the single most useful fact in this table.
+
+**2. Leaving Postgres means losing exact search.** Pinecone, Zilliz and Upstash
+are **ANN-only** — brute force is not offered. Migrating there would *force* the
+approximate search we just declined and hand back recall 1.00. Only Qdrant
+exposes an exact flag.
+
+**3. Upstash is disqualified outright** — max **1,536 dimensions**, and
+`gemini-embedding-001` is **3072**. The embedder chain must keep all five
+reachable.
+
+### The migration target, if slice 8 ever calls for one
+
+**Neon.** Postgres + pgvector, so `store/` works **unchanged** — a one-line
+`DATABASE_URL` change, not a rewrite. No card, permanent, and 16x the RAM.
+
+**Qdrant is the only one worth its 4 GB**, and it costs rewriting the whole
+`store/` package plus a client dependency against Render's 512 MB.
+
+> **What is NOT verified: the credit-card question for Qdrant, Pinecone and
+> Zilliz.** Their pricing pages do not say. This project's second valid source
+> is the **actual signup flow**, and it has not been run. Do not record any of
+> them as no-card until it is.
+
+## Slice 8's job grew — three measurements, not one
+
+*Recorded 2026-09-05. Slice 8 was "decide the embedder and the reranker order".
+It now also owns the search decision, because that is the first place the whole
+RAG system exists on real artifacts.*
+
+| # | Measure | Decides |
+|---|---|---|
+| 1 | embedder ranking on a new fixture, several repos, more than one language | which model leads `MIGRATION` |
+| 2 | **reranker ranking — never measured at all** | which model leads chain 3 |
+| 3 | **exact vs HNSW, on real artifacts, inside the full pipeline** | whether the 2026-09-05 decision holds |
+
+**For measurement 3, what to record and what may not count:**
+
+```
+record   query latency at the REAL artifact sizes seen in practice
+record   the same on SUPABASE, not only a local container - 500 MB RAM is the variable
+record   whether latency is even noticeable against a ~50s report
+IGNORE   index recall as a reason to switch TO hnsw   - exact is 1.00 by definition
+IGNORE   storage as a reason to switch TO hnsw        - exact is 2.5x cheaper
+```
+
+**If it does flip, the shape to build is already measured** — partition per
+artifact, `hnsw.ef_search = 100`, and `halfvec` to halve both table and index.
+None of that work is wasted; it is a decision with numbers behind it.
+
+**The one measurement still missing today:** exact at ~10,000 rows **on
+Supabase**. Every latency number in the 1k-10k range came from a local
+container, and the free tier has 500 MB of RAM. It is cheap, and it is the only
+number that could change the answer before slice 8.
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
@@ -3955,6 +4738,9 @@ Slices 1 to 5 cost almost nothing. That is unusual, and it is the right place to
 move quickly.
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
+
+> **It now decides a third thing: exact vs HNSW.** Added 2026-09-05 — see
+> [slice 8's job grew](#slice-8s-job-grew--three-measurements-not-one).
 
 *Written at the user's request, before the second fixture exists, so the rule
 cannot be bent after the numbers arrive.*
@@ -6146,11 +6932,22 @@ what most blocks in this file already do. And **run all three CI commands before
 saying a change is clean**; `pytest -q` alone passed happily while
 `ruff format --check .` was failing.
 
+**CI brings its own database — 2026-09-04.** A `pgvector/pgvector:pg17`
+service container, `DATABASE_URL` set at job level, and one step that installs
+the extension into `public` so the shape matches Supabase. **No secret**, so
+pull requests from forks work. Do **not** point CI at the real project: every
+push would share one database, and two concurrent jobs both running
+`drop schema labpilot_test cascade` is the 2026-09-04 flake with a new cause.
+
+> **The tests that most need CI are the ones that skip when it is not
+> configured.** A `database` test is green-by-absence, so "CI passes" said
+> nothing about ten of them for a week.
+
 **Two workflows, and the split is about quota:**
 
 | Workflow | Trigger | Runs | Cost |
 |---|---|---|---|
-| `ci.yml` | every push and PR | lint + unit tests | **zero** — every test is mocked |
+| `ci.yaml` | every push and PR | lint + unit + **database** tests | **zero** — no provider is called |
 | `smoke.yml` | manual button + Mondays 06:00 UTC | smoke only | ~1 request/week |
 
 The weekly smoke run exists for one reason: **free models disappear without
