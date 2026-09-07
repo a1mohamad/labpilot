@@ -471,14 +471,28 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4 DONE. NEXT IS SLICE 5 — hybrid keyword search.**
-**SLICE 4 SHIPS EXACT SEARCH — the user's decision, 2026-09-05, with one named condition.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4 DONE. SLICE 5 IS MEASURED AND DECIDED, NOT YET BUILT.**
+**SLICE 5 DECISION, 2026-09-07: VECTOR SEARCH SHIPS ALONE. No keyword channel on the query path.**
+**Measured on TWO corpora x TWO embedders, 62 frozen queries, 82 fusion settings: the pipeline
+retrieves 50 and reranks, so recall@50 is what gates what the model can see — and vector alone
+is already at 123 of 124. NOT ONE fusion setting improved it on any run. The two fixtures
+DISAGREED (RRF +15% MRR on quora, -13% on requests), which is why one fixture could not decide.
+BM25 by hand beats both Postgres rankers and still loses to vector. wRRF with a SMALL k and a
+SMALL weight is a NAMED CANDIDATE for slice 8 and may replace vector there. See
+[slice 5 measured](#slice-5-measured--2026-09-07-vector-ships-wrrf-is-a-named-candidate).**
+**⚠ THE THREE PIECES OF CODE ARE NOT WRITTEN: the tsvector column, `store/keyword.py`,
+`retrieval/fusion.py`. Build them off by default, then slice 5 closes. See START HERE.**
+**`data/samples/requests_http/queries.json` is the SECOND fixture — 45 queries over psf/requests
+at `dae7ef6`, labelled by `asks` and `wording`. The corpus is NOT committed; fetch it.
+`scripts/score_hybrid.py` repeats the whole measurement and spends no generation quota.**
+**A query file now needs a `file` field: a repository has 19 files and line 186 is in most of them.**
+**SLICE 4 SHIPPED EXACT SEARCH — the user's decision, 2026-09-05, with one named condition.**
 **At the REAL target of 1k-10k chunks per artifact, exact is 7-34ms against a ~50s report, is
 recall 1.00 BY DEFINITION, and costs 2.5x less storage. HNSW is faster and was measured on five
 real repositories, but speed is not what we are short of. SLICE 8 RE-MEASURES IT on real
 artifacts, and TIME is the only thing that can overturn it — not recall, not storage. See
 [the final decision](#the-final-decision--exact-search-ships-2026-09-05).**
-**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is COMPLETE on `feat/store`, not merged.**
+**Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is COMPLETE and MERGED into `main`.**
 **The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
 **`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search.**
 **559 passed, 28 skipped, 1 xfailed. Mutation-tested at every step.**
@@ -508,44 +522,103 @@ is refused, `embed_batches()` returns all 96 vectors in two requests.**
 **`DATABASE_URL` now exists in `.env` — SESSION POOLER, port 5432. Direct connection is IPv6-only and DEAD from here.**
 **Read [slice 4, the theory](#slice-4--the-theory-recorded-2026-09-03) then
 [slice 4, what is built](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path).**
-**Last updated 2026-09-06 (eighteenth session). Slice 4 is MERGED into `main`;
-`feat/store` is stale and behind it. Slice 5 works on `feat/hybrid-search`.**
+**Last updated 2026-09-07 (eighteenth session). Slice 4 is MERGED into `main`.**
+**SLICE 5 IS MEASURED AND DECIDED; the three pieces of code are NOT written yet —
+see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ▶ SLICE 4 CONTINUES HERE — the write path is done, search is not
+> > ## ▶ SLICE 5 CONTINUES HERE — the measuring is DONE, the code is NOT
 > >
-> > **Session 17 built steps 1 and 2 of the five-step decision order.** The
-> > table, the connection and the writer exist and are proven against the real
-> > database. Read
-> > [what is built and what was measured](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path)
-> > before writing a line, then
-> > [the theory](#slice-4--the-theory-recorded-2026-09-03) for the plan.
+> > **Session 18 measured everything and wrote no product code, on purpose.**
+> > The decision is made and recorded. What is left is to build the three
+> > pieces that decision named, then close slice 5.
 > >
-> > **The next task is `labpilot/store/search.py` — EXACT search.** Not an
-> > index. Exact search is the correct answer by definition, so it is the only
-> > instrument that can score HNSW in step 4:
+> > **Read these two, in this order, before writing a line:**
+> > [SLICE 5 MEASURED — the decision](#slice-5-measured--2026-09-07-vector-ships-wrrf-is-a-named-candidate)
+> > then
+> > [the theory](#slice-5--the-theory-recorded-2026-09-06).
 > >
+> > **Branch: `feat/hybrid-search`. It is level with `main`.**
+> >
+> > ### The task: build it, off by default
+> >
+> > Nothing calls any of it. That IS "off by default" — no flag, no setting.
+> > A flag nobody reads is dead configuration. Same state `write_artifact` and
+> > `search` are already in: scaffolding with a scheduled consumer.
+> >
+> > | # | file | holds |
+> > |---|---|---|
+> > | 1 | `store/schema.sql` | one generated `tsvector` column + one GIN index |
+> > | 2 | `store/keyword.py` | `keyword_search()` and `bm25_search()` |
+> > | 3 | `retrieval/fusion.py` | `weighted_rrf()` — pure, no database |
+> >
+> > **1. The schema.**
+> >
+> > ```sql
+> > alter table chunks add column if not exists tsv tsvector
+> >   generated always as (to_tsvector('english', header || ' ' || text)) stored;
+> > create index if not exists chunks_tsv on chunks using gin (tsv);
 > > ```
-> > select chunk_index, text, header, source, start_line, end_line,
-> >        1 - (v <=> %s) as score
-> > from chunks
-> > where artifact_id = %s
-> > order by v <=> %s
-> > limit %s
-> > ```
 > >
-> > Three things it must get right: **`<=>` is cosine DISTANCE, not
-> > similarity**, so smallest wins and `order by` takes no `desc`; it needs a
-> > **`ModelMismatch` guard** comparing the artifact's `embedding_model` with
-> > the model that embedded the query, because searching across two models
-> > returns numbers and not meaning, silently; and `SearchHit` has to be added
-> > to `store/contracts.py`, which deliberately does not have it yet.
+> > Three things it must get right. It reads **`header || ' ' || text`**, not
+> > `text` alone — the benchmark used `embed_text`, and a tsvector over `text`
+> > only would lose every file and function name, so the measured numbers would
+> > not transfer. **`to_tsvector` must take TWO arguments**: the one-argument
+> > form is `STABLE`, a generated column demands `IMMUTABLE`, and it fails at
+> > creation. And **`create table if not exists` will not add a column to a
+> > table that already exists**, which is why the `alter` is separate —
+> > `test_applying_the_schema_again_keeps_the_data` must still pass while the
+> > column really appears.
 > >
-> > **Then, in order:** step 3 partition-per-artifact + HNSW · step 4 measure
-> > recall and latency **with the real `WHERE artifact_id` filter** · step 5
-> > decide which ships. Do not skip to the index. If HNSW loses, keep the code
-> > anyway — it exists to close a skill gap, and the measurement is the lesson.
+> > **2. `store/keyword.py`.** Both return the existing `SearchHit`.
+> > `keyword_search` is pure Postgres and its query terms must be joined with
+> > **OR** — `plainto_tsquery` uses AND and scored **0 of 17**. `bm25_search`
+> > gets `f(t,d)` from `unnest(tsv)` on matching chunks only, `n_t` from one
+> > indexed `count(*)` per term, `N` from the artifact, and `L` — the average
+> > chunk length — once per artifact, cached in memory because an artifact never
+> > changes after it is written. Same `UnknownArtifact` guard as vector search;
+> > **no `ModelMismatch` guard**, because words are compared with words and
+> > there is no embedding space to get wrong.
+> >
+> > **3. `retrieval/fusion.py`.** Takes lists of `chunk_index`, returns a list
+> > of `chunk_index`, and knows nothing else. `retrieval/` is **core** and may
+> > not import an adapter, so it cannot see `SearchHit` — and that constraint
+> > gives the right shape anyway. Defaults from the sweep, **not** the textbook:
+> > `k = 5`, weights `(1.0, 0.15)`. The textbook `k = 60, w = 1.0` is the worst
+> > row in our own table.
+> >
+> > ### The invariants to pin, each one mutation-tested
+> >
+> > the tsvector holds words from the **header** too · applying the schema twice
+> > keeps the data **and** the column exists · **a rare word scores higher than
+> > a common one** (this is IDF, the only thing separating BM25 from `ts_rank`)
+> > · ten occurrences do not score ten times one (saturation) · a longer chunk
+> > is penalised at equal count (length normalisation) · only the named artifact
+> > is searched · an unknown artifact is refused rather than answered with `()`
+> > · a chunk in both lists beats a chunk in one · weight `0` makes the second
+> > list change nothing.
+> >
+> > ### Deliberately NOT built
+> >
+> > No `avg_tokens` column — measure first. No caller — slice 7 wires it, slice
+> > 8 decides whether it stays. No `ts_rank_cd` — it lost on every run.
+> >
+> > **Then slice 5 closes**, and the next work is **slice 6, reranking** —
+> > which this measurement says is where the gain actually is: `recall@50` is
+> > `0.994` while `recall@1` is `0.645`. The answer is nearly always inside the
+> > window and often not at the top, and closing that gap is a reranker's job.
+>
+> > ## ✅ SLICE 4 IS DONE — do not restart it
+> >
+> > The table, the write path and **exact search** all exist and are proven
+> > against the real database, and the index question is settled with numbers.
+> > Read [the store](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path),
+> > [exact search](#slice-4-step-2--done-2026-09-05-exact-search) and
+> > [the final decision](#the-final-decision--exact-search-ships-2026-09-05).
+> > **Exact search ships; HNSW is on the shelf with its numbers**, and only
+> > TIME measured on real artifacts at slice 8 can overturn that — not recall,
+> > not storage.
 >
 > > ## ⚠ ONE DEBT SLICE 4 OWES BEFORE IT CLOSES
 > >
