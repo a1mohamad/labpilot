@@ -18,6 +18,41 @@ def test_applying_the_schema_again_keeps_the_data(db):
         cur.execute("delete from artifacts where id = 'keep'")
 
 
+def test_the_tsvector_column_survives_applying_the_schema_again(db):
+    """`create table if not exists` does NOT add a column to a table that
+    already exists, which is why the tsvector arrives by its own `alter`.
+
+    Both statements must be idempotent: the neighbouring test proves the DATA
+    survives a second apply, and this one proves the COLUMN is really there
+    afterwards. Neither alone would notice an `alter` that never ran.
+    """
+    create_schema(db)
+    with db.cursor() as cur:
+        cur.execute(
+            "select is_generated from information_schema.columns"
+            " where table_name = 'chunks' and column_name = 'tsv'"
+            "   and table_schema = current_schema()"
+        )
+        row = cur.fetchone()
+
+    assert row is not None, "the tsv column is missing after applying the schema"
+    assert row[0] == "ALWAYS", "tsv must be GENERATED, or it can drift from the text"
+
+
+def test_the_tsvector_is_indexed(db):
+    """Without the GIN index every `@@` reads every row of the artifact. The
+    query still returns the right answer, so nothing fails - it just gets
+    slower and slower as a corpus grows."""
+    with db.cursor() as cur:
+        cur.execute(
+            "select indexdef from pg_indexes"
+            " where tablename = 'chunks' and schemaname = current_schema()"
+        )
+        definitions = " ".join(row[0] for row in cur.fetchall())
+
+    assert "gin" in definitions.lower() and "tsv" in definitions
+
+
 def test_the_database_refuses_a_side_that_is_not_a_or_b(db):
     with db.cursor() as cur, pytest.raises(psycopg.errors.CheckViolation):
         cur.execute("insert into artifacts values ('bad', 'n', 'C', 'm', 3)")
