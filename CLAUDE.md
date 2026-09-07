@@ -484,7 +484,9 @@ SMALL weight is a NAMED CANDIDATE for slice 8 and may replace vector there. See
 `retrieval/fusion.py`. Build them off by default, then slice 5 closes. See START HERE.**
 **`data/samples/requests_http/queries.json` is the SECOND fixture — 45 queries over psf/requests
 at `dae7ef6`, labelled by `asks` and `wording`. The corpus is NOT committed; fetch it.
-`scripts/score_hybrid.py` repeats the whole measurement and spends no generation quota.**
+`scripts/score_hybrid.py` repeats the whole measurement and spends no generation quota;
+`--sweep-bm25` varies the two BM25 knobs the original sweep never touched, and score
+fusion, CombMNZ and ADAPTIVE were restored to it 2026-09-07 after being lost.**
 **A query file now needs a `file` field: a repository has 19 files and line 186 is in most of them.**
 **SLICE 4 SHIPPED EXACT SEARCH — the user's decision, 2026-09-05, with one named condition.**
 **At the REAL target of 1k-10k chunks per artifact, exact is 7-34ms against a ~50s report, is
@@ -5105,11 +5107,107 @@ WITH the reranker the gain measured here is all INSIDE the top 50,
 LARGE corpora     at 10,000 chunks a top-50 window is 0.5% of the corpus,
                   not the 15-61% it was here. recall@50 will fall, and that
                   is the number that could overturn everything above
+ALL FOUR knobs    k and weight were swept; k1 and b NEVER were. --sweep-bm25
+ALL FIVE methods  score fusion, CombMNZ and ADAPTIVE were restored 2026-09-07
 ```
 
 > **The gain is real, small, and in the region slice 6 overwrites.** That is not
 > a reason to delete it — it is a reason not to claim it yet.
 
+
+### The four hyperparameters, and the three methods that were lost — 2026-09-07
+
+*Raised by the user right after the decision above, and both halves were right.
+The sweep looked exhaustive at 82 settings. It varied half the knobs, and the
+committed script had kept fewer than half the methods.*
+
+#### Two of the four knobs were never swept
+
+| # | knob | belongs to | swept? | value we use |
+|---|---|---|---|---|
+| 1 | `k` | RRF rank constant | ✅ 5, 10, 20, 30, 60 | **5** |
+| 2 | keyword weight | RRF | ✅ 0.05 … 1.0 | **0.15** |
+| 3 | **`k1`** | **BM25 saturation** | ❌ **never** | 1.2 — a textbook guess |
+| 4 | **`b`** | **BM25 length normalisation** | ❌ **never** | 0.75 — a textbook guess |
+
+`K1, B = 1.2, 0.75` was a module constant in `score_hybrid.py`, not a loop
+variable. So the BM25 channel that **every** winning fusion setting depends on
+was scored at its default and never tuned.
+
+**And the textbook has already been wrong here once.** RRF's own `k = 60,
+w = 1.0` is the worst row in our own table — the only setting that loses
+recall@50. That is a reason to check knobs 3 and 4, not to assume them.
+**`--sweep-bm25` now varies them.**
+
+#### The first result, preliminary on purpose
+
+quora / codestral, over `k1` in {0.9, 1.2, 1.6, 2.0} and `b` in {0.0, 0.3, 0.75}:
+
+```
+bm25 alone        MRR 0.465 -> 0.492     k1 moves it, about +0.027
+wRRF k=5 w=0.15   MRR 0.619 -> 0.624     the WINNER moves about +0.005
+RESCUE            MRR 0.610 -> 0.610     flat
+recall@50         unchanged everywhere
+```
+
+**Tuning the keyword channel moves the keyword channel, and barely moves the
+fused result.** That is the expected shape — the gain from fusion is small to
+begin with, so a better BM25 can only ever be a fraction of a small number.
+And 0.619 against 0.624 is far under one query on a 17-query fixture, so this
+is a direction and not a finding.
+
+*One prediction of mine was wrong, and it is corrected here.* I expected `b` to
+be nearly flat, because our chunks are capped near 510 tokens and are fairly
+uniform, so there is little length variation left for it to normalise. The
+**lowest** `b` values gave the best fused MRR. On one saturated fixture that
+may well be noise — but it is not the flat line I predicted, and the prediction
+is written down so slice 8 tests it instead of inheriting it.
+
+#### Five methods were measured; the script had kept two
+
+| method | ours? | verdict |
+|---|---|---|
+| **vector alone** | — | **ships today** |
+| **wRRF** | standard | **named candidate for slice 8** |
+| **RESCUE** | **invented here** | **on the shelf — never hurts, never helps** |
+| score fusion (min-max) | standard | best MRR on a run, lost recall@50 on another |
+| CombMNZ | standard | not a contender |
+| ADAPTIVE RRF | invented here | won quora, middling on requests |
+
+`rankers()` built only wRRF and RESCUE. **Score fusion, CombMNZ and ADAPTIVE
+lived in a session scratchpad and were lost** — exactly as `score_retrieval.py`
+was lost before it was committed. Three rows of the table this file reports
+could not be reproduced by the repository that reported them. **Restored
+2026-09-07**, and each one re-derives its recorded number.
+
+**A correction the restoration produced.** This file said ADAPTIVE *"won on
+quora (best MRR, 0.730)"* and did not name the embedder. It is **0.732 on
+quora/google** and only **0.700 on quora/codestral**. The number was right; the
+run it belonged to was missing.
+
+> **Name the corpus AND the embedder beside every number.** Without both, a
+> faithful reproduction looks like a contradiction.
+
+#### The rule this produced, and it outranks the numbers
+
+> **Judge a method by how many independent ways it was shown better, never by
+> its best single number.**
+
+**BM25 is the worked example on the winning side.** It beat both Postgres
+rankers on **every** metric, on **both** corpora, **and** there is a mechanism
+that explains why: `ts_rank(tsvector, tsquery)` is handed one document, so it
+cannot know document frequency and has no IDF at all. Three independent
+supports, all pointing the same way.
+
+**Score fusion is the example on the losing side.** The best average MRR of
+anything measured, one run where it lost recall@50, and **no mechanism**. That
+is a number, not evidence.
+
+**So the effort goes to `vector`, `wRRF` and `RESCUE`.** The other three stay
+in the script so their claims stay reproducible, and none of them is a
+candidate. This matters because the instrument here is weak — the fixture is
+saturated at recall@50, and both corpora are Python — so convergent evidence
+has to do the work that a single metric cannot.
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
