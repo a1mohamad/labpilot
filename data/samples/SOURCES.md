@@ -61,3 +61,29 @@ written for this project.
    scanned PDF is "pages with no text operators", so the test builds one and no
    binary is committed.
 4. **Keep them small.** These are stored uncompressed in git history forever.
+
+---
+
+## `requests_http/`
+
+**No third-party file is committed here.** The corpus is the `psf/requests`
+library, which is fetched on demand; only our own `queries.json` lives in the
+repository. Fetch it at the commit the query file names, or every line number
+in the ground truth is wrong:
+
+```
+git clone --depth 1 https://github.com/psf/requests <dir>
+```
+
+| what | value |
+|---|---|
+| repository | https://github.com/psf/requests |
+| commit | `dae7ef6` |
+| files used | `src/requests/*.py` -- 19 files, 6,394 lines, 335 chunks |
+| licence | Apache-2.0 |
+
+**Why this corpus.** Slice 5 needed a second fixture that was real, was written
+by somebody else, and was **not** about machine learning -- so that a result
+measured on `quora_siamese` could be shown to hold, or not, somewhere else. It
+also gave the first multi-file corpus, which exposed that a query file needs a
+`file` field: line 186 exists in most of the 19 files.

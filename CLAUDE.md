@@ -29,6 +29,8 @@ Read the two rule sections first — they change *how* everything below is done.
 [**SLICE 4 — the theory + schema**](#slice-4--the-theory-recorded-2026-09-03) ·
 [**SLICE 4 first half DONE — the store**](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path) ·
 [**SLICE 5 — the theory + BM25 by hand**](#slice-5--the-theory-recorded-2026-09-06) ·
+[**The fixture is saturated**](#the-fixture-is-saturated-so-it-may-reject-and-may-not-confirm--2026-09-07) ·
+[**SLICE 5 MEASURED — the decision**](#slice-5-measured--2026-09-07-vector-ships-wrrf-is-a-named-candidate) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
 [**Slice 1 DONE — the embedder**](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) ·
 [Slice 1b plan](#slice-1b--more-embedders-and-why-it-moved-ahead-of-slice-2) ·
@@ -4787,20 +4789,254 @@ in the schema to try it.
 | 2 | `ts_rank_cd` | Postgres, already exists |
 | 3 | **BM25, written by hand** | **Python, over the same tsvectors** |
 
-**The decision rules, fixed now so a number cannot bend them later:**
+### The fixture is SATURATED, so it may REJECT and may not CONFIRM — 2026-09-07
 
-1. **The keyword channel ships only if the FUSED recall@5 beats 0.941** — the
-   cosine baseline. This is CLAUDE.md's own standing rule: *"if recall@5 does
-   not move, do not keep it."*
-2. **BM25 ships only if it beats the better of `ts_rank` / `ts_rank_cd` by
-   enough to pay for its own code.** It needs term counts we do not store today,
-   so it is not free. A tie is a loss.
-3. **Measure the mix FIRST, BM25 second.** Building BM25 before knowing whether
-   the fused result even helps would be a day spent on a channel we may delete.
-4. **Re-check `D2` on the embedder that actually wins slice 8.**
+*The user challenged the rule above the same day it was written, and was right.
+The correction matters more than the rule it replaces.*
+
+**The instrument is nearly full.** Cosine already scores 16 of 17 on recall@5.
+Over 17 queries that metric can only take three values from here:
+
+```
+recall@5   0.882   0.941 (today)   1.000
+           nothing exists in between
+```
+
+One query is **5.9 points**. Most real differences between retrieval methods are
+smaller than that. So a hybrid ranking that is genuinely a little better would
+report **"no change"**, and rule 1 as first written would then delete working
+code on the strength of a measurement that could not have detected the gain.
+
+**And the queries carry the leakage this file already warns about elsewhere.**
+The Slice 8 section says the 17 are *"enough to pick a default and not enough to
+pick a policy"* — 17 queries, one author, one Python file. Slice 5 inherits every
+word of that. Worse: `D2` was already the known hard case, and `D2` is now the
+motivating example for this whole slice. **The fix is being scored on the example
+that produced the idea.**
+
+**What the fixture CAN still do**, and this is not nothing:
+
+- **Catch a large regression.** A drop to ~10 of 17 is real news at any sample size.
+- **Confirm one large single fact.** `D2` moving from place 46 to place 4 does not
+  need statistics; it is a 42-place move on a known query.
+
+**The corrected decision rules:**
+
+1. **This fixture may REJECT, never CONFIRM.** If the mix clearly hurts, drop it.
+   If it ties or helps a little, **keep the code** and let slice 8 decide.
+   Deleting is the hard thing to undo, so the weak instrument must not be the
+   thing that does it.
+2. **Rank on MRR and on the PLACE of the correct chunk, not on recall@5.** Those
+   move in small steps, so they can see a difference recall@5 cannot resolve.
+   Report recall@5 alongside; do not decide on it.
+3. **Write a second query set before slice 8** — more queries, a second corpus,
+   another language. Queries cost no money and no quota, so this is the cheapest
+   improvement available to the whole of Step 1.
+4. **BM25 ships only if it clearly beats the better of `ts_rank` / `ts_rank_cd`.**
+   It needs term counts we do not store today, so it is not free. A tie is a loss.
+5. **Measure the mix FIRST, BM25 second.** Building BM25 before knowing whether
+   the fused result helps at all would be a day spent on a channel we may drop.
+6. **Re-check `D2` on the embedder that actually wins slice 8.**
    `gemini-embedding-001` already ranks `D2` **3rd** where codestral ranks it
    46th. A better embedder weakens part of the argument for this whole slice, so
    the motivating case must be re-run after any model change.
+
+> **A saturated test cannot measure an improvement.** Before trusting a number
+> to make a keep-or-delete decision, ask how much room it has left to move. Ours
+> had one query.
+
+## SLICE 5 MEASURED — 2026-09-07: vector ships, wRRF is a named candidate
+
+*The user refused a decision taken on one fixture and asked for a second corpus,
+more queries, every algorithm, a parameter sweep, and BM25 by hand. This is what
+came back. **Two corpora x two embedders = four runs, 62 graded queries, 82
+fusion settings, and no generation quota spent.***
+
+**Reproduce it:** `scripts/score_hybrid.py`, committed for the same reason
+`score_retrieval.py` is — *a measurement you cannot repeat is a number, not a
+result.*
+
+### What was built
+
+| piece | what |
+|---|---|
+| **second corpus** | `psf/requests` at `dae7ef6`, `src/requests/*.py` — 19 files, 6,394 lines, **335 chunks**. Real, third-party, and not about machine learning |
+| **45 new queries** | `data/samples/requests_http/queries.json`, **frozen before any measurement** |
+| **two new labels** | `asks` (constant · behaviour · error · api · structure) and `wording` (**named** = shares a word with the code, **paraphrase** = deliberately avoids it) |
+| **BM25 by hand** | Python, over **Postgres's own lexemes**, so the ranking formula is the only difference from `ts_rank` |
+| **fusion** | RRF, weighted RRF, min-max score fusion, CombMNZ, and two new ones below |
+
+**The query file needed a `file` field, and that is a finding, not a detail.**
+`quora_siamese` is one file, so ground truth could be a bare line number. A
+19-file corpus cannot: line 186 exists in most of them. Any future fixture must
+carry the file.
+
+### The result that decides it: recall@50 is already at the ceiling
+
+The pipeline retrieves **50** and then reranks. So the number that gates what
+the model can ever see is **recall@50**, not recall@5.
+
+```
+recall@50, vector search ALONE
+  quora    / codestral   1.000    17 of 17
+  quora    / gemini      1.000    17 of 17
+  requests / codestral   0.978    44 of 45
+  requests / gemini      1.000    45 of 45
+```
+
+**123 of 124.** And the single miss was not rescued by keyword search either:
+
+```
+R45  "how is the body handed back a piece at a time instead of all at once"
+     vector 67  ·  bm25 NOT FOUND  ·  ts_rank NOT FOUND  ·  best fusion 67
+```
+
+**Across all 82 fusion settings, not one improved recall@50 on any run.** The
+best of them tie at `0.994` average; the heavy ones lose it.
+
+> **Before tuning a number, check how much room it has left.** Ours had none —
+> which is exactly the saturation trap recorded the day before, arriving again
+> in a different metric.
+
+### The two fixtures gave OPPOSITE answers, which is the whole point
+
+```
+                     quora (17 q)      requests (45 q)
+vector      MRR          0.608              0.646
+RRF k=10    MRR          0.699  +15%        0.564  -13%
+```
+
+Same code, same method, same day. **On the old fixture hybrid search is a clear
+win; on the bigger one it is a clear loss.** Deciding on the 17 queries alone
+would have shipped it. This is the concrete proof behind
+[the saturated-fixture rule](#the-fixture-is-saturated-so-it-may-reject-and-may-not-confirm--2026-09-07).
+
+### The comparison table — averaged over all four runs
+
+| method | r@50 | r@10 | r@5 | MRR | worst single run vs vector |
+|---|---|---|---|---|---|
+| **vector alone** | **0.994** | 0.930 | 0.871 | 0.645 | +0.000 |
+| bm25 alone | 0.926 | 0.804 | 0.678 | 0.475 | **−0.267** |
+| **wRRF k=5 w=0.15** | **0.994** | 0.935 | **0.891** | 0.655 | **+0.000** |
+| wRRF k=10 w=0.1 | 0.994 | 0.930 | 0.876 | **0.657** | **+0.000** |
+| wRRF k=20 w=0.05 | 0.994 | 0.930 | 0.876 | 0.656 | **+0.000** |
+| wRRF k=5 w=0.2 | 0.994 | 0.941 | 0.896 | 0.652 | −0.005 |
+| wRRF k=60 w=0.25 | 0.994 | 0.943 | 0.873 | 0.645 | −0.059 |
+| wRRF k=60 w=0.5 | 0.994 | 0.943 | 0.830 | 0.644 | −0.118 |
+| **wRRF k=60 w=1.0** | 0.978 | 0.915 | 0.797 | 0.621 | **−0.124** |
+| score a=0.85 | 0.994 | 0.941 | 0.882 | **0.671** | −0.059 |
+| RESCUE m=5 after=20 | 0.994 | 0.930 | 0.871 | 0.645 | +0.000 |
+| RESCUE m=10 after=5 | 0.994 | **0.950** | 0.871 | 0.645 | −0.044 |
+
+**Read the last column before the others.** It is the biggest loss against
+vector on any *single* run. An average that hides a −0.124 is the same mistake
+as a fixture that hides a blind spot.
+
+**The first thing I tested was the worst row in the table.** `k=60, w=1.0` is
+plain RRF, the textbook default, and it is the only setting that loses
+recall@50. That is why the first report said *"hybrid search hurts"* — it was a
+statement about one badly chosen setting, not about hybrid search.
+
+> **A default is not a measurement, and a bad default is not a verdict on the
+> method.** pgvector's `ef_search = 40` taught this in slice 4; RRF's `k = 60`
+> taught it again here.
+
+### Nine settings are never worse than vector, anywhere
+
+`wRRF k=5 w=0.1` · `k=5 w=0.15` · `k=10 w=0.1` · `k=20 w=0.05` · `k=30 w=0.05` ·
+`RESCUE m=3 after=20` · `m=3 after=30` · `m=5 after=20` · `m=5 after=30`
+
+**The safe region is small `k` with a small keyword weight — roughly 0.05 to
+0.2.** Best of them, `wRRF k=5 w=0.15`: `r@5 +0.020`, `MRR +0.010`,
+`r@50 +0.000`, and never below vector on any run or any metric. That is about
+**one query per fixture** — real, repeatable, and small.
+
+### BM25 beats both Postgres rankers, measured
+
+| | r@1 | r@5 | r@50 | MRR |
+|---|---|---|---|---|
+| **bm25 (ours)** | **0.400** | **0.533** | **0.911** | **0.479** |
+| `ts_rank` | 0.311 | 0.511 | 0.867 | 0.416 |
+| `ts_rank_cd` | 0.178 | 0.578 | 0.911 | 0.327 |
+
+*(requests corpus; the keyword rankers do not depend on the embedder.)*
+
+So the missing IDF is a real, measured cost and not an argument. **Every one of
+the nine safe fusion settings uses BM25, not `ts_rank`.** But BM25 alone still
+loses to vector on every metric on every run.
+
+### Where keyword search actually wins: `constant` queries, and only those
+
+```
+MRR by question kind -- requests corpus, codestral
+
+                vector    bm25
+constant         0.354   0.423    <- keyword WINS
+error            0.600   0.612    <- level
+behaviour        0.787   0.657
+api              0.456   0.175
+structure        0.926   0.426
+```
+
+`constant` is the `CLIP_NORM` shape — *"what is this value set to"*. Keyword
+search wins there on both corpora and both embedders, and loses everywhere
+else. **That is a routing signal, not a fusion signal**, and it lines up with
+this file's existing rule to route by question type.
+
+### Two fusion methods invented here
+
+**RESCUE — keyword may PROMOTE, never DEMOTE.** RRF punishes a chunk that only
+one list found. Measured: quora `D14` sat at place 5 under vector alone, BM25
+never returned it, and RRF pushed it to **27**, because rival chunks collected
+points from both lists and it could not. RESCUE keeps the vector order above a
+cut and only lifts the keyword top-m into the gap below, so recall@1..cut
+cannot fall. **It works exactly as designed: it never hurts, and it never
+helps.** Worth knowing; not worth shipping alone.
+
+**ADAPTIVE RRF — weight the keyword list by how SELECTIVE it was.** Motivated
+by a real observation: for `D2` the keyword query matched 7 of 82 chunks and
+was right; for `D6` it matched 73 of 82 and was noise. Weighting by
+`1 - matched/N` costs nothing. It won on quora (best MRR, 0.730) and was
+middling on requests, so it is **not** carried forward as a candidate.
+
+### Corrections this run produced
+
+- **`gemini-embedding-001` is NOT clearly better than `codestral-embed`.** It
+  wins on the old fixture (MRR 0.674 vs 0.608) and is level on the new one
+  (0.650 vs 0.646) — while being **worse at recall@10** there, 0.844 against
+  0.933. It does win recall@50, 1.000 against 0.978. Slice 8 still owns this.
+- **The `D2` argument for hybrid search is weaker than it looked.** `D2` sat at
+  place 46 of 82 — *inside* the top 50 the pipeline already retrieves. The
+  motivating example never actually fell out of the window.
+
+### THE DECISION — 2026-09-07, the user's call
+
+1. **Vector search alone is the retrieval path for now.** No fusion, no keyword
+   column on the query path.
+2. **BM25 is the keyword algorithm if a keyword channel is ever switched on.**
+   Not `ts_rank`, and not `ts_rank_cd`.
+3. **`wRRF` with a small `k` and a small weight is a NAMED CANDIDATE for slice
+   8, allowed to replace vector search if it wins there.** Its numbers tell a
+   better story than one fixture can settle, and `RESCUE` and the other safe
+   settings stay on the list with it.
+4. **Nothing here is decided by this experiment.** One experiment, two corpora
+   (both Python), 62 queries, one author, small corpora, and **no reranker**.
+
+**What slice 8 must do before this becomes a policy:**
+
+```
+MANY corpora      not two, and not all in one language
+MANY models       the fusion weight may move with the embedder
+WITH the reranker the gain measured here is all INSIDE the top 50,
+                  which is precisely what the reranker re-orders
+LARGE corpora     at 10,000 chunks a top-50 window is 0.5% of the corpus,
+                  not the 15-61% it was here. recall@50 will fall, and that
+                  is the number that could overturn everything above
+```
+
+> **The gain is real, small, and in the region slice 6 overwrites.** That is not
+> a reason to delete it — it is a reason not to claim it yet.
+
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
