@@ -31,6 +31,8 @@ Read the two rule sections first — they change *how* everything below is done.
 [**SLICE 5 — the theory + BM25 by hand**](#slice-5--the-theory-recorded-2026-09-06) ·
 [**The fixture is saturated**](#the-fixture-is-saturated-so-it-may-reject-and-may-not-confirm--2026-09-07) ·
 [**SLICE 5 MEASURED — the decision**](#slice-5-measured--2026-09-07-vector-ships-wrrf-is-a-named-candidate) ·
+[**SLICE 5 BUILT — the keyword half**](#slice-5--done-2026-09-08) ·
+[**4 knobs, 3 lost fusion methods**](#the-four-hyperparameters-and-the-three-methods-that-were-lost--2026-09-07) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
 [**Slice 1 DONE — the embedder**](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) ·
 [Slice 1b plan](#slice-1b--more-embedders-and-why-it-moved-ahead-of-slice-2) ·
@@ -471,7 +473,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4 DONE. SLICE 5 IS MEASURED AND DECIDED, NOT YET BUILT.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5 DONE. NEXT IS SLICE 6, RERANKING.**
 **SLICE 5 DECISION, 2026-09-07: VECTOR SEARCH SHIPS ALONE. No keyword channel on the query path.**
 **Measured on TWO corpora x TWO embedders, 62 frozen queries, 82 fusion settings: the pipeline
 retrieves 50 and reranks, so recall@50 is what gates what the model can see — and vector alone
@@ -480,8 +482,13 @@ DISAGREED (RRF +15% MRR on quora, -13% on requests), which is why one fixture co
 BM25 by hand beats both Postgres rankers and still loses to vector. wRRF with a SMALL k and a
 SMALL weight is a NAMED CANDIDATE for slice 8 and may replace vector there. See
 [slice 5 measured](#slice-5-measured--2026-09-07-vector-ships-wrrf-is-a-named-candidate).**
-**⚠ THE THREE PIECES OF CODE ARE NOT WRITTEN: the tsvector column, `store/keyword.py`,
-`retrieval/fusion.py`. Build them off by default, then slice 5 closes. See START HERE.**
+**SLICE 5 IS BUILT AND CLOSED, 2026-09-08: the tsvector column, `store/keyword.py` and
+`retrieval/fusion.py` all exist, OFF BY DEFAULT — nothing calls them, which is what off means.
+**Probing the real database before writing found THREE silent defects in the query the benchmark
+used: a lexeme holding `:` CRASHED it, a URL token silently reinstated the AND that scored
+0 of 17, and re-stemming an already-stemmed lexeme missed matches. `quote_literal` and
+`'simple'` are the fixes. Keyword search costs ~1,022 bytes/chunk, +12% of a 1536-dim row.
+See [slice 5 DONE](#slice-5--done-2026-09-08).**
 **`data/samples/requests_http/queries.json` is the SECOND fixture — 45 queries over psf/requests
 at `dae7ef6`, labelled by `asks` and `wording`. The corpus is NOT committed; fetch it.
 `scripts/score_hybrid.py` repeats the whole measurement and spends no generation quota;
@@ -496,8 +503,8 @@ artifacts, and TIME is the only thing that can overturn it — not recall, not s
 [the final decision](#the-final-decision--exact-search-ships-2026-09-05).**
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is COMPLETE and MERGED into `main`.**
 **The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
-**`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search.**
-**559 passed, 28 skipped, 1 xfailed. Mutation-tested at every step.**
+**`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search · keyword.**
+**595 passed, 28 skipped, 1 xfailed. Mutation-tested at every step.**
 **⚠ SLICE 7 MUST READ THIS FIRST: `api/services.py` catches NOTHING from `store/` or
 `embed/`, so wiring them sends `UnknownArtifact`, `ModelMismatch`, `ConnectionFailed`,
 `NotConfigured` and `EmbeddingError` straight to the 500 handler. Third time this shape
@@ -530,86 +537,38 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ▶ SLICE 5 CONTINUES HERE — the measuring is DONE, the code is NOT
+> > ## ▶ SLICE 6 STARTS HERE — reranking, and the measurement says this is where the gain is
 > >
-> > **Session 18 measured everything and wrote no product code, on purpose.**
-> > The decision is made and recorded. What is left is to build the three
-> > pieces that decision named, then close slice 5.
+> > **Slice 5 is CLOSED.** Read
+> > [slice 5 DONE](#slice-5--done-2026-09-08) for what exists and what it cost,
+> > then [the decision](#slice-5-measured--2026-09-07-vector-ships-wrrf-is-a-named-candidate).
+> > **Do not rebuild any of it.** The tsvector column, `store/keyword.py` and
+> > `retrieval/fusion.py` are written, tested and mutation-verified, and are
+> > deliberately unreachable — nothing calls them, which is what "off" means.
 > >
-> > **Read these two, in this order, before writing a line:**
-> > [SLICE 5 MEASURED — the decision](#slice-5-measured--2026-09-07-vector-ships-wrrf-is-a-named-candidate)
-> > then
-> > [the theory](#slice-5--the-theory-recorded-2026-09-06).
+> > **Why slice 6 is next, in one line from our own numbers:**
 > >
-> > **Branch: `feat/hybrid-search`. It is level with `main`.**
-> >
-> > ### The task: build it, off by default
-> >
-> > Nothing calls any of it. That IS "off by default" — no flag, no setting.
-> > A flag nobody reads is dead configuration. Same state `write_artifact` and
-> > `search` are already in: scaffolding with a scheduled consumer.
-> >
-> > | # | file | holds |
-> > |---|---|---|
-> > | 1 | `store/schema.sql` | one generated `tsvector` column + one GIN index |
-> > | 2 | `store/keyword.py` | `keyword_search()` and `bm25_search()` |
-> > | 3 | `retrieval/fusion.py` | `weighted_rrf()` — pure, no database |
-> >
-> > **1. The schema.**
-> >
-> > ```sql
-> > alter table chunks add column if not exists tsv tsvector
-> >   generated always as (to_tsvector('english', header || ' ' || text)) stored;
-> > create index if not exists chunks_tsv on chunks using gin (tsv);
+> > ```
+> > recall@50  0.994      the answer is nearly always inside the window
+> > recall@1   0.645      and it is often not at the top
 > > ```
 > >
-> > Three things it must get right. It reads **`header || ' ' || text`**, not
-> > `text` alone — the benchmark used `embed_text`, and a tsvector over `text`
-> > only would lose every file and function name, so the measured numbers would
-> > not transfer. **`to_tsvector` must take TWO arguments**: the one-argument
-> > form is `STABLE`, a generated column demands `IMMUTABLE`, and it fails at
-> > creation. And **`create table if not exists` will not add a column to a
-> > table that already exists**, which is why the `alter` is separate —
-> > `test_applying_the_schema_again_keeps_the_data` must still pass while the
-> > column really appears.
+> > Retrieval has almost nothing left to win — 123 of 124 answers are already
+> > in the top 50. **Closing the gap between 0.645 and 0.994 is a reranker's
+> > job**, and it is the last thing standing between the corpus and the prompt.
 > >
-> > **2. `store/keyword.py`.** Both return the existing `SearchHit`.
-> > `keyword_search` is pure Postgres and its query terms must be joined with
-> > **OR** — `plainto_tsquery` uses AND and scored **0 of 17**. `bm25_search`
-> > gets `f(t,d)` from `unnest(tsv)` on matching chunks only, `n_t` from one
-> > indexed `count(*)` per term, `N` from the artifact, and `L` — the average
-> > chunk length — once per artifact, cached in memory because an artifact never
-> > changes after it is written. Same `UnknownArtifact` guard as vector search;
-> > **no `ModelMismatch` guard**, because words are compared with words and
-> > there is no embedding space to get wrong.
+> > **Read [the reranker chain](#chain-3--reranker-true-fallback) before
+> > anything else.** Three things there are easy to get wrong:
+> > its order has **never been measured** and is a quota-shape guess, so slice
+> > 8 owns it · **Cohere is 1,000 calls a MONTH** shared with embedding, so
+> > tests must use the local ONNX model and never the real one · and a chunk
+> > over **510 tokens is auto-split and billed twice**, which the chunk-cap fix
+> > of 2026-09-05 now guarantees cannot happen.
 > >
-> > **3. `retrieval/fusion.py`.** Takes lists of `chunk_index`, returns a list
-> > of `chunk_index`, and knows nothing else. `retrieval/` is **core** and may
-> > not import an adapter, so it cannot see `SearchHit` — and that constraint
-> > gives the right shape anyway. Defaults from the sweep, **not** the textbook:
-> > `k = 5`, weights `(1.0, 0.15)`. The textbook `k = 60, w = 1.0` is the worst
-> > row in our own table.
-> >
-> > ### The invariants to pin, each one mutation-tested
-> >
-> > the tsvector holds words from the **header** too · applying the schema twice
-> > keeps the data **and** the column exists · **a rare word scores higher than
-> > a common one** (this is IDF, the only thing separating BM25 from `ts_rank`)
-> > · ten occurrences do not score ten times one (saturation) · a longer chunk
-> > is penalised at equal count (length normalisation) · only the named artifact
-> > is searched · an unknown artifact is refused rather than answered with `()`
-> > · a chunk in both lists beats a chunk in one · weight `0` makes the second
-> > list change nothing.
-> >
-> > ### Deliberately NOT built
-> >
-> > No `avg_tokens` column — measure first. No caller — slice 7 wires it, slice
-> > 8 decides whether it stays. No `ts_rank_cd` — it lost on every run.
-> >
-> > **Then slice 5 closes**, and the next work is **slice 6, reranking** —
-> > which this measurement says is where the gain actually is: `recall@50` is
-> > `0.994` while `recall@1` is `0.645`. The answer is nearly always inside the
-> > window and often not at the top, and closing that gap is a reranker's job.
+> > **The one thing slice 6 must not do:** measure the reranker on the quora
+> > fixture alone and call the order settled. That is
+> > [the saturated-fixture trap](#the-fixture-is-saturated-so-it-may-reject-and-may-not-confirm--2026-09-07),
+> > and it already cost us one wrong conclusion this step.
 >
 > > ## ✅ SLICE 4 IS DONE — do not restart it
 > >
@@ -5208,6 +5167,192 @@ in the script so their claims stay reproducible, and none of them is a
 candidate. This matters because the instrument here is weak — the fixture is
 saturated at recall@50, and both corpora are Python — so convergent evidence
 has to do the work that a single metric cannot.
+
+## Slice 5 — DONE 2026-09-08
+
+*The measuring was session 18's; this is the code. **595 passed, 28 skipped,
+1 xfailed, ruff clean. 27 mutations, every one verified real.** Nothing calls
+any of it — that IS "off by default": no flag, no setting, because a flag
+nobody reads is dead configuration.*
+
+### What shipped
+
+| file | holds |
+|---|---|
+| `store/schema.sql` | one generated `tsvector` column + one GIN index |
+| `store/keyword.py` | `keyword_search()` (ts_rank) and `bm25_search()` (ours) |
+| `retrieval/fusion.py` | `weighted_rrf()` — pure, no database |
+| `store/defaults.py` | `BM25_K1 = 1.2`, `BM25_B = 0.75` |
+
+`store/` is now eight modules; `retrieval/` is the first **core** package to
+gain something that outlives the throwaway selector.
+
+### Probing the real database first found THREE defects, all silent
+
+*The plan said to build the query the way the benchmark built it. That would
+have shipped two crashes and a silent recall loss. **Every one was found by
+handing the expression adversarial input before writing a line of product
+code**, and none of them could ever have appeared in the measurement — its 62
+queries are hand-written English sentences, while a real query is the user's
+prompt and may contain anything.*
+
+| input | what the benchmark's expression did |
+|---|---|
+| `api.github.com:443` | **CRASH** — one lexeme, and `to_tsquery` reads `:` as a weight marker → `SyntaxError` |
+| `http://x.com/p?a=1&b=2` | **silent AND** — re-parses to `'1' & 'b'`, putting back the AND that scored 0 of 17 |
+| `please` | **silent miss** — see below |
+
+**The fix is two words, and each is load-bearing:**
+
+```
+to_tsquery('simple', array_to_string(array(
+    select quote_literal(lexeme)
+    from unnest(tsvector_to_array(to_tsvector('english', %s))) as lexeme
+), ' | '))
+```
+
+**`quote_literal`** stops both crashes. A quoted lexeme is not re-read for
+operators, so `:` and `&` inside a token are inert.
+
+**`'simple'`, never `'english'`** — and this one was found while testing the
+first fix. These lexemes are **already stemmed** by `to_tsvector('english',…)`.
+Stemming them a second time can change them, and the changed lexeme then no
+longer matches what is stored:
+
+```
+stored lexeme   english re-stem   simple re-stem
+pleas           plea              pleas
+```
+
+```
+to_tsvector('english','please read this') @@ to_tsquery('english','plea')   False
+to_tsvector('english','please read this') @@ to_tsquery('simple','pleas')   True
+```
+
+Measured on 11 words, only `please` drifted — about 1 in 11, silent, and free
+to avoid. The stored side stays `'english'`, because that is what the column
+holds.
+
+> **A query builder proven on your benchmark is proven on your benchmark.**
+> The measurement's inputs were sentences someone wrote. Production input is
+> whatever the user types. Probe the edge before promoting a script to a module.
+
+**One edge deliberately left alone:** a URL token still re-parses into a
+*phrase* (`<->`) inside its own term. It is not an AND across concepts, and the
+stored side tokenizes identically, so it still matches. Removing it would mean
+dropping `tsquery` entirely — which also drops the GIN index and makes
+`ts_rank` impossible.
+
+### What the keyword channel costs in storage, measured
+
+Storage is what runs out first on this project, and nothing had priced a
+column plus an index. Measured on **1,090 real chunks** of this repository, in
+a scratch schema on the real project:
+
+| | bytes | per chunk |
+|---|---|---|
+| text + header | 688,128 | 631 |
+| **+ tsv column** | 679,936 | **624** |
+| **+ GIN index** | 434,176 | **398** |
+| **total** | 1,802,240 | **1,653** |
+
+**Keyword search adds ~1,022 bytes per chunk — +162% on the text alone.** But
+the text is not what dominates a row; the vector is:
+
+```
+1536-dim   8,831 -> 9,853 bytes/row  (+11.6%)   two 10k artifacts: 177MB -> 197MB
+1024-dim   4,831 -> 5,853 bytes/row  (+21.2%)   two 10k artifacts:  97MB -> 117MB
+```
+
+**Affordable against the 500 MB free tier**, and worth re-checking at slice 8
+alongside the exact-vs-HNSW decision, where the same 500 MB is the binding
+constraint.
+
+*A first run on 304 chunks reported 1,401 bytes/chunk. That was page rounding
+on too small a table — 30 pages. **Re-measured at 1,090 before the number was
+written down**, which is the rule this file already states about fixtures.*
+
+### The tests, and what mutation testing found
+
+**36 new tests. 27 mutations, all real; after two fixes every invariant fires
+alone.**
+
+| file | tests | cost |
+|---|---|---|
+| `tests/unit/retrieval/test_fusion.py` | 17 | free, every push |
+| `tests/integration/test_store_keyword.py` | 15 | `database` marker |
+| `tests/integration/test_store_schema.py` | +2 | `database` marker |
+| `tests/unit/test_error_boundaries.py` | 2 | free, every push |
+
+**No API test and no smoke test, deliberately.** No route reaches keyword
+search, and it calls no provider — a test at either door would exercise nothing
+and, at the smoke door, would spend quota to prove it.
+
+#### Mutation testing found two of my own tests were wrong
+
+**1. A fake test.** `test_..._when_scores_tie` fused `[3,1,2]` with `[3,1,2]` —
+three *different* scores, so there was no tie at all. Removing the tie-break
+changed nothing. The name promised the invariant and the fixture never built
+it. **The same shape as `test_a_word_is_never_cut_in_half`**, which checked one
+end of the thing its name claimed.
+
+**2. A test hidden by a second filter.** Defeating the artifact filter inside
+`_MATCHES` broke nothing, because `_HITS` filters by artifact as well. The
+defect is real — foreign chunks get **scored and ranked**, pushing real answers
+out of the `limit` — and the fixture hid it twice: no limit pressure, and both
+artifacts numbered from 0, so a leak landed on an index that existed anyway.
+Fixed by making the other artifact score **higher** and start at index 10.
+
+> **A second guard downstream can make a broken guard upstream look fine.**
+> Test the one you mean to test, with the downstream one unable to save it.
+
+### The review pass — one guard added, one weakness recorded
+
+**The predicted slice 7 bug now breaks the build instead of a request.**
+`tests/unit/test_error_boundaries.py` reads every import and every `except` in
+`labpilot/api/`, and fails when an adapter the API imports can raise something
+nothing catches. Verified: adding `from labpilot.store import UnknownArtifact`
+to `services.py` turns it red, alone.
+
+It also found that this is **already true of `sources/`** — six error types
+(`SourceTooLarge`, `UnsafeArchive`, …) that nothing in `api/` catches. Latent,
+not live: `chunk_source` has no caller. They are listed by name in
+`ALLOWED_TO_ESCAPE` with the reason, following the `OUTPUT_TOO_SMALL` pattern —
+a deliberate gap is documented, an accidental one is red. A second test deletes
+the excuse when the package stops being imported.
+
+**A weakness in slice 4's own tests, found by a mutation.**
+`test_store_search.py` numbers its chunks `0..3` — which are also valid **row
+positions**. So vector search could return a position instead of a
+`chunk_index` and every one of its tests would still pass. Proven: replacing
+`select chunk_index` with `select row_number() - 1` leaves that whole file
+green. The only thing that catches it is the new
+`test_the_two_channels_rank_the_same_id_space_and_fuse`, whose indexes start at
+**100** — and it fires **alone**.
+
+> **A fixture numbered from zero cannot tell an id from an index.** Offset the
+> ids in any test where the two could be confused.
+
+### What slice 5 deliberately did NOT build
+
+- **No caller.** Slice 7 wires it; slice 8 decides whether it stays.
+- **No `avg_tokens` column.** Measure first — and the measurement above says
+  the per-query aggregate is affordable at our size.
+- **No `ts_rank_cd`.** It lost on every run of the sweep.
+- **No flag.** Unreachable code is off; a setting nobody reads is not.
+
+### Honest limits
+
+- **`ts_rank` is shipped as the loser**, kept only so slice 8 can compare
+  against it in product code rather than in a script. All nine safe fusion
+  settings used BM25.
+- **`bm25_search` costs 4–5 round trips** against `keyword_search`'s one,
+  because Postgres cannot do IDF. Unmeasured against a real corpus; if it
+  proves slow, `ts_rank` is the fallback that already exists.
+- **`_CORPUS_CACHE` is unbounded.** Each entry is tiny (two numbers keyed by id
+  and timestamp), so 10,000 artifacts is a few MB — recorded, not fixed.
+- **The generated column is computed on every insert**, so ingest is slightly
+  slower. Not measured.
 
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
