@@ -13,3 +13,10 @@ INSERT_BATCH_SIZE = 96
 # back; it can never recover a chunk the search did not return, so the wide
 # number belongs here and not at the rerank step.
 SEARCH_LIMIT = 50
+# BM25's two knobs, at the standard values the measurement used. k1 controls
+# saturation: the tenth occurrence of a word must not count ten times the
+# first. b controls length normalisation: a long chunk should not win merely
+# by being long. Both are the textbook defaults and both are unmeasured for
+# us -- slice 8 may move them.
+BM25_K1 = 1.2
+BM25_B = 0.75
