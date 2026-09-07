@@ -13,13 +13,16 @@ from labpilot.store.errors import (
     StoreError,
     UnknownArtifact,
 )
+from labpilot.store.keyword import bm25_search, keyword_search
 from labpilot.store.search import search
 from labpilot.store.writer import write_artifact
 
 __all__ = [
     "ArtifactRecord",
+    "bm25_search",
     "ChunkRecord",
     "ConnectionFailed",
+    "keyword_search",
     "ModelMismatch",
     "NotConfigured",
     "SearchHit",

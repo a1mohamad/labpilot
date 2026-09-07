@@ -40,3 +40,22 @@ create table if not exists chunks (
     v           vector not null,
     primary key (artifact_id, chunk_index)
 );
+-- The keyword half, slice 5. GENERATED, so it cannot drift from the text it
+-- indexes, and it reads `header || ' ' || text` -- NOT text alone. The
+-- benchmark scored `embed_text`, which is header plus text, so a tsvector over
+-- text alone would lose every file and function name and the measured numbers
+-- would not transfer. Verified 2026-09-07: 'clip' and 'train.py' from a header
+-- really do land in the tsvector.
+--
+-- `to_tsvector` MUST take two arguments. The one-argument form reads
+-- default_text_search_config, so it is only STABLE, and a generated column
+-- demands IMMUTABLE -- measured, Postgres refuses it with "generation
+-- expression is not immutable".
+--
+-- A separate `alter table`, because `create table if not exists` does NOT add
+-- a column to a table that already exists. Both statements are idempotent, so
+-- test_applying_the_schema_again_keeps_the_data still passes.
+alter table chunks add column if not exists tsv tsvector
+    generated always as (to_tsvector('english', header || ' ' || text)) stored;
+
+create index if not exists chunks_tsv on chunks using gin (tsv);
