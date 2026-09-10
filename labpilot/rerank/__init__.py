@@ -3,6 +3,7 @@ from labpilot.rerank.cohere import CohereReranker
 from labpilot.rerank.contracts import SKIP, Ranking
 from labpilot.rerank.defaults import MAX_DOCUMENT_TOKENS, MAX_DOCUMENTS, RERANK_TOP_N
 from labpilot.rerank.errors import RerankError
+from labpilot.rerank.voyage import VoyageReranker
 
 __all__ = [
     "CohereReranker",
@@ -13,4 +14,5 @@ __all__ = [
     "Ranking",
     "RerankError",
     "SKIP",
+    "VoyageReranker",
 ]
