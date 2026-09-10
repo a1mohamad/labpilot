@@ -1,4 +1,5 @@
 from labpilot.rerank.base import HTTPReranker
+from labpilot.rerank.chain import Reranker, rerank, skip
 from labpilot.rerank.cloudflare import CloudflareReranker
 from labpilot.rerank.cohere import CohereReranker
 from labpilot.rerank.contracts import SKIP, Ranking
@@ -24,7 +25,10 @@ __all__ = [
     "RERANK_TOP_N",
     "Ranking",
     "RerankError",
+    "Reranker",
     "SKIP",
     "VOYAGE_RERANK",
     "VoyageReranker",
+    "rerank",
+    "skip",
 ]
