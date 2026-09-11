@@ -34,7 +34,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from labpilot.rerank import CLOUDFLARE_RERANK, VOYAGE_RERANK
+from labpilot.rerank import CLOUDFLARE_RERANK, VOYAGE_RERANK, RerankError
 from labpilot.retrieval.gate import margin
 from labpilot.store.defaults import SEARCH_LIMIT
 from scripts.score_hybrid import CORPORA, EMBEDDERS, bm25, keyword_signals, rrf, targets
@@ -55,18 +55,20 @@ WINDOWS = (1, 5, 10, 20, 50)
 # than retrying and pacing is the caller's job - the same split score_hybrid
 # already uses for the embedders' per-minute token budgets.
 #
-# MEASURED 2026-09-11, and it corrects CLAUDE.md. Voyage's Platform Accounts
-# row claims "4M TPM / 2,000 RPM". A card-free account really gets 3 RPM and
-# 10K TPM, and its own 429 says so.
+# MEASURED 2026-09-11 and confirmed on Voyage's own dashboard, which corrects
+# CLAUDE.md twice. A card-free account gets 3 RPM and 10K TPM, not the
+# "4M TPM / 2,000 RPM" this project recorded - that was the billed tier. And
+# the free 200M-token grant covers "Voyage series 3 models", so the registry's
+# old `rerank-2.5-lite` was not covered by it at all.
 #
-# The binding limit is the TOKENS, not the request rate, and that took two
-# tries to establish. One 50-document call is ~11,400 tokens, which on its own
-# exceeds 10K TPM - it succeeds at 65s spacing because the bucket refills, and
-# 429s at 21s spacing because three such calls are ~34K in a minute. So the
-# real ceiling is roughly ONE 50-document call every 70 seconds, which makes
-# Voyage unusable as a PER-QUERY reranker on the free tier: 30 claims would be
-# 35 minutes of waiting. Recorded for slice 8, which owns the chain order.
-PACE = {"rerank-2.5-lite": 75.0}
+# PACING IS NOT ENOUGH, and that took two wrong hypotheses to establish. The
+# limit is per-minute and a single call counts whole, so a call larger than
+# 10,000 tokens is refused however long you wait. Measured on the requests
+# corpus: 50 documents (~16,900 tokens) refused, 40 (~13,100) refused, 30
+# (~8,900) passes. That is why --window exists.
+PACE = {"rerank-3-lite": 75.0, "rerank-3": 75.0}
+RETRY_WAIT = 70.0
+RETRY_LIMIT = 8
 
 # Dense-margin thresholds for the gate. Cosine margins between the top two hits
 # are small, so the grid is small; it is swept rather than chosen, because a
@@ -111,9 +113,10 @@ class PairScores:
     quietly wrong and every number after it would inherit the error.
     """
 
-    def __init__(self, corpus: str) -> None:
+    def __init__(self, corpus: str, tag: str = "") -> None:
         CACHE.mkdir(parents=True, exist_ok=True)
-        self.path = CACHE / f"{corpus}_{RERANKER.model.replace('/', '_')}.json"
+        model = RERANKER.model.replace("/", "_")
+        self.path = CACHE / f"{corpus}_{model}{tag}.json"
         self.scores: dict[str, float] = (
             json.loads(self.path.read_text(encoding="utf-8"))
             if self.path.exists()
@@ -132,7 +135,19 @@ class PairScores:
             batch = missing[start : start + SEARCH_LIMIT]
             if wait := PACE.get(RERANKER.model, 0.0):
                 time.sleep(wait)
-            ranking = RERANKER.rank(query.text, [documents[i] for i in batch])
+            # Back off and retry on a 429 rather than guessing a pace that is
+            # always right. Voyage's card-free ceiling is token-based, so the
+            # sustainable rate depends on how big the documents happen to be -
+            # a fixed sleep is a guess, and this discovers the real rate.
+            for attempt in range(RETRY_LIMIT):
+                try:
+                    ranking = RERANKER.rank(query.text, [documents[i] for i in batch])
+                    break
+                except RerankError as exc:
+                    if "429" not in str(exc) or attempt == RETRY_LIMIT - 1:
+                        raise
+                    print(f"    429, backing off {RETRY_WAIT:.0f}s", flush=True)
+                    time.sleep(RETRY_WAIT)
             self.calls += 1
             for place, score in zip(ranking.order, ranking.scores, strict=True):
                 self.scores[self.key(query.id, batch[place])] = score
@@ -205,7 +220,8 @@ def main() -> int:
     if len(sys.argv) < 3 or sys.argv[1] not in CORPORA or sys.argv[2] not in EMBEDDERS:
         print(
             f"usage: {sys.argv[0]} {{{'|'.join(CORPORA)}}} "
-            f"{{{'|'.join(EMBEDDERS)}}} [--fusion]",
+            f"{{{'|'.join(EMBEDDERS)}}} [--fusion] [--no-header] "
+            f"[--window=N] [--{' | --'.join(RERANKERS)}]",
             file=sys.stderr,
         )
         return 2
@@ -219,12 +235,30 @@ def main() -> int:
 
     chunks, queries = CORPORA[corpus]()
     n = len(chunks)
-    documents = [c.embed_text for c in chunks]
     window = min(SEARCH_LIMIT, n)
+
+    # What we SEND the reranker. embed_text is header + text, and the header is
+    # positional noise like "[adapters.py - class HTTPAdapter - lines 80-120]".
+    # A bi-encoder was measured to gain from that context; a cross-encoder reads
+    # the query and the document together, so the same header may be pure
+    # distraction. --no-header is how that stops being an opinion.
+    bare = "--no-header" in sys.argv
+    documents = [c.text if bare else c.embed_text for c in chunks]
+
+    # --window narrows the candidate set, and it exists because of a
+    # MEASURED ceiling rather than curiosity. Voyage's card-free 10K TPM is
+    # a hard PER-CALL limit: 50 of our chunks is ~16,900 tokens and is
+    # refused at any spacing, 40 is refused, 30 passes. So a fair
+    # provider comparison has to run both at a width Voyage can take.
+    for flag in sys.argv:
+        if flag.startswith("--window="):
+            window = min(int(flag.split("=")[1]), n)
 
     print(
         f"\n{corpus}: {n} chunks, {len(queries)} queries, {embedder.model}, "
         f"reranked by {RERANKER.model}"
+        + (" [documents sent WITHOUT their chunk header]" if bare else "")
+        + (f" [window narrowed to {window}]" if window != min(SEARCH_LIMIT, n) else "")
     )
     print(
         f"  the top-{window} window is {window / n:.0%} of this corpus - at a real "
@@ -235,7 +269,7 @@ def main() -> int:
     query_vectors = cached_vectors(corpus, embedder.model, "queries")
     dense = dense_orders(queries, query_vectors, chunk_vectors)
 
-    pairs = PairScores(corpus)
+    pairs = PairScores(corpus, "_bare" if bare else "")
     verify_pointwise(queries[0], documents, [i for i, _ in dense[queries[0].id][:10]])
 
     # --- candidate sets -----------------------------------------------------
