@@ -6226,11 +6226,13 @@ headers carry a second ceiling nobody had recorded —
 
 | may conclude | may NOT conclude |
 |---|---|
-| `bge-reranker-base` hurts our retrieval, on 2 corpora × 2 embedders | **that reranking hurts** — one provider, and the weakest of three |
-| the gain and the loss are question-type shaped | that the chain-3 order is settled — it is still unmeasured |
-| fusion's gain does not survive reranking | that fusion is dead — it is alive and measured with rerank OFF |
+| `bge-reranker-base` hurts our retrieval, on 2 corpora × 2 embedders | **that reranking hurts** — a better model helps, measured |
+| `rerank-3-lite` helps, on **one saturated corpus** | that reranking helps **in general** — one corpus, 17 queries |
+| the provider matters more than the stage does | which provider is best — **Cohere, the primary, is unmeasured** |
+| the gain and the loss are question-type shaped | that the chain-3 order is settled — still unmeasured end to end |
+| fusion's gain does not survive `bge` | that fusion is dead — untested under a reranker that ORDERS well |
 | a cross-encoder is pointwise, so pairs cache | the real value of `r` — that needs Step 2 |
-| Voyage cannot serve a per-query reranker free | how `RERANK_TOP_N` should be set |
+| Voyage cannot serve a 50-document window free | how `RERANK_TOP_N` should be set |
 
 ### The r@1 / MRR question is SETTLED
 
