@@ -43,7 +43,15 @@ from labpilot.rerank import (
 )
 from labpilot.retrieval.gate import margin
 from labpilot.store.defaults import SEARCH_LIMIT
-from scripts.score_hybrid import CORPORA, EMBEDDERS, bm25, keyword_signals, rrf, targets
+from scripts.local_reranker import LOCAL_RERANK
+from scripts.score_hybrid import (
+    CORPORA,
+    EMBEDDERS,
+    bm25,
+    keyword_signals,
+    rrf,
+    targets,
+)
 
 CACHE = Path(".cache/rerank")
 EMBED_CACHE = Path(".cache/hybrid")
@@ -58,6 +66,7 @@ EMBED_CACHE = Path(".cache/hybrid")
 # is 1.7%. Affordable is not the same as free, and it is the PRIMARY - leaving
 # the primary unscored is a worse outcome than spending 17 calls on it.
 RERANKERS = {
+    "local": LOCAL_RERANK,
     "cloudflare": CLOUDFLARE_RERANK,
     "voyage": VOYAGE_RERANK_3_LITE,
     "voyage3": VOYAGE_RERANK_3,
@@ -85,6 +94,22 @@ WINDOWS = (1, 5, 10, 20, 50)
 # corpus: 50 documents (~16,900 tokens) refused, 40 (~13,100) refused, 30
 # (~8,900) passes. That is why --window exists.
 PACE = {"rerank-3-lite": 75.0, "rerank-3": 75.0, "rerank-v4.0-fast": 7.0}
+# How far a pair's score may move between batch sizes before the per-pair
+# cache is unsafe. An API cross-encoder is exact - measured drift 0.0 on Voyage
+# and 2e-07 on Cloudflare - so 1e-6 is the right bar for them.
+#
+# The LOCAL model is int8, and int8 GEMM is not batch-shape invariant: the same
+# pair drifts between a 2-document and a 10-document call even though the
+# tokenizer output is bit-identical. Measured across four runs the drift ranges
+# 3.3e-05 to 4.8e-03, so the first guess of 1e-3 was too tight.
+#
+# The bar is set against the EFFECT SIZE rather than against zero, which is the
+# only honest way to choose it: this model changes MRR by about 0.15, and 1e-2
+# is fifteen times smaller than that. A cache accurate to 1e-2 cannot invent or
+# hide a 0.15 result. It could reorder two documents whose true scores differ
+# by less than 1e-2 - and a tie that fine is arbitrary anyway.
+POINTWISE_TOLERANCE = {"ms-marco-MiniLM-L-6-v2": 1e-2}
+
 RETRY_WAIT = 70.0
 RETRY_LIMIT = 8
 
@@ -206,7 +231,7 @@ def verify_pointwise(query, documents: list[str], candidates: list[int]) -> None
         f"  pointwise check: chunk {probe} scored {in_small:.6f} among 2 docs "
         f"and {in_wide:.6f} among 10 -> drift {drift:.2e}"
     )
-    if drift > 1e-6:
+    if drift > POINTWISE_TOLERANCE.get(RERANKER.model, 1e-6):
         raise SystemExit(
             "the score MOVED with the rest of the batch, so this reranker is "
             "not pointwise and the per-pair cache would be wrong. Cache per "
