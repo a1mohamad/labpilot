@@ -5919,11 +5919,25 @@ conclude which provider is best" — so a second provider was measured.*
 providers were re-run at a 30-document window** — same corpus, same embedder,
 same candidate set, same instrument. Only the model changed:
 
-| quora / codestral, window 30 | r@1 | r@5 | r@10 | MRR |
-|---|---|---|---|---|
-| vector alone | 0.412 | **0.941** | **0.941** | 0.608 |
-| `bge-reranker-base` (Cloudflare) | 0.353 **−0.059** | 0.824 | 0.824 | 0.520 **−0.088** |
-| **`rerank-3-lite` (Voyage)** | **0.588 +0.176** | 0.882 | **0.941** | **0.725 +0.117** |
+| quora / codestral, window 30 | tier | r@1 | r@5 | r@10 | MRR |
+|---|---|---|---|---|---|
+| **`rerank-3-lite`** (Voyage) | **2** | **0.588 +0.176** | 0.882 | **0.941** | **0.725 +0.117** |
+| `rerank-v4.0-fast` (Cohere) | **1** | 0.471 +0.059 | 0.882 | **0.941** | 0.669 **+0.061** |
+| vector alone | — | 0.412 | **0.941** | **0.941** | 0.608 |
+| `bge-reranker-base` (Cloudflare) | 3 | 0.353 **−0.059** | 0.824 | 0.824 | 0.520 **−0.088** |
+
+**All three tiers of chain 3 are scored, and the chain is in the wrong order.**
+Cohere cost 17 calls of its 1,000 a month — 1.7%, and worth it: leaving the
+*primary* unmeasured was a worse outcome than spending them. Today's order runs
+**second-best, best, harmful**; on quality alone it should be reversed to
+Voyage, Cohere, then nothing — `bge-reranker-base` is worse than not reranking
+at all, so it does not belong in the chain on these numbers.
+
+**But quality alone does not decide it, and that is the whole difficulty.**
+Voyage wins and cannot serve a 50-document window on a free account. Cohere
+works at full width and has 1,000 calls a *month* against a per-query cost.
+Cloudflare has ~2,840 calls a *day* and hurts. **No tier is good on both axes**,
+which is why slice 8 has to decide it with the window size in hand.
 
 **A 43% relative gain in getting the right chunk FIRST, from the same 30
 candidates the bi-encoder had already chosen.** And on the same data the cheap
@@ -6228,7 +6242,7 @@ headers carry a second ceiling nobody had recorded —
 |---|---|
 | `bge-reranker-base` hurts our retrieval, on 2 corpora × 2 embedders | **that reranking hurts** — a better model helps, measured |
 | `rerank-3-lite` helps, on **one saturated corpus** | that reranking helps **in general** — one corpus, 17 queries |
-| the provider matters more than the stage does | which provider is best — **Cohere, the primary, is unmeasured** |
+| the provider matters more than the stage does | that chain 3's order is right — all three are scored now and it is **wrong** on quality |
 | the gain and the loss are question-type shaped | that the chain-3 order is settled — still unmeasured end to end |
 | fusion's gain does not survive `bge` | that fusion is dead — untested under a reranker that ORDERS well |
 | a cross-encoder is pointwise, so pairs cache | the real value of `r` — that needs Step 2 |

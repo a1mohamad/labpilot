@@ -34,7 +34,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from labpilot.rerank import CLOUDFLARE_RERANK, VOYAGE_RERANK, RerankError
+from labpilot.rerank import (
+    CLOUDFLARE_RERANK,
+    COHERE_RERANK,
+    VOYAGE_RERANK,
+    RerankError,
+)
 from labpilot.retrieval.gate import margin
 from labpilot.store.defaults import SEARCH_LIMIT
 from scripts.score_hybrid import CORPORA, EMBEDDERS, bm25, keyword_signals, rrf, targets
@@ -42,12 +47,23 @@ from scripts.score_hybrid import CORPORA, EMBEDDERS, bm25, keyword_signals, rrf,
 CACHE = Path(".cache/rerank")
 EMBED_CACHE = Path(".cache/hybrid")
 
-# Cohere is deliberately absent: 1,000 calls a MONTH is the chain primary's own
-# bucket, shared with chat and embed, and one measurement run is 45 calls.
-# Cloudflare is the default because ~2,840 a day cannot realistically run out;
-# Voyage exists here to answer the one question Cloudflare cannot - whether a
-# bad result is about RERANKING or about one cheap 2023-era base model.
-RERANKERS = {"cloudflare": CLOUDFLARE_RERANK, "voyage": VOYAGE_RERANK}
+# Cloudflare is the default because ~2,840 calls a day cannot realistically run
+# out. Voyage and Cohere answer the question Cloudflare cannot - whether a bad
+# result is about RERANKING or about one cheap 2023-era base model.
+#
+# COHERE IS THE EXPENSIVE ONE AND IS OPT-IN. Its 1,000 calls a MONTH are the
+# chain primary's own bucket, shared with chat and embed, so the script prints
+# the bill before spending it: 45 queries is 4.5% of a month, 17 at --window=30
+# is 1.7%. Affordable is not the same as free, and it is the PRIMARY - leaving
+# the primary unscored is a worse outcome than spending 17 calls on it.
+RERANKERS = {
+    "cloudflare": CLOUDFLARE_RERANK,
+    "voyage": VOYAGE_RERANK,
+    "cohere": COHERE_RERANK,
+}
+
+# Cohere's trial header reports 10 requests/minute, so pace just under it.
+BUDGET_WARNING = {"rerank-v4.0-fast": "1,000 calls a MONTH, shared with chat and embed"}
 RERANKER = CLOUDFLARE_RERANK  # main() replaces this from the command line
 WINDOWS = (1, 5, 10, 20, 50)
 
@@ -66,7 +82,7 @@ WINDOWS = (1, 5, 10, 20, 50)
 # 10,000 tokens is refused however long you wait. Measured on the requests
 # corpus: 50 documents (~16,900 tokens) refused, 40 (~13,100) refused, 30
 # (~8,900) passes. That is why --window exists.
-PACE = {"rerank-3-lite": 75.0, "rerank-3": 75.0}
+PACE = {"rerank-3-lite": 75.0, "rerank-3": 75.0, "rerank-v4.0-fast": 7.0}
 RETRY_WAIT = 70.0
 RETRY_LIMIT = 8
 
@@ -300,6 +316,8 @@ def main() -> int:
         needed = set(vector_candidates[q.id]) | set(fused_candidates.get(q.id, []))
         pairs.fetch(q, sorted(needed), documents)
     print(f"  rerank calls spent this run: {pairs.calls}")
+    if warning := BUDGET_WARNING.get(RERANKER.model):
+        print(f"  ^ {RERANKER.name}: {warning}")
 
     truth = {q.id: targets(chunks, q) for q in queries}
     results: dict[str, dict[str, float]] = {}
