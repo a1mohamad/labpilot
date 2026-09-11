@@ -6043,7 +6043,8 @@ comparable end to end. The last two rows exist because the user refused
 |---|---|---|---|---|---|
 | **`gemini-3.5-flash-lite`** *(tuned)* | LLM, listwise | **0.799** | **0.706** | **1.3 s** | 500/day |
 | **`gemini-3.1-flash-lite`** *(tuned)* | LLM, listwise | **0.745** | 0.588 | 5.3 s | **its own 500/day** |
-| `gemma-4-31b-it` *(tuned)* | LLM, listwise | **0.732** | 0.588 | 14-32 s | **14,400/day** |
+| `gemma-4-26b-a4b-it` *(tuned)* | LLM, listwise, **MoE** | **0.732** | **0.647** | 18.7 s | **its own 14,400/day** |
+| `gemma-4-31b-it` *(tuned)* | LLM, listwise | **0.732** | 0.588 | 22.8 s | **14,400/day** |
 | `rerank-3-lite` (Voyage) | cross-encoder | 0.725 | 0.588 | — | 200M once · 3 RPM |
 | `gemini-3.5-flash-lite` *(untuned)* | LLM, listwise | 0.706 | 0.529 | 3.9 s | 500/day |
 | `rerank-v4.0-fast` (Cohere) | cross-encoder | 0.669 | 0.471 | — | 1,000/**month** |
@@ -6056,6 +6057,40 @@ comparable end to end. The last two rows exist because the user refused
 > further than the gap between flash-lite and Cohere's purpose-built
 > cross-encoder. **How you configure a model is not a detail beside which model
 > you pick — here it was the larger effect.**
+
+### `gemma-4-26b-a4b` — the MoE sibling, and MoE bought less than expected
+
+25.2B total parameters but only **~3.8B active**, so it should be far faster
+than the 31B dense model. Measured, three samples each on one 30-document call:
+
+```
+gemma-4-26b-a4b (MoE, 3.8B active)   median 18.7 s
+gemma-4-31b     (dense, 31B)         median 22.8 s
+gemini-3.5-flash-lite                median  1.5 s
+```
+
+**18% faster, not the 5-8x the active-parameter count suggests.** Both Gemma
+models are ~13x slower than flash-lite. **The bottleneck is Google's serving of
+these models, not their size** — the same conclusion the 13-token floor test
+reached (12.1 s to do nothing).
+
+**On quality it ties the 31B on MRR and beats it on `r@1`** — 0.647 against
+0.588, the second-best `r@1` of anything measured. For a first-position metric
+that is the one that matters, so the MoE is the better of the two Gemmas on
+both axes.
+
+**And it has its own separate 14,400/day**, because Google's quota is per
+model. The two Gemmas together are 28,800 calls a day.
+
+**One real defect: it sometimes returns an empty ranking.** A bare `[]` —
+schema-valid, and an opinion about nothing. Measured once in 17 queries (~6%),
+and it killed a run outright before the parser learned to treat a decline as
+"retrieval's order stands", which is what `skip()` already means elsewhere.
+
+> **A decline is invisible in MRR**, because keeping the retrieval order scores
+> exactly like vector alone. A model that silently abstains 6% of the time
+> looks 6% more average, never 6% more broken. The rate has to be counted
+> separately or it cannot be seen at all.
 
 ### `gemini-3.1-flash-lite` — dominated on quality, valuable on QUOTA
 

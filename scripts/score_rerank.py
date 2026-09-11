@@ -82,8 +82,20 @@ RANKING_CONFIG = {
     },
 }
 
-# CLAUDE.md's tier 4 of chain 3. Not in labpilot/llm/registry.py because
-# nothing else uses it - a registry entry with no consumer is dead data.
+# Gemma's MoE sibling: 25.2B total but only ~3.8B ACTIVE, with its own separate
+# 14,400 requests a day, because Google's quota is per MODEL and not per family.
+# It is also CLAUDE.md's Step 4 fine-tune target.
+#
+# Here rather than in labpilot/llm/registry.py for the same reason as
+# MINISTRAL_3B below: it is not in CHAIN, CHAIN is ordered by MEASURED score,
+# and its generation quality has never been scored. A registry entry with no
+# consumer is dead data.
+GEMMA_4_26B = dataclasses.replace(
+    GEMMA_4_31B, name="Gemma 4 26B A4B", tier=16, model="gemma-4-26b-a4b-it"
+)
+
+# CLAUDE.md's tier 4 of chain 3. Not in labpilot/llm/registry.py for the same
+# reason - a registry entry with no consumer is dead data.
 MINISTRAL_3B = OpenAICompatibleProvider(
     name="Ministral 3B",
     tier=99,
@@ -113,6 +125,7 @@ RERANKERS = {
         provider=dataclasses.replace(GEMINI_3_5_FLASH_LITE, **RANKING_CONFIG)
     ),
     "gemma": LLMReranker(provider=dataclasses.replace(GEMMA_4_31B, **RANKING_CONFIG)),
+    "gemma26": LLMReranker(provider=dataclasses.replace(GEMMA_4_26B, **RANKING_CONFIG)),
     "flashlite31": LLMReranker(
         provider=dataclasses.replace(GEMINI_3_1_FLASH_LITE, **RANKING_CONFIG)
     ),
@@ -152,6 +165,7 @@ PACE = {
     "ministral-3b-2512": 2.0,
     "gemma-4-31b-it": 2.0,
     "gemini-3.1-flash-lite": 2.0,
+    "gemma-4-26b-a4b-it": 2.0,
 }
 # How far a pair's score may move between batch sizes before the per-pair
 # cache is unsafe. An API cross-encoder is exact - measured drift 0.0 on Voyage
@@ -178,10 +192,28 @@ LISTWISE = {
     "gemini-3.1-flash-lite",
     "ministral-3b-2512",
     "gemma-4-31b-it",
+    "gemma-4-26b-a4b-it",
 }
 
-RETRY_WAIT = 70.0
+# How long to wait before trying again, BY REASON. One number was wrong and it
+# cost twenty minutes: 70s is right for Voyage, whose per-minute TOKEN bucket
+# must refill, and absurd for a transient Google 500 that clears in seconds.
+# Gemma answers 500 roughly one call in three, so a 17-query run spent most of
+# its time asleep and did not even finish.
+#
+# The same shape as the quota_pool mistake one layer down: a single field
+# answering two different questions is wrong for at least one of them.
+RETRY_WAIT = {"429": 70.0, "HTTP 500": 5.0, "HTTP 503": 5.0, "timed out": 10.0}
 RETRY_LIMIT = 8
+
+
+def retry_wait(message: str) -> float | None:
+    """Seconds to wait, or None when the failure is not worth retrying."""
+    for signal, seconds in RETRY_WAIT.items():
+        if signal in message:
+            return seconds
+    return None
+
 
 # Dense-margin thresholds for the gate. Cosine margins between the top two hits
 # are small, so the grid is small; it is swept rather than chosen, because a
@@ -257,23 +289,11 @@ class PairScores:
                     ranking = RERANKER.rank(query.text, [documents[i] for i in batch])
                     break
                 except RerankError as exc:
-                    # A 429 is the expected refusal; a read timeout is the VPN
-                    # this project runs behind, and it looks identical to a
-                    # dead provider in the logs. Both are worth one more try,
-                    # and nothing else is.
-                    # 429 is the expected refusal, a read timeout is the VPN,
-                    # and 500/503 is Google being briefly unavailable - gemma
-                    # answers one of those perhaps one call in three. All three
-                    # are worth another try; nothing else is.
-                    message = str(exc)
-                    retryable = any(
-                        signal in message
-                        for signal in ("429", "timed out", "HTTP 500", "HTTP 503")
-                    )
-                    if not retryable or attempt == RETRY_LIMIT - 1:
+                    wait = retry_wait(str(exc))
+                    if wait is None or attempt == RETRY_LIMIT - 1:
                         raise
-                    print(f"    429, backing off {RETRY_WAIT:.0f}s", flush=True)
-                    time.sleep(RETRY_WAIT)
+                    print(f"    retrying in {wait:.0f}s", flush=True)
+                    time.sleep(wait)
             self.calls += 1
             # A listwise reranker returns an ORDER and no scores - it never
             # scored anything, it sorted. Synthesising a score from the place
@@ -437,6 +457,12 @@ def main() -> int:
         needed = set(vector_candidates[q.id]) | set(fused_candidates.get(q.id, []))
         pairs.fetch(q, sorted(needed), documents)
     print(f"  rerank calls spent this run: {pairs.calls}")
+    declined = getattr(RERANKER, "declined", 0)
+    if declined:
+        print(
+            f"  ^ the model returned NO ranking {declined} time(s) - those'"
+            f" queries kept retrieval order, which scores like vector alone"
+        )
     if warning := BUDGET_WARNING.get(RERANKER.model):
         print(f"  ^ {RERANKER.name}: {warning}")
 

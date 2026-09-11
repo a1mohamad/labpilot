@@ -85,6 +85,10 @@ class LLMReranker:
     # model to spend some of the budget before it answers.
     max_tokens: int = 4_096
     last_text: str = field(default="", repr=False)
+    # How many times the model returned no usable ranking at all. A
+    # quality signal that costs nothing and is invisible in MRR, because a
+    # decline scores exactly like vector alone.
+    declined: int = 0
 
     def __post_init__(self) -> None:
         self.name = self.name or getattr(self.provider, "name", "llm reranker")
@@ -149,9 +153,17 @@ class LLMReranker:
                 seen.append(value)
 
         if not seen:
-            raise RerankError(
-                f"{self.name}: no usable document numbers in the reply: {text[:200]!r}"
-            )
+            # An EMPTY ranking is a real answer, not a crash. gemma-4-26b-a4b
+            # returns a bare "[]" on some queries - schema-valid, and an
+            # opinion about nothing. Measured 2026-09-11; it killed a 17-query
+            # run at query 12 before this branch existed.
+            #
+            # The honest reading is that the model declined, so retrieval's
+            # order stands - which is exactly what rerank/chain.py's skip()
+            # means. Raising instead would throw away the other 16 answers and
+            # report a model problem as a measurement failure.
+            self.declined += 1
+            return list(range(sent))
 
         missing = [i for i in range(sent) if i not in seen]
         return seen + missing
