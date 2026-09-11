@@ -8515,7 +8515,8 @@ Copy `.env.example` to `.env` and fill in real values.
 
 | Variable | Used for | Where to get it |
 |---|---|---|
-| `GOOGLE_API_KEY` | Generator tiers 1 + 3, embedder backup | aistudio.google.com/api-keys — **from the second Google account**; the first is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
+| `GOOGLE_API_KEY` | Generators, embedder, and the top 4 rerank tiers | aistudio.google.com/api-keys — **not the original account**; that one is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
+| **`GOOGLE_API_KEY_2`** | **A THIRD account — a second QUOTA, not a spare key** | Google bills per project per model, so this doubles EVERY Google budget: 20/day per Flash, 500 per Flash-Lite, 14,400 per Gemma, 1,000 embed requests. Added 2026-09-11 |
 | `MISTRAL_API_KEY` | Generator tiers 4, 5, 7, 9, **embedder primary** | console.mistral.ai — phone verification, no card |
 | `OPENROUTER_API_KEY` | Generator tiers 6 + 8 | openrouter.ai/keys |
 | `COHERE_API_KEY` | **Reranker tier 1**, embedder last resort | dashboard.cohere.com — trial key, no card |
@@ -9264,6 +9265,79 @@ would fix this properly, but it does not exist yet — it is planned for
 [Why the adjacency rule was retired](#why-the-adjacency-rule-was-retired--2026-08-16).
 The reasoning above is kept because it explains why the *pool*, not the provider
 name, is the thing that runs out.
+
+### Two Google accounts — added 2026-09-11, and it needed no new mechanism
+
+**Google bills per PROJECT per MODEL.** The 429 body says so:
+`GenerateRequestsPerDayPerProjectPerModel-FreeTier`. So a second account is not
+a spare key — it is **a fresh daily allowance for every model at once**.
+
+| | one account | two accounts |
+|---|---|---|
+| each Flash model | 20/day | **40/day** |
+| each Flash-Lite | 500/day | **1,000/day** |
+| each Gemma | 14,400/day | **28,800/day** |
+| `gemini-embedding-001` | 1,000/day | **2,000/day** |
+
+**`quota_pool` already made this a data change.** It exists precisely because
+*"authentication and accounting are different questions"* — so the pool simply
+had to carry the key as well as the model:
+
+```
+GOOGLE_API_KEY:gemini-3.5-flash        tier 5
+GOOGLE_API_KEY_2:gemini-3.5-flash      tier 6
+```
+
+Each Google model now appears **twice, adjacent**, and the existing pool-aware
+skipping does the rest: a spent account is marked dead and its twin is tried
+for free. `CHAIN` went from 15 tiers to **21**.
+
+> **Collapsing the key and the pool would mark BOTH accounts dead the first
+> time either one was spent** — the exact mistake `quota_pool` was created to
+> fix on 2026-08-16, arriving again one level up.
+
+**Adjacency is correct here**, for the reason the 2026-08-16 rewrite
+established: a spent pool costs nothing to skip, so the twin is the strongest
+model still available. Ordering by capability then means *"the same model on
+the other account"* beats *"a weaker model on this one"*.
+
+**`tier` is now derived from POSITION.** Reordering `CHAIN` without renumbering
+`tier=` was a real bug on 2026-08-11 — the chain read `2, 2, 3, 1, 4, 6` and
+only an invariant test noticed. Deriving it makes that class of bug impossible
+rather than merely tested for.
+
+#### For the EMBEDDER it is the only fallback that does not force a re-embed
+
+`MIGRATION` is a migration order, not a fallback chain: every other step means
+re-embedding the whole corpus, because two models' vectors do not compare. **The
+same model on a second account is the exception** — identical model, identical
+vectors — so a corpus half-ingested on key 1 can be *finished* on key 2.
+
+**Verified live rather than assumed: the two accounts return BIT-IDENTICAL
+vectors, maximum element difference `0.00e+00`.** Without that check, "resume on
+the other key" would have been a guess that silently poisons a corpus.
+
+#### What was measured when it went in
+
+**12 of 12 Google tiers answer on both keys.** Gemma needed a retry on *both*
+accounts equally — it returns HTTP 500 about one call in three, which is
+Google's serving of that model and not the key.
+
+**Three invariants changed MEANING and were corrected rather than deleted:**
+
+- models may now repeat, so what must stay unique is the **(model, key)** pair —
+  and a repeat on *one* key is dead weight and still fails the build
+- pools must be unique **per Google tier only**. OpenRouter genuinely has one
+  account-wide 50/day, so its three tiers correctly share a pool; a global
+  uniqueness rule would have been demanding the wrong thing, and measured, it
+  failed on 5 tiers that were behaving properly
+- the thinking and input-limit exception lists now match on **model**, because
+  the display name carries a `(key 2)` suffix
+
+**The standing caution has not changed.** This project already lost a Google
+account to an anti-fraud flag on 2026-08-11, and several accounts driven from
+one VPN exit is the pattern that triggers it. See
+[the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).
 
 ### Chain 2 — Embedder (migration, not fallback)
 
