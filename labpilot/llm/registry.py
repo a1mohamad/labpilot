@@ -27,6 +27,7 @@ def _gemini(
     context_window: int = GOOGLE_CONTEXT,
     max_output_tokens: int = GOOGLE_OUTPUT,
     max_input_tokens: int | None = None,
+    thinking: str | None = "MEDIUM",
 ) -> GeminiProvider:
     return GeminiProvider(
         name=name,
@@ -38,7 +39,7 @@ def _gemini(
         context_window=context_window,
         max_output_tokens=max_output_tokens,
         max_input_tokens=max_input_tokens,
-        thinking="MEDIUM",
+        thinking=thinking,
     )
 
 
@@ -142,6 +143,18 @@ DEVSTRAL_2 = OpenAICompatibleProvider(
     max_output_tokens=16_384,
 )
 
+# thinking=None is NOT a preference. Gemma answers HTTP 400 - "Thinking level
+# is not supported for this model" - to every request that carries the field,
+# so tier 8 was dead on every call, measured 2026-09-11. Removing the field
+# makes it answer normally.
+#
+# This is the largest generator budget in the project - 14,400 requests a DAY,
+# against 20/day for each Flash model - and CLAUDE.md's Step 2 routing leads
+# both GATE_CHAIN and SUMMARY_CHAIN with it. So the cheapest, highest-volume
+# tier had been broken since `thinking` was added in slice 4.
+#
+# The weekly smoke test DID cover it and DID fail. Nobody read the result. The
+# guard worked; the reporting did not.
 GEMMA_4_31B = _gemini(
     name="Gemma 4 31B",
     tier=8,
@@ -149,6 +162,7 @@ GEMMA_4_31B = _gemini(
     context_window=262_144,
     max_output_tokens=32_768,
     max_input_tokens=16_000,
+    thinking=None,
 )
 
 GPT_OSS_120B_GROQ = OpenAICompatibleProvider(

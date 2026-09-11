@@ -11,6 +11,13 @@ SMOKE_WORKFLOW = ROOT / ".github" / "workflows" / "smoke.yaml"
 KNOWN_THINKING = ("LOW", "MEDIUM", "HIGH")
 REJECTS_REASONING = ("Devstral 2",)
 
+# The Gemini-shape twin of REJECTS_REASONING, and it cost a dead tier to find.
+# Gemma answers HTTP 400 - "Thinking level is not supported for this model" -
+# to every request carrying the field, measured 2026-09-11. It is 14,400
+# requests a DAY, the largest generator budget here, and it was broken on every
+# call since slice 4 added `thinking`.
+REJECTS_THINKING = ("Gemma 4 31B",)
+
 # Deliberate, measured exceptions. A new name appearing here is a real problem.
 # Groq's 8,000 is a TOTAL per-minute budget (prompt + reserved output), so it is
 # modelled as a small context_window. Gemma's 16,000 counts input only.
@@ -133,21 +140,47 @@ def test_an_input_limited_tier_costs_no_request():
             provider._check_fits(oversized, 1024)
 
 
-def test_every_gemini_tier_uses_a_thinking_level_google_accepts():
-    levels = [
-        provider.thinking for provider in CHAIN if isinstance(provider, GeminiProvider)
+def _thinking_tiers():
+    return [
+        provider
+        for provider in CHAIN
+        if isinstance(provider, GeminiProvider)
+        and provider.name not in REJECTS_THINKING
     ]
+
+
+def test_every_gemini_tier_uses_a_thinking_level_google_accepts():
+    levels = [provider.thinking for provider in _thinking_tiers()]
 
     assert levels
     assert all(level in KNOWN_THINKING for level in levels), levels
 
 
 def test_the_google_tiers_do_not_drift_apart():
-    levels = {
-        provider.thinking for provider in CHAIN if isinstance(provider, GeminiProvider)
-    }
+    levels = {provider.thinking for provider in _thinking_tiers()}
 
     assert len(levels) == 1, levels
+
+
+def test_a_tier_that_rejects_thinking_does_not_ask_for_it():
+    """The other half, and the half that was missing.
+
+    Without this, "all Gemini tiers agree" is satisfied again the moment
+    somebody puts MEDIUM back on Gemma to tidy up - and tier 8 dies silently
+    on every call, which is exactly what happened for weeks.
+    """
+    asking = [
+        provider.name
+        for provider in CHAIN
+        if isinstance(provider, GeminiProvider)
+        and provider.name in REJECTS_THINKING
+        and provider.thinking is not None
+    ]
+
+    assert not asking, (
+        f"{asking} reject a thinking level with HTTP 400 but are configured to "
+        f"send one, so every call to them fails. Set thinking=None."
+    )
 
 
 def test_every_tier_that_accepts_reasoning_asks_for_it():
