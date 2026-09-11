@@ -36,12 +36,43 @@ BGE_BASE = CloudflareEmbedder(
     max_input_tokens=512,
 )
 
-# UNVERIFIED. Written from Google's documentation because the API answers
-# 400 FAILED_PRECONDITION - "User location is not supported" from here as of
-# 2026-08-20, on generation and embedding alike. dim=3072 is the documented
-# default and has never been observed; a wrong value fails loudly in
-# _validated rather than silently, which is why it is safe to ship unproven.
-GEMINI_EMBEDDING = GoogleEmbedder(
+# UNVERIFIED against our own fixture, and shipped anyway - the same gamble as
+# `gemini-embedding-001` on 2026-08-20, and safe for the same reason: `dim` is
+# documented rather than observed, so a wrong value raises loudly in
+# `_validated` on the first real call instead of storing a wrong-width vector.
+#
+# It is ranked above 001 on Google's own evidence, NOT ours: version 2 against
+# version 001 in the model listing, MTEB mean-by-task 69.9 against 68.32, and a
+# 8,192 token input limit against 2,048. This file's rule is that MIGRATION is
+# ordered by MEASURED recall, so **slice 8 owes this model a score** - it is
+# the only entry here ranked on somebody else's benchmark.
+#
+# The bigger input limit removes a constraint CLAUDE.md recorded as permanent:
+# 001's 2,048 tokens meant our 510-token chunk cap could never rise. 8,192 does
+# not bind at any chunk size we would choose.
+#
+# THE TWO SPACES ARE INCOMPATIBLE - Google says so explicitly. That is not a
+# footnote here, it is the whole reason MIGRATION is a migration: moving from
+# 001 to 2 means re-embedding every corpus, and only the SAME model on the
+# other key is a free continuation.
+GEMINI_EMBED_2 = GoogleEmbedder(
+    name="Gemini Embedding 2",
+    url=GOOGLE_URL,
+    model="gemini-embedding-2",
+    dim=3072,
+    max_input_tokens=8192,
+)
+
+GEMINI_EMBED_2_KEY2 = dataclasses.replace(
+    GEMINI_EMBED_2,
+    name="Gemini Embedding 2 (key 2)",
+    api_key_env="GOOGLE_API_KEY_2",
+)
+
+# Proven live 2026-08-27: 200, dim 3072 observed. Kept below embedding-2 but
+# above Cohere, because it is measured on OUR fixture and is the only model
+# with perfect recall@5 there (1.000, against codestral's 0.941).
+GEMINI_EMBED_001 = GoogleEmbedder(
     name="Gemini Embedding 001",
     url=GOOGLE_URL,
     model="gemini-embedding-001",
@@ -49,20 +80,18 @@ GEMINI_EMBEDDING = GoogleEmbedder(
     max_input_tokens=2048,
 )
 
-# THE ONE TRUE FALLBACK IN THIS LIST, and it is worth being precise about why.
+# THE ONE TRUE FALLBACK SHAPE IN THIS LIST, and it is worth being precise.
 #
-# MIGRATION is a migration order, not a fallback chain: switching model means
-# re-embedding the whole corpus, because two models' vectors do not compare.
-# The SAME model on a SECOND ACCOUNT is the exception - identical model,
-# identical vectors - so a corpus half-ingested on key 1 can be FINISHED on
-# key 2 and the result is still one coherent space.
+# MIGRATION is a migration order, not a fallback chain: every step between
+# different MODELS means re-embedding the whole corpus. The SAME model on a
+# SECOND ACCOUNT is the exception - identical model, identical vectors,
+# verified bit-identical on 2026-09-11 - so a corpus half-ingested on key 1 can
+# be FINISHED on key 2 and still be one coherent space.
 #
-# It is a real second budget, not a spare key: Google bills per project per
-# model, so this is another 1,000 embed requests a day and another 30K
-# tokens/minute. At our measured 192 tokens per chunk that is a second
-# ~13-minute ingest window.
-GEMINI_EMBEDDING_2 = dataclasses.replace(
-    GEMINI_EMBEDDING,
+# A real second budget too: Google bills per project per model, so each of
+# these four Google entries is its own 1,000 requests a day.
+GEMINI_EMBED_001_KEY2 = dataclasses.replace(
+    GEMINI_EMBED_001,
     name="Gemini Embedding 001 (key 2)",
     api_key_env="GOOGLE_API_KEY_2",
 )
@@ -87,7 +116,9 @@ MIGRATION = (
     CODESTRAL_EMBED,
     BGE_BASE,
     MISTRAL_EMBED,
-    GEMINI_EMBEDDING,
-    GEMINI_EMBEDDING_2,
+    GEMINI_EMBED_2,
+    GEMINI_EMBED_2_KEY2,
+    GEMINI_EMBED_001,
+    GEMINI_EMBED_001_KEY2,
     COHERE_EMBED,
 )
