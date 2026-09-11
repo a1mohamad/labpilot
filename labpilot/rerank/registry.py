@@ -56,23 +56,53 @@ CLOUDFLARE_RERANK = CloudflareReranker(
     model="@cf/baai/bge-reranker-base",
 )
 
-# The order is CLAUDE.md's and stays, on the rule "spend the bucket that
-# expires anyway, bank the one-time grant". It has NEVER been measured - it is
-# a quota-shape argument, and a quota-shape argument is no evidence that these
-# three rank alike. Slice 8 owns it, and the candidate order it must beat this
-# one against is recorded in CLAUDE.md: local ONNX, then Cloudflare, then
-# Voyage, then Cohere - the exact opposite of this, because per QUERY rather
-# than per report, Cohere's 1,000 a month is the smallest budget of the three.
+# THE ORDER IS MEASURED NOW, not argued from quota shape. Scored on quora at a
+# 30-document window against vector alone's MRR of 0.608:
 #
-# `ministral-3b-2512` is tier 4 in CLAUDE.md and is DELIBERATELY ABSENT. It is
-# LLM-as-reranker: a different mechanism needing a prompt, a parse and its own
-# failure modes, reached only when all three cross-encoders are gone. Recorded
-# as unbuilt rather than half-built, like HNSW on the shelf.
+#     rerank-3-lite (Voyage)   0.725   +0.117
+#     rerank-v4.0-fast (Cohere) 0.669  +0.061
+#     bge-reranker-base (CF)   0.520   -0.088   <- WORSE THAN NOT RERANKING
+#
+# `rerank-3` is placed first of the two Voyage tiers on a single-pair probe
+# (0.8594 against 0.8516) and is otherwise UNMEASURED - a reason to try it
+# first, not evidence that it ranks better.
+#
+# bge-reranker-base is kept last DESPITE measuring worse than no reranking at
+# all, which is a deliberate and arguable choice: one corpus, one saturated
+# fixture, and it is the only tier whose budget (~2,840/day) cannot run out.
+# The chain already ends in skip(), so if slice 8 confirms the number, the
+# right move is to delete this tier rather than reorder it.
+#
+# THE FOUR LLM TIERS THAT BEAT ALL OF THESE ARE NOT HERE, and cannot be: they
+# need llm/, and an adapter may not import another adapter. They are built
+# from LLMReranker by whoever owns both layers - see LLM_RERANK_ORDER below.
+#
+# `ministral-3b-2512` (CLAUDE.md's old tier 4) and the local ONNX cross-encoder
+# are DROPPED, both measured worse than not reranking: 0.440 and 0.472.
 RERANK_CHAIN = (
-    COHERE_RERANK,
     VOYAGE_RERANK_3,
     VOYAGE_RERANK_3_LITE,
+    COHERE_RERANK,
     CLOUDFLARE_RERANK,
+)
+
+# The LLM tiers, in measured order, as DATA rather than objects - building them
+# needs a `complete` callable, and only a layer that may import llm/ can supply
+# one. Slice 7 assembles the real chain at the entry layer:
+#
+#     rerank(query, docs, chain=(*llm_tiers, *RERANK_CHAIN))
+#
+# Measured on quora at a 30-document window, against vector alone's 0.608:
+#   gemini-3.5-flash-lite 0.799 · gemini-3.1-flash-lite 0.745
+#   gemma-4-26b-a4b-it    0.732 · gemma-4-31b-it        0.732
+#
+# Every one of them beats every cross-encoder above. Google's quota is per
+# MODEL, so these are four independent buckets: 500 + 500 + 14,400 + 14,400.
+LLM_RERANK_ORDER = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemma-4-26b-a4b-it",
+    "gemma-4-31b-it",
 )
 
 # THE TWO VOYAGE TIERS DO NOT SHARE A RATE-LIMIT BUCKET - measured 2026-09-11,

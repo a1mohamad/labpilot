@@ -29,3 +29,8 @@ MAX_DOCUMENT_TOKENS = 510
 # quality, not capacity: a wide window dilutes the signal and invites "lost in
 # the middle", a narrow one risks dropping the answer. MEASURED in slice 6.
 RERANK_TOP_N = 10
+
+# Output budget for a listwise ranking. 50 two-digit numbers and commas is
+# ~200 tokens; the rest is headroom for a model that reasons in prose before
+# answering, which gemma does and flash-lite does not.
+RERANK_MAX_TOKENS = 4_096

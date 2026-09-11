@@ -47,11 +47,11 @@ from labpilot.rerank import (
     COHERE_RERANK,
     VOYAGE_RERANK_3,
     VOYAGE_RERANK_3_LITE,
+    LLMReranker,
     RerankError,
 )
 from labpilot.retrieval.gate import margin
 from labpilot.store.defaults import SEARCH_LIMIT
-from scripts.llm_reranker import LLMReranker
 from scripts.local_reranker import LOCAL_RERANK
 from scripts.score_hybrid import (
     CORPORA,
@@ -109,6 +109,7 @@ MINISTRAL_3B = OpenAICompatibleProvider(
 CACHE = Path(".cache/rerank")
 EMBED_CACHE = Path(".cache/hybrid")
 
+
 # Cloudflare is the default because ~2,840 calls a day cannot realistically run
 # out. Voyage and Cohere answer the question Cloudflare cannot - whether a bad
 # result is about RERANKING or about one cheap 2023-era base model.
@@ -118,17 +119,28 @@ EMBED_CACHE = Path(".cache/hybrid")
 # the bill before spending it: 45 queries is 4.5% of a month, 17 at --window=30
 # is 1.7%. Affordable is not the same as free, and it is the PRIMARY - leaving
 # the primary unscored is a worse outcome than spending 17 calls on it.
+def listwise(provider) -> LLMReranker:
+    """Bind an llm/ provider into a rerank/ tier.
+
+    This tiny function is the whole reason rerank/ does not import llm/: the
+    coupling lives at the call site, in a layer allowed to see both, instead of
+    being welded into the package.
+    """
+    tuned = dataclasses.replace(provider, **RANKING_CONFIG)
+    return LLMReranker(
+        complete=lambda prompt, budget: tuned.complete(prompt, max_tokens=budget).text,
+        name=tuned.name,
+        model=tuned.model,
+    )
+
+
 RERANKERS = {
     "local": LOCAL_RERANK,
-    "ministral": LLMReranker(provider=MINISTRAL_3B),
-    "flashlite": LLMReranker(
-        provider=dataclasses.replace(GEMINI_3_5_FLASH_LITE, **RANKING_CONFIG)
-    ),
-    "gemma": LLMReranker(provider=dataclasses.replace(GEMMA_4_31B, **RANKING_CONFIG)),
-    "gemma26": LLMReranker(provider=dataclasses.replace(GEMMA_4_26B, **RANKING_CONFIG)),
-    "flashlite31": LLMReranker(
-        provider=dataclasses.replace(GEMINI_3_1_FLASH_LITE, **RANKING_CONFIG)
-    ),
+    "ministral": listwise(MINISTRAL_3B),
+    "flashlite": listwise(GEMINI_3_5_FLASH_LITE),
+    "gemma": listwise(GEMMA_4_31B),
+    "gemma26": listwise(GEMMA_4_26B),
+    "flashlite31": listwise(GEMINI_3_1_FLASH_LITE),
     "cloudflare": CLOUDFLARE_RERANK,
     "voyage": VOYAGE_RERANK_3_LITE,
     "voyage3": VOYAGE_RERANK_3,
