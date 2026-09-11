@@ -6145,6 +6145,52 @@ family best of all. The conclusion is not "pick the best ranker". It is
 **route by question type**, which is already a rule in this file and now has
 three measurements under it.
 
+### The bad result was PROBED, not accepted — 2026-09-11
+
+*"It doesn't make any sense that the Cloudflare model gets that ugly result" —
+the user, and the instinct was right to act on. A model with a good reputation
+scoring WORSE than no reranking is more often a bug in the caller than a bad
+model. Four checks, and the integration survived all four.*
+
+| suspicion | test | result |
+|---|---|---|
+| **512-token truncation** — BGE's tokenizer is 2.7x less efficient on our code, so a 230-token chunk could really be 600+ | score prefixes of one chunk; identical scores mean the tail was never read | **no truncation** — 0.00105 → 0.00263 → 0.00304 → 0.00327 as the prefix grows |
+| **`id` is not the index at scale** | plant an obvious answer at positions 0, 37 and 49 of a 50-document call | **correct every time**, score 0.9999, and the runner-up identical across all three |
+| **the response is silently capped** | count what comes back from 50 | **50 of 50** |
+| **we picked an old model** | list Cloudflare's rerankers | **there is exactly one** |
+
+**So the wiring is right and the model really does rank our code badly.** Then
+the failure was read rather than summarised, and it has a shape:
+
+```
+23 queries WORSE   13 BETTER   9 unchanged
+
+R32 [api]        place 1 -> 36      the five worst cases are ALL
+R40 [structure]  place 1 -> 32      queries the bi-encoder already
+R12 [behaviour]  place 1 -> 18      had at place 1
+R15 [behaviour]  place 1 -> 16
+R19 [behaviour]  place 1 -> 15
+
+best gains:  6 -> 3,  4 -> 1,  7 -> 2,  8 -> 5
+```
+
+> **When the first stage is already right at #1, reranking has zero upside and
+> maximum downside.** It cannot promote what is already top; it can only push
+> it down. Losses of +14 to +35 places against gains of 3 to 5.
+
+That is the literature's *"reranking can make results worse when the first
+stage was already confident and correct"*, measured on our own corpus — and it
+explains the gate sweep, where "skip everything" won. It is also **not** a
+property of reranking: `rerank-3-lite` raised `r@1` from 0.412 to 0.588 on
+quora, so it promotes correct answers where `bge` demotes them.
+
+**A process note, because it nearly cost the finding.** The first version of
+this diagnostic compared `(index, score)` tuples against a set of ints, so
+every lookup silently reported "not found" and the script announced a maximum
+damage of zero — flatly contradicting the aggregate it was meant to explain.
+**Two numbers from the same data disagreeing is a bug, not a subtlety**, and
+the disagreement was the only thing that revealed it.
+
 ### Two confounds tested and eliminated
 
 **The chunk header is not the problem.** We send `chunk.embed_text` — header
