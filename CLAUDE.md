@@ -500,9 +500,11 @@ every one of those lines has winners and losers on BOTH sides. Only "is the mode
 code" separates them.**
 **`gemini-3.5-flash-lite` IS THE SURPRISE AND IS NOT IN THE CHAIN: 500/day, no 50-document ceiling
 (the exact thing that disqualifies Voyage), and it beats Cohere's purpose-built cross-encoder.**
-**`gemma-4-31b-it` IS THE PAINFUL ONE: 14,400/day, the largest budget here, and it WILL NOT produce
-a bare list - it bullet-points a restatement of the question. The cheapest option cannot follow the
-format.**
+**`gemma-4-31b-it` IS THE PAINFUL ONE AND I WAS WRONG ABOUT WHY, TWICE. It does NOT fail to follow
+the format - that was MY PARSER reading the model's prose reasoning instead of its final answer.
+The real disqualifier is LATENCY: 94.8s for one 30-document call against flash-lite's 5.1s, because
+it writes a 4,900-character analysis of all 30 chunks first. A whole report takes ~50s, so a 95s
+rerank step cannot be in it. QUOTA IS NOT THE ONLY BUDGET - latency is one too.**
 **THAT TAKES AWAY THE CHEAP ANSWER TO STEP 2's COST PROBLEM. The local model is the ONLY reranker
 that batches - no rate limit, no call count, every pair in one forward pass, which is exactly what
 `verify` needs at one call per claim - and it is also one of the two that make retrieval worse. A
@@ -6037,7 +6039,7 @@ embedder, same 30-document window, so the column is comparable end to end.*
 | `bge-reranker-base` (CF) | cross-encoder | 0.520 | −0.088 | ~2,840/day |
 | `ms-marco-MiniLM-L-6-v2` | cross-encoder, **local** | 0.472 | −0.136 | **unlimited, batches** |
 | `ministral-3b-2512` | LLM, listwise | 0.440 | −0.168 | rate-limited |
-| `gemma-4-31b-it` | LLM, listwise | **unusable** | — | 14,400/day |
+| `gemma-4-31b-it` | LLM, listwise | ranks fine, **95 s/query** | — | 14,400/day |
 
 > **The mechanism does not decide it. Capability does.** A strong LLM beats two
 > of three purpose-built cross-encoders. A 3B LLM loses to all of them. Two
@@ -6046,10 +6048,34 @@ embedder, same 30-document window, so the column is comparable end to end.*
 > losers on both sides. Only "is the model any good at reading code" separates
 > them.
 
-**`gemma-4-31b-it` is the painful one.** 14,400 requests a DAY, the largest
-generator budget in the project, and it **will not produce a bare list** — it
-bullet-points a restatement of the question instead. The cheapest option is
-the one that cannot follow the format.
+**`gemma-4-31b-it` is the painful one, and I was wrong about WHY — twice.**
+
+First I recorded it as unable to follow the output format. That was **my
+parser**. Gemma reasons in prose before answering, walking the chunks in order
+— *"Chunk [1] … Chunk [2] … Chunk [3]"* — and only then gives its ranking. A
+left-to-right scan for numbers therefore read the REASONING and returned the
+identity order. Its actual reply ended `3, 1, 2, 4`, which is correct. The
+parser now takes the longest comma-separated run, preferring the last.
+
+> **Reading the first 90 characters of a reply is not reading the reply.** A
+> model that reasons puts its answer at the END, and a parser that scans from
+> the front measures the thinking instead of the conclusion.
+
+The real disqualifier is **latency**, measured on one 30-document call:
+
+| | time | reply |
+|---|---|---|
+| `gemma-4-31b-it` | **94.8 s** | 4,900 chars — an analysis of all 30 chunks |
+| `gemini-3.5-flash-lite` | **5.1 s** | 109 chars — the list and nothing else |
+
+**19x slower, for the same top document.** A whole LabPilot report takes ~50 s,
+so a 95-second rerank step cannot be in it — and `verify` needs one call per
+claim. Gemma's 14,400/day, the largest budget in the project, is worthless for
+this job on time alone.
+
+> **Quota is not the only budget. Latency is one too, and it is the one nobody
+> writes down.** Gemma was chosen for this experiment BECAUSE it was the
+> cheapest, and cost was never the thing that ruled it out.
 
 **And `flash-lite` is the surprise.** It is not a reranker at all, it costs
 generation quota — this file's scarcest resource — and it still beats Cohere's

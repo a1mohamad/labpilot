@@ -57,6 +57,20 @@ Format: 7, 2, 15, 1"""
 
 NUMBER = re.compile(r"\d+")
 
+# A run of at least two numbers separated by commas - "3, 1, 2, 4".
+#
+# THIS IS THE WHOLE PARSER, and the naive version was wrong in a way that
+# looked like a bad model. Reading numbers left to right picks them out of the
+# model's REASONING: gemma-4-31b walks the chunks in order, writing "Chunk [1]
+# ... Chunk [2] ... Chunk [3]", and only then gives its answer. A left-to-right
+# scan therefore returns 1, 2, 3, 4 - the identity order - and the model looks
+# like it refused to rank while it was in fact ranking correctly.
+#
+# Measured 2026-09-11: gemma reasoned to the right answer and ended with
+# "3, 1, 2, 4", and this project recorded it as UNUSABLE for a day because
+# only the first 90 characters of its reply were ever read.
+SEQUENCE = re.compile(r"\d+(?:\s*,\s*\d+)+")
+
 
 @dataclass(slots=True)
 class LLMReranker:
@@ -116,8 +130,20 @@ class LLMReranker:
         That is the honest fallback: the model expressed no opinion about
         those, so they stay where search put them.
         """
+        # Prefer an explicit comma-separated run, and among those prefer the
+        # LONGEST, breaking ties toward the LAST - a model that reasons first
+        # puts its answer at the end, and a model that answers immediately has
+        # only one run anyway. Falling back to a bare left-to-right scan keeps
+        # a reply like "4" or "3 then 1" usable.
+        runs = list(SEQUENCE.finditer(text))
+        if runs:
+            best = max(runs, key=lambda m: (len(NUMBER.findall(m.group())), m.start()))
+            source = best.group()
+        else:
+            source = text
+
         seen: list[int] = []
-        for match in NUMBER.finditer(text):
+        for match in NUMBER.finditer(source):
             value = int(match.group()) - 1  # the labels are one-based
             if 0 <= value < sent and value not in seen:
                 seen.append(value)

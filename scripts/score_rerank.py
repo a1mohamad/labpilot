@@ -35,7 +35,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from labpilot.llm.openai_compatible import OpenAICompatibleProvider
-from labpilot.llm.registry import GEMINI_3_5_FLASH_LITE, MISTRAL_URL
+from labpilot.llm.registry import GEMINI_3_5_FLASH_LITE, GEMMA_4_31B, MISTRAL_URL
 from labpilot.rerank import (
     CLOUDFLARE_RERANK,
     COHERE_RERANK,
@@ -84,6 +84,7 @@ RERANKERS = {
     "local": LOCAL_RERANK,
     "ministral": LLMReranker(provider=MINISTRAL_3B),
     "flashlite": LLMReranker(provider=GEMINI_3_5_FLASH_LITE),
+    "gemma": LLMReranker(provider=GEMMA_4_31B),
     "cloudflare": CLOUDFLARE_RERANK,
     "voyage": VOYAGE_RERANK_3_LITE,
     "voyage3": VOYAGE_RERANK_3,
@@ -118,6 +119,7 @@ PACE = {
     # here. flash-lite is 500/day, so 17 queries is 3.4% of a day.
     "gemini-3.5-flash-lite": 2.0,
     "ministral-3b-2512": 2.0,
+    "gemma-4-31b-it": 2.0,
 }
 # How far a pair's score may move between batch sizes before the per-pair
 # cache is unsafe. An API cross-encoder is exact - measured drift 0.0 on Voyage
@@ -139,7 +141,7 @@ POINTWISE_TOLERANCE = {"ms-marco-MiniLM-L-6-v2": 1e-2}
 # against each other, so a document's place genuinely depends on what it
 # was sent with. The pointwise check and the per-pair cache are both
 # meaningless for it, so it is scored per call instead.
-LISTWISE = {"gemini-3.5-flash-lite", "ministral-3b-2512"}
+LISTWISE = {"gemini-3.5-flash-lite", "ministral-3b-2512", "gemma-4-31b-it"}
 
 RETRY_WAIT = 70.0
 RETRY_LIMIT = 8
@@ -222,7 +224,15 @@ class PairScores:
                     # this project runs behind, and it looks identical to a
                     # dead provider in the logs. Both are worth one more try,
                     # and nothing else is.
-                    retryable = "429" in str(exc) or "timed out" in str(exc)
+                    # 429 is the expected refusal, a read timeout is the VPN,
+                    # and 500/503 is Google being briefly unavailable - gemma
+                    # answers one of those perhaps one call in three. All three
+                    # are worth another try; nothing else is.
+                    message = str(exc)
+                    retryable = any(
+                        signal in message
+                        for signal in ("429", "timed out", "HTTP 500", "HTTP 503")
+                    )
                     if not retryable or attempt == RETRY_LIMIT - 1:
                         raise
                     print(f"    429, backing off {RETRY_WAIT:.0f}s", flush=True)
