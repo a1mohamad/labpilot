@@ -24,6 +24,7 @@ dead. And the fixture may REJECT, never CONFIRM - the headroom at k=10 is about
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import pickle
@@ -56,6 +57,26 @@ from scripts.score_hybrid import (
     targets,
 )
 
+# How a Gemini-family model should be configured FOR RANKING, measured
+# 2026-09-11 on one 30-document call.
+#
+#   thinking=None   flash-lite: 3.88s -> 1.28s for an IDENTICAL 109-token
+#                   answer, because MEDIUM spent 930 tokens thinking about a
+#                   question that needs no reasoning. CLAUDE.md already said
+#                   "thinking is a per-task knob"; this is the number.
+#
+#   JSON schema     gemma: 45.5s -> 14.4s, and the reply stops being prose
+#                   wrapped around an answer. It also removes the parsing risk
+#                   that made this project record gemma as "unusable" when the
+#                   real fault was reading the front of its reply.
+RANKING_CONFIG = {
+    "thinking": None,
+    "generation_config": {
+        "responseMimeType": "application/json",
+        "responseSchema": {"type": "ARRAY", "items": {"type": "INTEGER"}},
+    },
+}
+
 # CLAUDE.md's tier 4 of chain 3. Not in labpilot/llm/registry.py because
 # nothing else uses it - a registry entry with no consumer is dead data.
 MINISTRAL_3B = OpenAICompatibleProvider(
@@ -83,8 +104,10 @@ EMBED_CACHE = Path(".cache/hybrid")
 RERANKERS = {
     "local": LOCAL_RERANK,
     "ministral": LLMReranker(provider=MINISTRAL_3B),
-    "flashlite": LLMReranker(provider=GEMINI_3_5_FLASH_LITE),
-    "gemma": LLMReranker(provider=GEMMA_4_31B),
+    "flashlite": LLMReranker(
+        provider=dataclasses.replace(GEMINI_3_5_FLASH_LITE, **RANKING_CONFIG)
+    ),
+    "gemma": LLMReranker(provider=dataclasses.replace(GEMMA_4_31B, **RANKING_CONFIG)),
     "cloudflare": CLOUDFLARE_RERANK,
     "voyage": VOYAGE_RERANK_3_LITE,
     "voyage3": VOYAGE_RERANK_3,

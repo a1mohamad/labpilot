@@ -491,20 +491,28 @@ the one that NEVER reranks, on 3 of 4 runs. See
 same instrument - only the model changed: `rerank-3-lite` took r@1 from 0.412 to 0.588 (+43%
 relative) and MRR from 0.608 to 0.725, where `bge-reranker-base` took them DOWN to 0.353 and 0.520.
 The spread between two rerankers is THREE TIMES the headroom this slice was chasing.**
-**ALL SEVEN RERANKERS ARE SCORED - every tier CLAUDE.md named, plus two it did not - AND THE LINE
-IS CAPABILITY, not mechanism. Voyage 0.725 · flash-lite (an LLM!) 0.706 · Cohere 0.669 · VECTOR
-ALONE 0.608 · bge 0.520 · local MiniLM 0.472 · ministral-3b 0.440 · gemma-4-31b UNUSABLE.**
+**NINE RERANKER CONFIGURATIONS SCORED, and CONFIG MATTERS AS MUCH AS MODEL: flash-lite TUNED 0.799
+· gemma-4-31b TUNED 0.732 · Voyage 0.725 · flash-lite UNTUNED 0.706 · Cohere 0.669 · VECTOR ALONE
+0.608 · bge 0.520 · local MiniLM 0.472 · ministral-3b 0.440.**
+**TWO OF THOSE ROWS ARE THE SAME MODEL, 0.093 MRR APART - a bigger gap than between flash-lite and
+Cohere's purpose-built cross-encoder. Two settings did it, both measured: `thinking=None` (MEDIUM
+costs 3x the latency and 930 tokens for an IDENTICAL answer) and a JSON responseSchema (gemma
+45.5s -> 14.4s, and the reply stops being prose wrapped around an answer). `GeminiProvider` now has
+`generation_config`, the Gemini twin of `extra_body`, which Step 2's claim extraction also needs.**
+**THE TWO BEST RERANKERS ARE NOT IN CHAIN 3 AT ALL, and its last tier is worse than not reranking.**
 **A strong LLM beats two of three purpose-built cross-encoders; a 3B LLM loses to all of them; two
 old cross-encoders lose to not reranking at all. Cross-encoder vs LLM, local vs API, free vs paid -
 every one of those lines has winners and losers on BOTH sides. Only "is the model good at reading
 code" separates them.**
 **`gemini-3.5-flash-lite` IS THE SURPRISE AND IS NOT IN THE CHAIN: 500/day, no 50-document ceiling
 (the exact thing that disqualifies Voyage), and it beats Cohere's purpose-built cross-encoder.**
-**`gemma-4-31b-it` IS THE PAINFUL ONE AND I WAS WRONG ABOUT WHY, TWICE. It does NOT fail to follow
-the format - that was MY PARSER reading the model's prose reasoning instead of its final answer.
-The real disqualifier is LATENCY: 94.8s for one 30-document call against flash-lite's 5.1s, because
-it writes a 4,900-character analysis of all 30 chunks first. A whole report takes ~50s, so a 95s
-rerank step cannot be in it. QUOTA IS NOT THE ONLY BUDGET - latency is one too.**
+**GEMMA WAS WRONG TWICE AND BOTH WERE MINE. "Cannot follow the format" was MY PARSER reading its
+prose reasoning instead of its final answer. "Too slow at 95s" was a MISSING JSON SCHEMA - with one
+it is 14.4s and scores 0.732, second best of everything measured, on the largest quota in the
+project. The user refused both conclusions and was right both times.**
+**The live trade for slice 8 is no longer quality, it is LATENCY AGAINST BUDGET: flash-lite is best
+AND fastest on 500/day; gemma is second and 11x slower on 14,400/day. `verify` needs one call per
+claim, so ~30 claims is 40s against 7 minutes. QUOTA IS NOT THE ONLY BUDGET.**
 **THAT TAKES AWAY THE CHEAP ANSWER TO STEP 2's COST PROBLEM. The local model is the ONLY reranker
 that batches - no rate limit, no call count, every pair in one forward pass, which is exactly what
 `verify` needs at one call per claim - and it is also one of the two that make retrieval worse. A
@@ -6025,68 +6033,99 @@ run of `queries.json` samples one `asks` value, so the first `k` queries are a
 category study wearing a corpus study's clothes. Worth remembering before the
 next expensive measurement is cut short.
 
-### ALL SEVEN RERANKERS ARE SCORED, and the line is CAPABILITY
+### NINE RERANKER CONFIGURATIONS SCORED — and CONFIG matters as much as MODEL
 
-*Every tier CLAUDE.md ever named, plus the two it did not. Same corpus, same
-embedder, same 30-document window, so the column is comparable end to end.*
+*Same corpus, embedder and 30-document window throughout, so the column is
+comparable end to end. The last two rows exist because the user refused
+"gemma is unusable" and said **"something in your setup is wrong."** It was.*
 
-| reranker | kind | MRR | vs vector | budget |
-|---|---|---|---|---|
-| `rerank-3-lite` (Voyage) | cross-encoder | **0.725** | **+0.117** | 200M once · 3 RPM · **cannot send 50** |
-| **`gemini-3.5-flash-lite`** | **LLM, listwise** | **0.706** | **+0.098** | **500/day** |
-| `rerank-v4.0-fast` (Cohere) | cross-encoder | 0.669 | +0.061 | 1,000/**month** |
-| *vector alone* | — | *0.608* | — | free |
-| `bge-reranker-base` (CF) | cross-encoder | 0.520 | −0.088 | ~2,840/day |
-| `ms-marco-MiniLM-L-6-v2` | cross-encoder, **local** | 0.472 | −0.136 | **unlimited, batches** |
-| `ministral-3b-2512` | LLM, listwise | 0.440 | −0.168 | rate-limited |
-| `gemma-4-31b-it` | LLM, listwise | ranks fine, **95 s/query** | — | 14,400/day |
+| reranker | kind | MRR | r@1 | latency | budget |
+|---|---|---|---|---|---|
+| **`gemini-3.5-flash-lite`** *(tuned)* | LLM, listwise | **0.799** | **0.706** | **1.3 s** | 500/day |
+| `gemma-4-31b-it` *(tuned)* | LLM, listwise | **0.732** | 0.588 | 14.4 s | **14,400/day** |
+| `rerank-3-lite` (Voyage) | cross-encoder | 0.725 | 0.588 | — | 200M once · 3 RPM |
+| `gemini-3.5-flash-lite` *(untuned)* | LLM, listwise | 0.706 | 0.529 | 3.9 s | 500/day |
+| `rerank-v4.0-fast` (Cohere) | cross-encoder | 0.669 | 0.471 | — | 1,000/**month** |
+| *vector alone* | — | *0.608* | *0.412* | — | free |
+| `bge-reranker-base` (CF) | cross-encoder | 0.520 | 0.353 | — | ~2,840/day |
+| `ms-marco-MiniLM` | cross-encoder, local | 0.472 | 0.294 | — | unlimited |
+| `ministral-3b-2512` | LLM, listwise | 0.440 | 0.176 | — | rate-limited |
 
-> **The mechanism does not decide it. Capability does.** A strong LLM beats two
-> of three purpose-built cross-encoders. A 3B LLM loses to all of them. Two
-> old cross-encoders lose to no reranking at all. Cross-encoder versus LLM,
-> local versus API, free versus paid — every one of those lines has winners and
-> losers on both sides. Only "is the model any good at reading code" separates
-> them.
+> **Two rows are the SAME MODEL, 0.093 MRR apart.** Tuning flash-lite moved it
+> further than the gap between flash-lite and Cohere's purpose-built
+> cross-encoder. **How you configure a model is not a detail beside which model
+> you pick — here it was the larger effect.**
 
-**`gemma-4-31b-it` is the painful one, and I was wrong about WHY — twice.**
+### The two settings that did it, both measured
 
-First I recorded it as unable to follow the output format. That was **my
-parser**. Gemma reasons in prose before answering, walking the chunks in order
-— *"Chunk [1] … Chunk [2] … Chunk [3]"* — and only then gives its ranking. A
-left-to-right scan for numbers therefore read the REASONING and returned the
-identity order. Its actual reply ended `3, 1, 2, 4`, which is correct. The
-parser now takes the longest comma-separated run, preferring the last.
+**1. `thinking=None`.** Every Gemini tier ships `thinkingLevel: MEDIUM`. On a
+ranking task that is waste:
+
+```
+flash-lite, IDENTICAL 109-token answer, one 30-document call
+  thinking MEDIUM (shipped)   3.88 s   930 thought tokens
+  thinking LOW                2.24 s   351
+  no thinking field           1.28 s     0
+```
+
+**3x the latency and 930 tokens to produce the same answer.** CLAUDE.md has
+said since 2026-08-17 that thinking is a per-task knob, never a global setting.
+This is the number behind it, and the shipped default is wrong for this task.
+
+**2. A JSON response schema.** `responseMimeType: application/json` plus an
+integer-array schema. On gemma, one 30-document ranking went **45.5 s → 14.4 s**
+and the reply stopped being prose wrapped around an answer.
+
+`GeminiProvider.generation_config` now carries both — the Gemini-shape twin of
+`OpenAICompatibleProvider.extra_body`. Step 2's claim extraction needs the same
+field for its own reason (*"output a fixed shape so the next node parses
+instead of guessing"*), so it has a scheduled consumer.
+
+### Gemma: I was wrong about it TWICE, and the user was right to push
+
+**First I recorded it as unable to follow the output format.** That was **my
+parser**. Gemma reasons in prose, walking the chunks in order — *"Chunk [1] …
+Chunk [2] … Chunk [3]"* — and gives its ranking last. A left-to-right scan for
+numbers read the REASONING and returned the identity order. Its real reply
+ended `3, 1, 2, 4`, which is correct.
 
 > **Reading the first 90 characters of a reply is not reading the reply.** A
-> model that reasons puts its answer at the END, and a parser that scans from
-> the front measures the thinking instead of the conclusion.
+> model that reasons puts its answer at the END; a parser that scans from the
+> front measures the thinking and calls it the conclusion.
 
-The real disqualifier is **latency**, measured on one 30-document call:
+**Then I recorded it as too slow at 95 s, and closed the question.** The user
+did not accept it — *"it's a much lighter model, with much more quota,
+something in your setup is wrong"* — and pushing produced the schema finding
+that took it to 14.4 s and the top three.
 
-| | time | reply |
-|---|---|---|
-| `gemma-4-31b-it` | **94.8 s** | 4,900 chars — an analysis of all 30 chunks |
-| `gemini-3.5-flash-lite` | **5.1 s** | 109 chars — the list and nothing else |
+**The premise in that objection was actually inverted**, and that is worth
+keeping too: `gemma-4-31b-it` is a **31-billion-parameter dense** model, while
+`gemini-3.5-flash-lite` is Google's smallest, fastest tier. Gemma is the
+*heavier* one — its larger free quota made it look cheaper. Measured on a
+13-token prompt, which isolates serving latency from everything else:
 
-**19x slower, for the same top document.** A whole LabPilot report takes ~50 s,
-so a 95-second rerank step cannot be in it — and `verify` needs one call per
-claim. Gemma's 14,400/day, the largest budget in the project, is worthless for
-this job on time alone.
+```
+gemma-4-31b-it          12.1 s      <- the floor, doing nothing
+gemini-3.5-flash-lite    0.8 s
+```
+
+**A wrong reason can still find a real bug.** The objection was mistaken about
+which model is lighter and completely right that the setup was broken.
+
+### What this does to chain 3
+
+The shipped chain is Cohere, Voyage×2, Cloudflare — and on these numbers
+**the two best rerankers are not in it at all**, while the last tier is worse
+than not reranking. Slice 8 now chooses among **nine measured configurations**
+rather than ordering four by quota shape.
+
+The live trade it must make is no longer quality — it is **latency against
+budget**: flash-lite is best and fastest on 500 calls/day; gemma is second and
+11x slower on 14,400/day. `verify` needs one call per claim, so at ~30 claims
+that is 40 s against 7 minutes.
 
 > **Quota is not the only budget. Latency is one too, and it is the one nobody
-> writes down.** Gemma was chosen for this experiment BECAUSE it was the
-> cheapest, and cost was never the thing that ruled it out.
-
-**And `flash-lite` is the surprise.** It is not a reranker at all, it costs
-generation quota — this file's scarcest resource — and it still beats Cohere's
-purpose-built cross-encoder while running on 500 calls a day. It also has no
-50-document ceiling, which is the exact thing that disqualifies Voyage.
-
-**What that does to chain 3.** The shipped order is Cohere, Voyage×2,
-Cloudflare. On these numbers the last tier is worse than not reranking, and
-the best free-at-full-width option is not in the chain at all. Slice 8 decides
-it — but it now chooses between *seven measured options* rather than ordering
-four on quota shape.
+> writes down.**
 
 ### The cross-encoder table, and the generation line inside it
 
