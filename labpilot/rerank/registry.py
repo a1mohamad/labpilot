@@ -75,13 +75,24 @@ RERANK_CHAIN = (
     CLOUDFLARE_RERANK,
 )
 
-# The two Voyage tiers share one API key, one 200M grant and one 10K TPM
-# ceiling, so a rate-limit refusal will almost always hit BOTH - the chain
-# spends two requests to learn one fact. That is accepted rather than
-# overlooked: a 429 costs no tokens, so the price is latency and not quota,
-# and the pair buys real redundancy against a single model being withdrawn or
-# briefly broken. If it ever matters, the fix is pool-aware skipping like
-# llm/chain.py has, not reordering.
+# THE TWO VOYAGE TIERS DO NOT SHARE A RATE-LIMIT BUCKET - measured 2026-09-11,
+# and it overturns what this comment said first. Voyage's dashboard lists them
+# in DIFFERENT rows (rerank-1/2/2.5/3 in one, the -lite family in another), and
+# each row carries its own 3 RPM / 10K TPM. Proven by exhausting one and
+# calling the other: rerank-3 refused on its 4th call in a minute and
+# rerank-3-lite answered immediately.
+#
+# So pairing them roughly DOUBLES the usable rate, 3 RPM each, on top of the
+# redundancy of a second model. The earlier worry - that a 429 on one implies a
+# 429 on the other, so the chain spends two requests to learn one fact - was
+# reasoning from a shared API key, and the key is not the bucket. That is the
+# same mistake `quota_pool` exists to prevent in llm/chain.py: authentication
+# and accounting are different questions, and a field that answers both is
+# wrong for at least one of them.
+#
+# UNVERIFIED: whether the 200M free grant is per model or shared across series
+# 3. The dashboard says "200 million tokens ... for Voyage series 3 models",
+# which reads both ways. Do not budget on either reading until it is measured.
 #
 # NOT MEASURED, and deliberately so. `rerank-3` scored marginally higher than
 # `rerank-3-lite` on the 2026-09-11 probe (0.8594 against 0.8516 on one pair),
