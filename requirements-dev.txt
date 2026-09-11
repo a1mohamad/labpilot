@@ -1,7 +1,13 @@
 -r requirements.txt
 
 httpx2==2.10.0
+# The local cross-encoder, for scripts/local_reranker.py. DEV ONLY: it is
+# ~120MB resident against the 512MB the API and ingest share, and CLAUDE.md
+# keeps it out of the container. test_no_runtime_requirement_would_blow_the
+# _memory_budget fails the build if onnxruntime ever reaches requirements.txt.
+onnxruntime==1.30.0
 pre-commit==4.6.1
 pytest==9.1.1
 responses==0.26.2
 ruff==0.16.2
+tokenizers==0.23.2
