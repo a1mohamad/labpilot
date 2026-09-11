@@ -144,7 +144,12 @@ class PairScores:
                     ranking = RERANKER.rank(query.text, [documents[i] for i in batch])
                     break
                 except RerankError as exc:
-                    if "429" not in str(exc) or attempt == RETRY_LIMIT - 1:
+                    # A 429 is the expected refusal; a read timeout is the VPN
+                    # this project runs behind, and it looks identical to a
+                    # dead provider in the logs. Both are worth one more try,
+                    # and nothing else is.
+                    retryable = "429" in str(exc) or "timed out" in str(exc)
+                    if not retryable or attempt == RETRY_LIMIT - 1:
                         raise
                     print(f"    429, backing off {RETRY_WAIT:.0f}s", flush=True)
                     time.sleep(RETRY_WAIT)

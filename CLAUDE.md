@@ -499,6 +499,12 @@ question with evidence behind it, and Cohere, the current primary, is still unme
 all of it is ORDERING INSIDE THE WINDOW. A run showing r@10 improve would mean a broken measurement.**
 **THE GATE INVERTS TOO: with a bad reranker the best threshold never reranks; with a good one,
 "always rerank" is within noise of the best row. `SKIP_MARGIN` stays None for the second reason.**
+**⚠ THE FLIP RESTS ON ONE CORPUS - the SATURATED one. The `requests` run was STOPPED at 8 of 45 to
+protect Voyage's ONE-TIME 200M grant (an hour of wall clock at 3 RPM). Those 8 are all `constant`
+queries, because `queries.json` is grouped by category - so they confirm the ROUTING finding a
+second time and say nothing about the overall picture. SLICE 8 owes the full run, with Cohere.**
+**A FIXTURE ORDERED BY CATEGORY CANNOT BE TRUNCATED: the first k queries are a category study
+wearing a corpus study's clothes.**
 **THE FINDING THAT OUTLIVES THE NEGATIVE RESULT: reranking WINS on `constant` questions (+0.186 MRR,
 beating both vector 0.354 and BM25 0.423 at 0.540) and COLLAPSES on `structure` (0.926 -> 0.392) -
 the SAME split slice 5 measured for BM25. A cross-encoder and a keyword ranker are both LOCAL
@@ -5951,12 +5957,43 @@ on 17 queries. `SKIP_MARGIN` stays `None` for that reason, not for the earlier
 one: with a reranker worth running, there is almost nothing left for a gate to
 save.
 
+### The second corpus was STOPPED at 8 of 45, on purpose
+
+*Voyage's 200M tokens are a **one-time** grant that never renews, and its
+card-free 3 RPM / 10K TPM makes 45 queries about an hour of wall clock. The
+user called it: do not spend a one-time grant on a heavy measurement. The 8
+queries already paid for were scored instead, and they cost nothing more.*
+
+**And they turn out to be a biased sample, which is the more useful finding.**
+`queries.json` is grouped by category, so `R01`–`R08` are not eight arbitrary
+queries — **they are the entire `constant` block**, the one category reranking
+was already measured to be best at:
+
+| requests, 8 `constant` queries, window 30 | r@1 | r@5 | r@10 | MRR |
+|---|---|---|---|---|
+| vector alone | 0.250 | 0.625 | 0.875 | 0.390 |
+| `bge-reranker-base` | 0.375 | 0.625 | 0.875 | 0.514 **+0.123** |
+| **`rerank-3-lite`** | 0.375 | **1.000** | **1.000** | **0.533 +0.143** |
+
+> **Read this as a second measurement of the ROUTING finding, not as a second
+> measurement of reranking.** On `constant` questions both rerankers help and
+> the better one helps most — which is what the full 45-query breakdown already
+> said (`bge` gained +0.190 there). It cannot be quoted as "reranking helps on
+> requests", because the full run showed `bge` LOSING overall, and losing on the
+> categories these 8 queries contain none of.
+
+**A fixture ordered by category is not a fixture you can truncate.** Any partial
+run of `queries.json` samples one `asks` value, so the first `k` queries are a
+category study wearing a corpus study's clothes. Worth remembering before the
+next expensive measurement is cut short.
+
 ### What this does NOT establish, stated before anyone quotes it
 
-- **One corpus.** `quora` is the **saturated** fixture this file has warned
-  about since 2026-09-07: 17 queries, `r@5` already 0.941, and a 30-document
-  window that is 37% of the whole corpus. The `requests` run is the one that
-  matters and it is 45 queries at ~90 seconds each.
+- **The provider flip rests on ONE corpus.** `quora` is the **saturated**
+  fixture this file has warned about since 2026-09-07: 17 queries, `r@5`
+  already 0.941, and a 30-document window that is 37% of the whole corpus. The
+  full `requests` run is owed, and it belongs to slice 8 — where Cohere must be
+  measured anyway, so all three can be scored in one pass.
 - **One embedder, one window.** 30 documents, not the 50 the pipeline retrieves.
 - **Cohere is still unmeasured**, and it is the chain *primary*. Its 1,000 calls
   a month are one bucket shared with chat and embed, and a run is 45 calls.
