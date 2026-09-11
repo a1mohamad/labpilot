@@ -34,6 +34,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**SLICE 5 BUILT — the keyword half**](#slice-5--done-2026-09-08) ·
 [**4 knobs, 3 lost fusion methods**](#the-four-hyperparameters-and-the-three-methods-that-were-lost--2026-09-07) ·
 [**SLICE 6 — the theory + the reranking budget**](#slice-6--the-theory-recorded-2026-09-09) ·
+[**SLICE 6 DONE — reranking HURT, and why that is a routing finding**](#slice-6--done-2026-09-11-built-measured-and-not-switched-on) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -476,14 +477,50 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5 DONE. SLICE 6 TEACHING IS COMPLETE - CODE IS NEXT.**
-**THE LESSON IS FINISHED, 2026-09-09, all three parts: (1) bi-encoder vs cross-encoder and why the
-embedder cannot do this job · (2) the four providers, their real quota shape, and the three traps ·
-(3) how to measure a reranker and what slice 6 may NOT conclude. Nothing is owed on teaching.**
-**THE NEXT ACTION IS CODE, written with its tests in the same commit, per this file's own rule -
-and MUTATION-TESTED, because a reranker slice is full of invariants (a layer assignment, a chain
-order, a token cap, a "never call Cohere in tests" guard). The `mutation-test` skill covers it.**
-**SLICE 6 THEORY RECORDED 2026-09-09 — read [it](#slice-6--the-theory-recorded-2026-09-09) before writing a line.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 DONE. SLICE 7 IS NEXT - the new selector.**
+**SLICE 6 IS BUILT, MEASURED AND DELIBERATELY NOT SWITCHED ON, 2026-09-11. `labpilot/rerank/` is
+the seventh package and the fifth adapter: three cross-encoders proven live, a chain that ends in
+`skip` instead of an exception, and the margin gate in `retrieval/`. Nothing calls any of it -
+which is what "off" means, exactly as slice 5's keyword channel is off.**
+**THE MEASUREMENT SAID SOMETHING NOBODY PLANNED FOR: with `bge-reranker-base`, RETRIEVAL GETS
+WORSE. Four runs, two corpora, two embedders - r@10 0.933 -> 0.711 and MRR 0.646 -> 0.476 on the
+45-query corpus. Headroom captured: -100%, -infinity, -500%, -86%. The best skip-gate threshold is
+the one that NEVER reranks, on 3 of 4 runs. See
+[slice 6 DONE](#slice-6--done-2026-09-11-built-measured-and-not-switched-on).**
+**AND THEN IT FLIPPED. A BETTER RERANKER HELPS, CLEARLY. Same corpus, same 30-document window,
+same instrument - only the model changed: `rerank-3-lite` took r@1 from 0.412 to 0.588 (+43%
+relative) and MRR from 0.608 to 0.725, where `bge-reranker-base` took them DOWN to 0.353 and 0.520.
+The spread between two rerankers is THREE TIMES the headroom this slice was chasing.**
+**SO "DOES RERANKING HELP" IS NOT A QUESTION ABOUT RERANKING. It is a question about one model, and
+the candidate chain order recorded in the slice 6 theory - local, Cloudflare, Voyage, Cohere - would
+have put the one model measured to HURT retrieval at the front. Chain 3's order is now a QUALITY
+question with evidence behind it, and Cohere, the current primary, is still unmeasured.**
+**The gain lands exactly where theory says it must: r@10 does not move at all and r@50 cannot, so
+all of it is ORDERING INSIDE THE WINDOW. A run showing r@10 improve would mean a broken measurement.**
+**THE GATE INVERTS TOO: with a bad reranker the best threshold never reranks; with a good one,
+"always rerank" is within noise of the best row. `SKIP_MARGIN` stays None for the second reason.**
+**THE FINDING THAT OUTLIVES THE NEGATIVE RESULT: reranking WINS on `constant` questions (+0.186 MRR,
+beating both vector 0.354 and BM25 0.423 at 0.540) and COLLAPSES on `structure` (0.926 -> 0.392) -
+the SAME split slice 5 measured for BM25. A cross-encoder and a keyword ranker are both LOCAL
+relevance models; a whole-chunk embedding answers a different question. That is a ROUTING signal,
+and it is now the third independent measurement pointing the same way.**
+**ONCE A RERANKER RUNS, THE EMBEDDER ALMOST STOPS MATTERING: reranked scores were identical to three
+decimals across codestral and google. So slice 8's rule "rank embedders on recall@10" holds ONLY
+while reranking is off; with it on, rank on recall@50 alone.**
+**MEASUREMENT 4: slice 5's `wRRF` gain REPRODUCES (MRR 0.662 vs vector's 0.646) and then VANISHES
+under reranking (r@10 +0.000). Fusion and reranking cannot be decided separately.**
+**THE r@1 / MRR CONFUSION IS SETTLED: `0.645` was the MRR. True r@1 is 0.412-0.533, so the top slot
+is wrong about half the time - a bigger gap than this file claimed.**
+**TWO VOYAGE FACTS IN THIS FILE WERE WRONG, both fixed from its own dashboard. A card-free
+account gets 3 RPM and 10K TPM, not "4M TPM / 2,000 RPM" - that was the BILLED tier. And the
+free 200M-token grant covers "Voyage series 3 models", so the `rerank-2.5-lite` this file chose
+on 2026-08-11 was never covered by it. THE REGISTRY NOW USES `rerank-3-lite`, proven live.**
+**The 10K TPM is per-minute and counts a call WHOLE, so a 50-document call (~16,900 tokens) is
+REFUSED however long you wait - 40 refused, 30 passes. Voyage cannot serve SEARCH_LIMIT at all
+on a free account: the Groq shape, alive but unreachable for the real request size.**
+**`scripts/score_rerank.py` repeats the whole measurement and VALIDATES ITSELF: it proves the
+cross-encoder is pointwise (drift < 1e-6) before trusting its per-pair cache, and reports that r@50
+did not move. 654 passed, 32 skipped, 1 xfailed. 14 of 14 mutations real, 12 firing alone.**
 **The reranker CANNOT batch across queries: no provider's `query` field takes more than one string,
 and `s(q,d)` does not factorise. Embedding CAN batch and already does (96/request). So `N` claims
 cost `N` rerank calls — and the only way to batch is to RUN THE MODEL YOURSELF, which is what makes
@@ -558,7 +595,7 @@ is refused, `embed_batches()` returns all 96 vectors in two requests.**
 **`DATABASE_URL` now exists in `.env` — SESSION POOLER, port 5432. Direct connection is IPv6-only and DEAD from here.**
 **Read [slice 4, the theory](#slice-4--the-theory-recorded-2026-09-03) then
 [slice 4, what is built](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path).**
-**Last updated 2026-09-09 (nineteenth session). Slices 1-5 are MERGED into `main`.**
+**Last updated 2026-09-11 (twentieth session). Slices 1-5 are MERGED into `main`; slice 6 is on `feat/reranking`, eleven commits, pushed.**
 **Session 19 wrote NO source: it taught slice 6 and verified the reranker budget from the
 providers' own docs. 595 passed, 28 skipped, 1 xfailed, confirmed at the start of it.**
 **SLICE 5 IS MEASURED AND DECIDED; the three pieces of code are NOT written yet —
@@ -566,59 +603,64 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ▶ SLICE 6 STARTS HERE — reranking, and the theory is already written
+> > ## ▶ SLICE 7 STARTS HERE — the new selector, and `select()` finally dies
 > >
-> > **The teaching is DONE — do not re-teach it.** All three lessons were
-> > delivered on 2026-09-09: the mechanism (bi-encoder vs cross-encoder), the
-> > providers and their traps, and how to measure. **The next action is code
-> > plus tests in the same commit, then mutation testing.**
+> > **Slice 6 is CLOSED.** Read
+> > [slice 6 DONE](#slice-6--done-2026-09-11-built-measured-and-not-switched-on)
+> > before anything else: it holds the code, four measurements, two eliminated
+> > confounds, and a negative result that must not be over-read.
+> > **Do not rebuild `rerank/`.** Three cross-encoders are proven live, the
+> > chain ends in `skip`, the gate is in `retrieval/gate.py`, and **nothing
+> > calls any of it** — which is what "off" means here, exactly as it means for
+> > slice 5's keyword channel.
 > >
-> > **Read [the slice 6 theory](#slice-6--the-theory-recorded-2026-09-09)
-> > FIRST.** It holds the mechanism, the verified provider facts, four ways to
-> > spend less, the decision ladder, and **the measurement slice 6 owes before
-> > it closes**. It also corrects two counting errors this file used to carry.
-> >
-> > **Slice 5 is CLOSED.** Read
-> > [slice 5 DONE](#slice-5--done-2026-09-08) for what exists and what it cost,
-> > then [the decision](#slice-5-measured--2026-09-07-vector-ships-wrrf-is-a-named-candidate).
-> > **Do not rebuild any of it.** The tsvector column, `store/keyword.py` and
-> > `retrieval/fusion.py` are written, tested and mutation-verified, and are
-> > deliberately unreachable — nothing calls them, which is what "off" means.
-> >
-> > **Why slice 6 is next, in one line from our own numbers:**
+> > **The one-line summary of slice 6, and it is not what anyone expected:**
 > >
 > > ```
-> > recall@50  0.994      the answer is nearly always inside the window
-> > recall@10  0.930      and the model only ever sees ~10 of them
+> > vector alone      r@10 0.933   MRR 0.646      requests / codestral
+> > + rerank          r@10 0.711   MRR 0.476      bge-reranker-base
 > > ```
 > >
-> > **The headroom is 0.064, not 0.35.** START HERE used to quote
-> > `recall@1 0.645` against `recall@50 0.994` — but `0.645` is the **MRR**
-> > value from the slice 5 table, and `MRR > r@1` whenever any query ranks
-> > 2nd-5th, which `r@5 = 0.871` proves. `score_hybrid.py` reports both
-> > separately, so **one run settles the true `r@1`** — do it in measurement 1.
+> > **Reranking made it worse on all four runs.** That is a measured fact about
+> > `bge-reranker-base`, and it is NOT a fact about reranking: it is the weakest
+> > of the three providers and the only one that can afford 124 calls. Cohere is
+> > unmeasured because its 1,000/month is the chain primary's own bucket, and
+> > Voyage allows roughly one 50-document call per 70 seconds free.
 > >
-> > **The four things slice 6 must measure**, all with the LOCAL model so they
-> > cost nothing and can be repeated: does reranking help at all · how many
-> > chunks to send (5 / 10 / 20 / all 50) · is the skip-gate worth having ·
-> > and **does slice 5's `wRRF` gain survive with the reranker on**.
+> > **What slice 7 must do.** Delete `retrieval/select()` — the 50/50 positional
+> > split — and replace it with the real selector. Three things this file
+> > already owes it, and all three are easy to miss:
 > >
-> > **Read [the reranker chain](#chain-3--reranker-true-fallback) before
-> > anything else.** Four things there are easy to get wrong:
-> > its order has **never been measured** and is a quota-shape guess, so slice
-> > 8 owns it · **Cohere is 1,000 CALLS a MONTH** shared with embedding, so
-> > tests must use the local ONNX model and never the real one · **Cohere bills
-> > per call up to 100 documents and we send 50**, so half of every paid call is
-> > wasted · and a chunk over **510 tokens is auto-split and billed twice**,
-> > which the chunk-cap fix of 2026-09-05 now guarantees cannot happen.
+> > - **Fill A before B.** Dropping part of B is recoverable, because A still
+> >   says what to look for and the answer can be "not found". Dropping part of
+> >   A loses a statement we never learn exists, silently.
+> > - **The outline must list FILES, not chunks.** A 2,000-chunk repository
+> >   costs ~40,000 tokens of headers — larger than the whole prompt budget.
+> >   This is already a reachable 413, not a future problem.
+> > - **Route by question type.** Three independent measurements now say the
+> >   same thing: `constant` questions ("what is this value set to") want a
+> >   local relevance model, `structure` questions want the embedding. Slice 6's
+> >   breakdown is the third.
 > >
-> > **Two things slice 6 must not do.** Do not measure on the quora fixture
-> > alone and call the order settled — that is
-> > [the saturated-fixture trap](#the-fixture-is-saturated-so-it-may-reject-and-may-not-confirm--2026-09-07),
-> > and it already cost us one wrong conclusion this step. And **do not invent a
-> > number for `r`** (rerank calls per report): it is `N + 1` with `N` unknown
-> > until Step 2 exists, and session 19 produced four different fictional values
-> > for it before admitting that.
+> > **⚠ SLICE 7 WILL BREAK `test_error_boundaries` THE MOMENT IT WIRES ANYTHING.**
+> > That is the guard working, and it was written for exactly this. `api/` today
+> > catches nothing from `store/`, `embed/` or `rerank/`, so wiring them sends
+> > `UnknownArtifact`, `ModelMismatch`, `ConnectionFailed`, `NotConfigured`,
+> > `EmbeddingError` and `RerankError` straight to the 500 handler — reporting
+> > the user's input as OUR bug. Map each one to an `ApiError`, or name it in
+> > `ALLOWED_TO_ESCAPE` with the reason. **Never delete the test.** The
+> > checklist is in [the slice 4 closing review](#the-slice-4-closing-review--2026-09-05).
+> >
+> > **Do not switch reranking on in slice 7.** On today's only measurement it
+> > costs 0.17 MRR. Whether it ships at all is slice 8's decision, taken
+> > together with the embedder and with fusion — because slice 6 measured that
+> > **fusion's gain vanishes under reranking**, so the three cannot be decided
+> > separately.
+> >
+> > **Three numbers in this file were corrected by measurement on 2026-09-11.**
+> > The true `r@1` is 0.412-0.533 and `0.645` was always the MRR · Voyage gives
+> > **3 RPM / 10K TPM** on a card-free account, not "4M TPM / 2,000 RPM" ·
+> > Cohere's headers carry a second ceiling, `x-trial-endpoint-call-limit: 10`.
 > >
 > > ## ✅ SLICE 4 IS DONE — do not restart it
 > >
@@ -2114,7 +2156,7 @@ slice 4 says *stuffed*, and it means retrieval currently changes nothing at all.
 | 3 | **Read a document** | PDF, Word, notebook and other languages get real boundaries | medium |
 | 4 | **pgvector** | ~2,000 chunks go in and come back out unchanged | **heavy** — vector databases, ANN indexes |
 | 5 | **Cosine + keyword search** | a query returns the right chunks, the `side` filter works, and BM25 catches identifier queries like `D2` | medium |
-| 6 | **Reranking** | the top 50 become the right top 10, *skip* still works, **and a measurement decides whether it helps at all, how many chunks to send, and whether the gate is worth having** | **heavy** — bi-encoder vs cross-encoder |
+| 6 | ~~**Reranking**~~ ✅ **DONE 2026-09-11** | built, measured, and **NOT switched on**: `bge-reranker-base` made retrieval WORSE on all four runs, and the best gate is the one that never reranks | **heavy** — bi-encoder vs cross-encoder |
 | 7 | **The new selector** | `select()` is deleted; A fills before B; the outline lists **files** | light |
 | 8 | **Measure** | the same fixture, then a **second** fixture in another domain — **the embedder order, the reranker order, AND exact-vs-HNSW are all settled here, on real numbers** | none — it is scoring |
 
@@ -5748,6 +5790,428 @@ re-checking at Step 3.
 Sources for the provider facts: Cohere Rerank API reference and rate-limits
 page, Voyage reranker documentation and FAQ, Cloudflare Workers AI pricing.
 
+## Slice 6 — DONE 2026-09-11: built, measured, and NOT switched on
+
+*The code is written, tested and mutation-verified. The measurement then said
+something nobody planned for, and then said the opposite: **the cheapest
+reranker makes retrieval clearly WORSE, and a better one makes it clearly
+BETTER.** Same corpus, same window, same instrument — only the provider
+changed. So the question slice 6 was built to answer, "does reranking help",
+turns out not to be a question about reranking at all.*
+
+*It still ships the way slice 5's keyword channel ships — built, unreachable,
+nothing calling it — because the provider that helps cannot serve our window on
+a free account and the one that can, hurts. **That is slice 8's decision, and
+it now has real numbers under it instead of a quota-shape argument.***
+
+**654 passed, 32 skipped, 1 xfailed, ruff clean. 14 of 14 mutations verified
+real, 12 of them firing alone.** Branch `feat/reranking`, eleven commits.
+
+### What shipped
+
+| module | holds |
+|---|---|
+| `rerank/contracts.py` | `Ranking` — an order, its scores, and which model produced it |
+| `rerank/errors.py` | `RerankError` |
+| `rerank/defaults.py` | `MAX_DOCUMENTS` 100 · `MAX_DOCUMENT_TOKENS` 510 · `RERANK_TOP_N` 10 |
+| `rerank/base.py` | `HTTPReranker` — the template, written from three live probes |
+| `rerank/cohere.py` · `voyage.py` · `cloudflare.py` | the three cross-encoders |
+| `rerank/registry.py` | `RERANK_CHAIN`, in CLAUDE.md's order, recorded as unmeasured |
+| `rerank/chain.py` | `rerank()` and `skip()` |
+| **`retrieval/gate.py`** | `margin()` and `should_rerank()` — **core**, not the adapter |
+| `scripts/score_rerank.py` | the instrument, and it validates itself |
+
+`rerank/` is the **seventh** package and the fifth adapter. `test_architecture`
+fired the moment the folder appeared — *"['rerank'] belong to no layer"* —
+exactly as the slice 6 notes predicted.
+
+### Probing first found things the docs do not say
+
+All three providers were probed live **before a line was written**, which is
+the discipline slice 5 earned. Six findings, and three changed the code:
+
+| probe | result | consequence |
+|---|---|---|
+| **a list of queries** | **400 · 400 · 422** | the no-batching rule is MEASURED now, on three independent providers, not read from docs |
+| empty documents | Voyage 400, Cohere 400, **Cloudflare 500** | a caller's bug becomes *their* 500, so `_check_inputs` refuses locally |
+| Cloudflare `top_k` | truncates the body, **identical neurons** | cost follows INPUT, never output — `top_k` buys nothing but a smaller response |
+| Cohere, 3 documents | `search_units: 1` | per-CALL billing confirmed, and we send 50 of a free 100 |
+| Cohere headers | `x-endpoint-monthly-call-limit: 1000` **and `x-trial-endpoint-call-limit: 10`** | a second ceiling this file never recorded |
+| unknown field | Voyage **400**, Cloudflare **200 and ignored** | the embedder asymmetry, again: prefer the provider that refuses |
+
+And the published neuron rate is exact, not approximate: 87 prompt tokens cost
+**0.024589** neurons, which is `87/1e6 × 283` to five figures. So a real
+50-document call is **3.52 neurons of 10,000 a day ≈ 2,840 calls daily**.
+
+### The instrument validates itself before anything is believed
+
+Two checks, both cheap, and the first one licenses the whole cache design.
+
+**Is a cross-encoder pointwise?** The per-pair cache is only valid if the other
+documents in a call cannot change a pair's score. Measured by scoring one pair
+inside a 2-document call and a 10-document call:
+
+```
+Cloudflare   drift 2.4e-07 … 6.3e-07
+Voyage       drift 0.0
+```
+
+So yes, pointwise — one forward pass per `(query, document)`, no normalisation
+across the batch. **Had a provider normalised, every number below would have
+been quietly wrong**, which is the identical-vectors bug of slice 4 wearing new
+clothes. `score_rerank.py` refuses to continue if the drift exceeds `1e-6`.
+
+**Can `r@50` move?** It cannot: a reranker only reorders what it was given. It
+is reported on every run and was `True` on all four. A free check that says
+*"the measurement is broken, not the reranker"* whenever it fails.
+
+### MEASUREMENT 1 — `bge-reranker-base` hurt, on every run
+
+**Read the model name, not the word "reranking".** Cloudflare's
+`bge-reranker-base` over the dense top-50 — four runs, two corpora, two
+embedders. A better model is measured two sections below and goes the other
+way:
+
+| corpus / embedder | | r@1 | r@5 | r@10 | r@50 | MRR |
+|---|---|---|---|---|---|---|
+| quora / codestral | vector | **0.412** | **0.941** | **0.941** | 1.000 | **0.608** |
+| | + rerank | 0.353 | 0.824 | 0.882 | 1.000 | 0.528 |
+| quora / google | vector | **0.529** | **0.941** | **1.000** | 1.000 | **0.674** |
+| | + rerank | 0.353 | 0.824 | 0.882 | 1.000 | 0.527 |
+| requests / codestral | vector | **0.533** | **0.800** | **0.933** | 0.978 | **0.646** |
+| | + rerank | 0.311 | 0.644 | 0.711 | 0.978 | 0.476 |
+| requests / google | vector | **0.533** | **0.800** | **0.844** | 1.000 | **0.650** |
+| | + rerank | 0.311 | 0.644 | 0.711 | 1.000 | 0.477 |
+
+**Headroom captured: −100%, −∞, −500%, −86%.** Not a tie, not noise: a drop of
+0.17 MRR on 45 queries is the "large regression" that
+[the saturated-fixture rule](#the-fixture-is-saturated-so-it-may-reject-and-may-not-confirm--2026-09-07)
+explicitly licenses this fixture to report.
+
+**And one row is worth more than the rest.** On `requests` the reranked numbers
+are the **same to three decimals for both embedders** — 0.311 / 0.644 / 0.711,
+MRR 0.476 against 0.477:
+
+> **Once a reranker runs, it decides the order and the embedder almost stops
+> mattering.** The embedder is then only responsible for `recall@50` — getting
+> the answer into the window at all.
+
+That has a direct consequence for slice 8, and it inverts one of its rules: the
+embedder ranking on `recall@10` and `MRR` is the right criterion **only if
+reranking stays off.** If it is ever switched on, rank embedders on `recall@50`
+alone and spend the effort on the reranker instead.
+
+### THE NEGATIVE RESULT WAS ABOUT THE PROVIDER — measured 2026-09-11
+
+*This is the most important result of slice 6, and the project nearly did not
+get it. Every number above was produced by the reranker we could afford to run
+124 times, and the temptation was to write "reranking does not help us" and
+close the slice. **The theory section forbade exactly that** — "may NOT
+conclude which provider is best" — so a second provider was measured.*
+
+`rerank-3-lite` cannot take 50 of our documents on a free account, so **both
+providers were re-run at a 30-document window** — same corpus, same embedder,
+same candidate set, same instrument. Only the model changed:
+
+| quora / codestral, window 30 | r@1 | r@5 | r@10 | MRR |
+|---|---|---|---|---|
+| vector alone | 0.412 | **0.941** | **0.941** | 0.608 |
+| `bge-reranker-base` (Cloudflare) | 0.353 **−0.059** | 0.824 | 0.824 | 0.520 **−0.088** |
+| **`rerank-3-lite` (Voyage)** | **0.588 +0.176** | 0.882 | **0.941** | **0.725 +0.117** |
+
+**A 43% relative gain in getting the right chunk FIRST, from the same 30
+candidates the bi-encoder had already chosen.** And on the same data the cheap
+model loses 14%. The spread between two rerankers is far larger than the spread
+between reranking and not reranking.
+
+> **"Does reranking help?" is not a question with an answer. It is a question
+> about a specific model, and our two differ by 0.205 MRR — three times the
+> whole headroom this slice was chasing.**
+
+**Where the gain lands is exactly where theory said it would.** `r@10` does not
+move at all (0.941 both ways) and `r@50` cannot move by construction. The entire
+gain is at `r@1` and `MRR` — **ordering inside the window**, which is the only
+thing a reranker is able to do. A result that showed `r@10` improving would have
+meant the measurement was broken.
+
+**And it inverts the gate.** With `bge`, the best threshold was the one that
+never reranked. With `rerank-3-lite`:
+
+```
+tau      skipped     MRR
+0.000    17/17      0.607     <- never rerank = vector alone
+0.030    10/17      0.708
+0.100     3/17      0.735     <- best
+none      0/17      0.725     <- always rerank
+```
+
+**The gate stops being a way to avoid a bad reranker and becomes a small
+optimisation on a good one** — 0.735 against 0.725, which is well inside noise
+on 17 queries. `SKIP_MARGIN` stays `None` for that reason, not for the earlier
+one: with a reranker worth running, there is almost nothing left for a gate to
+save.
+
+### What this does NOT establish, stated before anyone quotes it
+
+- **One corpus.** `quora` is the **saturated** fixture this file has warned
+  about since 2026-09-07: 17 queries, `r@5` already 0.941, and a 30-document
+  window that is 37% of the whole corpus. The `requests` run is the one that
+  matters and it is 45 queries at ~90 seconds each.
+- **One embedder, one window.** 30 documents, not the 50 the pipeline retrieves.
+- **Cohere is still unmeasured**, and it is the chain *primary*. Its 1,000 calls
+  a month are one bucket shared with chat and embed, and a run is 45 calls.
+- **It does not reopen fusion.** Measurement 4 showed `wRRF`'s gain vanishing
+  under `bge`; whether it survives under a reranker that actually orders well is
+  a different question, and an unasked one.
+
+### What it DOES establish, and it changes slice 8's job
+
+1. **The candidate chain order in the slice 6 theory would have been actively
+   harmful.** That order — local, then **Cloudflare**, then Voyage, then Cohere
+   — was argued from quota shape, and quota shape put the one model we have
+   measured to *hurt* retrieval at the front of the chain.
+2. **Chain 3's order is now a quality question with evidence**, not a budget
+   question. Slice 8 owns it, and it must measure Cohere before deciding.
+3. **"Cheapest instrument" and "best instrument" are different choices**, and
+   slice 6 needed both: Cloudflare's ~2,840 calls a day made 124 measurements
+   affordable, and Voyage's stronger model made the result mean something.
+
+> **Measure the thing you will ship, not only the thing you can afford to
+> measure.** The affordable instrument answered a different question, and it
+> answered it confidently enough to have closed the slice on a false premise.
+
+### MEASUREMENT 2 — how many chunks to send
+
+On `requests / codestral`, the delta at every window:
+
+```
+   window   before    after    delta
+    top-1    0.533    0.311   -0.222
+    top-5    0.800    0.644   -0.156
+   top-10    0.933    0.711   -0.222
+   top-20    0.978    0.889   -0.089
+   top-50    0.978    0.978   +0.000
+```
+
+**There is no window at which this reranker helps.** The loss shrinks as the
+window widens, which is the shape you would expect from a ranker that is
+shuffling rather than sorting: the wider the window, the less its order matters.
+
+So `RERANK_TOP_N = 10` is shipped as a **number with no evidence behind it
+yet** — the question "how many to send" cannot be answered from a reranker that
+should not be sending any. It is the first thing to re-measure once a provider
+that helps is found.
+
+### MEASUREMENT 3 — the gate, and the answer is "skip everything"
+
+Sweeping the dense margin `m = s₁ − s₂`. `τ = 0.000` means *skip whenever the
+best hit leads at all*, which is effectively always:
+
+| τ | quora/codestral | quora/google | requests/codestral | requests/google |
+|---|---|---|---|---|
+| **0.000** (skip all) | **0.608** | **0.674** | **0.646** | **0.650** |
+| 0.005 | 0.652 | 0.683 | 0.619 | 0.593 |
+| 0.010 | 0.638 | 0.616 | 0.565 | 0.529 |
+| 0.020 | **0.716** | 0.621 | 0.569 | 0.562 |
+| 0.030 | 0.685 | 0.621 | 0.547 | 0.508 |
+| 0.050 | 0.639 | 0.582 | 0.541 | 0.477 |
+| 0.100 | 0.592 | 0.582 | 0.498 | 0.477 |
+| none (rerank all) | 0.528 | 0.527 | 0.476 | 0.477 |
+
+*(MRR. The best row per run is bold where it is not `τ = 0`.)*
+
+**The best gate is the one that never reranks** — on 3 of 4 runs. The two
+exceptions sit on the 17-query corpus and the sweep there is **non-monotonic**
+(0.652 → 0.638 → 0.716 → 0.685 → 0.639), which is the signature of noise on a
+tiny sample. Picking `τ = 0.02` because it is the maximum would be fitting a
+threshold to 17 queries.
+
+**So `SKIP_MARGIN` ships as `None`, meaning the gate is OFF.** That is not
+indecision: a threshold here is **calibrated, never chosen**, and what the
+calibration produced is *"this reranker should not run"* rather than a number.
+The mechanism the gate was built for is still supported, and by our own data —
+reranking does worst exactly where the first stage was most confident.
+
+### MEASUREMENT 4 — slice 5's fusion gain does not survive
+
+`requests / codestral`, with the BM25 channel on:
+
+```
+vector alone                 r@1 0.533  r@5 0.800  r@10 0.933  MRR 0.646
+wRRF k=5 w=0.15              r@1 0.556  r@5 0.822  r@10 0.933  MRR 0.662   <- slice 5 reproduced
+vector          -> rerank    r@1 0.311  r@5 0.644  r@10 0.711  MRR 0.476
+wRRF k=5 w=0.15 -> rerank    r@1 0.311  r@5 0.622  r@10 0.711  MRR 0.472
+```
+
+**Two things at once.** Slice 5's finding reproduces independently — `wRRF`
+really does beat vector alone, by about one query. And **the gain vanishes the
+moment a reranker runs**: `r@10 +0.000`, `MRR −0.005`.
+
+This file predicted it in those words — *"the gain is real, small, and in the
+region slice 6 overwrites"* — and it is now measured rather than reasoned.
+Fusion's value therefore depends entirely on whether reranking ever ships, and
+the two decisions cannot be taken separately. Both belong to slice 8.
+
+### The finding that outlives the negative result: it is a ROUTING signal
+
+Breaking the `requests` result down by the `asks` label the query file carries:
+
+| asks | n | vector MRR | + rerank | delta |
+|---|---|---|---|---|
+| **constant** | 10 | 0.354 | **0.540** | **+0.186** |
+| **error** | 5 | 0.600 | 0.613 | +0.013 |
+| api | 7 | 0.456 | 0.289 | −0.167 |
+| behaviour | 14 | 0.787 | 0.530 | −0.258 |
+| **structure** | 9 | **0.926** | 0.392 | **−0.534** |
+
+**Now compare it with what slice 5 measured for BM25, on the same corpus:**
+
+| asks | vector | bm25 | rerank |
+|---|---|---|---|
+| constant | 0.354 | 0.423 | **0.540** |
+| error | 0.600 | 0.612 | 0.613 |
+| behaviour | 0.787 | 0.657 | 0.530 |
+| api | 0.456 | 0.175 | 0.289 |
+| structure | **0.926** | 0.426 | 0.392 |
+
+**The cross-encoder and BM25 win on the same question type and collapse on the
+same one.** That convergence is the useful result of this slice, and it has a
+mechanism behind it rather than only a number:
+
+> **A reranker and a keyword ranker are both LOCAL relevance models** — they ask
+> *"does this document answer this query?"*. A whole-chunk embedding answers a
+> different question, *"what is this chunk about?"*, and that is what a
+> `structure` query needs. So they are not three grades of the same tool; they
+> are two different tools.
+
+And `constant` is the `CLIP_NORM` shape — *"what is this value set to"* — which
+this file has called out since slice 1 as a distinct retrieval need. Reranking
+beats **both** vector (0.354) and BM25 (0.423) there, at **0.540**.
+
+**This is the third independent time the same split has appeared**: the embedder
+missed `D2` at rank 46, BM25 rescued it, and now the cross-encoder ranks that
+family best of all. The conclusion is not "pick the best ranker". It is
+**route by question type**, which is already a rule in this file and now has
+three measurements under it.
+
+### Two confounds tested and eliminated
+
+**The chunk header is not the problem.** We send `chunk.embed_text` — header
+plus text — and a header like `[adapters.py · class HTTPAdapter · lines 80-120]`
+could plausibly be noise to a model that reads query and document together.
+Measured on `requests / codestral` with `--no-header`:
+
+```
+with header     r@10 0.711   MRR 0.476
+without header  r@10 0.711   MRR 0.469
+```
+
+Identical at `r@10`, slightly *worse* without. So the header is not the cause,
+and it is not worth stripping.
+
+**The corpus ratio is a real limit, and it is named rather than hidden.** The
+top-50 window is **61% of the 82-chunk quora corpus** and **15% of the
+335-chunk requests corpus**. At the 1,000–10,000 chunk artifacts this project
+actually targets it would be **0.5–5%**. Reranking 61% of a corpus is not the
+production task, and every number above inherits that caveat.
+
+### Provider corrections, measured and then confirmed on Voyage's own dashboard
+
+**Two things this file recorded about Voyage were wrong, and both matter.**
+
+**1. The rate limit was the BILLED tier's.** Platform Accounts claimed
+*"4M TPM / 2,000 RPM"*. A card-free account gets **3 RPM and 10K TPM** — read
+from Voyage's own Rate Limits dashboard, and stated in its 429:
+
+> *"You have not yet added your payment method … reduced rate limits of 3 RPM
+> and 10K TPM."*
+
+**2. The 200M free grant does not cover the model we chose.** The same page
+says the first 200 million tokens are free **"for Voyage series 3 models"**.
+CLAUDE.md picked `rerank-2.5-lite` on 2026-08-11 — series 2.5, and therefore
+outside the grant. `rerank-3-lite` and `rerank-3` both exist and both answer,
+probed live 2026-09-11. **The registry now uses `rerank-3-lite`**: a generation
+newer *and* the one the free tokens actually pay for.
+
+**And pacing does not rescue it, which took two wrong hypotheses to learn.**
+The limit is *"requests or tokens in the most recent minute"*, so a single call
+counts against it whole — a call bigger than 10K tokens is refused however long
+you wait. Measured on the `requests` corpus, each after a clean 90-second wait:
+
+| documents | est. tokens | result |
+|---|---|---|
+| 50 | ~16,900 | **refused** |
+| 40 | ~13,100 | **refused** |
+| **30** | ~8,900 | **passed** |
+
+> **Voyage cannot serve our `SEARCH_LIMIT = 50` window on a card-free account
+> at all.** Not slowly — *not at all*.
+
+That is the Groq shape exactly: alive, and unreachable for the real request
+size. The chain already handles it correctly — `RerankError` falls through to
+Cloudflare — at a cost of one wasted request per call, which is the argument
+slice 8 needs when it revisits the order.
+
+**A pre-flight token check was considered and REFUSED**, and the reason is this
+file's own rule that *an estimate is not a budget*. Our `chars / 3` estimator
+puts a 50-chunk quora call at ~11,400 tokens, which **passes**, and a 40-chunk
+requests call at ~13,100, which **fails**. An estimator that straddles the real
+boundary in both directions would refuse working calls to avoid wasting one
+request in sixteen thousand. Check the threat before writing the guard.
+
+**The other two providers needed no correction, only completion.** Cloudflare's
+published 283 neurons per 1M input tokens is exact to five figures, and Cohere's
+headers carry a second ceiling nobody had recorded —
+`x-trial-endpoint-call-limit: 10` beside the monthly 1,000.
+
+> **A provider's published rate limit is not your account's rate limit, and its
+> free grant may not cover the model you picked.** Both facts were sitting on
+> the provider's own dashboard the whole time; neither is in its API.
+
+### What slice 6 deliberately did NOT do
+
+- **Nothing calls `rerank`.** Same as slice 5's keyword channel: no flag, no
+  setting, because a flag nobody reads is dead configuration. Slice 7 wires it
+  if slice 8 says it should run at all.
+- **`ministral-3b-2512` is not built.** Tier 4 of chain 3 is LLM-as-reranker — a
+  different mechanism needing a prompt, a parse and its own failure modes,
+  reached only when all three cross-encoders are gone. Recorded unbuilt rather
+  than half-built, like HNSW on the shelf.
+- **The local ONNX model is not installed.** CLAUDE.md preferred it as the
+  measurement instrument; Cloudflare's ~2,840 calls a day plus a per-pair cache
+  gave the same repeatability with no 200MB dev install and no model download.
+  It is still the only option that can **batch**, so it stays on slice 8's list.
+- **No `api/` test, and `test_error_boundaries` stayed green** — correctly,
+  because `api/` does not import `rerank` yet. It will fire the day slice 7 does,
+  which is the guard working.
+
+### What slice 6 may NOT conclude, restated against its own results
+
+| may conclude | may NOT conclude |
+|---|---|
+| `bge-reranker-base` hurts our retrieval, on 2 corpora × 2 embedders | **that reranking hurts** — one provider, and the weakest of three |
+| the gain and the loss are question-type shaped | that the chain-3 order is settled — it is still unmeasured |
+| fusion's gain does not survive reranking | that fusion is dead — it is alive and measured with rerank OFF |
+| a cross-encoder is pointwise, so pairs cache | the real value of `r` — that needs Step 2 |
+| Voyage cannot serve a per-query reranker free | how `RERANK_TOP_N` should be set |
+
+### The r@1 / MRR question is SETTLED
+
+START HERE reported `recall@1 0.645` against `recall@50 0.994`, and the slice 5
+table reported `MRR 0.645`. They could not both be that value. Measured:
+
+| run | true r@1 | MRR |
+|---|---|---|
+| quora / codestral | **0.412** | 0.608 |
+| quora / google | **0.529** | 0.674 |
+| requests / codestral | **0.533** | 0.646 |
+| requests / google | **0.533** | 0.650 |
+
+**`0.645` was the MRR, mislabelled as `recall@1`.** The true `r@1` is 0.412 to
+0.533 depending on the run, so the top slot is wrong **half the time** — a
+bigger gap than the file claimed, and the strongest remaining argument for
+finding a reranker that works.
+
 ### Formats are Step 1, not Step 2, and the reason is permanence
 
 > **The chunker is permanent. Chunk boundaries decide what is possible, and
@@ -8589,8 +9053,8 @@ would be a claim about work it did not do.
 
 | # | Model | Provider | Quota | Kind |
 |---|---|---|---|---|
-| 1 | **`rerank-v4.0-fast`** / `-pro` | Cohere | **1,000 CALLS/month**, renews · 10 req/min · **100 docs per call** | purpose-built |
-| 2 | **`rerank-2.5-lite`** | **Voyage** | **200M tokens ≈ 16,000 calls — one-time** | purpose-built |
+| 1 | **`rerank-v4.0-fast`** / `-pro` | Cohere | **1,000 CALLS/month**, renews · **`x-trial-endpoint-call-limit: 10`** · **100 docs per call** | purpose-built |
+| 2 | **`rerank-3-lite`** | **Voyage** | **200M tokens — one-time, and SERIES 3 ONLY**, which is why `rerank-2.5-lite` was wrong. **3 RPM / 10K TPM** without a card, so a 50-document call is REFUSED outright | purpose-built |
 | 3 | `@cf/baai/bge-reranker-base` | Cloudflare | **283 neurons/1M tokens ≈ 2,850 calls/DAY** | purpose-built |
 | 4 | `ministral-3b-2512` | Mistral | **12.5 RPS**, 1.3M TPM | LLM-as-reranker |
 | 5 | **skip reranking** | — | — | degraded, still works |
@@ -9481,7 +9945,7 @@ what blocks the next commit, then write the commit.
 | **Google AI Studio** | Generator t1/t2/t3/t6/t8/t15, **embedder t3 — now proven** | **per model**: Flash 20/day · Flash-Lite 500/day · Gemma 14,400/day | No — see restriction note | ✅ 2026-08-27 |
 | **Mistral** | Generator t4/t5/t7/t9, **embedder primary** | **per-model** TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-16 |
 | **Cohere** | **Reranker t1**, embedder last resort | 10 req/min rerank, **1,000 calls/month total** | No | ✅ 2026-08-11 |
-| **Voyage AI** | **Reranker t2** | **200M rerank tokens, one-time** · 4M TPM / 2,000 RPM | No | ✅ 2026-08-11 |
+| **Voyage AI** | **Reranker t2** | **200M tokens, one-time, SERIES 3 ONLY** · **3 RPM / 10K TPM** on a card-free account — the "4M TPM / 2,000 RPM" here was the BILLED tier. Both read from its own Rate Limits dashboard | No | ✅ 2026-09-11 |
 | **Cloudflare Workers AI** | Reranker t3, embedder t4, generator t7 | 10,000 neurons/day, resets 00:00 UTC | No | ✅ 2026-08-11 |
 | **Groq** | Generator t12 · **Step 2 small jobs** | **1,000 req/day** · **8,000 tokens/min total** | No | ✅ 2026-08-17 |
 | ~~**Cerebras Cloud**~~ | ~~tier 5~~ | — | **YES — blocked** | ❌ `402` |
