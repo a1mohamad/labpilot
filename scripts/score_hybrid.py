@@ -36,17 +36,34 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
-from labpilot.embed import CODESTRAL_EMBED, GEMINI_EMBEDDING, embed_batches
+from labpilot.embed import (
+    CODESTRAL_EMBED,
+    GEMINI_EMBED_001,
+    GEMINI_EMBED_2,
+    embed_batches,
+)
 from labpilot.ingest import chunk_file
 from labpilot.tokens import estimate_tokens
 
 SAMPLES = Path("data/samples")
 CACHE = Path(".cache/hybrid")
-EMBEDDERS = {"codestral": CODESTRAL_EMBED, "google": GEMINI_EMBEDDING}
+# "google" stays on embedding-001: the cache is keyed by MODEL, and every
+# number this project has recorded for Google came from that model. Pointing
+# it at embedding-2 would silently re-embed and make old runs incomparable.
+# The two spaces are incompatible, so they are separate entries by necessity.
+EMBEDDERS = {
+    "codestral": CODESTRAL_EMBED,
+    "google": GEMINI_EMBED_001,
+    "google2": GEMINI_EMBED_2,
+}
 
 # Each provider publishes a per-minute token budget, and the embedder raises on
 # a 429 rather than retrying, so pacing is the caller's job.
-TOKENS_PER_MINUTE = {"codestral-embed": 50_000, "gemini-embedding-001": 30_000}
+TOKENS_PER_MINUTE = {
+    "codestral-embed": 50_000,
+    "gemini-embedding-001": 30_000,
+    "gemini-embedding-2": 30_000,
+}
 
 # BM25's two knobs. These are the TEXTBOOK values and, unlike RRF's k and
 # weight, they were never swept -- the 2026-09-07 run varied only the fusion's
