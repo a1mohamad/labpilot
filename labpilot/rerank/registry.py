@@ -19,10 +19,27 @@ COHERE_RERANK = CohereReranker(
 
 # 200M tokens, granted ONCE and never renewed - about 16,000 calls at our
 # measured ~12,450 tokens per 50-document call.
+#
+# SERIES 3, and that is a correction rather than a preference. CLAUDE.md chose
+# `rerank-2.5-lite` on 2026-08-11; Voyage's own dashboard says the free grant
+# covers "Voyage series 3 models", which 2.5 is not. Both were probed live on
+# 2026-09-11 and both answer, so the older one was costing us the grant while
+# also being a generation behind.
+#
+# A card-free account is capped at 10,000 TPM and 3 RPM for EVERY rerank model,
+# read from that same dashboard and confirmed by a live 429. That cap is
+# per-minute and a single call counts against it whole, so a 50-document call
+# of our chunks (~16,900 tokens) is refused NO MATTER how long you wait -
+# measured: 50 refused, 40 refused, 30 passes. Voyage therefore cannot serve
+# SEARCH_LIMIT today, and the chain falls through to Cloudflare for one wasted
+# request. Slice 8 owns whether that is worth reordering for.
+#
+# `rerank-3` (the non-lite variant) also answers and scored marginally higher
+# on the probe. It consumes the same tokens, so it is a real slice 8 candidate.
 VOYAGE_RERANK = VoyageReranker(
-    name="Voyage Rerank 2.5 Lite",
+    name="Voyage Rerank 3 Lite",
     url=VOYAGE_URL,
-    model="rerank-2.5-lite",
+    model="rerank-3-lite",
 )
 
 # ~2,840 calls a DAY, which is the largest renewing budget here by a wide
