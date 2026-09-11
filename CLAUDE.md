@@ -6042,7 +6042,8 @@ comparable end to end. The last two rows exist because the user refused
 | reranker | kind | MRR | r@1 | latency | budget |
 |---|---|---|---|---|---|
 | **`gemini-3.5-flash-lite`** *(tuned)* | LLM, listwise | **0.799** | **0.706** | **1.3 s** | 500/day |
-| `gemma-4-31b-it` *(tuned)* | LLM, listwise | **0.732** | 0.588 | 14.4 s | **14,400/day** |
+| **`gemini-3.1-flash-lite`** *(tuned)* | LLM, listwise | **0.745** | 0.588 | 5.3 s | **its own 500/day** |
+| `gemma-4-31b-it` *(tuned)* | LLM, listwise | **0.732** | 0.588 | 14-32 s | **14,400/day** |
 | `rerank-3-lite` (Voyage) | cross-encoder | 0.725 | 0.588 | — | 200M once · 3 RPM |
 | `gemini-3.5-flash-lite` *(untuned)* | LLM, listwise | 0.706 | 0.529 | 3.9 s | 500/day |
 | `rerank-v4.0-fast` (Cohere) | cross-encoder | 0.669 | 0.471 | — | 1,000/**month** |
@@ -6055,6 +6056,36 @@ comparable end to end. The last two rows exist because the user refused
 > further than the gap between flash-lite and Cohere's purpose-built
 > cross-encoder. **How you configure a model is not a detail beside which model
 > you pick — here it was the larger effect.**
+
+### `gemini-3.1-flash-lite` — dominated on quality, valuable on QUOTA
+
+Measured 2026-09-11, same corpus and window as every row above:
+
+```
+                        MRR     r@1     latency
+gemini-3.5-flash-lite  0.799   0.706     1.4 s
+gemini-3.1-flash-lite  0.745   0.588     5.3 s
+```
+
+**3.5 dominates 3.1 on every axis** — better MRR, better `r@1`, and ~4x faster.
+On quality alone there is no reason to prefer the older one.
+
+**Its value is that it is a different MODEL, and Google's quota is per model.**
+This file measured that on 2026-08-16: the 429 body says
+`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, and `quota_pool` exists
+because of it. So 3.1 is not a weaker copy of 3.5 competing for the same
+budget — it is **a second, independent 500/day** at MRR 0.745, which is still
+above Voyage, Gemma and Cohere.
+
+That makes the two Flash-Lite models a natural pair at the top of a rerank
+chain: 1,000 calls a day between them, no shared bucket, and the fallback is
+the third-best reranker measured rather than a degradation.
+
+**Recall barely moves for any of them**, and that is the fixture rather than
+the models: `r@5` and `r@10` sit at 0.941 for vector alone and for every
+reranker. On this corpus only `r@1` and MRR have room, which is exactly what
+[the saturated-fixture rule](#the-fixture-is-saturated-so-it-may-reject-and-may-not-confirm--2026-09-07)
+predicts and another reason the full `requests` run belongs to slice 8.
 
 ### The two settings that did it, both measured
 
