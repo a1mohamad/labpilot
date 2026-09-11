@@ -9266,6 +9266,54 @@ would fix this properly, but it does not exist yet — it is planned for
 The reasoning above is kept because it explains why the *pool*, not the provider
 name, is the thing that runs out.
 
+### `gemini-embedding-2` — newer, and the only entry ranked on someone else's benchmark
+
+*Read from Google's own model listing and docs on 2026-09-11. **No call was
+made to the model** — the user asked for the question to be answered by
+research, not by spending quota, and the provider's own metadata answers it.*
+
+| | `gemini-embedding-001` | **`gemini-embedding-2`** |
+|---|---|---|
+| `version` field | `001` | **`2`** |
+| input limit | 2,048 | **8,192** |
+| MTEB, mean by task | 68.32 | **69.9** |
+| dimensions | 3072 | 3072 |
+| modality | text | **multimodal** |
+
+So it is newer on every axis the provider publishes, and `MIGRATION` now runs
+**codestral → BGE → mistral-embed → embedding-2 ×2 keys → embedding-001 ×2
+keys → Cohere**: eight entries, four of them Google, four independent
+1,000/day buckets.
+
+> **This is the ONLY entry in `MIGRATION` ordered on somebody else's
+> benchmark**, and that breaks this file's own rule that the order comes from
+> recall measured on OUR fixture. `embedding-001` is the model holding that
+> measurement — recall@5 of **1.000**, the only model to manage it.
+> **Slice 8 owes `embedding-2` a score**, and if it loses there the order moves
+> back. `test_the_newer_google_embedder_outranks_the_older_one` exists to keep
+> that deliberate rather than forgotten.
+
+**The two spaces are INCOMPATIBLE** — Google states it explicitly. That is not
+a footnote, it is why `MIGRATION` is a *migration*: moving a corpus from 001 to
+2 means **re-embedding all of it**, and the only free continuation is the same
+model on the other key.
+
+**It lifts a ceiling this file called permanent.** 001's 2,048-token limit meant
+*"chunks must stay small"* and *"it removes the option of ever raising that
+cap"*. 8,192 does not bind at any chunk size we would choose, so the 510-token
+cap is now a decision rather than a constraint.
+
+**One rename, because the old names became a trap.** `GEMINI_EMBEDDING_2` used
+to mean *"001 on the second key"* — precisely the wrong thing to guess once a
+model literally called `gemini-embedding-2` exists. The four entries are now
+`GEMINI_EMBED_001`, `GEMINI_EMBED_001_KEY2`, `GEMINI_EMBED_2`,
+`GEMINI_EMBED_2_KEY2`.
+
+**`score_hybrid.py`'s `google` stays on 001 deliberately.** Its cache is keyed
+by model, so repointing that name would silently re-embed and make every
+recorded Google number incomparable with the old runs. `embedding-2` is a
+separate `google2` entry.
+
 ### Two Google accounts — added 2026-09-11, and it needed no new mechanism
 
 **Google bills per PROJECT per MODEL.** The 429 body says so:
@@ -9348,7 +9396,8 @@ order*, used when the primary is dead — not a per-request fallback.
 |---|---|---|---|---|
 | 1 | **`codestral-embed`** | Mistral | **1536** | The only **code-specific** embedder found. 50K TPM ≈ 20 min per 1M-token repo — fine, ingest is offline. **Verified live 2026-08-11.** |
 | 2 | `mistral-embed` | Mistral | **1024** | **20M TPM** — same repo in ~3 seconds. Same platform, so swapping is easy. **Verified live 2026-08-11.** |
-| 3 | `gemini-embedding-001` | Google | 128–3072 | The real *cross-platform* backup. Max input **2,048 tokens**, so chunks must stay small. |
+| **3** | **`gemini-embedding-2`** | **Google ×2 keys** | **3072** | **NEWER and ranked above 001 — version `2`, MTEB 69.9 vs 68.32, and 8,192 input tokens. Added 2026-09-11. UNMEASURED on our fixture** |
+| 4 | `gemini-embedding-001` | Google ×2 keys | 3072 | The measured one: **perfect recall@5**, the only model to manage it. Max input **2,048 tokens** |
 | 4 | `@cf/baai/bge-*` | Cloudflare | 384 / **768** / 1024 | Open weights — **also runs locally via ONNX**, the only true two-runtime option. `bge-base-en-v1.5` verified live at **768 dim**, 2026-08-11. |
 | 5 | `embed-v4.0` | Cohere | — | **Deliberate last resort — see below.** 128K input context, strong model. |
 
