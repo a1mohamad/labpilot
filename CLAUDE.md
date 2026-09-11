@@ -491,10 +491,18 @@ the one that NEVER reranks, on 3 of 4 runs. See
 same instrument - only the model changed: `rerank-3-lite` took r@1 from 0.412 to 0.588 (+43%
 relative) and MRR from 0.608 to 0.725, where `bge-reranker-base` took them DOWN to 0.353 and 0.520.
 The spread between two rerankers is THREE TIMES the headroom this slice was chasing.**
-**ALL FOUR RERANKERS ARE NOW SCORED AND THE LINE IS THE MODEL'S GENERATION, not local-vs-API and
-not price. The two MS-MARCO-era cross-encoders HURT on every run - local MiniLM -0.136 to -0.202,
-`bge-reranker-base` -0.088 to -0.170 - and both modern ones HELP: Cohere +0.061, Voyage +0.117.
-Free and paid sit on both sides of the line, so cost explains nothing.**
+**ALL SEVEN RERANKERS ARE SCORED - every tier CLAUDE.md named, plus two it did not - AND THE LINE
+IS CAPABILITY, not mechanism. Voyage 0.725 · flash-lite (an LLM!) 0.706 · Cohere 0.669 · VECTOR
+ALONE 0.608 · bge 0.520 · local MiniLM 0.472 · ministral-3b 0.440 · gemma-4-31b UNUSABLE.**
+**A strong LLM beats two of three purpose-built cross-encoders; a 3B LLM loses to all of them; two
+old cross-encoders lose to not reranking at all. Cross-encoder vs LLM, local vs API, free vs paid -
+every one of those lines has winners and losers on BOTH sides. Only "is the model good at reading
+code" separates them.**
+**`gemini-3.5-flash-lite` IS THE SURPRISE AND IS NOT IN THE CHAIN: 500/day, no 50-document ceiling
+(the exact thing that disqualifies Voyage), and it beats Cohere's purpose-built cross-encoder.**
+**`gemma-4-31b-it` IS THE PAINFUL ONE: 14,400/day, the largest budget here, and it WILL NOT produce
+a bare list - it bullet-points a restatement of the question. The cheapest option cannot follow the
+format.**
 **THAT TAKES AWAY THE CHEAP ANSWER TO STEP 2's COST PROBLEM. The local model is the ONLY reranker
 that batches - no rate limit, no call count, every pair in one forward pass, which is exactly what
 `verify` needs at one call per claim - and it is also one of the two that make retrieval worse. A
@@ -6009,7 +6017,46 @@ run of `queries.json` samples one `asks` value, so the first `k` queries are a
 category study wearing a corpus study's clothes. Worth remembering before the
 next expensive measurement is cut short.
 
-### ALL FOUR RERANKERS ARE NOW SCORED, and the line is GENERATION
+### ALL SEVEN RERANKERS ARE SCORED, and the line is CAPABILITY
+
+*Every tier CLAUDE.md ever named, plus the two it did not. Same corpus, same
+embedder, same 30-document window, so the column is comparable end to end.*
+
+| reranker | kind | MRR | vs vector | budget |
+|---|---|---|---|---|
+| `rerank-3-lite` (Voyage) | cross-encoder | **0.725** | **+0.117** | 200M once · 3 RPM · **cannot send 50** |
+| **`gemini-3.5-flash-lite`** | **LLM, listwise** | **0.706** | **+0.098** | **500/day** |
+| `rerank-v4.0-fast` (Cohere) | cross-encoder | 0.669 | +0.061 | 1,000/**month** |
+| *vector alone* | — | *0.608* | — | free |
+| `bge-reranker-base` (CF) | cross-encoder | 0.520 | −0.088 | ~2,840/day |
+| `ms-marco-MiniLM-L-6-v2` | cross-encoder, **local** | 0.472 | −0.136 | **unlimited, batches** |
+| `ministral-3b-2512` | LLM, listwise | 0.440 | −0.168 | rate-limited |
+| `gemma-4-31b-it` | LLM, listwise | **unusable** | — | 14,400/day |
+
+> **The mechanism does not decide it. Capability does.** A strong LLM beats two
+> of three purpose-built cross-encoders. A 3B LLM loses to all of them. Two
+> old cross-encoders lose to no reranking at all. Cross-encoder versus LLM,
+> local versus API, free versus paid — every one of those lines has winners and
+> losers on both sides. Only "is the model any good at reading code" separates
+> them.
+
+**`gemma-4-31b-it` is the painful one.** 14,400 requests a DAY, the largest
+generator budget in the project, and it **will not produce a bare list** — it
+bullet-points a restatement of the question instead. The cheapest option is
+the one that cannot follow the format.
+
+**And `flash-lite` is the surprise.** It is not a reranker at all, it costs
+generation quota — this file's scarcest resource — and it still beats Cohere's
+purpose-built cross-encoder while running on 500 calls a day. It also has no
+50-document ceiling, which is the exact thing that disqualifies Voyage.
+
+**What that does to chain 3.** The shipped order is Cohere, Voyage×2,
+Cloudflare. On these numbers the last tier is worse than not reranking, and
+the best free-at-full-width option is not in the chain at all. Slice 8 decides
+it — but it now chooses between *seven measured options* rather than ordering
+four on quota shape.
+
+### The cross-encoder table, and the generation line inside it
 
 *The local ONNX model was added on 2026-09-11 and it completes the picture.
 CLAUDE.md asked for the measurement to run on it from the start; Cloudflare was
