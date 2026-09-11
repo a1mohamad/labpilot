@@ -29,6 +29,10 @@ TOO_HEAVY_TO_DEPLOY = {
     "transformers",
     "sentence-transformers",
     "langchain-community",
+    # The local cross-encoder. Measured 2026-09-11: it is a fine measurement
+    # instrument and a bad tier - it made retrieval worse on all four runs -
+    # so it is a dev dependency twice over, on memory AND on quality.
+    "onnxruntime",
     "onnxruntime-gpu",
     "scipy",
     "spacy",
