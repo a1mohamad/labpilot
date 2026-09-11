@@ -515,6 +515,12 @@ question with evidence behind it, and Cohere, the current primary, is still unme
 all of it is ORDERING INSIDE THE WINDOW. A run showing r@10 improve would mean a broken measurement.**
 **THE GATE INVERTS TOO: with a bad reranker the best threshold never reranks; with a good one,
 "always rerank" is within noise of the best row. `SKIP_MARGIN` stays None for the second reason.**
+**MEASUREMENT 2 WAS MIS-SPECIFIED AND NO RUN COULD HAVE FIXED IT: `recall@N` only rises with N, so
+retrieval can find where MORE stops helping and NEVER where FEWER starts. The stopping point is a
+GENERATION property. What the frontier did settle for free: vector-alone goes flat at ~15 on
+requests and ~5 on quora, so N in {20, 50} is ELIMINATED and generation only has to choose among
+{3, 5, 10, 15}. And it is TWO numbers - RERANK_TOP_N and VECTOR_TOP_N - because the two paths have
+different recall curves.**
 **⚠ THE FLIP RESTS ON ONE CORPUS - the SATURATED one. The `requests` run was STOPPED at 8 of 45 to
 protect Voyage's ONE-TIME 200M grant (an hour of wall clock at 3 RPM). Those 8 are all `constant`
 queries, because `queries.json` is grouped by category - so they confirm the ROUTING finding a
@@ -6155,6 +6161,92 @@ yet** — the question "how many to send" cannot be answered from a reranker tha
 should not be sending any. It is the first thing to re-measure once a provider
 that helps is found.
 
+### MEASUREMENT 2 WAS MIS-SPECIFIED, and the correction is the useful part
+
+*Slice 6's plan said measurement 2 would decide "how many chunks to send" using
+`recall@N`. It cannot, and no amount of running it would have helped. This is a
+flaw in the plan, found by executing it.*
+
+**`recall@N` only ever rises with N:**
+
+```
+r@1 0.533    r@5 0.800    r@10 0.933    r@20 0.978    r@50 0.978
+```
+
+$$
+\text{recall@}N \text{ is monotone in } N
+$$
+
+So asking retrieval "what is the best N?" can only ever answer *"bigger"*. The
+reason to stop sending more is **dilution and lost-in-the-middle**, and that
+term does not exist until a model reads the prompt:
+
+$$
+P(\text{good report}) \approx
+\underbrace{P(\text{answer is in the } N)}_{\text{rises with } N}
+\times
+\underbrace{P(\text{the model uses it})}_{\text{falls with } N}
+$$
+
+**The left factor is a retrieval measurement. The right one is a generation
+measurement.** Slice 6 only ever had the left, so `RERANK_TOP_N = 10` ships as
+a placeholder with no evidence, and its comment says so.
+
+### What the frontier DID settle, for free
+
+Retrieval can find where MORE stops helping, even though it cannot find where
+FEWER starts. That is an upper bound, and it is worth having:
+
+| N | quora: vector | + Voyage | requests: vector | + `bge` |
+|---|---|---|---|---|
+| 1 | 0.412 | **0.588** | 0.533 | 0.311 |
+| 3 | 0.765 | **0.882** | 0.711 | 0.600 |
+| 5 | **0.941** | 0.882 | 0.800 | 0.667 |
+| 10 | 0.941 | 0.941 | 0.933 | 0.778 |
+| 15 | 0.941 | 0.941 | **0.978** | 0.889 |
+| 20 | 0.941 | 0.941 | 0.978 ← flat | 0.911 |
+| 50 | 1.000 | 0.941 | 0.978 ← flat | 0.978 |
+
+1. **A good reranker shifts the curve LEFT.** Reranked N=3 (0.882) beats vector
+   N=3 (0.765), and reranked N=1 beats vector N=1 by +0.176. That is what "you
+   can cut harder when the reranker is good" means numerically.
+2. **A bad one shifts it RIGHT.** `bge` needs **N=30** to reach what vector
+   reaches at **N=15** — it pushes answers down, so you must send more to
+   compensate.
+3. **Nobody should send 50.** On `requests`, vector alone is flat from 15
+   onward: 15 → 50 buys **0.000** and costs 35 chunks of dilution.
+
+**So N ∈ {20, 50} is eliminated for free, and generation only has to choose
+among {3, 5, 10, 15}.** That is the expensive measurement made four times
+cheaper by a free one.
+
+### The design this produced — TWO numbers, not one
+
+*The user's, and it is better than what this file had.* One `RERANK_TOP_N` for
+both paths is wrong, because the two paths have different recall curves:
+
+```
+measure once:   best N with a reranker      ->  RERANK_TOP_N
+measure once:   best N on vector alone      ->  VECTOR_TOP_N
+
+at runtime:     a reranker answered?  ->  send RERANK_TOP_N
+                gate skipped, or all tiers failed?  ->  send VECTOR_TOP_N
+```
+
+**And do not optimise "recall and MRR against chunk count" directly** — there
+is no exchange rate between them, so any weighting is arbitrary. Use the
+frontier to *eliminate dominated N* (free), then let answer quality pick the
+survivor (generation).
+
+**One concrete code consequence for slice 7.** `skip()` currently truncates to
+whatever `top_n` it was handed. When the gate skips or every tier fails, the
+caller must pass the **vector-path** N, not the rerank one — otherwise the
+degraded path silently uses a number calibrated for a path that did not run.
+
+> **A metric that only moves one way cannot choose a middle.** Before planning
+> a measurement, check that the number you intend to read is capable of having
+> an optimum at all.
+
 ### MEASUREMENT 3 — the gate, and the answer is "skip everything"
 
 Sweeping the dense margin `m = s₁ − s₂`. `τ = 0.000` means *skip whenever the
@@ -6394,7 +6486,7 @@ headers carry a second ceiling nobody had recorded —
 | the gain and the loss are question-type shaped | that the chain-3 order is settled — still unmeasured end to end |
 | fusion's gain does not survive `bge` | that fusion is dead — untested under a reranker that ORDERS well |
 | a cross-encoder is pointwise, so pairs cache | the real value of `r` — that needs Step 2 |
-| Voyage cannot serve a 50-document window free | how `RERANK_TOP_N` should be set |
+| Voyage cannot serve a 50-document window free | how `RERANK_TOP_N` should be set — `recall@N` is MONOTONE and cannot have an optimum |
 
 ### The r@1 / MRR question is SETTLED
 
