@@ -491,6 +491,14 @@ the one that NEVER reranks, on 3 of 4 runs. See
 same instrument - only the model changed: `rerank-3-lite` took r@1 from 0.412 to 0.588 (+43%
 relative) and MRR from 0.608 to 0.725, where `bge-reranker-base` took them DOWN to 0.353 and 0.520.
 The spread between two rerankers is THREE TIMES the headroom this slice was chasing.**
+**ALL FOUR RERANKERS ARE NOW SCORED AND THE LINE IS THE MODEL'S GENERATION, not local-vs-API and
+not price. The two MS-MARCO-era cross-encoders HURT on every run - local MiniLM -0.136 to -0.202,
+`bge-reranker-base` -0.088 to -0.170 - and both modern ones HELP: Cohere +0.061, Voyage +0.117.
+Free and paid sit on both sides of the line, so cost explains nothing.**
+**THAT TAKES AWAY THE CHEAP ANSWER TO STEP 2's COST PROBLEM. The local model is the ONLY reranker
+that batches - no rate limit, no call count, every pair in one forward pass, which is exactly what
+`verify` needs at one call per claim - and it is also one of the two that make retrieval worse. A
+NEWER local model (bge-reranker-v2-m3, the Qwen3 rerankers) is the open move, and was not tried.**
 **SO "DOES RERANKING HELP" IS NOT A QUESTION ABOUT RERANKING. It is a question about one model, and
 the candidate chain order recorded in the slice 6 theory - local, Cloudflare, Voyage, Cohere - would
 have put the one model measured to HURT retrieval at the front. Chain 3's order is now a QUALITY
@@ -6000,6 +6008,53 @@ was already measured to be best at:
 run of `queries.json` samples one `asks` value, so the first `k` queries are a
 category study wearing a corpus study's clothes. Worth remembering before the
 next expensive measurement is cut short.
+
+### ALL FOUR RERANKERS ARE NOW SCORED, and the line is GENERATION
+
+*The local ONNX model was added on 2026-09-11 and it completes the picture.
+CLAUDE.md asked for the measurement to run on it from the start; Cloudflare was
+substituted, and that substitution is what produced the first, wrong headline.*
+
+| reranker | trained | where | MRR effect |
+|---|---|---|---|
+| `ms-marco-MiniLM-L-6-v2` | 2021, MS MARCO | **local, free, unlimited** | **−0.136 … −0.202** |
+| `bge-reranker-base` | 2023 | Cloudflare | **−0.088 … −0.170** |
+| `rerank-v4.0-fast` | modern | Cohere | **+0.061** |
+| `rerank-3-lite` | modern | Voyage | **+0.117** |
+
+> **The dividing line is the model's GENERATION, not local versus API, and not
+> price.** Both MS-MARCO-era cross-encoders hurt our retrieval on every run.
+> Both modern rerankers help. Free and paid appear on both sides of the line,
+> so cost explains nothing.
+
+**Why that is the better conclusion.** "The provider matters" is true and shallow
+— it invites picking a vendor. "Old cross-encoders trained on web prose fail on
+code, newer ones do not" is a *mechanism*, and it predicts: it is the same
+reason `bge` collapsed on `structure` and `behaviour` queries, the ones that ask
+what code DOES.
+
+**And it takes away the cheap answer to Step 2's cost problem.** The local model
+is the only reranker that BATCHES — no rate limit, no call count, every pair in
+one forward pass — which is exactly what `verify` needs at one call per claim.
+It is also one of the two that make retrieval worse. So the thing that solves
+the cost problem does not currently solve the quality problem, and slice 8
+cannot treat "run it locally" as a free escape.
+
+**A newer local model is the open move**, not a rejected one. `bge-reranker-v2-m3`
+and the Qwen3 rerankers are ONNX-exportable and modern; none was tried, because
+the point of this exercise was the measurement and not a model hunt.
+
+**The instrument caught something real on the way in.** The pointwise check
+refused the local model at first: the same pair drifts between a 2-document and
+a 10-document call. The tokenizer output is bit-identical, so the cause is int8
+GEMM being sensitive to batch **shape**. Padding to a fixed 512 — the obvious
+fix — made it fifty times worse, moving one pair from 0.0003 to 0.72, because
+490 of 512 tokens become padding and that ONNX export's attention mask does not
+fully neutralise them.
+
+> **Set a numerical tolerance against the EFFECT SIZE, never against zero.**
+> The local model moves MRR by ~0.15; a cache accurate to 1e-2 cannot invent or
+> hide that. The API models stay at 1e-6, because they measure 0.0 and 2e-07.
 
 ### What this does NOT establish, stated before anyone quotes it
 
