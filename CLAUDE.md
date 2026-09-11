@@ -477,7 +477,12 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 DONE. SLICE 7 IS NEXT - the new selector.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 ARE DONE AND CLOSED. SLICE 7 IS NEXT - the selector.**
+**SLICE 6 IS FINISHED 2026-09-11. `labpilot/rerank/` is the seventh package: four cross-encoder
+tiers proven live, an LLM reranker that takes a CALLABLE so the package still never imports `llm/`,
+the margin gate in `retrieval/`, and a chain that ends in `skip` instead of an exception.**
+**CHAIN 3'S ORDER IS MEASURED NOW, not argued from quota shape - the four LLM tiers lead it and
+beat every purpose-built cross-encoder. Two tiers were DROPPED for measuring below vector alone.**
 **SLICE 6 IS BUILT, MEASURED AND DELIBERATELY NOT SWITCHED ON, 2026-09-11. `labpilot/rerank/` is
 the seventh package and the fifth adapter: three cross-encoders proven live, a chain that ends in
 `skip` instead of an exception, and the margin gate in `retrieval/`. Nothing calls any of it -
@@ -689,9 +694,32 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > `ALLOWED_TO_ESCAPE` with the reason. **Never delete the test.** The
 > > checklist is in [the slice 4 closing review](#the-slice-4-closing-review--2026-09-05).
 > >
-> > **Do not switch reranking on in slice 7.** On today's only measurement it
-> > costs 0.17 MRR. Whether it ships at all is slice 8's decision, taken
-> > together with the embedder and with fusion — because slice 6 measured that
+> > **Reranking WORKS, with the right model — that conclusion reversed twice
+> > during slice 6 and the final numbers are what count.** The four LLM tiers
+> > lead chain 3 and beat every purpose-built cross-encoder:
+> >
+> > ```
+> > gemini-3.5-flash-lite  0.799      rerank-3-lite (Voyage)  0.725
+> > gemini-3.1-flash-lite  0.745      rerank-v4.0-fast        0.669
+> > gemma-4-26b-a4b-it     0.732      VECTOR ALONE            0.608
+> > gemma-4-31b-it         0.732      bge-reranker-base       0.520
+> > ```
+> >
+> > **Slice 7 assembles the chain, because slice 6 could not.** The LLM tiers
+> > need `llm/` and `rerank/` is an adapter, so they are `LLM_RERANK_ORDER` —
+> > data — and the entry layer binds them:
+> >
+> > ```python
+> > rerank(query, docs, chain=(*llm_tiers, *RERANK_CHAIN))
+> > ```
+> >
+> > `LLMReranker` takes `complete(prompt, max_tokens) -> str`, so binding one is
+> > three lines. Copy the `RANKING_CONFIG` from `scripts/score_rerank.py` —
+> > `thinking=None` plus a JSON schema is worth more than the gap between
+> > flash-lite and Cohere.
+> >
+> > **Still do not decide whether reranking SHIPS.** That is slice 8, taken
+> > together with the embedder and with fusion — slice 6 measured that
 > > **fusion's gain vanishes under reranking**, so the three cannot be decided
 > > separately.
 > >
@@ -2194,7 +2222,7 @@ slice 4 says *stuffed*, and it means retrieval currently changes nothing at all.
 | 3 | **Read a document** | PDF, Word, notebook and other languages get real boundaries | medium |
 | 4 | **pgvector** | ~2,000 chunks go in and come back out unchanged | **heavy** — vector databases, ANN indexes |
 | 5 | **Cosine + keyword search** | a query returns the right chunks, the `side` filter works, and BM25 catches identifier queries like `D2` | medium |
-| 6 | ~~**Reranking**~~ ✅ **DONE 2026-09-11** | built, measured, and **NOT switched on**: `bge-reranker-base` made retrieval WORSE on all four runs, and the best gate is the one that never reranks | **heavy** — bi-encoder vs cross-encoder |
+| 6 | ~~**Reranking**~~ ✅ **DONE 2026-09-11** | built, measured across NINE configurations, and **NOT switched on**: `bge-reranker-base` made retrieval WORSE on all four runs, and the best gate is the one that never reranks | **heavy** — bi-encoder vs cross-encoder |
 | 7 | **The new selector** | `select()` is deleted; A fills before B; the outline lists **files** | light |
 | 8 | **Measure** | the same fixture, then a **second** fixture in another domain — **the embedder order, the reranker order, AND exact-vs-HNSW are all settled here, on real numbers** | none — it is scoring |
 
@@ -6590,6 +6618,51 @@ headers carry a second ceiling nobody had recorded —
 > free grant may not cover the model you picked.** Both facts were sitting on
 > the provider's own dashboard the whole time; neither is in its API.
 
+### The slice 6 closing review — 2026-09-11
+
+*The standing question across the whole system, and the RAG system in
+particular: **which real failure is still unprotected?** Two gaps, and the
+first is the highest-risk untested seam in the pipeline.*
+
+**1. Nothing checked the translation between two number spaces that look
+identical.**
+
+```
+store.search()  ->  SearchHit.chunk_index    an ID in the corpus
+rerank()        ->  POSITIONS into the list it was handed
+```
+
+`rerank/` may not import `store/`, so **neither package can check this** — it
+belongs to the caller, and slice 7 is about to write it. CLAUDE.md's own
+warning for exactly this shape: *"the position is what the caller uses to look
+a chunk back up, so an index off by one cites the wrong file and line with full
+confidence."*
+
+`tests/integration/test_retrieval_to_rerank.py` runs chunk → store → search →
+rerank → back to real chunks. **Chunk ids start at 100**, so a position used as
+an id is provably wrong — the same correction slice 5 needed when a fixture
+numbered its chunks from zero and could not tell an id from a row.
+
+**2. The four tiers that now LEAD chain 3 had no liveness check.** The models
+we intend to use most were the only ones nobody was watching. Four calls a week
+against 500/day and 14,400/day budgets. They also assert `declined == 0`,
+because **a decline keeps the retrieval order and is invisible in the ranking
+itself**.
+
+**Two mistakes in my own new tests, both corrected rather than worked around.**
+The fakes were bare functions and the `Reranker` protocol needs a `.rank`
+*method*. And the file claimed `Ranking` refuses an out-of-range position — **it
+does not, and cannot**, because it never learns how many documents were sent.
+The range check lives in `HTTPReranker._validated`, which does know.
+
+> What actually protects the citation is that the caller indexes a list, so an
+> impossible position raises `IndexError` rather than quietly naming the wrong
+> chunk. **Loud is the property worth pinning; "impossible" was wishful.**
+
+**Refused deliberately:** an `api/` test, because `api/` still does not import
+`rerank` — `test_error_boundaries` stays green and will fire the day slice 7
+wires it, which is the guard working rather than a gap.
+
 ### What slice 6 deliberately did NOT do
 
 - **Nothing calls `rerank`.** Same as slice 5's keyword channel: no flag, no
@@ -9473,42 +9546,94 @@ would be a claim about work it did not do.
 
 ### Chain 3 — Reranker (true fallback)
 
-*Revised 2026-08-11 — Voyage found, Mistral added, the local floor demoted.*
+*Rewritten 2026-09-11 on MEASUREMENT. The old order was argued from quota
+shape; every row below was scored on quora at a 30-document window against
+vector alone's MRR of **0.608**.*
 
-| # | Model | Provider | Quota | Kind |
-|---|---|---|---|---|
-| 1 | **`rerank-v4.0-fast`** / `-pro` | Cohere | **1,000 CALLS/month**, renews · **`x-trial-endpoint-call-limit: 10`** · **100 docs per call** | purpose-built |
-| 2 | **`rerank-3-lite`** | **Voyage** | **200M tokens — one-time, and SERIES 3 ONLY**, which is why `rerank-2.5-lite` was wrong. **3 RPM / 10K TPM** without a card, so a 50-document call is REFUSED outright | purpose-built |
-| 3 | `@cf/baai/bge-reranker-base` | Cloudflare | **283 neurons/1M tokens ≈ 2,850 calls/DAY** | purpose-built |
-| 4 | `ministral-3b-2512` | Mistral | **12.5 RPS**, 1.3M TPM | LLM-as-reranker |
-| 5 | **skip reranking** | — | — | degraded, still works |
+| # | Model | Provider | MRR | Budget | Kind |
+|---|---|---|---|---|---|
+| 1 | **`gemini-3.5-flash-lite`** | Google | **0.799** | 500/day | LLM, listwise |
+| 2 | **`gemini-3.1-flash-lite`** | Google | **0.745** | its own 500/day | LLM, listwise |
+| 3 | **`gemma-4-26b-a4b-it`** | Google | **0.732** | its own 14,400/day | LLM, listwise, MoE |
+| 4 | **`gemma-4-31b-it`** | Google | **0.732** | 14,400/day | LLM, listwise |
+| 5 | `rerank-3` | Voyage | *unmeasured* | 200M once · 3 RPM | cross-encoder |
+| 6 | `rerank-3-lite` | Voyage | 0.725 | its own 3 RPM | cross-encoder |
+| 7 | `rerank-v4.0-fast` | Cohere | 0.669 | 1,000/**month** | cross-encoder |
+| — | *vector alone* | — | *0.608* | — | *the line to beat* |
+| 8 | `@cf/baai/bge-reranker-base` | Cloudflare | **0.520** | ~2,840/day | cross-encoder |
+| 9 | **skip** | — | — | — | degraded, still works |
 
-**Cohere before Voyage on purpose** — the same principle as the generator chain:
-*spend the quota that expires anyway, bank the one-time grant.* Cohere's 1,000
-resets monthly whether used or not; Voyage's 200M does not expire.
+**Four things to read carefully.**
 
-**The three quota rows were re-read from the providers' own docs on 2026-09-09,
-and two of them moved.** Voyage's capacity doubled (our chunks are 229 tokens,
-not the 500 this file assumed) and Cloudflare's is ~2,850 calls **per day**, not
-~1,400. Full working in
-[the slice 6 theory](#slice-6--the-theory-recorded-2026-09-09).
+**The top four are LLMs, and they beat every purpose-built cross-encoder.**
+Listwise: one call ranks all documents, so 30 documents cost 1 call and not 30.
+Google's quota is per MODEL, so those four are **four independent buckets** —
+1,000 + 28,800 calls a day with no shared ceiling.
 
-**Three facts from those docs that change how the tiers are used:**
+**Tier 8 is below the line, and that is deliberate.** `bge-reranker-base`
+measured **worse than not reranking**, and the chain already ends in `skip()`,
+so reaching it makes retrieval worse. It is kept because one corpus and one
+saturated fixture is thin evidence and its budget cannot run out. **Slice 8
+re-measures it; if the number holds, delete the tier rather than reorder it.**
+`test_only_a_named_tier_may_be_worse_than_not_reranking_at_all` makes a SECOND
+such tier break the build.
 
-- **No provider accepts more than one query per call.** Cohere's and Voyage's
-  `query` field is a single string. So `N` claims cost `N` calls, and **the only
-  way to batch is to run the model yourself** — a cross-encoder scores many
-  pairs in one forward pass, which is what makes the local ONNX model
-  structurally different from every tier above it, not merely cheaper.
-- **Cohere bills per CALL, up to 100 documents.** We send 50, so **half of every
-  call we pay for is wasted.** Sending 100 costs the same and can only raise
-  recall. On Voyage and Cloudflare it doubles the token cost, so this is a
-  per-provider setting. Slice 8 should test it.
-- **The order below is unchanged, and it is now known to be arguable.** The
-  *"spend the expiring bucket first"* rule was written when reranking looked
-  like a once-per-report cost. Per query, Cohere's 1,000/month is the
-  **smallest** budget here by a wide margin. The candidate order slice 8 must
-  beat this one against is recorded in the slice 6 section.
+**`rerank-3` leads `rerank-3-lite` on a single-pair probe** (0.8594 to 0.8516)
+and is otherwise unmeasured — a reason to try it first, not evidence.
+
+**Two tiers were DROPPED**, both measured below vector alone:
+`ministral-3b-2512` (0.440) and the local ONNX cross-encoder (0.472).
+
+### The LLM tiers cannot live in `rerank/`, and the fix is a callable
+
+An LLM reranker needs `llm/`. Both are **adapters**, and `test_architecture`
+forbids an adapter importing another adapter — two adapters that know each
+other's types are welded together and neither can be replaced.
+
+**`rerank/` had already solved this shape once.** It cannot see `SearchHit`
+either, so it takes plain strings and lets the caller translate. Same answer:
+`LLMReranker` takes **`complete(prompt, max_tokens) -> str`**, not a provider.
+
+```python
+LLMReranker(
+    complete=lambda p, n: GEMINI_3_5_FLASH_LITE.complete(p, max_tokens=n).text,
+    name="Gemini 3.5 Flash-Lite",
+    model="gemini-3.5-flash-lite",
+)
+```
+
+The coupling lives at the call site, in a layer allowed to see both. So the
+four LLM tiers are **not** in `RERANK_CHAIN` — they are `LLM_RERANK_ORDER`,
+data in measured order, and **slice 7 assembles the real chain at the entry
+layer**: `rerank(query, docs, chain=(*llm_tiers, *RERANK_CHAIN))`.
+
+> **A layering rule that blocks a feature is usually pointing at the wrong
+> shape, not at the wrong rule.** The callable is better than the import would
+> have been: it makes the reranker testable with no provider at all.
+
+### How a Gemini model must be configured for ranking
+
+Two settings, both measured, and together worth more than the gap between
+flash-lite and Cohere's purpose-built cross-encoder:
+
+```python
+{
+    "thinking": None,
+    "generation_config": {
+        "responseMimeType": "application/json",
+        "responseSchema": {"type": "ARRAY", "items": {"type": "INTEGER"}},
+    },
+}
+```
+
+- **`thinking=None`** — MEDIUM costs 3.88 s and 930 thought tokens against
+  1.28 s and 0, for an **identical** answer. Every Gemini tier ships MEDIUM.
+- **A JSON schema** — gemma 45.5 s → 14.4 s, and the reply stops being prose
+  wrapped around an answer.
+
+`GeminiProvider.generation_config` carries it, the Gemini twin of
+`OpenAICompatibleProvider.extra_body`. Step 2's claim extraction needs the same
+field to get parseable output.
 
 **LLM-as-reranker is no longer rejected outright.** *(Position changed
 2026-08-11.)* The old objection was that it spends a generation call — the
