@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 from labpilot.embed.cloudflare import CloudflareEmbedder
 from labpilot.embed.cohere import CohereEmbedder
 from labpilot.embed.google import GoogleEmbedder
@@ -47,6 +49,24 @@ GEMINI_EMBEDDING = GoogleEmbedder(
     max_input_tokens=2048,
 )
 
+# THE ONE TRUE FALLBACK IN THIS LIST, and it is worth being precise about why.
+#
+# MIGRATION is a migration order, not a fallback chain: switching model means
+# re-embedding the whole corpus, because two models' vectors do not compare.
+# The SAME model on a SECOND ACCOUNT is the exception - identical model,
+# identical vectors - so a corpus half-ingested on key 1 can be FINISHED on
+# key 2 and the result is still one coherent space.
+#
+# It is a real second budget, not a spare key: Google bills per project per
+# model, so this is another 1,000 embed requests a day and another 30K
+# tokens/minute. At our measured 192 tokens per chunk that is a second
+# ~13-minute ingest window.
+GEMINI_EMBEDDING_2 = dataclasses.replace(
+    GEMINI_EMBEDDING,
+    name="Gemini Embedding 001 (key 2)",
+    api_key_env="GOOGLE_API_KEY_2",
+)
+
 # Deliberately last, and not because it is weak. Cohere's 1,000 calls/month are
 # ONE bucket shared by chat, embed and rerank - and Cohere is the reranker
 # primary. A corpus embedded here keeps spending that bucket on every query
@@ -68,5 +88,6 @@ MIGRATION = (
     BGE_BASE,
     MISTRAL_EMBED,
     GEMINI_EMBEDDING,
+    GEMINI_EMBEDDING_2,
     COHERE_EMBED,
 )

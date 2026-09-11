@@ -16,13 +16,13 @@ REJECTS_REASONING = ("Devstral 2",)
 # to every request carrying the field, measured 2026-09-11. It is 14,400
 # requests a DAY, the largest generator budget here, and it was broken on every
 # call since slice 4 added `thinking`.
-REJECTS_THINKING = ("Gemma 4 31B",)
+REJECTS_THINKING = ("gemma-4-31b-it",)
 
 # Deliberate, measured exceptions. A new name appearing here is a real problem.
 # Groq's 8,000 is a TOTAL per-minute budget (prompt + reserved output), so it is
 # modelled as a small context_window. Gemma's 16,000 counts input only.
 OUTPUT_TOO_SMALL = ("GPT-OSS 120B (Groq)", "Devstral 2")
-INPUT_LIMITED = ("Gemma 4 31B",)
+INPUT_LIMITED = ("gemma-4-31b-it",)
 
 
 def test_chain_tiers_are_sequential_from_one():
@@ -87,10 +87,36 @@ def test_every_chain_env_var_is_mapped_in_the_smoke_workflow():
     assert not missing, missing
 
 
-def test_chain_models_are_unique():
-    models = [provider.model for provider in CHAIN]
+def test_every_google_tier_owns_a_pool_of_its_own():
+    """Google bills per PROJECT per MODEL, so each (key, model) is its own
+    bucket - and the pool has to say so, or one spent model retires the rest.
 
-    assert len(set(models)) == len(models), models
+    Deliberately NOT a rule about the whole chain: OpenRouter really does have
+    one account-wide 50/day, so its three tiers SHARE a pool and that sharing
+    is correct. A test demanding globally unique pools would be demanding the
+    wrong thing - measured, it fails on 5 tiers that are behaving properly.
+    """
+    google = [p for p in CHAIN if p.api_key_env.startswith("GOOGLE")]
+    pools = [p.pool for p in google]
+
+    assert google, "no Google tiers left to check"
+    assert len(set(pools)) == len(pools), pools
+    assert all(p.pool == f"{p.api_key_env}:{p.model}" for p in google)
+
+
+def test_a_model_repeats_only_when_it_is_a_second_account():
+    """A repeat that is NOT a second account is a copy-paste mistake."""
+    seen: dict[str, set[str]] = {}
+    for provider in CHAIN:
+        seen.setdefault(provider.model, set()).add(provider.api_key_env)
+
+    wrong = {
+        model: keys
+        for model, keys in seen.items()
+        if len(keys) == 1 and [p.model for p in CHAIN].count(model) > 1
+    }
+
+    assert not wrong, f"{wrong} repeat on ONE key, so the second is dead weight"
 
 
 def test_every_chain_provider_declares_its_token_limits():
@@ -124,11 +150,11 @@ def test_only_known_tiers_cannot_serve_a_full_report():
 
 
 def test_only_known_tiers_are_blocked_by_an_input_limit():
-    blocked = [
-        provider.name for provider in CHAIN if provider.max_input_tokens is not None
-    ]
+    blocked = sorted(
+        {provider.model for provider in CHAIN if provider.max_input_tokens is not None}
+    )
 
-    assert blocked == list(INPUT_LIMITED), blocked
+    assert blocked == sorted(INPUT_LIMITED), blocked
 
 
 def test_an_input_limited_tier_costs_no_request():
@@ -145,7 +171,7 @@ def _thinking_tiers():
         provider
         for provider in CHAIN
         if isinstance(provider, GeminiProvider)
-        and provider.name not in REJECTS_THINKING
+        and provider.model not in REJECTS_THINKING
     ]
 
 
@@ -173,7 +199,7 @@ def test_a_tier_that_rejects_thinking_does_not_ask_for_it():
         provider.name
         for provider in CHAIN
         if isinstance(provider, GeminiProvider)
-        and provider.name in REJECTS_THINKING
+        and provider.model in REJECTS_THINKING
         and provider.thinking is not None
     ]
 

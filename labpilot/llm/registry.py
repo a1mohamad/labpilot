@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 from labpilot.llm.gemini import GeminiProvider
 from labpilot.llm.openai_compatible import OpenAICompatibleProvider
 
@@ -19,11 +21,25 @@ GOOGLE_CONTEXT = 1_048_576
 GOOGLE_OUTPUT = 65_536
 
 
+# A SECOND Google account, and it is a second quota rather than a spare key.
+# Google bills per PROJECT per MODEL - the 429 body says
+# GenerateRequestsPerDayPerProjectPerModel-FreeTier - so every model gets a
+# fresh daily allowance on the second key: another 20/day per Flash model,
+# another 500 per Flash-Lite, another 14,400 per Gemma.
+#
+# That is why `quota_pool` has to carry the KEY as well as the model. The pool
+# is what runs out; the key is only how we authenticate. Collapsing them would
+# mark BOTH accounts dead the first time either one is spent - the exact
+# mistake quota_pool was created to fix on 2026-08-16, one level up.
+GOOGLE_KEYS = ("GOOGLE_API_KEY", "GOOGLE_API_KEY_2")
+
+
 def _gemini(
     *,
     name: str,
-    tier: int,
     model: str,
+    tier: int = 0,
+    api_key_env: str = GOOGLE_KEYS[0],
     context_window: int = GOOGLE_CONTEXT,
     max_output_tokens: int = GOOGLE_OUTPUT,
     max_input_tokens: int | None = None,
@@ -34,8 +50,8 @@ def _gemini(
         tier=tier,
         url=GOOGLE_URL,
         model=model,
-        api_key_env="GOOGLE_API_KEY",
-        quota_pool=f"GOOGLE:{model}",
+        api_key_env=api_key_env,
+        quota_pool=f"{api_key_env}:{model}",
         context_window=context_window,
         max_output_tokens=max_output_tokens,
         max_input_tokens=max_input_tokens,
@@ -43,9 +59,19 @@ def _gemini(
     )
 
 
-GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", tier=1, model="gemini-3.7-flash")
-GEMINI_3_6_FLASH = _gemini(name="Gemini 3.6 Flash", tier=2, model="gemini-3.6-flash")
-GEMINI_3_5_FLASH = _gemini(name="Gemini 3.5 Flash", tier=3, model="gemini-3.5-flash")
+def _second_account(provider: GeminiProvider) -> GeminiProvider:
+    """The same model on the other key, as its own tier with its own pool."""
+    return dataclasses.replace(
+        provider,
+        name=f"{provider.name} (key 2)",
+        api_key_env=GOOGLE_KEYS[1],
+        quota_pool=f"{GOOGLE_KEYS[1]}:{provider.model}",
+    )
+
+
+GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", model="gemini-3.7-flash")
+GEMINI_3_6_FLASH = _gemini(name="Gemini 3.6 Flash", model="gemini-3.6-flash")
+GEMINI_3_5_FLASH = _gemini(name="Gemini 3.5 Flash", model="gemini-3.5-flash")
 
 GLM_5_2 = OpenAICompatibleProvider(
     name="GLM-5.2",
@@ -70,7 +96,7 @@ NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
 )
 
 GEMINI_3_5_FLASH_LITE = _gemini(
-    name="Gemini 3.5 Flash-Lite", tier=6, model="gemini-3.5-flash-lite"
+    name="Gemini 3.5 Flash-Lite", model="gemini-3.5-flash-lite"
 )
 
 MISTRAL_MEDIUM = OpenAICompatibleProvider(
@@ -85,7 +111,7 @@ MISTRAL_MEDIUM = OpenAICompatibleProvider(
 )
 
 GEMINI_3_1_FLASH_LITE = _gemini(
-    name="Gemini 3.1 Flash-Lite", tier=15, model="gemini-3.1-flash-lite"
+    name="Gemini 3.1 Flash-Lite", model="gemini-3.1-flash-lite"
 )
 
 NEMOTRON_3_SUPER = OpenAICompatibleProvider(
@@ -157,7 +183,6 @@ DEVSTRAL_2 = OpenAICompatibleProvider(
 # guard worked; the reporting did not.
 GEMMA_4_31B = _gemini(
     name="Gemma 4 31B",
-    tier=8,
     model="gemma-4-31b-it",
     context_window=262_144,
     max_output_tokens=32_768,
@@ -176,15 +201,42 @@ GPT_OSS_120B_GROQ = OpenAICompatibleProvider(
     extra_body=OPENAI_REASONING,
 )
 
-CHAIN = (
+
+def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
+    """Tier is the POSITION, never a number somebody typed.
+
+    Reordering CHAIN without renumbering `tier=` was a real bug on 2026-08-11:
+    the tuple was put in the right order while the fields kept their old
+    values, so the chain read 2, 2, 3, 1, 4, 6 and only an invariant test
+    noticed. Deriving it here makes that class of bug impossible rather than
+    merely tested for.
+    """
+    return tuple(
+        dataclasses.replace(provider, tier=position)
+        for position, provider in enumerate(providers, 1)
+    )
+
+
+# Each Google model appears TWICE, on two accounts, adjacent. Adjacency is
+# right here for the same reason the 2026-08-16 rewrite made it harmless: a
+# spent pool is skipped for free, so the twin costs nothing when the first key
+# still works and is the strongest available model when it does not. Ordering
+# by capability then means "the same model on the other account" beats
+# "a weaker model on this one".
+CHAIN = _ordered(
     GEMINI_3_7_FLASH,
+    _second_account(GEMINI_3_7_FLASH),
     GEMINI_3_6_FLASH,
+    _second_account(GEMINI_3_6_FLASH),
     GEMINI_3_5_FLASH,
+    _second_account(GEMINI_3_5_FLASH),
     GLM_5_2,
     NEMOTRON_3_ULTRA,
     GEMINI_3_5_FLASH_LITE,
+    _second_account(GEMINI_3_5_FLASH_LITE),
     MISTRAL_MEDIUM,
     GEMMA_4_31B,
+    _second_account(GEMMA_4_31B),
     NORTH_MINI_CODE,
     NEMOTRON_3_SUPER,
     GPT_OSS_120B,
@@ -192,4 +244,5 @@ CHAIN = (
     MAGISTRAL_SMALL,
     DEVSTRAL_2,
     GEMINI_3_1_FLASH_LITE,
+    _second_account(GEMINI_3_1_FLASH_LITE),
 )
