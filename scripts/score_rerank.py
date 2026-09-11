@@ -34,6 +34,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from labpilot.llm.openai_compatible import OpenAICompatibleProvider
+from labpilot.llm.registry import GEMINI_3_5_FLASH_LITE, MISTRAL_URL
 from labpilot.rerank import (
     CLOUDFLARE_RERANK,
     COHERE_RERANK,
@@ -43,6 +45,7 @@ from labpilot.rerank import (
 )
 from labpilot.retrieval.gate import margin
 from labpilot.store.defaults import SEARCH_LIMIT
+from scripts.llm_reranker import LLMReranker
 from scripts.local_reranker import LOCAL_RERANK
 from scripts.score_hybrid import (
     CORPORA,
@@ -51,6 +54,18 @@ from scripts.score_hybrid import (
     keyword_signals,
     rrf,
     targets,
+)
+
+# CLAUDE.md's tier 4 of chain 3. Not in labpilot/llm/registry.py because
+# nothing else uses it - a registry entry with no consumer is dead data.
+MINISTRAL_3B = OpenAICompatibleProvider(
+    name="Ministral 3B",
+    tier=99,
+    url=MISTRAL_URL,
+    model="ministral-3b-2512",
+    api_key_env="MISTRAL_API_KEY",
+    context_window=131_072,
+    max_output_tokens=131_072,
 )
 
 CACHE = Path(".cache/rerank")
@@ -67,6 +82,8 @@ EMBED_CACHE = Path(".cache/hybrid")
 # the primary unscored is a worse outcome than spending 17 calls on it.
 RERANKERS = {
     "local": LOCAL_RERANK,
+    "ministral": LLMReranker(provider=MINISTRAL_3B),
+    "flashlite": LLMReranker(provider=GEMINI_3_5_FLASH_LITE),
     "cloudflare": CLOUDFLARE_RERANK,
     "voyage": VOYAGE_RERANK_3_LITE,
     "voyage3": VOYAGE_RERANK_3,
@@ -93,7 +110,15 @@ WINDOWS = (1, 5, 10, 20, 50)
 # 10,000 tokens is refused however long you wait. Measured on the requests
 # corpus: 50 documents (~16,900 tokens) refused, 40 (~13,100) refused, 30
 # (~8,900) passes. That is why --window exists.
-PACE = {"rerank-3-lite": 75.0, "rerank-3": 75.0, "rerank-v4.0-fast": 7.0}
+PACE = {
+    "rerank-3-lite": 75.0,
+    "rerank-3": 75.0,
+    "rerank-v4.0-fast": 7.0,
+    # LLM rerankers spend GENERATION quota, which is the scarcest thing
+    # here. flash-lite is 500/day, so 17 queries is 3.4% of a day.
+    "gemini-3.5-flash-lite": 2.0,
+    "ministral-3b-2512": 2.0,
+}
 # How far a pair's score may move between batch sizes before the per-pair
 # cache is unsafe. An API cross-encoder is exact - measured drift 0.0 on Voyage
 # and 2e-07 on Cloudflare - so 1e-6 is the right bar for them.
@@ -109,6 +134,12 @@ PACE = {"rerank-3-lite": 75.0, "rerank-3": 75.0, "rerank-v4.0-fast": 7.0}
 # hide a 0.15 result. It could reorder two documents whose true scores differ
 # by less than 1e-2 - and a tie that fine is arbitrary anyway.
 POINTWISE_TOLERANCE = {"ms-marco-MiniLM-L-6-v2": 1e-2}
+
+# A LISTWISE reranker is not pointwise BY DESIGN - it ranks the documents
+# against each other, so a document's place genuinely depends on what it
+# was sent with. The pointwise check and the per-pair cache are both
+# meaningless for it, so it is scored per call instead.
+LISTWISE = {"gemini-3.5-flash-lite", "ministral-3b-2512"}
 
 RETRY_WAIT = 70.0
 RETRY_LIMIT = 8
@@ -197,7 +228,14 @@ class PairScores:
                     print(f"    429, backing off {RETRY_WAIT:.0f}s", flush=True)
                     time.sleep(RETRY_WAIT)
             self.calls += 1
-            for place, score in zip(ranking.order, ranking.scores, strict=True):
+            # A listwise reranker returns an ORDER and no scores - it never
+            # scored anything, it sorted. Synthesising a score from the place
+            # keeps one cache shape for both kinds, and the only thing the
+            # cache is ever asked for is the order back again.
+            scored = ranking.scores or tuple(
+                float(len(ranking.order) - place) for place in range(len(ranking.order))
+            )
+            for place, score in zip(ranking.order, scored, strict=True):
                 self.scores[self.key(query.id, batch[place])] = score
         self.path.write_text(json.dumps(self.scores), encoding="utf-8")
 
@@ -216,6 +254,15 @@ def verify_pointwise(query, documents: list[str], candidates: list[int]) -> None
     broken fixture; this is the same class of check, run before the fixture is
     trusted rather than after.
     """
+    if RERANKER.model in LISTWISE:
+        print(
+            "  pointwise check: SKIPPED - a listwise reranker ranks documents "
+            "against each other by design, so a place genuinely depends on the "
+            "batch. It is scored per call, and the per-pair cache is only ever "
+            "asked for the order it stored."
+        )
+        return
+
     probe = candidates[0]
     wait = PACE.get(RERANKER.model, 0.0)
     small = RERANKER.rank(query.text, [documents[probe], documents[candidates[1]]])
