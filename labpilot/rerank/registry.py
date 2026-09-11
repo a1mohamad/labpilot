@@ -36,7 +36,13 @@ COHERE_RERANK = CohereReranker(
 #
 # `rerank-3` (the non-lite variant) also answers and scored marginally higher
 # on the probe. It consumes the same tokens, so it is a real slice 8 candidate.
-VOYAGE_RERANK = VoyageReranker(
+VOYAGE_RERANK_3 = VoyageReranker(
+    name="Voyage Rerank 3",
+    url=VOYAGE_URL,
+    model="rerank-3",
+)
+
+VOYAGE_RERANK_3_LITE = VoyageReranker(
     name="Voyage Rerank 3 Lite",
     url=VOYAGE_URL,
     model="rerank-3-lite",
@@ -64,6 +70,20 @@ CLOUDFLARE_RERANK = CloudflareReranker(
 # as unbuilt rather than half-built, like HNSW on the shelf.
 RERANK_CHAIN = (
     COHERE_RERANK,
-    VOYAGE_RERANK,
+    VOYAGE_RERANK_3,
+    VOYAGE_RERANK_3_LITE,
     CLOUDFLARE_RERANK,
 )
+
+# The two Voyage tiers share one API key, one 200M grant and one 10K TPM
+# ceiling, so a rate-limit refusal will almost always hit BOTH - the chain
+# spends two requests to learn one fact. That is accepted rather than
+# overlooked: a 429 costs no tokens, so the price is latency and not quota,
+# and the pair buys real redundancy against a single model being withdrawn or
+# briefly broken. If it ever matters, the fix is pool-aware skipping like
+# llm/chain.py has, not reordering.
+#
+# NOT MEASURED, and deliberately so. `rerank-3` scored marginally higher than
+# `rerank-3-lite` on the 2026-09-11 probe (0.8594 against 0.8516 on one pair),
+# which is a reason to try it first and NOT evidence that it ranks better.
+# Slice 8 scores them properly.

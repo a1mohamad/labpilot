@@ -9,7 +9,8 @@ from labpilot.rerank.registry import (
     CLOUDFLARE_RERANK,
     COHERE_RERANK,
     RERANK_CHAIN,
-    VOYAGE_RERANK,
+    VOYAGE_RERANK_3,
+    VOYAGE_RERANK_3_LITE,
 )
 from labpilot.rerank.voyage import VoyageReranker
 
@@ -27,7 +28,8 @@ __all__ = [
     "RerankError",
     "Reranker",
     "SKIP",
-    "VOYAGE_RERANK",
+    "VOYAGE_RERANK_3",
+    "VOYAGE_RERANK_3_LITE",
     "VoyageReranker",
     "rerank",
     "skip",

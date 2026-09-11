@@ -37,7 +37,8 @@ from dotenv import load_dotenv
 from labpilot.rerank import (
     CLOUDFLARE_RERANK,
     COHERE_RERANK,
-    VOYAGE_RERANK,
+    VOYAGE_RERANK_3,
+    VOYAGE_RERANK_3_LITE,
     RerankError,
 )
 from labpilot.retrieval.gate import margin
@@ -58,7 +59,8 @@ EMBED_CACHE = Path(".cache/hybrid")
 # the primary unscored is a worse outcome than spending 17 calls on it.
 RERANKERS = {
     "cloudflare": CLOUDFLARE_RERANK,
-    "voyage": VOYAGE_RERANK,
+    "voyage": VOYAGE_RERANK_3_LITE,
+    "voyage3": VOYAGE_RERANK_3,
     "cohere": COHERE_RERANK,
 }
 
