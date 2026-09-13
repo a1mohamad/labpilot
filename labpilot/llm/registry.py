@@ -100,15 +100,62 @@ def _second_account(provider: GeminiProvider) -> GeminiProvider:
 # the five-way failure rule cannot tell "busy" from "spent" here and will treat
 # the first 429 as a dead pool. And the promotion can end without notice; the
 # signal is `cost` in the log line turning into a credit deduction.
-CLINE_GLM_5_3_FLASH = ClineProvider(
+def _cline(
+    *, name: str, model: str, context_window: int, max_output_tokens: int
+) -> ClineProvider:
+    """A pool PER MODEL, deliberately, and the choice is a guess with a reason.
+
+    Whether Cline's free quota is per account or per model is unknown and
+    cannot be learned without spending the thing being measured. The costs are
+    asymmetric, so the guess follows them: sharing a pool when the quota is
+    per-model silently loses a whole free tier, while splitting it when the
+    quota is per-account wastes exactly ONE request before both are marked
+    dead. Same shape as Google, where per-model pools are measured fact.
+    """
+    return ClineProvider(
+        name=name,
+        tier=0,
+        url=CLINE_URL,
+        model=model,
+        api_key_env="CLINE_API_KEY",
+        quota_pool=f"CLINE_API_KEY:{model}",
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        extra_body=CLINE_REASONING,
+    )
+
+
+CLINE_GLM_5_3_FLASH = _cline(
     name="GLM-5.3 Flash (Cline)",
-    tier=0,
-    url=CLINE_URL,
     model="z-ai/glm-5.3-flash",
-    api_key_env="CLINE_API_KEY",
     context_window=1_310_720,
     max_output_tokens=131_072,
-    extra_body=CLINE_REASONING,
+)
+
+# Tier 9, and the placement is measured rather than argued. Four benchmarks,
+# counting only where both models appear:
+#
+#   vs Nemotron 3 Ultra (below it)   2-0   TB 0.702/0.564 · SWE-ML 0.785/0.677
+#   vs Gemini 3.5 Flash-Lite         2-0   TB 0.702/0.540 · SWE-Pro 0.594/0.542
+#   vs GLM-5.2 (above it)            1-2   loses TB and SWE-Pro, wins Toolathlon
+#
+# So it sits exactly between tiers 8 and 10. It is NOT ranked by the AA index
+# or LMArena like the rest of the table, because it appears on NEITHER - it is
+# a coding specialist with no general-reasoning score anywhere, which is also
+# why it is not placed any higher than the evidence puts it.
+#
+# Two cautions that are real and unresolved. Independent coverage reports it is
+# "too closely tuned to Poolside's agent harness" and "can stray from the
+# required format" - and our citation contract is parsed, so drift breaks the
+# anti-hallucination mechanism rather than merely the prose. And the FREE
+# variant caps output at 32,768 against REPORT_MAX_TOKENS of 32,000: 768 tokens
+# of headroom. The PAID id `poolside/laguna-s-2.1` has 131,072 and would spend
+# credits, which is why the `:free` suffix is load-bearing.
+CLINE_LAGUNA_S_2_1 = _cline(
+    name="Laguna S 2.1 (Cline)",
+    model="poolside/laguna-s-2.1:free",
+    context_window=262_144,
+    max_output_tokens=32_768,
 )
 
 GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", model="gemini-3.7-flash")
@@ -274,6 +321,7 @@ CHAIN = _ordered(
     GEMINI_3_5_FLASH,
     _second_account(GEMINI_3_5_FLASH),
     GLM_5_2,
+    CLINE_LAGUNA_S_2_1,
     NEMOTRON_3_ULTRA,
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
