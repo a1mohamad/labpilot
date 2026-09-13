@@ -106,7 +106,7 @@ class HTTPEmbedder(ABC):
             raise ValueError(
                 f"tokens and chunks must not be negative: {tokens}, {chunks}"
             )
-        budget = self.rate.daily_token__budget
+        budget = self.rate.daily_token_budget
         if budget and tokens > budget:
             return math.inf
 

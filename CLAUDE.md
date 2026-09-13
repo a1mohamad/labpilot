@@ -35,11 +35,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**4 knobs, 3 lost fusion methods**](#the-four-hyperparameters-and-the-three-methods-that-were-lost--2026-09-07) ·
 [**SLICE 6 — the theory + the reranking budget**](#slice-6--the-theory-recorded-2026-09-09) ·
 [**SLICE 6 DONE — reranking HURT, and why that is a routing finding**](#slice-6--done-2026-09-11-built-measured-and-not-switched-on) ·
-<<<<<<< HEAD
 [**SLICE 7 — the decisions, and the one embedder list**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
-=======
-[**SLICE 7 — the decisions, and the two embedder pools**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
->>>>>>> main
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -6920,7 +6916,6 @@ taking two files can never express that. Three things follow for free:
 **Measured, and it is why this is not a preference:** a FastAPI-sized repository
 on `codestral-embed` is **166 minutes** — per question, under the old shape.
 
-<<<<<<< HEAD
 ### 2. ONE LIST OF EMBEDDERS, SORTED TWO WAYS
 
 *The user's rule, and it corrects a two-pool version I proposed first.*
@@ -6942,39 +6937,19 @@ pool of two models, both exhausted, and nowhere left to go. A single list cannot
 dead-end, because every model is always present — only its **place** moves. So
 in the fast case, when `mistral-embed` and `embed-v4.0` are both gone, we
 continue to *the next fastest still alive*, rather than failing.
-=======
-### 2. THE EMBEDDER IS CHOSEN BY TWO POOLS, EACH ORDERED BY POWER
-
-*The user's rule, and it replaces the single ordered `MIGRATION` list for the
-purpose of choosing an ingest model.*
-
-```
-chunks <= threshold  ->  STRONG POOL   walk it in power order
-chunks >  threshold  ->  FAST POOL     walk it in power order
-```
-
-Inside a pool, take the most powerful model. If its quota is spent — **both
-keys, for Google** — fall to the next tier **in that same pool**. Never cross
-pools: the whole point of the pool is the time budget.
->>>>>>> main
 
 **The threshold is TIME, not a chunk count:**
 
 $$
 T = \frac{t(A) + t(B)}{\text{rate of the model}}
 \qquad
-<<<<<<< HEAD
 T > 6\ \text{min} \;\Rightarrow\; \text{sort by SPEED}
-=======
-T > 6\ \text{min} \;\Rightarrow\; \text{FAST POOL}
->>>>>>> main
 $$
 
 Checked **before the first call**, which is the budget pre-check this file
 already demands: *"chunk count is known before the first call, so check it
 against remaining quota and refuse to start rather than dying halfway."*
 
-<<<<<<< HEAD
 **The speed order is arithmetic and is known today** — chunks embeddable in six
 minutes, at the measured mean of 341.6 tokens per chunk:
 
@@ -6995,27 +6970,6 @@ it from the list.
 in the list and slice 8 owes it **both** numbers — how fast it embeds, and how
 well it ranks. Ordering by measured recall is this file's existing standard;
 this rule just says the same list gets a second ordering.
-=======
-**Which models are fast is arithmetic, not opinion** — chunks embeddable in six
-minutes, at the measured mean of 341.6 tokens per chunk:
-
-| model | chunks / 6 min | pool |
-|---|---|---|
-| `mistral-embed` | ~10,800 | **fast** |
-| `embed-v4.0` (Cohere) | ~5,760 | **fast** |
-| `codestral-embed` | ~878 | strong |
-| `gemini-embedding-2` / `-001` | ~527 | strong |
-| `bge-base-en-v1.5` | unknown — neuron cost never recorded | unknown |
-
-**Cohere really is fast**: 10 requests/minute times a 96-chunk batch is 960
-chunks a minute, far quicker than codestral. Its 1,000-calls-a-month ceiling is
-a **budget factor for slice 8 to weigh inside the fast pool**, not a reason to
-exclude it from the pool.
-
-**SLICE 8 MEASURES THE POWER ORDER INSIDE EACH POOL. THE RULE APPLIES NOW.**
-Ordering by power is this file's existing standard — measured recall, never a
-vendor claim — applied separately to each pool.
->>>>>>> main
 
 **The fall-through is free, and it is important to say why it is not a
 migration.** It happens *before* any vector exists, so nothing has to be
@@ -7023,7 +6977,6 @@ re-embedded. Switching models *mid-corpus* would be the unrecoverable case, and
 this file already forbids it: *"never continue a half-finished corpus with a
 different model."* The pre-check exists to stop exactly that.
 
-<<<<<<< HEAD
 ### 2b. A SLOW INGEST IS OFFERED, NEVER IMPOSED
 
 *The user's call.* In the fast case, if every genuinely fast model is spent, the
@@ -7047,8 +7000,6 @@ choice is theirs.
 B fit the prompt budget together, no embedder is chosen, nothing is stored, and
 none of this runs. See the ladder below.
 
-=======
->>>>>>> main
 ### 3. One embedder per SESSION — a simplification, NOT a safety rule
 
 Both artifacts in a comparison use the same model. **Two models is a candidate
@@ -7092,19 +7043,12 @@ which Cohere bills as one unit, is safe on *scale* and unsafe only on
 
 ```
 1.  does EVERYTHING fit the prompt budget?
-<<<<<<< HEAD
         yes -> STUFF IT ALL. no embedder, no search, no rerank, no database
         no  -> continue
 
 2.  estimate the time. sort the ONE list by SPEED or by STRENGTH.
     walk down to the first live model.
     if the estimate is long, SHOW IT AND ASK before starting.
-=======
-        yes -> STUFF IT ALL. no embed, no search, no rerank
-        no  -> continue
-
-2.  pick the POOL by time, then the MODEL by power inside that pool
->>>>>>> main
     embed + store
 
 3.  search                  -> top 50    VECTOR_TOP_N   (slice 8 measures)
@@ -7171,14 +7115,8 @@ because the limit is enforced in the wrong units.
 **Not fixed, and not urgent: BGE has no caller, so nothing is truncated today.**
 **Strength of the claim:** the mechanism is certain; the 73.8% is extrapolated
 from one ratio measured on one Python file. One Cloudflare call would settle it,
-<<<<<<< HEAD
 since the response reports real token usage. **Slice 8 owns it, and owes BGE
 three numbers: its speed, its strength, and its real tokenizer ratio.**
-=======
-since the response reports real token usage. **Slice 8 owns it**, together with
-which pool BGE belongs to — its neuron cost for embedding is recorded nowhere,
-so its speed is unknown.
->>>>>>> main
 
 > **A limit is only enforced if it is measured in the units the provider
 > counts.** Ours is enforced in units we invented.
@@ -7190,19 +7128,11 @@ embedding there would starve reranking. **Slice 6 demoted Cohere to rerank tier
 7 of 8**, behind four Google LLM tiers worth ~29,800 calls a day, so that
 argument died without anyone noticing.
 
-<<<<<<< HEAD
 Under rule 2 Cohere is simply a member of the one list, and a fast one. What
 remains true is a budget fact for slice 8 to weigh: 1,000 calls a **month** is
 the smallest renewing bucket here, an embedded corpus spends it on **every
 future query** permanently, and there is a second ceiling this file recorded and
 never weighted — `x-trial-endpoint-call-limit: 10`.
-=======
-Under rule 2, Cohere is now a **fast-pool candidate**, because it embeds ~960
-chunks a minute. What remains true is only a budget fact for slice 8 to weigh:
-1,000 calls a **month** is the smallest renewing bucket here, an embedded corpus
-spends it on **every future query** permanently, and there is a second ceiling
-this file recorded and never weighted — `x-trial-endpoint-call-limit: 10`.
->>>>>>> main
 
 > **When a decision has two reasons and one dies, say which one is still
 > carrying it.** Otherwise the decision looks unsupported the day somebody

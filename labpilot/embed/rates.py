@@ -41,7 +41,7 @@ def learn(model: str, headers: Mapping[str, str], declared: Rate | None = None) 
     seen: dict[str, int] = {}
     for field, header in _HEADERS.items():
         raw = headers.get(header)
-        if header is None:
+        if raw is None:
             continue
         try:
             value = int(raw)

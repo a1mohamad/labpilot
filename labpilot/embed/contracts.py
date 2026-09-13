@@ -27,7 +27,7 @@ class Rate:
 
     tokens_per_minute: int | None = None
     requests_per_minute: int | None = None
-    daily_token__budget: int | None = None
+    daily_token_budget: int | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
