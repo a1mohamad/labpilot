@@ -11,7 +11,7 @@ Vector = tuple[float, ...]
 Task = Literal["query", "document"]
 
 
-@dataclass(frozne=True, slots=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Rate:
     """What stops a model going faster - and providers do not agree on which.
 
