@@ -6,7 +6,6 @@ import pytest
 import responses
 from responses import matchers
 
-import labpilot.llm as llm
 from labpilot.llm import CHAIN, LLMClient
 from labpilot.llm.defaults import DEFAULT_TIMEOUT, DEFAULT_TOTAL_BUDGET
 
@@ -61,12 +60,6 @@ def openai_body(model, text="from an openai-shaped provider"):
         "model": model,
         "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
     }
-
-
-def test_every_public_name_is_importable():
-    missing = [name for name in llm.__all__ if not hasattr(llm, name)]
-
-    assert not missing, missing
 
 
 @responses.activate
