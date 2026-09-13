@@ -35,6 +35,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**4 knobs, 3 lost fusion methods**](#the-four-hyperparameters-and-the-three-methods-that-were-lost--2026-09-07) ·
 [**SLICE 6 — the theory + the reranking budget**](#slice-6--the-theory-recorded-2026-09-09) ·
 [**SLICE 6 DONE — reranking HURT, and why that is a routing finding**](#slice-6--done-2026-09-11-built-measured-and-not-switched-on) ·
+[**SLICE 7 — the decisions, and the two embedder pools**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -57,6 +58,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Instruction bugs](#the-instruction-bugs-found-by-experiment-2026-08-17) ·
 [Thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) ·
 [**Prompt design rules**](#prompt-design-rules-earned-2026-08-17) ·
+[**Cline — tier 1, free, zero credits**](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
@@ -643,7 +645,37 @@ benchmark to the machine you wish you had — run that class of work on a LOCAL 
 **`DATABASE_URL` now exists in `.env` — SESSION POOLER, port 5432. Direct connection is IPv6-only and DEAD from here.**
 **Read [slice 4, the theory](#slice-4--the-theory-recorded-2026-09-03) then
 [slice 4, what is built](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path).**
-**Last updated 2026-09-13 (twenty-first session).**
+**CLINE IS THE EIGHTH PLATFORM AND NOW LEADS CHAIN 1 — `z-ai/glm-5.3-flash`, tier 1,
+FREE and consuming ZERO CREDITS, proven against a paid control that deducted instantly.
+`labpilot/llm/cline.py` unwraps Cline's `{"data": ...}` envelope; everything else is
+reused. 22 tiers now. See
+[Cline, the eighth platform](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13).**
+**⚠ ITS QUOTA IS PUBLISHED NOWHERE AND IT SENDS NO RATE-LIMIT HEADERS, so the five-way
+rule cannot tell busy from spent there and will retire the pool on the first 429. It is
+the only tier in the project flying blind.**
+**`reasoning.effort` is LOAD-BEARING on that tier, and it works BACKWARDS: without it the
+model burns its budget thinking and Cline answers HTTP 500 `empty response content` —
+2 of 5 runs succeeded without it, 5 of 5 with it. An explicit effort CAPS reasoning here.**
+**Only 2 of Cline's 6 free models answer the API at all; the other four return 403
+"only available via Cline product surfaces". `api/v1/models` is a 100% mirror of
+OpenRouter's 445-model catalogue — measured, zero difference.**
+**The Chain 1 table was REGENERATED from `CHAIN` — it had been left at the fifteen-tier
+shape and was already missing every `(key 2)` twin from 2026-09-11.**
+**LAGUNA S 2.1 IS TIER 9, placed on FOUR benchmarks and not one — the user refused a
+single-benchmark decision and it moved the answer: on Terminal-Bench alone Gemini 3.6
+Flash beats it, on SWE-Bench Pro the reverse, and the two cancel. It beats Nemotron 3
+Ultra 2-0 and Flash-Lite 2-0, loses to GLM-5.2 1-2, so it lands exactly between tiers 8
+and 10. 23 tiers now.**
+**AND TIER 1 IS VINDICATED: `GLM-5.3 Flash` is #1 OF 42 ON TOOLATHLON and 0.843 on
+Terminal-Bench. This file called its placement "a budget decision, not measured" — that
+was too cautious.**
+**⚠ FOUR of Cline's six free models answer 403 on EVERY call, and the chain treats 403 as
+"next tier" — so a blocked model in CHAIN still produces a report while burning a request
+per call, exactly how Gemma stayed broken for weeks. Now pinned by a test.**
+**GLM-5.2 IS STILL DEAD but the refusal CHANGED: 403 `tier_not_allowed` code 1910, not the
+old 429 with `limit: 0`. Cleaner for us — not retryable, never touches `dead_pools`.**
+**725 passed, 48 skipped, 1 xfailed, ruff clean. Branch `feat/llm-client`, pushed.**
+**Last updated 2026-09-13 (twenty-second session).**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
 **`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
@@ -6851,6 +6883,228 @@ file's own rule.
 Slices 1 to 5 cost almost nothing. That is unusual, and it is the right place to
 move quickly.
 
+## Slice 7 — the decisions taken before any code, 2026-09-13
+
+*Taken in session 21, with the user, before a line of slice 7 was written.
+Several of them overturn or narrow something this file already said, so they
+are recorded here rather than rediscovered later.*
+
+### 1. The API splits into INGEST and ASK
+
+Today `POST /api/v1/compare` takes **both files on every request**, so every
+question re-chunks and re-embeds the whole corpus. Slice 7 splits it:
+
+```
+once      POST /artifacts   [file]  ->  {"id": "a1"}     chunk, embed, store
+per turn  POST /compare     {a, b, question}             search, rerank, answer
+```
+
+**The reason is not speed, although speed is the visible part.** This file's own
+design says artifacts are **state**, not input — *"after an artifact is ingested
+the only thing crossing the wire each turn is a prompt"* — and one endpoint
+taking two files can never express that. Three things follow for free:
+
+- **Retrieval becomes measurable.** Under one endpoint every request rebuilds
+  the corpus, so the same corpus can never be asked two different questions.
+- **0-, 1- and 2-artifact sessions cost one field**, not a rewrite of `api/`.
+  The door takes **ids**, so a session simply *has* fewer of them — which is
+  what makes [the artifact-count design](#artifact-count--flexible-input-focused-identity)
+  nearly free at Step 2, exactly as this file predicted.
+- **pgvector stops being scaffolding.** Under one endpoint we would embed,
+  search, and throw the database away on every request.
+
+**Measured, and it is why this is not a preference:** a FastAPI-sized repository
+on `codestral-embed` is **166 minutes** — per question, under the old shape.
+
+### 2. THE EMBEDDER IS CHOSEN BY TWO POOLS, EACH ORDERED BY POWER
+
+*The user's rule, and it replaces the single ordered `MIGRATION` list for the
+purpose of choosing an ingest model.*
+
+```
+chunks <= threshold  ->  STRONG POOL   walk it in power order
+chunks >  threshold  ->  FAST POOL     walk it in power order
+```
+
+Inside a pool, take the most powerful model. If its quota is spent — **both
+keys, for Google** — fall to the next tier **in that same pool**. Never cross
+pools: the whole point of the pool is the time budget.
+
+**The threshold is TIME, not a chunk count:**
+
+$$
+T = \frac{t(A) + t(B)}{\text{rate of the model}}
+\qquad
+T > 6\ \text{min} \;\Rightarrow\; \text{FAST POOL}
+$$
+
+Checked **before the first call**, which is the budget pre-check this file
+already demands: *"chunk count is known before the first call, so check it
+against remaining quota and refuse to start rather than dying halfway."*
+
+**Which models are fast is arithmetic, not opinion** — chunks embeddable in six
+minutes, at the measured mean of 341.6 tokens per chunk:
+
+| model | chunks / 6 min | pool |
+|---|---|---|
+| `mistral-embed` | ~10,800 | **fast** |
+| `embed-v4.0` (Cohere) | ~5,760 | **fast** |
+| `codestral-embed` | ~878 | strong |
+| `gemini-embedding-2` / `-001` | ~527 | strong |
+| `bge-base-en-v1.5` | unknown — neuron cost never recorded | unknown |
+
+**Cohere really is fast**: 10 requests/minute times a 96-chunk batch is 960
+chunks a minute, far quicker than codestral. Its 1,000-calls-a-month ceiling is
+a **budget factor for slice 8 to weigh inside the fast pool**, not a reason to
+exclude it from the pool.
+
+**SLICE 8 MEASURES THE POWER ORDER INSIDE EACH POOL. THE RULE APPLIES NOW.**
+Ordering by power is this file's existing standard — measured recall, never a
+vendor claim — applied separately to each pool.
+
+**The fall-through is free, and it is important to say why it is not a
+migration.** It happens *before* any vector exists, so nothing has to be
+re-embedded. Switching models *mid-corpus* would be the unrecoverable case, and
+this file already forbids it: *"never continue a half-finished corpus with a
+different model."* The pre-check exists to stop exactly that.
+
+### 3. One embedder per SESSION — a simplification, NOT a safety rule
+
+Both artifacts in a comparison use the same model. **Two models is a candidate
+for a later version**, and the database already allows it: `v` is an
+undimensioned `vector` and the model lives on the artifact row.
+
+**This file's stated reason for the rule is WRONG, and is corrected here.**
+[Open question 2](#three-open-questions--answer-them-at-step-1-with-measurements)
+says mixing would make *"the alignment matrix compare across models — the exact
+`cos(E_A(q), E_B(d))` = noise failure"*. That is too strong, and it was repeated
+for weeks without being checked:
+
+```
+search      question <-> A      vectors, in A's space
+search      question <-> B      vectors, in B's space
+COMPARISON  A <-> B             TEXT, read by the LLM
+```
+
+**A's vectors never meet B's vectors.** The similarity matrix compares *claims
+extracted from A as TEXT* against B's chunks, so it can be embedded in B's space
+and stays consistent. Mixing costs one extra query embed per turn, and nothing
+else.
+
+What genuinely survives is smaller than the claim it replaces:
+
+| real cost of mixing | severity |
+|---|---|
+| two query embeds per turn instead of one | small, permanent |
+| the correspondence gate's threshold is calibrated **per model** | real, and it is Step 2 |
+| a future caller could pool A's and B's **vector scores** in one sorted list | see below |
+
+That last one is the only silent failure, and **it cannot happen today** —
+`select()` loops `for side in ("A", "B")`, and `weighted_rrf` fuses by **rank**,
+never by score. The warning describes a mistake nobody currently has a reason to
+make. Note also that **reranked** scores come from ONE cross-encoder and so are
+comparable across sides: merging A and B into a single 100-document rerank call,
+which Cohere bills as one unit, is safe on *scale* and unsafe only on
+*coverage* — which "fill A before B" already governs.
+
+### 4. The full decision ladder, start to finish
+
+```
+1.  does EVERYTHING fit the prompt budget?
+        yes -> STUFF IT ALL. no embed, no search, no rerank
+        no  -> continue
+
+2.  pick the POOL by time, then the MODEL by power inside that pool
+    embed + store
+
+3.  search                  -> top 50    VECTOR_TOP_N   (slice 8 measures)
+
+4.  gate: is the winner already obvious?
+        yes -> skip the reranker
+
+5.  rerank, if a tier is available -> top 10   RERANK_TOP_N  (slice 8 measures)
+        no tier available -> skip(), keep the vector order, take the top N
+```
+
+**Step 1 is the one that keeps being under-weighted, and it is already this
+file's rule** — *"add it up; if it fits, send it all"*. A paper plus a notebook
+often fits, and then retrieval is not merely unnecessary but **harmful**, since
+a bad retriever can hide the very line the report needs.
+
+**Both N's are placeholders with no evidence behind them yet**, and slice 6 said
+so explicitly: `recall@N` is monotone, so retrieval can find where MORE stops
+helping and never where FEWER starts. What the frontier did settle for free is
+that N in {20, 50} is eliminated, so generation only has to choose among
+{3, 5, 10, 15}. And it is **two** numbers, not one, because the reranked and
+vector-only paths have different recall curves.
+
+### 5. MEAN TOKENS PER CHUNK IS 341.6, NOT 192 — measured 2026-09-13
+
+[Slice 1](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) records
+**192 tokens per chunk** and concludes the routing rule's operational case
+*"looks much weaker than it did"*. That number came from `B_train.py` — **one
+file**. Chunked over this whole repository:
+
+```
+5,386 chunks   1,839,759 est tokens   mean 341.6   max 509
+```
+
+**1.8x higher**, so `codestral-embed` on a real repository is **37 minutes**,
+not the 8 that argument rested on. **Condition 2 of the routing rule is
+therefore STRONGER than this file claims, not weaker** — which is why rule 2
+above exists at all.
+
+> **A benchmark answers the question its fixture asks.** One file said 192; a
+> repository says 341.6. Same code, same estimator, different population.
+
+### 6. OPEN DEFECT: BGE's input guard is enforced with OUR tokenizer
+
+`HTTPEmbedder._check_texts` enforces `max_input_tokens` using
+`estimate_tokens` — our `chars/3`, calibrated on Mistral-shaped counts. **BGE
+does not tokenize like that.** This file's own slice 1b measurement, the same
+corpus embedded twice: **39,936 BGE tokens against codestral's 14,979**, which
+is **2.36x** our estimate.
+
+So BGE's real 512-token limit is about **217 of our tokens**, and on this
+repository:
+
+```
+chunks                            5,391
+refused by the guard (est > 512)      0   (0.0%)
+TRUNCATED BY BGE (real > 512)     3,978   (73.8%)
+```
+
+**The guard passes every chunk and BGE silently truncates three quarters of
+them** — the exact failure `max_input_tokens` was added to prevent, defeated
+because the limit is enforced in the wrong units.
+
+**Not fixed, and not urgent: BGE has no caller, so nothing is truncated today.**
+**Strength of the claim:** the mechanism is certain; the 73.8% is extrapolated
+from one ratio measured on one Python file. One Cloudflare call would settle it,
+since the response reports real token usage. **Slice 8 owns it**, together with
+which pool BGE belongs to — its neuron cost for embedding is recorded nowhere,
+so its speed is unknown.
+
+> **A limit is only enforced if it is measured in the units the provider
+> counts.** Ours is enforced in units we invented.
+
+### 7. Cohere's exclusion is LIFTED, and its old reason was already stale
+
+This file excluded `embed-v4.0` because *"Cohere is the reranker primary"* and
+embedding there would starve reranking. **Slice 6 demoted Cohere to rerank tier
+7 of 8**, behind four Google LLM tiers worth ~29,800 calls a day, so that
+argument died without anyone noticing.
+
+Under rule 2, Cohere is now a **fast-pool candidate**, because it embeds ~960
+chunks a minute. What remains true is only a budget fact for slice 8 to weigh:
+1,000 calls a **month** is the smallest renewing bucket here, an embedded corpus
+spends it on **every future query** permanently, and there is a second ceiling
+this file recorded and never weighted — `x-trial-endpoint-call-limit: 10`.
+
+> **When a decision has two reasons and one dies, say which one is still
+> carrying it.** Otherwise the decision looks unsupported the day somebody
+> checks the dead half.
+
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 
 > **It now decides a third thing: exact vs HNSW.** Added 2026-09-05 — see
@@ -8576,6 +8830,7 @@ Copy `.env.example` to `.env` and fill in real values.
 
 | Variable | Used for | Where to get it |
 |---|---|---|
+| **`CLINE_API_KEY`** | **Generator tier 1 — `z-ai/glm-5.3-flash`, FREE** | app.cline.bot → Settings → API Keys — no card. Free models consume **zero credits**, proven against a paid control. Only 2 of Cline's 6 free models answer the API; the quota is published nowhere and Cline sends **no rate-limit headers**. Added 2026-09-13 |
 | `GOOGLE_API_KEY` | Generators, embedder, and the top 4 rerank tiers | aistudio.google.com/api-keys — **not the original account**; that one is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
 | **`GOOGLE_API_KEY_2`** | **A THIRD account — a second QUOTA, not a spare key** | Google bills per project per model, so this doubles EVERY Google budget: 20/day per Flash, 500 per Flash-Lite, 14,400 per Gemma, 1,000 embed requests. Added 2026-09-11 |
 | `MISTRAL_API_KEY` | Generator tiers 4, 5, 7, 9, **embedder primary** | console.mistral.ai — phone verification, no card |
@@ -9224,26 +9479,40 @@ reason the three chains are shaped differently.
 Ordered by **measured capability**, not by quota and not by vendor claims.
 Two independent sources were used (see [Model ranking](#model-ranking--how-the-order-was-decided-2026-08-11)).
 
-*Rebuilt 2026-08-17 — **fifteen tiers**, ordered purely on measured score. Every
-row was proven live before it was added.*
+*Rebuilt 2026-08-17, and **regenerated from `CHAIN` itself on 2026-09-13** —
+**twenty-three tiers**. The table below had been left at the fifteen-tier shape
+and was therefore already wrong before Cline arrived: it was missing every
+`(key 2)` twin added on 2026-09-11. Every row was proven live before it was
+added.*
+
+**The numbers are POSITIONS, derived by `_ordered()`, never typed.** Read this
+table by model name; a tier index in this file has gone stale three times now.
 
 | # | Model | Provider | AA | LMArena | Note |
 |---|---|---|---|---|---|
-| 1 | **Gemini 3.7 Flash** | Google | **56.0** | — | released 2026-08-13, +4 over 3.6 |
-| 2 | **Gemini 3.6 Flash** | Google | 51.6 | 1484 (#15) | the most-proven model here |
-| 3 | **Gemini 3.5 Flash** | Google | 50.2 | **1480 (#4)** | |
-| 4 | **GLM-5.2** | Mistral | 52.6 | 1465 (#13) | ❌ **dead** — see Constraints |
-| 5 | **Nemotron 3 Ultra** `:free` | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
-| 6 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
-| 7 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
-| 8 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input limit |
-| 9 | **North Mini Code** `:free` | OpenRouter | 27.6 | — | Coding Index 33.4 |
-| 10 | **Nemotron 3 Super** `:free` | OpenRouter | 25.7 | 1378 (#83) | |
-| 11 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
-| 12 | **GPT-OSS 120B** | **Groq** | 24.1 | 1365 (#98) | ⏸ 8K total budget |
-| 13 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
-| 14 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
-| 15 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
+| 1 | **GLM-5.3 Flash (Cline)** | **Cline** | — | — | **FREE, 0 credits** · TB **0.843** · Toolathlon **#1 of 42** |
+| 2 | **Gemini 3.7 Flash** | Google | **56.0** | — | released 2026-08-13, +4 over 3.6 |
+| 3 | **Gemini 3.7 Flash (key 2)** | Google (key 2) | **56.0** | — | the same model, a separate daily allowance |
+| 4 | **Gemini 3.6 Flash** | Google | 51.6 | 1484 (#15) | the most-proven model here |
+| 5 | **Gemini 3.6 Flash (key 2)** | Google (key 2) | 51.6 | 1484 (#15) | the same model, a separate daily allowance |
+| 6 | **Gemini 3.5 Flash** | Google | 50.2 | **1480 (#4)** |  |
+| 7 | **Gemini 3.5 Flash (key 2)** | Google (key 2) | 50.2 | **1480 (#4)** | the same model, a separate daily allowance |
+| 8 | **GLM-5.2** | Mistral | 52.6 | 1465 (#13) | ❌ **dead** — see Constraints |
+| 9 | **Laguna S 2.1 (Cline)** | **Cline** | — | — | **FREE, 0 credits** · TB 0.702 · SWE-ML 0.785 · coding specialist |
+| 10 | **Nemotron 3 Ultra** | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
+| 11 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
+| 12 | **Gemini 3.5 Flash-Lite (key 2)** | Google (key 2) | 37.4 | — | the same model, a separate daily allowance |
+| 13 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
+| 14 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input · rejects `thinking` |
+| 15 | **Gemma 4 31B (key 2)** | Google (key 2) | 29.7 | **1441 (#27)** | the same model, a separate daily allowance |
+| 16 | **North Mini Code** | OpenRouter | 27.6 | — | Coding Index 33.4 |
+| 17 | **Nemotron 3 Super** | OpenRouter | 25.7 | 1378 (#83) |  |
+| 18 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
+| 19 | **GPT-OSS 120B (Groq)** | Groq | 24.1 | 1365 (#98) | ⏸ 8K total budget |
+| 20 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
+| 21 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
+| 22 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
+| 23 | **Gemini 3.1 Flash-Lite (key 2)** | Google (key 2) | — | — | the same model, a separate daily allowance |
 
 ⏸ = alive but **unreachable today**, because a report prompt exceeds its limit.
 Each is refused *locally* by `_check_fits`, so it costs no request and no time —
@@ -9326,6 +9595,234 @@ would fix this properly, but it does not exist yet — it is planned for
 [Why the adjacency rule was retired](#why-the-adjacency-rule-was-retired--2026-08-16).
 The reasoning above is kept because it explains why the *pool*, not the provider
 name, is the thing that runs out.
+
+### Cline — the eighth platform, and the free tier that costs no credits (2026-09-13)
+
+*Investigated at the user's request, tested against the real API with the user's
+own key, and then built. `z-ai/glm-5.3-flash` now leads chain 1.*
+
+**The headline: Cline's free models do not consume credits at all.** This was
+proven with a control, because "the balance did not move" on its own could just
+mean billing is slow.
+
+| call | `costUsd` recorded | **`creditsUsed`** | balance |
+|---|---|---|---|
+| `glm-5.3-flash`, 1,717 tokens | 84,625 | **0** | 500000 → 500000 |
+| `glm-5.3-flash`, 1,592 tokens | 78,375 | **0** | 500000 → 500000 |
+| `laguna-s-2.1:free`, 52 tokens | 0 | **0** | 500000 → 500000 |
+| **control — `mistral-small-3.2-24b` (paid), 13 tokens** | 147 | **1** | 500000 → **499999** |
+
+The control deducted **instantly**, so billing is not delayed — free models are
+genuinely exempt. Cline records what the call *would* have cost and charges
+nothing. Read the ledger at `GET /api/v1/users/{userId}/usages`; the balance is
+at `GET /api/v1/users/{userId}/balance`, in micro-credits (500000 = 0.5).
+
+> **A balance that does not move is not evidence until a paid control moves
+> it.** Two explanations fit "nothing was charged" — exempt, or delayed — and
+> only the control separates them.
+
+#### Only 2 of the 6 free models answer the API
+
+| model | API | result |
+|---|---|---|
+| **`z-ai/glm-5.3-flash`** | ✅ 200 | **built — tier 1** |
+| `poolside/laguna-s-2.1:free` | ✅ 200 | reachable, **not built** — unmeasured quality |
+| `cline-free/muse-spark-1.3-contributor` | ❌ 403 | *"only available via Cline product surfaces"* |
+| `cline-free/solar-pro4` | ❌ 403 | same |
+| `cline-free/longcat-2.0` | ❌ 403 | same |
+| `deepseek/deepseek-v4-flash` | ❌ 403 | same |
+
+Cline's docs say free models are not available through the API at all. That is
+**half right**: the gate is **per model**, and it is not the `cline-free/`
+namespace either — `deepseek/deepseek-v4-flash` is an ordinary catalogue id and
+is still blocked, while `glm-5.3-flash` is on the free list and answers.
+
+**The free roster rotates and is discovered here, not in the docs:**
+
+```
+https://api.cline.bot/api/v1/ai/cline/recommended-models   -> recommended / free / clinePass / clineCloud
+https://api.cline.bot/api/v1/ai/cline/models               -> the full catalogue
+```
+
+Both are **public, no key needed**. The documentation page names no models at
+all, and the screenshots on it were already stale — they showed
+`cline-free/glm-5.2` and `stepfun/step-3.7-flash`, neither of which is on the
+live list.
+
+#### `api/v1/models` is OpenRouter's catalogue, not Cline's
+
+445 models from Cline, 445 from OpenRouter, **100% overlap, zero difference**.
+Cline's own docs admit the convention — *"the same convention used by
+OpenRouter"* — and its usage ledger records
+`aiInferenceProviderName: "openrouter"`. Neither `cline-free/` nor
+`cline-pass/` appears in that list.
+
+> **When a provider's catalogue is exactly another provider's catalogue, it is
+> a mirror.** Counting the rows took one command and settled what an hour of
+> reading could not.
+
+#### THE QUOTA IS PUBLISHED NOWHERE, and that is a real cost to us
+
+Not in the docs, not on any endpoint (`/quota` and `/limits` are 404), not from
+a third party. **And Cline sends no rate-limit headers at all** — every response
+header was dumped on a 200 and there is no `x-ratelimit-*`, no `Retry-After`.
+
+That matters because
+[the five-way rule](#how-the-chain-decides--the-five-way-rule) reads exactly
+those headers to tell *busy* from *spent* from *not entitled*. On Cline it
+cannot, so the chain will retire the pool on the first 429. **This is the one
+tier in the project flying blind**, and it is the argument for keeping it at a
+position the chain can cheaply skip.
+
+Finding the real limit means calling until it refuses, which spends the thing
+being measured. **Not attempted.** The signal that the promotion has ended is
+`cost` in the log line turning into a credit deduction.
+
+#### `reasoning.effort` is what makes the tier work, and it works backwards
+
+Five runs each, one prompt, `max_tokens=1500`:
+
+```
+no reasoning field        2 of 5 succeeded      ~1,200 reasoning tokens
+reasoning.effort = high   5 of 5 succeeded       17-60 reasoning tokens
+```
+
+Without it `glm-5.3-flash` spends its whole budget thinking and returns empty
+content, which Cline reports as **its own HTTP 500 `empty response content`** —
+not a 400, not a `finish_reason`, so nothing downstream can diagnose it.
+
+**Note the direction: an explicit effort CAPS the reasoning on this model
+rather than raising it.** That is why it fixes the failure. It is the same
+shape as slice 6's `thinking=None` on flash-lite — a reasoning knob whose
+useful setting is the *low* one — and the third time in this project that a
+thinking control has behaved opposite to its name.
+
+Cline **silently ignores unknown fields** (an invented `zzz_nonsense` returned
+200), so a wrong spelling here would fail silently. The OpenRouter spelling is
+right because Cline routes through OpenRouter.
+
+#### The response is NOT the OpenAI shape
+
+```json
+{"data": {"choices": [...], "usage": {...}}, "success": true}
+```
+
+`OpenAICompatibleProvider._extract_message` reads `body["choices"][0]` and
+raises *"unexpected response shape"* on every call. So `ClineProvider`
+subclasses it and overrides only the two **reading** methods; the request side
+is standard OpenAI and is reused unaltered.
+
+**One Python trap worth keeping:** the providers are `@dataclass(slots=True)`,
+and that decorator builds a **new class object**. Zero-argument `super()` then
+resolves through a `__class__` cell pointing at a class no longer in the MRO.
+`ClineProvider` calls `OpenAICompatibleProvider._extract_message(self, ...)`
+explicitly for that reason.
+
+#### Why it leads the chain
+
+Every Google Flash model is **20 requests a day**. A free tier in front of them
+spends nothing we are short of. That is the whole argument, and it is the same
+one that put Flash-Lite ahead of stronger models for volume.
+
+**What is NOT claimed: that it is the best model here.** It has no AA score and
+no LMArena rank, so its position is *not* the measured-capability ordering the
+rest of the table uses — it is a budget decision, and it is the user's call,
+recorded as such. Slice 8 can score it on the real fixture.
+
+#### Laguna S 2.1 is tier 9, and the placement is measured — 2026-09-13
+
+*Added after the user refused a one-benchmark decision: "you have only terminal
+benchmark? we need more benchmark to compare!!!!" That objection was right and
+it moved the answer — on Terminal-Bench alone, Gemini 3.6 Flash beats Laguna;
+on SWE-Bench Pro the reverse is true, and the two cancel.*
+
+**Head-to-head, counting only where both models appear on a leaderboard:**
+
+| Laguna vs | Record | Evidence |
+|---|---|---|
+| Nemotron 3 Ultra (was t9) | **2–0** | TB 0.702/0.564 · SWE-ML 0.785/0.677 |
+| Gemini 3.5 Flash-Lite (t11) | **2–0** | TB 0.702/0.540 · SWE-Pro 0.594/0.542 |
+| Gemini 3.6 Flash (t4) | 1–1 | loses TB 0.780, wins SWE-Pro 0.587 |
+| Gemini 3.5 Flash (t6) | 1–1 | wins SWE-Pro 0.551, loses Toolathlon 0.565 |
+| GLM-5.2 (t8) | 1–2 | loses TB and SWE-Pro, wins Toolathlon |
+| **GLM-5.3 Flash (t1)** | **0–2** | TB 0.843 · Toolathlon 0.784 |
+
+It sits **exactly between tier 8 and the old tier 9**, so it becomes tier 9 and
+Nemotron 3 Ultra moves to 10. This is the project's own rule applied — *judge a
+method by how many independent ways it was shown better, never by its best
+single number.*
+
+**It is NOT ranked the way the rest of the table is.** Every other row is
+ordered on the AA Intelligence Index plus LMArena. Laguna appears on **neither**
+— nor on GPQA or MMLU. It is a pure coding specialist with **no
+general-reasoning score anywhere**, which is both why it is not placed higher
+and why the placement rests on coding benchmarks alone.
+
+**What the benchmarks say about tier 1, which is the bigger news:**
+`GLM-5.3 Flash` is **#1 of 42 on Toolathlon** and 0.843 on Terminal-Bench. An
+earlier draft of this file called its tier-1 position *"a budget decision, not
+the measured-capability ordering"*. **That was too cautious — it is measured**,
+and Toolathlon is agentic tool use, which is close to the most relevant
+benchmark that exists for Step 2.
+
+**Two cautions that are real and unresolved:**
+
+- Independent coverage reports it is *"too closely tuned to Poolside's agent
+  harness"* and *"can stray from the required format"*. Our citation contract
+  `[B-17 "exact line"]` is **parsed**, so drift breaks the anti-hallucination
+  mechanism, not merely the prose.
+- The **free** variant caps output at **32,768** against `REPORT_MAX_TOKENS` of
+  32,000 — **768 tokens of headroom**. The paid id `poolside/laguna-s-2.1` has
+  131,072 and would spend credits, which is why the `:free` suffix is
+  load-bearing and now pinned by a test.
+
+**Measured live before it was configured, and it is better behaved than tier 1:**
+**8 of 8** calls succeeded with and without `reasoning.effort`, `cost 0` every
+time, and reasoning never ran away (0–421 tokens). So unlike `glm-5.3-flash`,
+the reasoning field is **not** load-bearing here — it is set for consistency
+with the chain rule, and because Laguna's `supported_parameters` really do list
+`reasoning`. The API also accepts `max_tokens` of 40,000, above its own declared
+cap, so our 32,768 is a deliberately conservative **local** guard.
+
+**Source honesty:** only Terminal-Bench is confirmed by two sources (Poolside's
+blog and llm-stats agree exactly at 0.702, so the vendor claim verified).
+SWE-Bench Pro, SWE-Bench Multilingual and Toolathlon are **single-source**. And
+cross-source noise is real — Poolside lists Claude Fable 5 at 88.0 where
+llm-stats says 0.843 — so treat any gap under ~4 points as a tie.
+
+#### Two tests this added, both mutation-verified
+
+`test_every_cline_tier_is_a_model_the_api_actually_serves` pins the measured
+allowlist. **Four of Cline's six free models answer 403 on every call**, and the
+chain treats 403 as *next tier* — so a blocked model in `CHAIN` still produces a
+report while silently burning a request per call. That is exactly how Gemma
+stayed broken for weeks. The gate is per **model**, not per namespace:
+`deepseek/deepseek-v4-flash` is an ordinary catalogue id and is refused, while
+`z-ai/glm-5.3-flash` is on the same free list and answers — so the id cannot be
+reasoned about, only measured.
+
+`test_the_cline_tiers_do_not_share_a_quota_pool` defends a decision that would
+otherwise live only in a comment. Whether Cline's quota is per account or per
+model is **unknown**, so the split follows the asymmetry: sharing when it is
+per-model silently loses a whole free tier; splitting when it is per-account
+wastes exactly one request.
+
+#### What was deliberately NOT built
+
+- ~~**`poolside/laguna-s-2.1:free`**, the second reachable free model~~ —
+  **BUILT the same day as tier 9**, once four benchmarks replaced "its quality
+  is unmeasured". See
+  [Laguna S 2.1 is tier 9](#laguna-s-21-is-tier-9-and-the-placement-is-measured--2026-09-13).
+  The pool worry was answered rather than accepted: the two Cline tiers now own
+  **separate** pools, because the cost of guessing wrong is asymmetric.
+- **The other four free models.** `cline-free/muse-spark-1.3-contributor`,
+  `cline-free/solar-pro4`, `cline-free/longcat-2.0` and
+  `deepseek/deepseek-v4-flash` answer **403 on every API call**, so they cannot
+  be tiers at all. Pinned by a test, because a 403 falls through to the next
+  tier and would otherwise be invisible.
+- **A smoke test of its own.** `tests/smoke/test_every_tier.py` parametrizes
+  over `CHAIN`, so the new tier got weekly live coverage for free — the skip
+  count went 46 → 47 and nothing had to be written.
 
 ### `gemini-embedding-2` — newer, and the only entry ranked on someone else's benchmark
 
@@ -10674,6 +11171,7 @@ what blocks the next commit, then write the commit.
 
 | Platform | Role | Limits | Card? | Proven live? |
 |---|---|---|---|---|
+| **Cline** | **Generator t1** — `z-ai/glm-5.3-flash` | **UNKNOWN — published nowhere, and no rate-limit headers.** Free models cost **0 credits** | No | ✅ 2026-09-13 |
 | **OpenRouter** | Generator t4 + t5 | 50/day, 20 RPM | No | ✅ 2026-08-10 |
 | **Google AI Studio** | Generator t1/t2/t3/t6/t8/t15, **embedder t3 — now proven** | **per model**: Flash 20/day · Flash-Lite 500/day · Gemma 14,400/day | No — see restriction note | ✅ 2026-08-27 |
 | **Mistral** | Generator t4/t5/t7/t9, **embedder primary** | **per-model** TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-16 |
