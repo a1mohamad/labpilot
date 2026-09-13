@@ -35,6 +35,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**4 knobs, 3 lost fusion methods**](#the-four-hyperparameters-and-the-three-methods-that-were-lost--2026-09-07) ·
 [**SLICE 6 — the theory + the reranking budget**](#slice-6--the-theory-recorded-2026-09-09) ·
 [**SLICE 6 DONE — reranking HURT, and why that is a routing finding**](#slice-6--done-2026-09-11-built-measured-and-not-switched-on) ·
+[**SLICE 7 — the decisions, and the one embedder list**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -6850,6 +6851,261 @@ file's own rule.
 
 Slices 1 to 5 cost almost nothing. That is unusual, and it is the right place to
 move quickly.
+
+## Slice 7 — the decisions taken before any code, 2026-09-13
+
+*Taken in session 21, with the user, before a line of slice 7 was written.
+Several of them overturn or narrow something this file already said, so they
+are recorded here rather than rediscovered later.*
+
+### 1. The API splits into INGEST and ASK
+
+Today `POST /api/v1/compare` takes **both files on every request**, so every
+question re-chunks and re-embeds the whole corpus. Slice 7 splits it:
+
+```
+once      POST /artifacts   [file]  ->  {"id": "a1"}     chunk, embed, store
+per turn  POST /compare     {a, b, question}             search, rerank, answer
+```
+
+**The reason is not speed, although speed is the visible part.** This file's own
+design says artifacts are **state**, not input — *"after an artifact is ingested
+the only thing crossing the wire each turn is a prompt"* — and one endpoint
+taking two files can never express that. Three things follow for free:
+
+- **Retrieval becomes measurable.** Under one endpoint every request rebuilds
+  the corpus, so the same corpus can never be asked two different questions.
+- **0-, 1- and 2-artifact sessions cost one field**, not a rewrite of `api/`.
+  The door takes **ids**, so a session simply *has* fewer of them — which is
+  what makes [the artifact-count design](#artifact-count--flexible-input-focused-identity)
+  nearly free at Step 2, exactly as this file predicted.
+- **pgvector stops being scaffolding.** Under one endpoint we would embed,
+  search, and throw the database away on every request.
+
+**Measured, and it is why this is not a preference:** a FastAPI-sized repository
+on `codestral-embed` is **166 minutes** — per question, under the old shape.
+
+### 2. ONE LIST OF EMBEDDERS, SORTED TWO WAYS
+
+*The user's rule, and it corrects a two-pool version I proposed first.*
+
+There are **not** two pools of models. There is **one list — every embedder we
+have — and the ORDER changes with the situation:**
+
+```
+fits the prompt budget   ->  STUFF IT. no embedder is chosen at all
+small corpus             ->  sort by STRENGTH, walk down
+large corpus             ->  sort by SPEED,    walk down
+```
+
+Walking down means: take the first model whose quota is alive. Google counts as
+spent only when **both keys** are spent.
+
+**Why one list and not two pools.** The two-pool version had a dead end: a fast
+pool of two models, both exhausted, and nowhere left to go. A single list cannot
+dead-end, because every model is always present — only its **place** moves. So
+in the fast case, when `mistral-embed` and `embed-v4.0` are both gone, we
+continue to *the next fastest still alive*, rather than failing.
+
+**The threshold is TIME, not a chunk count:**
+
+$$
+T = \frac{t(A) + t(B)}{\text{rate of the model}}
+\qquad
+T > 6\ \text{min} \;\Rightarrow\; \text{sort by SPEED}
+$$
+
+Checked **before the first call**, which is the budget pre-check this file
+already demands: *"chunk count is known before the first call, so check it
+against remaining quota and refuse to start rather than dying halfway."*
+
+**The speed order is arithmetic and is known today** — chunks embeddable in six
+minutes, at the measured mean of 341.6 tokens per chunk:
+
+| model | rate | chunks / 6 min |
+|---|---|---|
+| `mistral-embed` | 20M TPM, request-bound | **~10,800** |
+| `embed-v4.0` (Cohere) | 10 req/min x 96 | **~5,760** |
+| `codestral-embed` | 50K TPM | ~878 |
+| `gemini-embedding-2` / `-001` | 30K TPM | ~527 |
+| `bge-base-en-v1.5` (Cloudflare) | **UNKNOWN** — neuron cost for embedding is recorded nowhere | **must be measured** |
+
+**Cohere really is fast**: 10 requests a minute times a 96-chunk batch is 960
+chunks a minute, far quicker than codestral. Its 1,000-calls-a-month ceiling is
+a budget factor for slice 8 to weigh **inside the order**, not a reason to drop
+it from the list.
+
+**THE STRENGTH ORDER IS SLICE 8's JOB, AND SO IS CLOUDFLARE'S SPEED.** BGE stays
+in the list and slice 8 owes it **both** numbers — how fast it embeds, and how
+well it ranks. Ordering by measured recall is this file's existing standard;
+this rule just says the same list gets a second ordering.
+
+**The fall-through is free, and it is important to say why it is not a
+migration.** It happens *before* any vector exists, so nothing has to be
+re-embedded. Switching models *mid-corpus* would be the unrecoverable case, and
+this file already forbids it: *"never continue a half-finished corpus with a
+different model."* The pre-check exists to stop exactly that.
+
+### 2b. A SLOW INGEST IS OFFERED, NEVER IMPOSED
+
+*The user's call.* In the fast case, if every genuinely fast model is spent, the
+walk eventually reaches a slow one — `codestral-embed` is **37 minutes** on a
+5,386-chunk repository.
+
+**We use it anyway rather than refusing — but we ASK FIRST.**
+
+```
+pre-check   ->  "this will take about 37 minutes. continue?"
+user says ok in the UI  ->  embed
+user says no            ->  nothing is started
+```
+
+Working slowly beats not working, and *"come back tomorrow when the quota
+resets"* is a worse answer than an honest estimate. But a 37-minute wait the
+user did not agree to is not acceptable either, so the estimate is shown and the
+choice is theirs.
+
+**This whole path only exists when the corpus is too large to stuff.** If A and
+B fit the prompt budget together, no embedder is chosen, nothing is stored, and
+none of this runs. See the ladder below.
+
+### 3. One embedder per SESSION — a simplification, NOT a safety rule
+
+Both artifacts in a comparison use the same model. **Two models is a candidate
+for a later version**, and the database already allows it: `v` is an
+undimensioned `vector` and the model lives on the artifact row.
+
+**This file's stated reason for the rule is WRONG, and is corrected here.**
+[Open question 2](#three-open-questions--answer-them-at-step-1-with-measurements)
+says mixing would make *"the alignment matrix compare across models — the exact
+`cos(E_A(q), E_B(d))` = noise failure"*. That is too strong, and it was repeated
+for weeks without being checked:
+
+```
+search      question <-> A      vectors, in A's space
+search      question <-> B      vectors, in B's space
+COMPARISON  A <-> B             TEXT, read by the LLM
+```
+
+**A's vectors never meet B's vectors.** The similarity matrix compares *claims
+extracted from A as TEXT* against B's chunks, so it can be embedded in B's space
+and stays consistent. Mixing costs one extra query embed per turn, and nothing
+else.
+
+What genuinely survives is smaller than the claim it replaces:
+
+| real cost of mixing | severity |
+|---|---|
+| two query embeds per turn instead of one | small, permanent |
+| the correspondence gate's threshold is calibrated **per model** | real, and it is Step 2 |
+| a future caller could pool A's and B's **vector scores** in one sorted list | see below |
+
+That last one is the only silent failure, and **it cannot happen today** —
+`select()` loops `for side in ("A", "B")`, and `weighted_rrf` fuses by **rank**,
+never by score. The warning describes a mistake nobody currently has a reason to
+make. Note also that **reranked** scores come from ONE cross-encoder and so are
+comparable across sides: merging A and B into a single 100-document rerank call,
+which Cohere bills as one unit, is safe on *scale* and unsafe only on
+*coverage* — which "fill A before B" already governs.
+
+### 4. The full decision ladder, start to finish
+
+```
+1.  does EVERYTHING fit the prompt budget?
+        yes -> STUFF IT ALL. no embedder, no search, no rerank, no database
+        no  -> continue
+
+2.  estimate the time. sort the ONE list by SPEED or by STRENGTH.
+    walk down to the first live model.
+    if the estimate is long, SHOW IT AND ASK before starting.
+    embed + store
+
+3.  search                  -> top 50    VECTOR_TOP_N   (slice 8 measures)
+
+4.  gate: is the winner already obvious?
+        yes -> skip the reranker
+
+5.  rerank, if a tier is available -> top 10   RERANK_TOP_N  (slice 8 measures)
+        no tier available -> skip(), keep the vector order, take the top N
+```
+
+**Step 1 is the one that keeps being under-weighted, and it is already this
+file's rule** — *"add it up; if it fits, send it all"*. A paper plus a notebook
+often fits, and then retrieval is not merely unnecessary but **harmful**, since
+a bad retriever can hide the very line the report needs.
+
+**Both N's are placeholders with no evidence behind them yet**, and slice 6 said
+so explicitly: `recall@N` is monotone, so retrieval can find where MORE stops
+helping and never where FEWER starts. What the frontier did settle for free is
+that N in {20, 50} is eliminated, so generation only has to choose among
+{3, 5, 10, 15}. And it is **two** numbers, not one, because the reranked and
+vector-only paths have different recall curves.
+
+### 5. MEAN TOKENS PER CHUNK IS 341.6, NOT 192 — measured 2026-09-13
+
+[Slice 1](#slice-1--the-measurement-and-the-model-is-settled-2026-08-20) records
+**192 tokens per chunk** and concludes the routing rule's operational case
+*"looks much weaker than it did"*. That number came from `B_train.py` — **one
+file**. Chunked over this whole repository:
+
+```
+5,386 chunks   1,839,759 est tokens   mean 341.6   max 509
+```
+
+**1.8x higher**, so `codestral-embed` on a real repository is **37 minutes**,
+not the 8 that argument rested on. **Condition 2 of the routing rule is
+therefore STRONGER than this file claims, not weaker** — which is why rule 2
+above exists at all.
+
+> **A benchmark answers the question its fixture asks.** One file said 192; a
+> repository says 341.6. Same code, same estimator, different population.
+
+### 6. OPEN DEFECT: BGE's input guard is enforced with OUR tokenizer
+
+`HTTPEmbedder._check_texts` enforces `max_input_tokens` using
+`estimate_tokens` — our `chars/3`, calibrated on Mistral-shaped counts. **BGE
+does not tokenize like that.** This file's own slice 1b measurement, the same
+corpus embedded twice: **39,936 BGE tokens against codestral's 14,979**, which
+is **2.36x** our estimate.
+
+So BGE's real 512-token limit is about **217 of our tokens**, and on this
+repository:
+
+```
+chunks                            5,391
+refused by the guard (est > 512)      0   (0.0%)
+TRUNCATED BY BGE (real > 512)     3,978   (73.8%)
+```
+
+**The guard passes every chunk and BGE silently truncates three quarters of
+them** — the exact failure `max_input_tokens` was added to prevent, defeated
+because the limit is enforced in the wrong units.
+
+**Not fixed, and not urgent: BGE has no caller, so nothing is truncated today.**
+**Strength of the claim:** the mechanism is certain; the 73.8% is extrapolated
+from one ratio measured on one Python file. One Cloudflare call would settle it,
+since the response reports real token usage. **Slice 8 owns it, and owes BGE
+three numbers: its speed, its strength, and its real tokenizer ratio.**
+
+> **A limit is only enforced if it is measured in the units the provider
+> counts.** Ours is enforced in units we invented.
+
+### 7. Cohere's exclusion is LIFTED, and its old reason was already stale
+
+This file excluded `embed-v4.0` because *"Cohere is the reranker primary"* and
+embedding there would starve reranking. **Slice 6 demoted Cohere to rerank tier
+7 of 8**, behind four Google LLM tiers worth ~29,800 calls a day, so that
+argument died without anyone noticing.
+
+Under rule 2 Cohere is simply a member of the one list, and a fast one. What
+remains true is a budget fact for slice 8 to weigh: 1,000 calls a **month** is
+the smallest renewing bucket here, an embedded corpus spends it on **every
+future query** permanently, and there is a second ceiling this file recorded and
+never weighted — `x-trial-endpoint-call-limit: 10`.
+
+> **When a decision has two reasons and one dies, say which one is still
+> carrying it.** Otherwise the decision looks unsupported the day somebody
+> checks the dead half.
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 
