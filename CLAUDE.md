@@ -661,8 +661,20 @@ model burns its budget thinking and Cline answers HTTP 500 `empty response conte
 OpenRouter's 445-model catalogue — measured, zero difference.**
 **The Chain 1 table was REGENERATED from `CHAIN` — it had been left at the fifteen-tier
 shape and was already missing every `(key 2)` twin from 2026-09-11.**
-**723 passed, 47 skipped, 1 xfailed, ruff clean. Branch `feat/llm-client`, level with
-`main` plus three commits, pushed.**
+**LAGUNA S 2.1 IS TIER 9, placed on FOUR benchmarks and not one — the user refused a
+single-benchmark decision and it moved the answer: on Terminal-Bench alone Gemini 3.6
+Flash beats it, on SWE-Bench Pro the reverse, and the two cancel. It beats Nemotron 3
+Ultra 2-0 and Flash-Lite 2-0, loses to GLM-5.2 1-2, so it lands exactly between tiers 8
+and 10. 23 tiers now.**
+**AND TIER 1 IS VINDICATED: `GLM-5.3 Flash` is #1 OF 42 ON TOOLATHLON and 0.843 on
+Terminal-Bench. This file called its placement "a budget decision, not measured" — that
+was too cautious.**
+**⚠ FOUR of Cline's six free models answer 403 on EVERY call, and the chain treats 403 as
+"next tier" — so a blocked model in CHAIN still produces a report while burning a request
+per call, exactly how Gemma stayed broken for weeks. Now pinned by a test.**
+**GLM-5.2 IS STILL DEAD but the refusal CHANGED: 403 `tier_not_allowed` code 1910, not the
+old 429 with `limit: 0`. Cleaner for us — not retryable, never touches `dead_pools`.**
+**725 passed, 48 skipped, 1 xfailed, ruff clean. Branch `feat/llm-client`, pushed.**
 **Last updated 2026-09-13 (twenty-second session).**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
@@ -9468,7 +9480,7 @@ Ordered by **measured capability**, not by quota and not by vendor claims.
 Two independent sources were used (see [Model ranking](#model-ranking--how-the-order-was-decided-2026-08-11)).
 
 *Rebuilt 2026-08-17, and **regenerated from `CHAIN` itself on 2026-09-13** —
-**twenty-two tiers**. The table below had been left at the fifteen-tier shape
+**twenty-three tiers**. The table below had been left at the fifteen-tier shape
 and was therefore already wrong before Cline arrived: it was missing every
 `(key 2)` twin added on 2026-09-11. Every row was proven live before it was
 added.*
@@ -9478,7 +9490,7 @@ table by model name; a tier index in this file has gone stale three times now.
 
 | # | Model | Provider | AA | LMArena | Note |
 |---|---|---|---|---|---|
-| 1 | **GLM-5.3 Flash (Cline)** | **Cline** | — | — | **FREE, zero credits** · 1.31M ctx · proven live 2026-09-13 |
+| 1 | **GLM-5.3 Flash (Cline)** | **Cline** | — | — | **FREE, 0 credits** · TB **0.843** · Toolathlon **#1 of 42** |
 | 2 | **Gemini 3.7 Flash** | Google | **56.0** | — | released 2026-08-13, +4 over 3.6 |
 | 3 | **Gemini 3.7 Flash (key 2)** | Google (key 2) | **56.0** | — | the same model, a separate daily allowance |
 | 4 | **Gemini 3.6 Flash** | Google | 51.6 | 1484 (#15) | the most-proven model here |
@@ -9486,20 +9498,21 @@ table by model name; a tier index in this file has gone stale three times now.
 | 6 | **Gemini 3.5 Flash** | Google | 50.2 | **1480 (#4)** |  |
 | 7 | **Gemini 3.5 Flash (key 2)** | Google (key 2) | 50.2 | **1480 (#4)** | the same model, a separate daily allowance |
 | 8 | **GLM-5.2** | Mistral | 52.6 | 1465 (#13) | ❌ **dead** — see Constraints |
-| 9 | **Nemotron 3 Ultra** | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
-| 10 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
-| 11 | **Gemini 3.5 Flash-Lite (key 2)** | Google (key 2) | 37.4 | — | the same model, a separate daily allowance |
-| 12 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
-| 13 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input · rejects `thinking` |
-| 14 | **Gemma 4 31B (key 2)** | Google (key 2) | 29.7 | **1441 (#27)** | the same model, a separate daily allowance |
-| 15 | **North Mini Code** | OpenRouter | 27.6 | — | Coding Index 33.4 |
-| 16 | **Nemotron 3 Super** | OpenRouter | 25.7 | 1378 (#83) |  |
-| 17 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
-| 18 | **GPT-OSS 120B (Groq)** | Groq | 24.1 | 1365 (#98) | ⏸ 8K total budget |
-| 19 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
-| 20 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
-| 21 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
-| 22 | **Gemini 3.1 Flash-Lite (key 2)** | Google (key 2) | — | — | the same model, a separate daily allowance |
+| 9 | **Laguna S 2.1 (Cline)** | **Cline** | — | — | **FREE, 0 credits** · TB 0.702 · SWE-ML 0.785 · coding specialist |
+| 10 | **Nemotron 3 Ultra** | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
+| 11 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
+| 12 | **Gemini 3.5 Flash-Lite (key 2)** | Google (key 2) | 37.4 | — | the same model, a separate daily allowance |
+| 13 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
+| 14 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input · rejects `thinking` |
+| 15 | **Gemma 4 31B (key 2)** | Google (key 2) | 29.7 | **1441 (#27)** | the same model, a separate daily allowance |
+| 16 | **North Mini Code** | OpenRouter | 27.6 | — | Coding Index 33.4 |
+| 17 | **Nemotron 3 Super** | OpenRouter | 25.7 | 1378 (#83) |  |
+| 18 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
+| 19 | **GPT-OSS 120B (Groq)** | Groq | 24.1 | 1365 (#98) | ⏸ 8K total budget |
+| 20 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
+| 21 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
+| 22 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
+| 23 | **Gemini 3.1 Flash-Lite (key 2)** | Google (key 2) | — | — | the same model, a separate daily allowance |
 
 ⏸ = alive but **unreachable today**, because a report prompt exceeds its limit.
 Each is refused *locally* by `_check_fits`, so it costs no request and no time —
@@ -9716,12 +9729,97 @@ no LMArena rank, so its position is *not* the measured-capability ordering the
 rest of the table uses — it is a budget decision, and it is the user's call,
 recorded as such. Slice 8 can score it on the real fixture.
 
+#### Laguna S 2.1 is tier 9, and the placement is measured — 2026-09-13
+
+*Added after the user refused a one-benchmark decision: "you have only terminal
+benchmark? we need more benchmark to compare!!!!" That objection was right and
+it moved the answer — on Terminal-Bench alone, Gemini 3.6 Flash beats Laguna;
+on SWE-Bench Pro the reverse is true, and the two cancel.*
+
+**Head-to-head, counting only where both models appear on a leaderboard:**
+
+| Laguna vs | Record | Evidence |
+|---|---|---|
+| Nemotron 3 Ultra (was t9) | **2–0** | TB 0.702/0.564 · SWE-ML 0.785/0.677 |
+| Gemini 3.5 Flash-Lite (t11) | **2–0** | TB 0.702/0.540 · SWE-Pro 0.594/0.542 |
+| Gemini 3.6 Flash (t4) | 1–1 | loses TB 0.780, wins SWE-Pro 0.587 |
+| Gemini 3.5 Flash (t6) | 1–1 | wins SWE-Pro 0.551, loses Toolathlon 0.565 |
+| GLM-5.2 (t8) | 1–2 | loses TB and SWE-Pro, wins Toolathlon |
+| **GLM-5.3 Flash (t1)** | **0–2** | TB 0.843 · Toolathlon 0.784 |
+
+It sits **exactly between tier 8 and the old tier 9**, so it becomes tier 9 and
+Nemotron 3 Ultra moves to 10. This is the project's own rule applied — *judge a
+method by how many independent ways it was shown better, never by its best
+single number.*
+
+**It is NOT ranked the way the rest of the table is.** Every other row is
+ordered on the AA Intelligence Index plus LMArena. Laguna appears on **neither**
+— nor on GPQA or MMLU. It is a pure coding specialist with **no
+general-reasoning score anywhere**, which is both why it is not placed higher
+and why the placement rests on coding benchmarks alone.
+
+**What the benchmarks say about tier 1, which is the bigger news:**
+`GLM-5.3 Flash` is **#1 of 42 on Toolathlon** and 0.843 on Terminal-Bench. An
+earlier draft of this file called its tier-1 position *"a budget decision, not
+the measured-capability ordering"*. **That was too cautious — it is measured**,
+and Toolathlon is agentic tool use, which is close to the most relevant
+benchmark that exists for Step 2.
+
+**Two cautions that are real and unresolved:**
+
+- Independent coverage reports it is *"too closely tuned to Poolside's agent
+  harness"* and *"can stray from the required format"*. Our citation contract
+  `[B-17 "exact line"]` is **parsed**, so drift breaks the anti-hallucination
+  mechanism, not merely the prose.
+- The **free** variant caps output at **32,768** against `REPORT_MAX_TOKENS` of
+  32,000 — **768 tokens of headroom**. The paid id `poolside/laguna-s-2.1` has
+  131,072 and would spend credits, which is why the `:free` suffix is
+  load-bearing and now pinned by a test.
+
+**Measured live before it was configured, and it is better behaved than tier 1:**
+**8 of 8** calls succeeded with and without `reasoning.effort`, `cost 0` every
+time, and reasoning never ran away (0–421 tokens). So unlike `glm-5.3-flash`,
+the reasoning field is **not** load-bearing here — it is set for consistency
+with the chain rule, and because Laguna's `supported_parameters` really do list
+`reasoning`. The API also accepts `max_tokens` of 40,000, above its own declared
+cap, so our 32,768 is a deliberately conservative **local** guard.
+
+**Source honesty:** only Terminal-Bench is confirmed by two sources (Poolside's
+blog and llm-stats agree exactly at 0.702, so the vendor claim verified).
+SWE-Bench Pro, SWE-Bench Multilingual and Toolathlon are **single-source**. And
+cross-source noise is real — Poolside lists Claude Fable 5 at 88.0 where
+llm-stats says 0.843 — so treat any gap under ~4 points as a tie.
+
+#### Two tests this added, both mutation-verified
+
+`test_every_cline_tier_is_a_model_the_api_actually_serves` pins the measured
+allowlist. **Four of Cline's six free models answer 403 on every call**, and the
+chain treats 403 as *next tier* — so a blocked model in `CHAIN` still produces a
+report while silently burning a request per call. That is exactly how Gemma
+stayed broken for weeks. The gate is per **model**, not per namespace:
+`deepseek/deepseek-v4-flash` is an ordinary catalogue id and is refused, while
+`z-ai/glm-5.3-flash` is on the same free list and answers — so the id cannot be
+reasoned about, only measured.
+
+`test_the_cline_tiers_do_not_share_a_quota_pool` defends a decision that would
+otherwise live only in a comment. Whether Cline's quota is per account or per
+model is **unknown**, so the split follows the asymmetry: sharing when it is
+per-model silently loses a whole free tier; splitting when it is per-account
+wastes exactly one request.
+
 #### What was deliberately NOT built
 
-- **`poolside/laguna-s-2.1:free`**, the second reachable free model. It answers
-  and costs nothing, but its quality is unmeasured and it shares
-  `CLINE_API_KEY`, so if the free quota is per-account it adds no resilience
-  at all. One registry entry adds it the day that is worth having.
+- ~~**`poolside/laguna-s-2.1:free`**, the second reachable free model~~ —
+  **BUILT the same day as tier 9**, once four benchmarks replaced "its quality
+  is unmeasured". See
+  [Laguna S 2.1 is tier 9](#laguna-s-21-is-tier-9-and-the-placement-is-measured--2026-09-13).
+  The pool worry was answered rather than accepted: the two Cline tiers now own
+  **separate** pools, because the cost of guessing wrong is asymmetric.
+- **The other four free models.** `cline-free/muse-spark-1.3-contributor`,
+  `cline-free/solar-pro4`, `cline-free/longcat-2.0` and
+  `deepseek/deepseek-v4-flash` answer **403 on every API call**, so they cannot
+  be tiers at all. Pinned by a test, because a 403 falls through to the next
+  tier and would otherwise be invisible.
 - **A smoke test of its own.** `tests/smoke/test_every_tier.py` parametrizes
   over `CHAIN`, so the new tier got weekly live coverage for free — the skip
   count went 46 → 47 and nothing had to be written.
