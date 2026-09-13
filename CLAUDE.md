@@ -57,6 +57,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Instruction bugs](#the-instruction-bugs-found-by-experiment-2026-08-17) ·
 [Thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) ·
 [**Prompt design rules**](#prompt-design-rules-earned-2026-08-17) ·
+[**Cline — tier 1, free, zero credits**](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
@@ -643,7 +644,25 @@ benchmark to the machine you wish you had — run that class of work on a LOCAL 
 **`DATABASE_URL` now exists in `.env` — SESSION POOLER, port 5432. Direct connection is IPv6-only and DEAD from here.**
 **Read [slice 4, the theory](#slice-4--the-theory-recorded-2026-09-03) then
 [slice 4, what is built](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path).**
-**Last updated 2026-09-13 (twenty-first session).**
+**CLINE IS THE EIGHTH PLATFORM AND NOW LEADS CHAIN 1 — `z-ai/glm-5.3-flash`, tier 1,
+FREE and consuming ZERO CREDITS, proven against a paid control that deducted instantly.
+`labpilot/llm/cline.py` unwraps Cline's `{"data": ...}` envelope; everything else is
+reused. 22 tiers now. See
+[Cline, the eighth platform](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13).**
+**⚠ ITS QUOTA IS PUBLISHED NOWHERE AND IT SENDS NO RATE-LIMIT HEADERS, so the five-way
+rule cannot tell busy from spent there and will retire the pool on the first 429. It is
+the only tier in the project flying blind.**
+**`reasoning.effort` is LOAD-BEARING on that tier, and it works BACKWARDS: without it the
+model burns its budget thinking and Cline answers HTTP 500 `empty response content` —
+2 of 5 runs succeeded without it, 5 of 5 with it. An explicit effort CAPS reasoning here.**
+**Only 2 of Cline's 6 free models answer the API at all; the other four return 403
+"only available via Cline product surfaces". `api/v1/models` is a 100% mirror of
+OpenRouter's 445-model catalogue — measured, zero difference.**
+**The Chain 1 table was REGENERATED from `CHAIN` — it had been left at the fifteen-tier
+shape and was already missing every `(key 2)` twin from 2026-09-11.**
+**723 passed, 47 skipped, 1 xfailed, ruff clean. Branch `feat/llm-client`, level with
+`main` plus three commits, pushed.**
+**Last updated 2026-09-13 (twenty-second session).**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
 **`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
@@ -8576,6 +8595,7 @@ Copy `.env.example` to `.env` and fill in real values.
 
 | Variable | Used for | Where to get it |
 |---|---|---|
+| **`CLINE_API_KEY`** | **Generator tier 1 — `z-ai/glm-5.3-flash`, FREE** | app.cline.bot → Settings → API Keys — no card. Free models consume **zero credits**, proven against a paid control. Only 2 of Cline's 6 free models answer the API; the quota is published nowhere and Cline sends **no rate-limit headers**. Added 2026-09-13 |
 | `GOOGLE_API_KEY` | Generators, embedder, and the top 4 rerank tiers | aistudio.google.com/api-keys — **not the original account**; that one is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
 | **`GOOGLE_API_KEY_2`** | **A THIRD account — a second QUOTA, not a spare key** | Google bills per project per model, so this doubles EVERY Google budget: 20/day per Flash, 500 per Flash-Lite, 14,400 per Gemma, 1,000 embed requests. Added 2026-09-11 |
 | `MISTRAL_API_KEY` | Generator tiers 4, 5, 7, 9, **embedder primary** | console.mistral.ai — phone verification, no card |
@@ -9224,26 +9244,39 @@ reason the three chains are shaped differently.
 Ordered by **measured capability**, not by quota and not by vendor claims.
 Two independent sources were used (see [Model ranking](#model-ranking--how-the-order-was-decided-2026-08-11)).
 
-*Rebuilt 2026-08-17 — **fifteen tiers**, ordered purely on measured score. Every
-row was proven live before it was added.*
+*Rebuilt 2026-08-17, and **regenerated from `CHAIN` itself on 2026-09-13** —
+**twenty-two tiers**. The table below had been left at the fifteen-tier shape
+and was therefore already wrong before Cline arrived: it was missing every
+`(key 2)` twin added on 2026-09-11. Every row was proven live before it was
+added.*
+
+**The numbers are POSITIONS, derived by `_ordered()`, never typed.** Read this
+table by model name; a tier index in this file has gone stale three times now.
 
 | # | Model | Provider | AA | LMArena | Note |
 |---|---|---|---|---|---|
-| 1 | **Gemini 3.7 Flash** | Google | **56.0** | — | released 2026-08-13, +4 over 3.6 |
-| 2 | **Gemini 3.6 Flash** | Google | 51.6 | 1484 (#15) | the most-proven model here |
-| 3 | **Gemini 3.5 Flash** | Google | 50.2 | **1480 (#4)** | |
-| 4 | **GLM-5.2** | Mistral | 52.6 | 1465 (#13) | ❌ **dead** — see Constraints |
-| 5 | **Nemotron 3 Ultra** `:free` | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
-| 6 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
-| 7 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
-| 8 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input limit |
-| 9 | **North Mini Code** `:free` | OpenRouter | 27.6 | — | Coding Index 33.4 |
-| 10 | **Nemotron 3 Super** `:free` | OpenRouter | 25.7 | 1378 (#83) | |
-| 11 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
-| 12 | **GPT-OSS 120B** | **Groq** | 24.1 | 1365 (#98) | ⏸ 8K total budget |
-| 13 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
-| 14 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
-| 15 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
+| 1 | **GLM-5.3 Flash (Cline)** | **Cline** | — | — | **FREE, zero credits** · 1.31M ctx · proven live 2026-09-13 |
+| 2 | **Gemini 3.7 Flash** | Google | **56.0** | — | released 2026-08-13, +4 over 3.6 |
+| 3 | **Gemini 3.7 Flash (key 2)** | Google (key 2) | **56.0** | — | the same model, a separate daily allowance |
+| 4 | **Gemini 3.6 Flash** | Google | 51.6 | 1484 (#15) | the most-proven model here |
+| 5 | **Gemini 3.6 Flash (key 2)** | Google (key 2) | 51.6 | 1484 (#15) | the same model, a separate daily allowance |
+| 6 | **Gemini 3.5 Flash** | Google | 50.2 | **1480 (#4)** |  |
+| 7 | **Gemini 3.5 Flash (key 2)** | Google (key 2) | 50.2 | **1480 (#4)** | the same model, a separate daily allowance |
+| 8 | **GLM-5.2** | Mistral | 52.6 | 1465 (#13) | ❌ **dead** — see Constraints |
+| 9 | **Nemotron 3 Ultra** | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
+| 10 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
+| 11 | **Gemini 3.5 Flash-Lite (key 2)** | Google (key 2) | 37.4 | — | the same model, a separate daily allowance |
+| 12 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
+| 13 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input · rejects `thinking` |
+| 14 | **Gemma 4 31B (key 2)** | Google (key 2) | 29.7 | **1441 (#27)** | the same model, a separate daily allowance |
+| 15 | **North Mini Code** | OpenRouter | 27.6 | — | Coding Index 33.4 |
+| 16 | **Nemotron 3 Super** | OpenRouter | 25.7 | 1378 (#83) |  |
+| 17 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
+| 18 | **GPT-OSS 120B (Groq)** | Groq | 24.1 | 1365 (#98) | ⏸ 8K total budget |
+| 19 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
+| 20 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
+| 21 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
+| 22 | **Gemini 3.1 Flash-Lite (key 2)** | Google (key 2) | — | — | the same model, a separate daily allowance |
 
 ⏸ = alive but **unreachable today**, because a report prompt exceeds its limit.
 Each is refused *locally* by `_check_fits`, so it costs no request and no time —
@@ -9326,6 +9359,149 @@ would fix this properly, but it does not exist yet — it is planned for
 [Why the adjacency rule was retired](#why-the-adjacency-rule-was-retired--2026-08-16).
 The reasoning above is kept because it explains why the *pool*, not the provider
 name, is the thing that runs out.
+
+### Cline — the eighth platform, and the free tier that costs no credits (2026-09-13)
+
+*Investigated at the user's request, tested against the real API with the user's
+own key, and then built. `z-ai/glm-5.3-flash` now leads chain 1.*
+
+**The headline: Cline's free models do not consume credits at all.** This was
+proven with a control, because "the balance did not move" on its own could just
+mean billing is slow.
+
+| call | `costUsd` recorded | **`creditsUsed`** | balance |
+|---|---|---|---|
+| `glm-5.3-flash`, 1,717 tokens | 84,625 | **0** | 500000 → 500000 |
+| `glm-5.3-flash`, 1,592 tokens | 78,375 | **0** | 500000 → 500000 |
+| `laguna-s-2.1:free`, 52 tokens | 0 | **0** | 500000 → 500000 |
+| **control — `mistral-small-3.2-24b` (paid), 13 tokens** | 147 | **1** | 500000 → **499999** |
+
+The control deducted **instantly**, so billing is not delayed — free models are
+genuinely exempt. Cline records what the call *would* have cost and charges
+nothing. Read the ledger at `GET /api/v1/users/{userId}/usages`; the balance is
+at `GET /api/v1/users/{userId}/balance`, in micro-credits (500000 = 0.5).
+
+> **A balance that does not move is not evidence until a paid control moves
+> it.** Two explanations fit "nothing was charged" — exempt, or delayed — and
+> only the control separates them.
+
+#### Only 2 of the 6 free models answer the API
+
+| model | API | result |
+|---|---|---|
+| **`z-ai/glm-5.3-flash`** | ✅ 200 | **built — tier 1** |
+| `poolside/laguna-s-2.1:free` | ✅ 200 | reachable, **not built** — unmeasured quality |
+| `cline-free/muse-spark-1.3-contributor` | ❌ 403 | *"only available via Cline product surfaces"* |
+| `cline-free/solar-pro4` | ❌ 403 | same |
+| `cline-free/longcat-2.0` | ❌ 403 | same |
+| `deepseek/deepseek-v4-flash` | ❌ 403 | same |
+
+Cline's docs say free models are not available through the API at all. That is
+**half right**: the gate is **per model**, and it is not the `cline-free/`
+namespace either — `deepseek/deepseek-v4-flash` is an ordinary catalogue id and
+is still blocked, while `glm-5.3-flash` is on the free list and answers.
+
+**The free roster rotates and is discovered here, not in the docs:**
+
+```
+https://api.cline.bot/api/v1/ai/cline/recommended-models   -> recommended / free / clinePass / clineCloud
+https://api.cline.bot/api/v1/ai/cline/models               -> the full catalogue
+```
+
+Both are **public, no key needed**. The documentation page names no models at
+all, and the screenshots on it were already stale — they showed
+`cline-free/glm-5.2` and `stepfun/step-3.7-flash`, neither of which is on the
+live list.
+
+#### `api/v1/models` is OpenRouter's catalogue, not Cline's
+
+445 models from Cline, 445 from OpenRouter, **100% overlap, zero difference**.
+Cline's own docs admit the convention — *"the same convention used by
+OpenRouter"* — and its usage ledger records
+`aiInferenceProviderName: "openrouter"`. Neither `cline-free/` nor
+`cline-pass/` appears in that list.
+
+> **When a provider's catalogue is exactly another provider's catalogue, it is
+> a mirror.** Counting the rows took one command and settled what an hour of
+> reading could not.
+
+#### THE QUOTA IS PUBLISHED NOWHERE, and that is a real cost to us
+
+Not in the docs, not on any endpoint (`/quota` and `/limits` are 404), not from
+a third party. **And Cline sends no rate-limit headers at all** — every response
+header was dumped on a 200 and there is no `x-ratelimit-*`, no `Retry-After`.
+
+That matters because
+[the five-way rule](#how-the-chain-decides--the-five-way-rule) reads exactly
+those headers to tell *busy* from *spent* from *not entitled*. On Cline it
+cannot, so the chain will retire the pool on the first 429. **This is the one
+tier in the project flying blind**, and it is the argument for keeping it at a
+position the chain can cheaply skip.
+
+Finding the real limit means calling until it refuses, which spends the thing
+being measured. **Not attempted.** The signal that the promotion has ended is
+`cost` in the log line turning into a credit deduction.
+
+#### `reasoning.effort` is what makes the tier work, and it works backwards
+
+Five runs each, one prompt, `max_tokens=1500`:
+
+```
+no reasoning field        2 of 5 succeeded      ~1,200 reasoning tokens
+reasoning.effort = high   5 of 5 succeeded       17-60 reasoning tokens
+```
+
+Without it `glm-5.3-flash` spends its whole budget thinking and returns empty
+content, which Cline reports as **its own HTTP 500 `empty response content`** —
+not a 400, not a `finish_reason`, so nothing downstream can diagnose it.
+
+**Note the direction: an explicit effort CAPS the reasoning on this model
+rather than raising it.** That is why it fixes the failure. It is the same
+shape as slice 6's `thinking=None` on flash-lite — a reasoning knob whose
+useful setting is the *low* one — and the third time in this project that a
+thinking control has behaved opposite to its name.
+
+Cline **silently ignores unknown fields** (an invented `zzz_nonsense` returned
+200), so a wrong spelling here would fail silently. The OpenRouter spelling is
+right because Cline routes through OpenRouter.
+
+#### The response is NOT the OpenAI shape
+
+```json
+{"data": {"choices": [...], "usage": {...}}, "success": true}
+```
+
+`OpenAICompatibleProvider._extract_message` reads `body["choices"][0]` and
+raises *"unexpected response shape"* on every call. So `ClineProvider`
+subclasses it and overrides only the two **reading** methods; the request side
+is standard OpenAI and is reused unaltered.
+
+**One Python trap worth keeping:** the providers are `@dataclass(slots=True)`,
+and that decorator builds a **new class object**. Zero-argument `super()` then
+resolves through a `__class__` cell pointing at a class no longer in the MRO.
+`ClineProvider` calls `OpenAICompatibleProvider._extract_message(self, ...)`
+explicitly for that reason.
+
+#### Why it leads the chain
+
+Every Google Flash model is **20 requests a day**. A free tier in front of them
+spends nothing we are short of. That is the whole argument, and it is the same
+one that put Flash-Lite ahead of stronger models for volume.
+
+**What is NOT claimed: that it is the best model here.** It has no AA score and
+no LMArena rank, so its position is *not* the measured-capability ordering the
+rest of the table uses — it is a budget decision, and it is the user's call,
+recorded as such. Slice 8 can score it on the real fixture.
+
+#### What was deliberately NOT built
+
+- **`poolside/laguna-s-2.1:free`**, the second reachable free model. It answers
+  and costs nothing, but its quality is unmeasured and it shares
+  `CLINE_API_KEY`, so if the free quota is per-account it adds no resilience
+  at all. One registry entry adds it the day that is worth having.
+- **A smoke test of its own.** `tests/smoke/test_every_tier.py` parametrizes
+  over `CHAIN`, so the new tier got weekly live coverage for free — the skip
+  count went 46 → 47 and nothing had to be written.
 
 ### `gemini-embedding-2` — newer, and the only entry ranked on someone else's benchmark
 
@@ -10674,6 +10850,7 @@ what blocks the next commit, then write the commit.
 
 | Platform | Role | Limits | Card? | Proven live? |
 |---|---|---|---|---|
+| **Cline** | **Generator t1** — `z-ai/glm-5.3-flash` | **UNKNOWN — published nowhere, and no rate-limit headers.** Free models cost **0 credits** | No | ✅ 2026-09-13 |
 | **OpenRouter** | Generator t4 + t5 | 50/day, 20 RPM | No | ✅ 2026-08-10 |
 | **Google AI Studio** | Generator t1/t2/t3/t6/t8/t15, **embedder t3 — now proven** | **per model**: Flash 20/day · Flash-Lite 500/day · Gemma 14,400/day | No — see restriction note | ✅ 2026-08-27 |
 | **Mistral** | Generator t4/t5/t7/t9, **embedder primary** | **per-model** TPM/RPS + a monthly cap | No — **phone verification** | ✅ 2026-08-16 |
