@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 
+from labpilot.embed.base import HTTPEmbedder
 from labpilot.embed.cloudflare import CloudflareEmbedder
 from labpilot.embed.cohere import CohereEmbedder
+from labpilot.embed.contracts import Rate, Spec
 from labpilot.embed.google import GoogleEmbedder
 from labpilot.embed.mistral import MistralEmbedder
 
@@ -12,28 +15,108 @@ CLOUDFLARE_URL = "https://api.cloudflare.com/client/v4/accounts"
 GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 COHERE_URL = "https://api.cohere.com/v2/embed"
 
+# EVERY MODEL'S FACTS IN ONE PLACE, so they can be read against each other
+# instead of hunted through eight constructors. Only what the PROVIDER decides
+# lives here; our own choices - the display name, the URL, which key it uses -
+# stay on the entry.
+#
+# `dim` and `max_input_tokens` are CHECKED against reality on the first real
+# call: _validated() raises when the vector width disagrees, _check_texts()
+# refuses an over-long input. The rates are SEEDS instead, because the first
+# decision - which model to use - happens before any call, so no header can
+# inform it. Where a provider does report a limit, rates.learn() compares it
+# with the seed and WARNS on a disagreement.
+#
+#   codestral / mistral  50K and 20M TPM from Mistral's limits page. The 60 RPM
+#                        is OURS - read live from x-ratelimit-limit-req-minute
+#                        on a 200, 2026-09-13 - and re-checked on every call,
+#                        so that pair cannot go stale silently.
+#   google               Google's rate-limit page, 2026-08-28. UNCHECKABLE: it
+#                        sends no rate header at all (measured 2026-09-13), so
+#                        this seed can never correct itself. Re-read the page
+#                        rather than trusting the number.
+#   bge-base             MEASURED 2026-09-13: 96 real chunks / 17,913 tokens
+#                        cost 261.68 neurons in 3.73s. So it is FAST - 1,544
+#                        chunks/minute - and nearly broke: 10,000 neurons/day
+#                        is only ~684,000 tokens, so it cannot ingest a
+#                        repository at all. The daily budget is what says so.
+#   embed-v4.0           x-trial-endpoint-call-limit: 10. No token limit is
+#                        published, so none is claimed - minutes() then bounds
+#                        it by requests alone.
+SPECS: dict[str, Spec] = {
+    "codestral-embed": Spec(
+        dim=1536,
+        rate=Rate(tokens_per_minute=50_000, requests_per_minute=60),
+    ),
+    "mistral-embed": Spec(
+        dim=1024,
+        rate=Rate(tokens_per_minute=20_000_000, requests_per_minute=60),
+    ),
+    "@cf/baai/bge-base-en-v1.5": Spec(
+        dim=768,
+        max_input_tokens=512,
+        rate=Rate(requests_per_minute=16, daily_token_budget=684_000),
+    ),
+    "gemini-embedding-2": Spec(
+        dim=3072,
+        max_input_tokens=8192,
+        rate=Rate(tokens_per_minute=30_000, requests_per_minute=100),
+    ),
+    "gemini-embedding-001": Spec(
+        dim=3072,
+        max_input_tokens=2048,
+        rate=Rate(tokens_per_minute=30_000, requests_per_minute=100),
+    ),
+    "embed-v4.0": Spec(
+        dim=1536,
+        rate=Rate(requests_per_minute=10),
+    ),
+}
+
+
+def _spec(model: str) -> dict[str, object]:
+    """The provider's half of a constructor call.
+
+    A model missing from SPECS is a KeyError at IMPORT, not a wrong vector at
+    runtime - which is the point of the table. You cannot add an entry and
+    forget its facts.
+    """
+    spec = SPECS[model]
+    return {
+        "model": model,
+        "dim": spec.dim,
+        "max_input_tokens": spec.max_input_tokens,
+        "rate": spec.rate,
+    }
+
+
 CODESTRAL_EMBED = MistralEmbedder(
     name="Codestral Embed",
     url=MISTRAL_URL,
-    model="codestral-embed",
-    dim=1536,
+    **_spec("codestral-embed"),
 )
 
 MISTRAL_EMBED = MistralEmbedder(
     name="Mistral Embed",
     url=MISTRAL_URL,
-    model="mistral-embed",
-    dim=1024,
+    **_spec("mistral-embed"),
 )
 
 # BGE truncates at 512 tokens and says nothing about it, so the limit is
-# declared here and refused locally instead of arriving as a weaker vector.
+# declared in SPECS and refused locally instead of arriving as a weaker vector.
+#
+# THE GUARD IS ENFORCED IN THE WRONG UNITS, and that is an open defect.
+# _check_texts measures with our own chars/3 estimate, while BGE's tokenizer
+# runs ~2.36x that on our corpus - 39,936 BGE tokens against codestral's
+# 14,979 for the identical text, slice 1b. So its real limit is about 217 of
+# OUR tokens, and 73.8% of this repository's chunks would pass the guard and
+# be silently truncated. Nothing is truncated today because BGE has no caller.
+# Slice 8 owns the fix, and owes BGE three numbers: speed, strength, and its
+# real tokenizer ratio.
 BGE_BASE = CloudflareEmbedder(
     name="BGE Base EN v1.5",
     url=CLOUDFLARE_URL,
-    model="@cf/baai/bge-base-en-v1.5",
-    dim=768,
-    max_input_tokens=512,
+    **_spec("@cf/baai/bge-base-en-v1.5"),
 )
 
 # UNVERIFIED against our own fixture, and shipped anyway - the same gamble as
@@ -58,9 +141,7 @@ BGE_BASE = CloudflareEmbedder(
 GEMINI_EMBED_2 = GoogleEmbedder(
     name="Gemini Embedding 2",
     url=GOOGLE_URL,
-    model="gemini-embedding-2",
-    dim=3072,
-    max_input_tokens=8192,
+    **_spec("gemini-embedding-2"),
 )
 
 GEMINI_EMBED_2_KEY2 = dataclasses.replace(
@@ -75,9 +156,7 @@ GEMINI_EMBED_2_KEY2 = dataclasses.replace(
 GEMINI_EMBED_001 = GoogleEmbedder(
     name="Gemini Embedding 001",
     url=GOOGLE_URL,
-    model="gemini-embedding-001",
-    dim=3072,
-    max_input_tokens=2048,
+    **_spec("gemini-embedding-001"),
 )
 
 # THE ONE TRUE FALLBACK SHAPE IN THIS LIST, and it is worth being precise.
@@ -96,22 +175,30 @@ GEMINI_EMBED_001_KEY2 = dataclasses.replace(
     api_key_env="GOOGLE_API_KEY_2",
 )
 
-# Deliberately last, and not because it is weak. Cohere's 1,000 calls/month are
-# ONE bucket shared by chat, embed and rerank - and Cohere is the reranker
-# primary. A corpus embedded here keeps spending that bucket on every query
-# forever. The monthly ceiling is confirmed by its own response header,
-# x-endpoint-monthly-call-limit: 1000.
+# LAST IN THE STRENGTH ORDER, and not because it is weak. Cohere's 1,000 calls
+# a month are ONE bucket, an embedded corpus spends it on every future query
+# forever, and it is the smallest renewing budget here by roughly 120x against
+# the four Google entries.
+#
+# Its old reason is DEAD and should not be quoted: this file used to say
+# "Cohere is the reranker primary", and slice 6 demoted it to rerank tier 7 of
+# 8 behind four Google LLM tiers worth ~29,800 calls a day. What still carries
+# the decision is the budget, not the reranker.
+#
+# In the SPEED order it sits near the FRONT: 10 requests/minute x a 96-chunk
+# batch is ~960 chunks/minute, far quicker than codestral. That is the whole
+# reason one list is sorted two ways instead of being split in two.
 COHERE_EMBED = CohereEmbedder(
     name="Cohere Embed v4",
     url=COHERE_URL,
-    model="embed-v4.0",
-    dim=1536,
+    **_spec("embed-v4.0"),
 )
 
-# Measured models first, in measured order; unmeasured after them; Cohere last
-# for the quota reason above. One structural override: BGE sits second because
-# it is the only early entry on a different platform - codestral and
-# mistral-embed share one API key, so a Mistral outage would take both.
+# THE STRENGTH ORDER. Measured models first, in measured order; unmeasured
+# after them; Cohere last for the quota reason above. One structural override:
+# BGE sits second because it is the only early entry on a different platform -
+# codestral and mistral-embed share one API key, so a Mistral outage would take
+# both.
 MIGRATION = (
     CODESTRAL_EMBED,
     BGE_BASE,
@@ -122,3 +209,21 @@ MIGRATION = (
     GEMINI_EMBED_001_KEY2,
     COHERE_EMBED,
 )
+
+
+def by_speed(
+    *, tokens: int, chunks: int, candidates: Sequence[HTTPEmbedder] = MIGRATION
+) -> tuple[HTTPEmbedder, ...]:
+    """The SAME list, re-ordered by how fast each model ingests THIS corpus.
+
+    Not a second list, and that is the point. A two-pool version was proposed
+    first and was wrong: two fast models, both spent, and nowhere left to go.
+    Here only a model's PLACE moves, so the walk can never dead-end.
+
+    `sorted` is stable, so models of equal speed keep MIGRATION's order - which
+    means ties break by STRENGTH, for free. MIGRATION stays the strength
+    ordering; there is no second list to keep in step with it.
+    """
+    return tuple(
+        sorted(candidates, key=lambda e: e.minutes(tokens=tokens, chunks=chunks))
+    )
