@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from labpilot.llm import CHAIN, GeminiProvider, LLMError, OpenAICompatibleProvider
+from labpilot.llm import (
+    CHAIN,
+    ClineProvider,
+    GeminiProvider,
+    LLMError,
+    OpenAICompatibleProvider,
+)
 from labpilot.prompts import REPORT_MAX_TOKENS
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -23,6 +29,17 @@ REJECTS_THINKING = ("gemma-4-31b-it",)
 # modelled as a small context_window. Gemma's 16,000 counts input only.
 OUTPUT_TOO_SMALL = ("GPT-OSS 120B (Groq)", "Devstral 2")
 INPUT_LIMITED = ("gemma-4-31b-it",)
+
+# Cline lists SIX free models and its API serves only these TWO. Measured
+# 2026-09-13: the other four answer
+#     403 "<model> is only available via Cline product surfaces"
+# on every request - cline-free/muse-spark-1.3-contributor, cline-free/solar-pro4,
+# cline-free/longcat-2.0 and deepseek/deepseek-v4-flash. The gate is per MODEL,
+# not per namespace, so the id alone cannot tell you which side it is on.
+#
+# The `:free` suffix on Laguna is load-bearing in the other direction: the
+# paid id `poolside/laguna-s-2.1` also answers, and spends credits.
+CLINE_MODELS_THE_API_SERVES = ("z-ai/glm-5.3-flash", "poolside/laguna-s-2.1:free")
 
 
 def test_chain_tiers_are_sequential_from_one():
@@ -56,7 +73,21 @@ def test_the_chain_spans_at_least_three_pools():
 
 
 def test_every_chain_env_var_is_documented_in_env_example():
-    documented = ENV_EXAMPLE.read_text(encoding="utf-8")
+    """Matches a DECLARATION line, not the name anywhere in the file.
+
+    The substring version this replaces could not fail: commenting the
+    declaration out left the name in the file, so `CLINE_API_KEY` counted as
+    documented while nobody could learn they had to set it. Its sibling in
+    test_packaging.py was tightened for exactly this on 2026-08-17 and this
+    copy kept the loose shape - and that sibling does not cover these names,
+    because a provider reads os.environ[self.api_key_env] through a field, so
+    an AST scan never sees the literal.
+    """
+    declared = {
+        line.split("=", 1)[0].strip()
+        for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    }
     required = {provider.api_key_env for provider in CHAIN}
     required |= {
         provider.account_env
@@ -64,7 +95,7 @@ def test_every_chain_env_var_is_documented_in_env_example():
         if getattr(provider, "account_env", None)
     }
 
-    missing = sorted(name for name in required if name not in documented)
+    missing = sorted(required - declared)
 
     assert not missing, missing
 
@@ -207,6 +238,51 @@ def test_a_tier_that_rejects_thinking_does_not_ask_for_it():
         f"{asking} reject a thinking level with HTTP 400 but are configured to "
         f"send one, so every call to them fails. Set thinking=None."
     )
+
+
+def test_every_cline_tier_is_a_model_the_api_actually_serves():
+    """Four of Cline's six free models are API-blocked, and blocked SILENTLY.
+
+    They answer 403 "only available via Cline product surfaces", which the
+    chain treats as "next tier" - so the report still arrives and nobody
+    notices that a tier is dead weight costing a request on every single call.
+    That is exactly how Gemma stayed broken for weeks.
+
+    The gate is per MODEL, not per namespace: deepseek/deepseek-v4-flash is an
+    ordinary catalogue id and is still refused, while z-ai/glm-5.3-flash is on
+    the same free list and answers. So the id cannot be reasoned about - it has
+    to be measured, and the measurement lives in the list above.
+    """
+    serves = set(CLINE_MODELS_THE_API_SERVES)
+    unreachable = [
+        provider.name
+        for provider in CHAIN
+        if isinstance(provider, ClineProvider) and provider.model not in serves
+    ]
+
+    assert not unreachable, (
+        f"{unreachable} are refused by Cline's API with 403 on every call, so "
+        f"they burn a request per report and can never answer. Only "
+        f"{sorted(serves)} are served."
+    )
+
+
+def test_the_cline_tiers_do_not_share_a_quota_pool():
+    """A decision that otherwise lives only in a comment.
+
+    Whether Cline's free quota is per account or per model is UNKNOWN, and the
+    costs of being wrong are asymmetric: sharing a pool when the quota is
+    per-model silently loses a whole free tier, while splitting it when the
+    quota is per-account wastes one request. So they are split, and that has to
+    be defended by something - collapsing them back onto the bare API key would
+    otherwise look like tidying up.
+    """
+    cline = [p for p in CHAIN if isinstance(p, ClineProvider)]
+    pools = [p.pool for p in cline]
+
+    assert len(cline) >= 2, "expected more than one Cline tier"
+    assert len(set(pools)) == len(pools), pools
+    assert all(p.pool == f"{p.api_key_env}:{p.model}" for p in cline), pools
 
 
 def test_every_tier_that_accepts_reasoning_asks_for_it():

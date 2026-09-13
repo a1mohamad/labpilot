@@ -1,10 +1,13 @@
 from labpilot.llm.chain import LLMClient, Provider
+from labpilot.llm.cline import ClineProvider
 from labpilot.llm.contracts import Attempt, LLMResult
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 from labpilot.llm.gemini import GeminiProvider
 from labpilot.llm.openai_compatible import OpenAICompatibleProvider
 from labpilot.llm.registry import (
     CHAIN,
+    CLINE_GLM_5_3_FLASH,
+    CLINE_LAGUNA_S_2_1,
     DEVSTRAL_2,
     GEMINI_3_1_FLASH_LITE,
     GEMINI_3_5_FLASH,
@@ -27,6 +30,8 @@ __all__ = [
     "LLMClient",
     "Provider",
     "CHAIN",
+    "CLINE_GLM_5_3_FLASH",
+    "CLINE_LAGUNA_S_2_1",
     "DEVSTRAL_2",
     "GEMINI_3_1_FLASH_LITE",
     "GEMINI_3_5_FLASH",
@@ -43,6 +48,7 @@ __all__ = [
     "NEMOTRON_3_ULTRA",
     "NORTH_MINI_CODE",
     "Attempt",
+    "ClineProvider",
     "GeminiProvider",
     "LLMError",
     "LLMResult",
