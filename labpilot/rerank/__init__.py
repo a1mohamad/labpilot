@@ -3,7 +3,12 @@ from labpilot.rerank.chain import Reranker, rerank, skip
 from labpilot.rerank.cloudflare import CloudflareReranker
 from labpilot.rerank.cohere import CohereReranker
 from labpilot.rerank.contracts import SKIP, Ranking
-from labpilot.rerank.defaults import MAX_DOCUMENT_TOKENS, MAX_DOCUMENTS, RERANK_TOP_N
+from labpilot.rerank.defaults import (
+    MAX_DOCUMENT_TOKENS,
+    MAX_DOCUMENTS,
+    RERANK_MAX_TOKENS,
+    RERANK_TOP_N,
+)
 from labpilot.rerank.errors import RerankError
 from labpilot.rerank.llm import LLMReranker
 from labpilot.rerank.registry import (
