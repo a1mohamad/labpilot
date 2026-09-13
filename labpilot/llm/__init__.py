@@ -6,6 +6,7 @@ from labpilot.llm.gemini import GeminiProvider
 from labpilot.llm.openai_compatible import OpenAICompatibleProvider
 from labpilot.llm.registry import (
     CHAIN,
+    CLINE_GLM_5_3_FLASH,
     DEVSTRAL_2,
     GEMINI_3_1_FLASH_LITE,
     GEMINI_3_5_FLASH,
@@ -28,6 +29,7 @@ __all__ = [
     "LLMClient",
     "Provider",
     "CHAIN",
+    "CLINE_GLM_5_3_FLASH",
     "DEVSTRAL_2",
     "GEMINI_3_1_FLASH_LITE",
     "GEMINI_3_5_FLASH",

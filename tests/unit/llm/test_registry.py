@@ -56,7 +56,21 @@ def test_the_chain_spans_at_least_three_pools():
 
 
 def test_every_chain_env_var_is_documented_in_env_example():
-    documented = ENV_EXAMPLE.read_text(encoding="utf-8")
+    """Matches a DECLARATION line, not the name anywhere in the file.
+
+    The substring version this replaces could not fail: commenting the
+    declaration out left the name in the file, so `CLINE_API_KEY` counted as
+    documented while nobody could learn they had to set it. Its sibling in
+    test_packaging.py was tightened for exactly this on 2026-08-17 and this
+    copy kept the loose shape - and that sibling does not cover these names,
+    because a provider reads os.environ[self.api_key_env] through a field, so
+    an AST scan never sees the literal.
+    """
+    declared = {
+        line.split("=", 1)[0].strip()
+        for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    }
     required = {provider.api_key_env for provider in CHAIN}
     required |= {
         provider.account_env
@@ -64,7 +78,7 @@ def test_every_chain_env_var_is_documented_in_env_example():
         if getattr(provider, "account_env", None)
     }
 
-    missing = sorted(name for name in required if name not in documented)
+    missing = sorted(required - declared)
 
     assert not missing, missing
 

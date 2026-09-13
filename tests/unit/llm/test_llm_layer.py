@@ -6,26 +6,74 @@ import pytest
 import responses
 from responses import matchers
 
-from labpilot.llm import CHAIN, LLMClient
+from labpilot.llm import CHAIN, ClineProvider, GeminiProvider, LLMClient
 from labpilot.llm.defaults import DEFAULT_TIMEOUT, DEFAULT_TOTAL_BUDGET
 
 
-def gemini_url(provider):
-    return f"{provider.url}/{provider.model}:generateContent"
+def url_for(provider):
+    """Gemini puts the model in the PATH; everyone else posts to a fixed URL."""
+    if isinstance(provider, GeminiProvider):
+        return f"{provider.url}/{provider.model}:generateContent"
+    return provider.url
+
+
+def body_for(provider, text):
+    """One answer, in whichever wire shape this provider really speaks."""
+    if isinstance(provider, GeminiProvider):
+        return {
+            "modelVersion": provider.model,
+            "candidates": [
+                {"content": {"parts": [{"text": text}]}, "finishReason": "STOP"}
+            ],
+        }
+
+    body = {
+        "model": provider.model,
+        "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+    }
+
+    # Cline wraps the OpenAI shape one level deeper.
+    if isinstance(provider, ClineProvider):
+        return {"data": body, "success": True}
+
+    return body
 
 
 TIER_1 = CHAIN[0]
-TIER_1_KEY_2 = CHAIN[1]
 
-# The first tier running a DIFFERENT model. Derived, never indexed: CHAIN[1]
-# used to be a different model and is now the same one on the second account,
-# which silently turned a two-model test into a two-key test.
-ANOTHER_MODEL = next(p for p in CHAIN if p.model != TIER_1.model)
+# Derived by POOL, never indexed. These three tests are about GOOGLE's
+# per-model quota, and they used to reach it as CHAIN[0] - which stopped being
+# Google the moment a free tier was put in front of it. The comment below this
+# block already said "derived, never indexed"; CHAIN[0] was an index wearing a
+# derivation's clothes.
+GOOGLE_1 = next(p for p in CHAIN if p.api_key_env == "GOOGLE_API_KEY")
+GOOGLE_1_KEY_2 = next(
+    p
+    for p in CHAIN
+    if p.model == GOOGLE_1.model and p.api_key_env == "GOOGLE_API_KEY_2"
+)
 
-GOOGLE_TIER_1_URL = gemini_url(TIER_1)
-ANOTHER_MODEL_URL = gemini_url(ANOTHER_MODEL)
+# The first GOOGLE tier running a DIFFERENT model, so the rescue cannot come
+# from the same model on the second key.
+ANOTHER_MODEL = next(
+    p for p in CHAIN if isinstance(p, GeminiProvider) and p.model != GOOGLE_1.model
+)
+
+# Every tier ahead of Google, whatever it is. Mocked as a plain failure so
+# these tests measure Google's behaviour and nothing else.
+BEFORE_GOOGLE = tuple(p for p in CHAIN if p.tier < GOOGLE_1.tier)
+
+GOOGLE_TIER_1_URL = url_for(GOOGLE_1)
+ANOTHER_MODEL_URL = url_for(ANOTHER_MODEL)
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def fail_everything_before_google():
+    for provider in BEFORE_GOOGLE:
+        responses.post(
+            url_for(provider), status=500, json={"error": "not the tier under test"}
+        )
 
 
 @pytest.fixture
@@ -46,30 +94,16 @@ def keys(monkeypatch):
             monkeypatch.setenv(account, "secret-account")
 
 
-def gemini_body(text="from gemini"):
-    return {
-        "modelVersion": CHAIN[0].model,
-        "candidates": [
-            {"content": {"parts": [{"text": text}]}, "finishReason": "STOP"}
-        ],
-    }
-
-
-def openai_body(model, text="from an openai-shaped provider"):
-    return {
-        "model": model,
-        "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
-    }
-
-
 @responses.activate
-def test_the_real_chain_returns_tier_one_when_google_answers(keys):
-    responses.post(GOOGLE_TIER_1_URL, json=gemini_body())
+def test_the_real_chain_returns_tier_one_when_tier_one_answers(keys):
+    """Whatever tier 1 is. It was Google, it is now Cline, and the rule that
+    a healthy first tier ends the walk is the same either way."""
+    responses.post(url_for(TIER_1), json=body_for(TIER_1, "from tier one"))
 
     result = LLMClient().generate("why do these diverge?")
 
     assert result.tier == 1
-    assert result.text == "from gemini"
+    assert result.text == "from tier one"
     assert result.attempts == ()
 
 
@@ -82,19 +116,24 @@ def test_one_spent_google_model_does_not_skip_the_others(keys):
     DIFFERENT model. Collapsing the pool onto the API key would mark every
     Google tier dead on the first 429 and this would fail.
     """
+    fail_everything_before_google()
     responses.post(
         GOOGLE_TIER_1_URL,
         status=429,
         json={"error": "daily quota exceeded for this model"},
         headers={"X-RateLimit-Reset": str(int(time.time() + 3600))},
     )
-    responses.post(ANOTHER_MODEL_URL, json=gemini_body("a different model"))
+    responses.post(ANOTHER_MODEL_URL, json=body_for(ANOTHER_MODEL, "a different model"))
 
     result = LLMClient().generate("why do these diverge?")
 
     assert result.tier == ANOTHER_MODEL.tier
     assert result.text == "a different model"
-    assert [attempt.tier for attempt in result.attempts] == [1, 2]
+    assert [attempt.tier for attempt in result.attempts] == [
+        *(p.tier for p in BEFORE_GOOGLE),
+        GOOGLE_1.tier,
+        GOOGLE_1_KEY_2.tier,
+    ]
 
 
 @responses.activate
@@ -108,6 +147,7 @@ def test_a_spent_model_falls_through_to_the_second_google_account(keys, monkeypa
     monkeypatch.setenv("GOOGLE_API_KEY", "key-one")
     monkeypatch.setenv("GOOGLE_API_KEY_2", "key-two")
 
+    fail_everything_before_google()
     responses.post(
         GOOGLE_TIER_1_URL,
         status=429,
@@ -117,15 +157,18 @@ def test_a_spent_model_falls_through_to_the_second_google_account(keys, monkeypa
     )
     responses.post(
         GOOGLE_TIER_1_URL,
-        json=gemini_body("the other account still has quota"),
+        json=body_for(GOOGLE_1, "the other account still has quota"),
         match=[matchers.header_matcher({"x-goog-api-key": "key-two"})],
     )
 
     result = LLMClient().generate("why do these diverge?")
 
-    assert result.tier == TIER_1_KEY_2.tier
+    assert result.tier == GOOGLE_1_KEY_2.tier
     assert result.text == "the other account still has quota"
-    assert [attempt.tier for attempt in result.attempts] == [1]
+    assert [attempt.tier for attempt in result.attempts] == [
+        *(p.tier for p in BEFORE_GOOGLE),
+        GOOGLE_1.tier,
+    ]
 
 
 def test_each_google_model_owns_its_quota_pool():

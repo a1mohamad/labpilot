@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 
+from labpilot.llm.cline import ClineProvider
 from labpilot.llm.gemini import GeminiProvider
 from labpilot.llm.openai_compatible import OpenAICompatibleProvider
 
+CLINE_URL = "https://api.cline.bot/api/v1/chat/completions"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
@@ -12,6 +14,21 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 CLOUDFLARE_URL = (
     "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
 )
+
+# NOT a preference. This field is what makes the tier work at all.
+#
+# Measured 2026-09-13, five runs each on one prompt. Without it glm-5.3-flash
+# spends its whole budget on reasoning and returns empty content, which Cline
+# reports as its own HTTP 500 "empty response content":
+#
+#     no reasoning field        2 of 5 succeeded   ~1,200 reasoning tokens
+#     reasoning.effort = high   5 of 5 succeeded      17-60 reasoning tokens
+#
+# Note the direction: on this model an explicit effort CAPS the reasoning
+# rather than raising it, which is what stops the budget being exhausted. The
+# OpenRouter spelling is the right one because Cline routes through OpenRouter
+# - its own usage ledger records aiInferenceProviderName "openrouter".
+CLINE_REASONING: dict[str, object] = {"reasoning": {"effort": "high"}}
 
 MISTRAL_REASONING: dict[str, object] = {"reasoning_effort": "high", "top_p": 1}
 OPENROUTER_REASONING: dict[str, object] = {"reasoning": {"effort": "high"}}
@@ -68,6 +85,31 @@ def _second_account(provider: GeminiProvider) -> GeminiProvider:
         quota_pool=f"{GOOGLE_KEYS[1]}:{provider.model}",
     )
 
+
+# Free, and free in a way no other tier here is: Cline records what the call
+# WOULD have cost and charges zero credits. Proven live 2026-09-13 - two
+# 1,700-token generations reported costUsd 84,625 and 78,375 with creditsUsed
+# 0, while a paid control model deducted credit immediately on 13 tokens.
+#
+# It leads the chain because the budget it protects is the scarce one: every
+# Google Flash model is 20 requests a DAY. A free tier in front of them spends
+# nothing we are short of.
+#
+# TWO THINGS ARE UNKNOWN AND BOTH MATTER. The free quota is published nowhere -
+# no docs page, no endpoint, and Cline sends NO rate-limit headers at all, so
+# the five-way failure rule cannot tell "busy" from "spent" here and will treat
+# the first 429 as a dead pool. And the promotion can end without notice; the
+# signal is `cost` in the log line turning into a credit deduction.
+CLINE_GLM_5_3_FLASH = ClineProvider(
+    name="GLM-5.3 Flash (Cline)",
+    tier=0,
+    url=CLINE_URL,
+    model="z-ai/glm-5.3-flash",
+    api_key_env="CLINE_API_KEY",
+    context_window=1_310_720,
+    max_output_tokens=131_072,
+    extra_body=CLINE_REASONING,
+)
 
 GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", model="gemini-3.7-flash")
 GEMINI_3_6_FLASH = _gemini(name="Gemini 3.6 Flash", model="gemini-3.6-flash")
@@ -224,6 +266,7 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
 # by capability then means "the same model on the other account" beats
 # "a weaker model on this one".
 CHAIN = _ordered(
+    CLINE_GLM_5_3_FLASH,
     GEMINI_3_7_FLASH,
     _second_account(GEMINI_3_7_FLASH),
     GEMINI_3_6_FLASH,
