@@ -1,4 +1,5 @@
 from labpilot.llm.chain import LLMClient, Provider
+from labpilot.llm.cline import ClineProvider
 from labpilot.llm.contracts import Attempt, LLMResult
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 from labpilot.llm.gemini import GeminiProvider
@@ -43,6 +44,7 @@ __all__ = [
     "NEMOTRON_3_ULTRA",
     "NORTH_MINI_CODE",
     "Attempt",
+    "ClineProvider",
     "GeminiProvider",
     "LLMError",
     "LLMResult",
