@@ -611,7 +611,10 @@ artifacts, and TIME is the only thing that can overturn it — not recall, not s
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is COMPLETE and MERGED into `main`.**
 **The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
 **`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search · keyword.**
-**595 passed, 28 skipped, 1 xfailed. Mutation-tested at every step.**
+**715 passed, 46 skipped, 1 xfailed, ruff clean — measured 2026-09-13, on `main`.**
+**ALL 46 SKIPS ARE SMOKE (41) PLUS 5 ENVIRONMENT ONES. NOT ONE `database` TEST SKIPPED,**
+**so the 54 store tests really ran. A `database` test is green-by-absence, so the skip**
+**reasons must be READ (`pytest -q -rs`) before the count is believed.**
 **⚠ SLICE 7 MUST READ THIS FIRST: `api/services.py` catches NOTHING from `store/` or
 `embed/`, so wiring them sends `UnknownArtifact`, `ModelMismatch`, `ConnectionFailed`,
 `NotConfigured` and `EmbeddingError` straight to the 500 handler. Third time this shape
@@ -629,8 +632,10 @@ SLICE 8's JOB GREW: embedder ranking + reranker ranking + **exact vs HNSW on rea
 2026-09-05 — `embed.embed_batches()` halves and re-sends on a refusal that names tokens,
 and remembers the smaller size. Proven on the exact dask batch that failed: `embed()` alone
 is refused, `embed_batches()` returns all 96 vectors in two requests.**
-**⚠ THE SUPABASE INSTANCE WAS TAKEN DOWN 2026-09-05 by a 30k-row HNSW build with
-`maintenance_work_mem=512MB`. Restart it from the dashboard; run benchmarks on a LOCAL container.**
+**~~⚠ THE SUPABASE INSTANCE WAS TAKEN DOWN 2026-09-05~~ IT IS BACK — verified 2026-09-13:
+all 54 `database` tests RAN and passed, none skipped. The cause stands as a warning, not as a
+live state: a 30k-row HNSW build with `maintenance_work_mem=512MB` killed it. Never size a
+benchmark to the machine you wish you had — run that class of work on a LOCAL container.**
 **Notebooks, PDF, Word and 58 code suffixes all ingest; every bad variant is refused, not stored.**
 **The `mutation-test` skill EXISTS and FIRED — `.claude/skills/mutation-test/SKILL.md`.**
 **⚠ CHECK THE EXIT ISP BEFORE ANY LLM WORK — see [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).**
@@ -638,7 +643,12 @@ is refused, `embed_batches()` returns all 96 vectors in two requests.**
 **`DATABASE_URL` now exists in `.env` — SESSION POOLER, port 5432. Direct connection is IPv6-only and DEAD from here.**
 **Read [slice 4, the theory](#slice-4--the-theory-recorded-2026-09-03) then
 [slice 4, what is built](#slice-4-first-half--done-2026-09-04-the-table-and-the-write-path).**
-**Last updated 2026-09-11 (twentieth session). Slices 1-5 are MERGED into `main`; slice 6 is on `feat/reranking`, eleven commits, pushed.**
+**Last updated 2026-09-13 (twenty-first session).**
+**⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
+not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
+**`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
+`tests/unit/llm/test_llm_layer.py`, which hardcodes three key names instead of deriving them
+from `CHAIN` and has no second-account test. Do not resume work on it.**
 **Session 19 wrote NO source: it taught slice 6 and verified the reranker budget from the
 providers' own docs. 595 passed, 28 skipped, 1 xfailed, confirmed at the start of it.**
 **SLICE 5 IS MEASURED AND DECIDED; the three pieces of code are NOT written yet —
@@ -647,6 +657,29 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > ### START HERE IN A NEW SESSION
 >
 > > ## ▶ SLICE 7 STARTS HERE — the new selector, and `select()` finally dies
+> >
+> > **STATE, verified 2026-09-13 rather than remembered.** You are on **`main`**,
+> > clean, level with `origin/main`. **Slice 6 is ON `main`** — re-committed
+> > piece by piece, not merged. **`feat/reranking` is behind `main` and dead.**
+> > Suite: **715 passed, 46 skipped, 1 xfailed**, ruff clean, and the 46 skips
+> > are smoke plus environment — **no `database` test skipped**, so the store
+> > really is reachable again.
+> >
+> > **Two defects were closed before slice 7 opened, and the second matters
+> > more than the first.** `rerank/__init__.py` promised `RERANK_MAX_TOKENS` in
+> > `__all__` and never imported it, so `from labpilot.rerank import *` raised
+> > `AttributeError` with the suite and both ruff commands green. It survived
+> > because **ruff exempts `__init__.py` from F822** and the slice 4 closing
+> > review had deleted the only test that held the rule, on exactly that false
+> > premise — see
+> > [the rejected test](#rejected--and-the-reason-is-worth-more-than-the-test-would-have-been).
+> > `tests/unit/test_public_api.py` now guards every package door.
+> >
+> > **⚠ THE BRANCHING RULE AND THE PRACTICE DISAGREE, and nobody has decided
+> > which wins.** This file says *"Never commit on `main`. Only merge into
+> > it"* and *"branch per slice"*. Slice 6 and these two fixes went **straight
+> > onto `main`**. Pick one before slice 7's first commit: either branch
+> > `feat/selector` now, or update the rule to match what is actually done.
 > >
 > > **Slice 6 is CLOSED.** Read
 > > [slice 6 DONE](#slice-6--done-2026-09-11-built-measured-and-not-switched-on)
@@ -4657,17 +4690,42 @@ A third test was written and **deleted**: *"every name in each package's
 `__all__` is importable"*, modelled on the existing
 `test_every_public_name_is_importable` in `unit/llm/`.
 
-**Ruff already catches it.** `F822 — undefined name in `__all__`` is part of the
-`F` rule set, which `ruff.toml` has enabled since day one. The test would have
-duplicated a check that already runs on every commit, in the editor, in
-pre-commit and in CI.
+~~**Ruff already catches it.**~~ **FALSE, and it cost a live defect — measured
+2026-09-13.** `F822` is in the `F` rule set, and `ruff.toml` has had it enabled
+since day one. But **ruff EXEMPTS `__init__.py` from F822**, because a re-export
+door legitimately names things it did not define. Same ruff, same rule, two
+files of identical content:
 
-> **Before adding a test, ask what already fails when the rule is broken.** A
-> linter, a type checker or an existing test may hold it — and a second guard on
-> the same failure is a number, not protection.
+```
+a plain module   ->  F822 Undefined name `ghost` in `__all__`
+an __init__.py   ->  All checks passed
+```
 
-*The `llm` one predates the ruff config and is left alone; deleting it would be
-churn for nothing.*
+**So the deleted test was the only thing holding that rule, and the bug arrived
+in the newest package.** `labpilot/rerank/__init__.py` listed
+`RERANK_MAX_TOKENS` in `__all__` and never imported it, so
+`from labpilot.rerank import *` raised `AttributeError` while the full suite and
+**both** ruff commands stayed green. Fixed 2026-09-13, and the test is now
+`tests/unit/test_public_api.py`, over **every** package.
+
+> **The rule below is right. The ANSWER to it was wrong, and only running the
+> linter against the real case could tell the two apart.**
+
+> **Before adding a test, ask what already fails when the rule is broken** —
+> then **prove** it fails, on a file of the kind you actually have. A linter
+> rule is not a linter rule *everywhere*; exemptions are invisible until you
+> write the broken case and watch nothing happen.
+
+*Only packages are checked. `tokens.py` and `_text.py` are plain modules, where
+F822 genuinely does fire — so guarding those too would be the duplicate the
+rule warns about.*
+
+*`test_every_public_name_is_importable` in `unit/llm/` was DELETED with it.
+Mutating `llm/__all__` fires **both** tests, so the `llm`-scoped one can never
+fire alone — the same criterion that deleted
+`test_nothing_imports_the_entry_layer`. This file previously said deleting it
+"would be churn for nothing"; once a general test exists, keeping it is the
+churn.*
 
 ### Recorded, not fixed — the boundary slice 7 will break
 
@@ -5871,7 +5929,10 @@ a free account and the one that can, hurts. **That is slice 8's decision, and
 it now has real numbers under it instead of a quota-shape argument.***
 
 **654 passed, 32 skipped, 1 xfailed, ruff clean. 14 of 14 mutations verified
-real, 12 of them firing alone.** Branch `feat/reranking`, eleven commits.
+real, 12 of them firing alone.** *(Those were the numbers the day slice 6
+closed. It then landed on `main` re-committed piece by piece — ~40 commits, not
+a merge — and the suite reads **715 passed, 46 skipped, 1 xfailed** as of
+2026-09-13. `feat/reranking` is dead and behind `main`.)*
 
 ### What shipped
 
