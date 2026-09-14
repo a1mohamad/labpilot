@@ -54,21 +54,37 @@ def test_every_status_the_endpoint_can_raise_is_documented():
     The second version fixed that and then named ONE path. That was fine with
     one route; the moment /artifacts arrived it demanded that /compare
     document a status only /artifacts could raise - checking the wrong
-    endpoint while still looking green. Both halves are derived now.
+    endpoint while still looking green.
+
+    The third version demanded that EVERY route document EVERY status, which
+    is the same over-demand made symmetric: /artifacts takes an upload and can
+    never answer 404 or 409, so requiring it to advertise them would put a lie
+    in OpenAPI to satisfy a test.
+
+    So the check is now a UNION. Every raisable status must be documented
+    SOMEWHERE, which is what catches the original bug - a new ApiError whose
+    status no endpoint advertises. What it deliberately does NOT check is
+    which route raises which, because that is not derivable from either the
+    hierarchy or the schema, and hardcoding a map is exactly what version one
+    got wrong.
     """
     schema = app.openapi()["paths"]
     routes = [path for path in schema if path.startswith(ApiConfig.PREFIX)]
     assert routes, "no versioned routes found - the prefix probably moved"
 
     raisable_statuses = {str(failure.status) for failure in raisable()}
+    documented: set[str] = set()
 
     for path in routes:
-        documented = set(schema[path]["post"]["responses"])
+        on_route = set(schema[path]["post"]["responses"])
 
-        assert documented & {"200", "201"}, f"{path} documents no success"
-        assert raisable_statuses <= documented, (
-            f"{path} undocumented: {sorted(raisable_statuses - documented)}"
-        )
+        assert on_route & {"200", "201"}, f"{path} documents no success"
+        documented |= on_route
+
+    assert raisable_statuses <= documented, (
+        f"no endpoint documents {sorted(raisable_statuses - documented)}, so a "
+        f"client reading the schema cannot know these can happen"
+    )
 
 
 def test_an_application_error_matches_the_published_envelope(client):
@@ -96,39 +112,31 @@ def test_the_body_limit_middleware_speaks_the_same_envelope(client):
 
 
 def test_an_unexpected_exception_becomes_a_500_in_the_same_envelope(
-    lenient_client, fake
+    lenient_client, monkeypatch
 ):
-    fake.error = RuntimeError("something nobody predicted")
+    """Anything we did not predict must still answer in the house envelope.
+
+    TestClient re-raises server exceptions by DEFAULT, so the handler never
+    runs and cannot be observed - only raise_server_exceptions=False sees what
+    a browser would.
+    """
+    import contextlib
+
+    monkeypatch.setattr(
+        "labpilot.api.routers.compare.connect",
+        lambda *a, **k: contextlib.nullcontext(object()),
+    )
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("something nobody predicted")
+
+    monkeypatch.setattr("labpilot.api.services.ask", explode)
 
     response = lenient_client.post(
-        COMPARE,
-        files={
-            "a": ("a.md", b"# hi\n\ntext", "text/markdown"),
-            "b": ("b.py", b"x = 1\n", "text/x-python"),
-        },
-        data={"question": QUESTION},
+        COMPARE, json={"a": "A-x", "b": "B-y", "question": QUESTION}
     )
 
     assert response.status_code == 500
     assert problem(response)["code"] == "internal_error"
     assert "something nobody predicted" not in response.text, "never leak internals"
     ErrorEnvelope.model_validate(response.json())
-
-
-def test_a_broken_notebook_is_a_422_not_a_500(client):
-    # LoaderError is not an ApiError, so without the guard in services._cut a
-    # malformed .ipynb reaches the 500 handler and reads as our bug, not the
-    # user's file. Reachable only since .ipynb became an accepted upload.
-    response = client.post(
-        "/api/v1/compare",
-        files={
-            "a": ("paper.md", b"# Title\n\nsome text\n", "text/markdown"),
-            "b": ("run.ipynb", b"{not json at all", "application/json"),
-        },
-        data={"question": "compare these"},
-    )
-
-    assert response.status_code == 422
-    body = response.json()["error"]
-    assert body["code"] == "unreadable_upload"
-    assert "run.ipynb" in body["message"]
