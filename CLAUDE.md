@@ -35,15 +35,9 @@ Read the two rule sections first — they change *how* everything below is done.
 [**4 knobs, 3 lost fusion methods**](#the-four-hyperparameters-and-the-three-methods-that-were-lost--2026-09-07) ·
 [**SLICE 6 — the theory + the reranking budget**](#slice-6--the-theory-recorded-2026-09-09) ·
 [**SLICE 6 DONE — reranking HURT, and why that is a routing finding**](#slice-6--done-2026-09-11-built-measured-and-not-switched-on) ·
-<<<<<<< HEAD
-[**SLICE 7 — the decisions, and the two embedder pools**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
-=======
-<<<<<<< HEAD
 [**SLICE 7 — the decisions, and the one embedder list**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
-=======
-[**SLICE 7 — the decisions, and the two embedder pools**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
->>>>>>> main
->>>>>>> feat/selector
+[**Quotas do not predict time — 6 embedders measured**](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) ·
+[**The ask path — stuff, the N/2 rule, per side**](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -487,7 +481,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 ARE DONE AND CLOSED. SLICE 7 IS NEXT - the selector.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 ARE DONE AND CLOSED. SLICE 7 IS HALF BUILT.**
+**PIECES 1-3 SHIPPED 2026-09-14 on `feat/selector`: the rebuilt embedding-time estimator, `ingest_artifact()`, and `POST /api/v1/artifacts`. PIECE 4 - THE ASK PATH - IS NEXT, and every decision it needs is already taken in [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written).**
 **SLICE 6 IS FINISHED 2026-09-11. `labpilot/rerank/` is the seventh package: four cross-encoder
 tiers proven live, an LLM reranker that takes a CALLABLE so the package still never imports `llm/`,
 the margin gate in `retrieval/`, and a chain that ends in `skip` instead of an exception.**
@@ -621,14 +616,16 @@ artifacts, and TIME is the only thing that can overturn it — not recall, not s
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is COMPLETE and MERGED into `main`.**
 **The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
 **`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search · keyword.**
-**715 passed, 46 skipped, 1 xfailed, ruff clean — measured 2026-09-13, on `main`.**
+**763 passed, 48 skipped, 1 xfailed, ruff clean — measured 2026-09-14, on `feat/selector`.**
 **ALL 46 SKIPS ARE SMOKE (41) PLUS 5 ENVIRONMENT ONES. NOT ONE `database` TEST SKIPPED,**
 **so the 54 store tests really ran. A `database` test is green-by-absence, so the skip**
 **reasons must be READ (`pytest -q -rs`) before the count is believed.**
-**⚠ SLICE 7 MUST READ THIS FIRST: `api/services.py` catches NOTHING from `store/` or
-`embed/`, so wiring them sends `UnknownArtifact`, `ModelMismatch`, `ConnectionFailed`,
-`NotConfigured` and `EmbeddingError` straight to the 500 handler. Third time this shape
-is predictable — see [the closing review](#the-slice-4-closing-review--2026-09-05).**
+**⚠ THE ERROR BOUNDARY IS HALF CLOSED. Pieces 2-3 mapped `EmbeddingError` -> 503
+`EmbeddingUnavailable`, and `NotConfigured` / `ConnectionFailed` -> 503
+`StorageUnavailable` (503, never 404 — the database being down is OUR failure, not a
+missing upload). `UnknownArtifact` and `ModelMismatch` are STILL named in
+`ALLOWED_TO_ESCAPE`, because `search()` has no caller yet. PIECE 4 gives it one and
+must take them off that list — see [the closing review](#the-slice-4-closing-review--2026-09-05).**
 **The FLAKY SUITE IS FIXED — THREE causes, all in the test fixture, none in `store/`:
 a pooler reset threw away `set search_path` silently · a pooled connection was held per module ·
 and every run shared ONE schema name, so two runs at once deleted each other's tables.
@@ -682,8 +679,7 @@ was too cautious.**
 per call, exactly how Gemma stayed broken for weeks. Now pinned by a test.**
 **GLM-5.2 IS STILL DEAD but the refusal CHANGED: 403 `tier_not_allowed` code 1910, not the
 old 429 with `limit: 0`. Cleaner for us — not retryable, never touches `dead_pools`.**
-**725 passed, 48 skipped, 1 xfailed, ruff clean. Branch `feat/llm-client`, pushed.**
-**Last updated 2026-09-13 (twenty-second session).**
+**Last updated 2026-09-14 (twenty-third session). Branch `feat/selector`, clean at `de3fef3`.**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
 **`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
@@ -696,110 +692,86 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ▶ SLICE 7 STARTS HERE — the new selector, and `select()` finally dies
+> > ## ▶ SLICE 7 IS HALF BUILT — pieces 1-3 SHIPPED, PIECE 4 IS NEXT
 > >
-> > **STATE, verified 2026-09-13 rather than remembered.** You are on **`main`**,
-> > clean, level with `origin/main`. **Slice 6 is ON `main`** — re-committed
-> > piece by piece, not merged. **`feat/reranking` is behind `main` and dead.**
-> > Suite: **715 passed, 46 skipped, 1 xfailed**, ruff clean, and the 46 skips
-> > are smoke plus environment — **no `database` test skipped**, so the store
-> > really is reachable again.
+> > **STATE, verified 2026-09-14 rather than remembered.** Branch
+> > **`feat/selector`**, clean, everything committed, head `de3fef3`. Suite
+> > **763 passed, 48 skipped, 1 xfailed** in ~115s, ruff clean both ways.
+> > **DO NOT COMMIT TO `main`** - only the user does that, or when they say
+> > "merge and commit".
 > >
-> > **Two defects were closed before slice 7 opened, and the second matters
-> > more than the first.** `rerank/__init__.py` promised `RERANK_MAX_TOKENS` in
-> > `__all__` and never imported it, so `from labpilot.rerank import *` raised
-> > `AttributeError` with the suite and both ruff commands green. It survived
-> > because **ruff exempts `__init__.py` from F822** and the slice 4 closing
-> > review had deleted the only test that held the rule, on exactly that false
-> > premise — see
-> > [the rejected test](#rejected--and-the-reason-is-worth-more-than-the-test-would-have-been).
-> > `tests/unit/test_public_api.py` now guards every package door.
+> > ### What pieces 1-3 shipped
 > >
-> > **⚠ THE BRANCHING RULE AND THE PRACTICE DISAGREE, and nobody has decided
-> > which wins.** This file says *"Never commit on `main`. Only merge into
-> > it"* and *"branch per slice"*. Slice 6 and these two fixes went **straight
-> > onto `main`**. Pick one before slice 7's first commit: either branch
-> > `feat/selector` now, or update the rule to match what is actually done.
+> > | piece | landed |
+> > |---|---|
+> > | 1 | **the embedding-time estimator, rebuilt.** `Rate` records the PUBLISHED quota and no longer predicts with it; `Spec.measured_tokens_per_minute` is ours. `embed/rates.py` learns `requests_per_minute` from response headers and WARNS when a header contradicts the seed. `registry.SPECS` + `by_speed()`. See [section 9](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) - the quota is 11.8x wrong on codestral and exact on Google |
+> > | 2 | **`services.ingest_artifact()`** - chunk, pick an embedder, embed, write. Plus `_artifact_id` (content hash, so re-ingest REPLACES), `_pick_embedder` (one list, sorted two ways), `_records` (a generator, so 2,000 vectors never sit in memory at once) |
+> > | 3 | **`POST /api/v1/artifacts`** - Option 2's first door. One upload, stored once, `slow` reported and never waited on. `EmbeddingUnavailable` and `StorageUnavailable` added, both 503 |
 > >
-> > **Slice 6 is CLOSED.** Read
-> > [slice 6 DONE](#slice-6--done-2026-09-11-built-measured-and-not-switched-on)
-> > before anything else: it holds the code, four measurements, two eliminated
-> > confounds, and a negative result that must not be over-read.
-> > **Do not rebuild `rerank/`.** Three cross-encoders are proven live, the
-> > chain ends in `skip`, the gate is in `retrieval/gate.py`, and **nothing
-> > calls any of it** — which is what "off" means here, exactly as it means for
-> > slice 5's keyword channel.
+> > **Mutation-tested, 8 real mutations, 6 firing alone** - the pairing of chunk
+> > to vector, the side in the artifact id, the refusal to pick an `inf` model,
+> > the measured-rate table, the stable sort, and `StorageUnavailable`'s status.
+> > Two mutations were BROKEN and retried rather than believed: a missed anchor
+> > and an `or` that could never evaluate, both of which look exactly like a
+> > surviving mutation.
 > >
-> > **The one-line summary of slice 6, and it is not what anyone expected:**
+> > ### PIECE 4 IS THE ASK PATH, and every decision is already taken
+> >
+> > **Read [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written)
+> > before writing a line.** It holds the decisions, three corrections to this
+> > file, and what piece 4 deliberately does not decide.
 > >
 > > ```
-> > vector alone      r@10 0.933   MRR 0.646      requests / codestral
-> > + rerank          r@10 0.711   MRR 0.476      bge-reranker-base
+> > POST /compare   takes IDS, not files
+> >
+> > 1  do A and B TOGETHER fit the budget?
+> >       yes -> read every row back. STUFF. no query embed, no search, no rerank
+> >       no  -> continue
+> > 2  search 50 PER SIDE          exact. no fusion. wRRF stays unreachable
+> > 3  cut to VECTOR_TOP_N = 25 PER SIDE
+> > 4  gate: SKIP_MARGIN is None, so it always says rerank
+> > 5  rerank PER SIDE, never merged: 25 -> RERANK_TOP_N = 10 per side
+> >       no tier available -> skip(), keep the vector order, send the 25
+> > 6  select, filling A BEFORE B
+> > 7  outline by FILE, never by chunk
 > > ```
 > >
-> > **Reranking made it worse on all four runs.** That is a measured fact about
-> > `bge-reranker-base`, and it is NOT a fact about reranking: it is the weakest
-> > of the three providers and the only one that can afford 124 calls. Cohere is
-> > unmeasured because its 1,000/month is the chain primary's own bucket, and
-> > Voyage allows roughly one 50-document call per 70 seconds free.
-> >
-> > **What slice 7 must do.** Delete `retrieval/select()` — the 50/50 positional
-> > split — and replace it with the real selector. Three things this file
-> > already owes it, and all three are easy to miss:
-> >
-> > - **Fill A before B.** Dropping part of B is recoverable, because A still
-> >   says what to look for and the answer can be "not found". Dropping part of
-> >   A loses a statement we never learn exists, silently.
-> > - **The outline must list FILES, not chunks.** A 2,000-chunk repository
-> >   costs ~40,000 tokens of headers — larger than the whole prompt budget.
-> >   This is already a reachable 413, not a future problem.
-> > - **Route by question type.** Three independent measurements now say the
-> >   same thing: `constant` questions ("what is this value set to") want a
-> >   local relevance model, `structure` questions want the embedding. Slice 6's
-> >   breakdown is the third.
-> >
-> > **⚠ SLICE 7 WILL BREAK `test_error_boundaries` THE MOMENT IT WIRES ANYTHING.**
-> > That is the guard working, and it was written for exactly this. `api/` today
-> > catches nothing from `store/`, `embed/` or `rerank/`, so wiring them sends
-> > `UnknownArtifact`, `ModelMismatch`, `ConnectionFailed`, `NotConfigured`,
-> > `EmbeddingError` and `RerankError` straight to the 500 handler — reporting
-> > the user's input as OUR bug. Map each one to an `ApiError`, or name it in
-> > `ALLOWED_TO_ESCAPE` with the reason. **Never delete the test.** The
-> > checklist is in [the slice 4 closing review](#the-slice-4-closing-review--2026-09-05).
-> >
-> > **Reranking WORKS, with the right model — that conclusion reversed twice
-> > during slice 6 and the final numbers are what count.** The four LLM tiers
-> > lead chain 3 and beat every purpose-built cross-encoder:
+> > **The build order, six steps:**
 > >
 > > ```
-> > gemini-3.5-flash-lite  0.799      rerank-3-lite (Voyage)  0.725
-> > gemini-3.1-flash-lite  0.745      rerank-v4.0-fast        0.669
-> > gemma-4-26b-a4b-it     0.732      VECTOR ALONE            0.608
-> > gemma-4-31b-it         0.732      bge-reranker-base       0.520
+> > 1  store/      measure an artifact without moving rows, and read it all back
+> > 2  prompts/    outline by FILE - RAG holds 50 rows of a 5,000-chunk corpus
+> > 3  retrieval/  the new selector: hits -> chunks, A before B. DELETE select()
+> > 4  api/        ask(): the ladder above
+> > 5  api/        bind LLM_RERANK_ORDER to llm/ at the ENTRY layer
+> > 6  api/        /compare takes ids; UnknownArtifact + ModelMismatch come OFF
+> >                ALLOWED_TO_ESCAPE in tests/unit/test_error_boundaries.py
 > > ```
 > >
-> > **Slice 7 assembles the chain, because slice 6 could not.** The LLM tiers
-> > need `llm/` and `rerank/` is an adapter, so they are `LLM_RERANK_ORDER` —
-> > data — and the entry layer binds them:
+> > **Three things that will bite, all already written down.**
 > >
-> > ```python
-> > rerank(query, docs, chain=(*llm_tiers, *RERANK_CHAIN))
-> > ```
+> > **The two number spaces.** `search()` returns `SearchHit.chunk_index`, an ID
+> > in the corpus. `rerank()` returns POSITIONS into the list it was handed.
+> > `hits[p]` is right; looking up chunk `p` cites the wrong file and line with
+> > full confidence. `tests/integration/test_retrieval_to_rerank.py` exists for
+> > this and numbers its ids from 100 so a position used as an id is provably
+> > wrong.
 > >
-> > `LLMReranker` takes `complete(prompt, max_tokens) -> str`, so binding one is
-> > three lines. Copy the `RANKING_CONFIG` from `scripts/score_rerank.py` —
-> > `thinking=None` plus a JSON schema is worth more than the gap between
-> > flash-lite and Cohere.
+> > **`test_error_boundaries` will fire** the moment `api/` can reach
+> > `UnknownArtifact` or `ModelMismatch`. That is the guard working. Map them,
+> > never delete the test.
 > >
-> > **Still do not decide whether reranking SHIPS.** That is slice 8, taken
-> > together with the embedder and with fusion — slice 6 measured that
-> > **fusion's gain vanishes under reranking**, so the three cannot be decided
-> > separately.
+> > **`skip()` truncates to whatever `top_n` it is handed.** The degraded path
+> > must be given `VECTOR_TOP_N`, not `RERANK_TOP_N`, or it silently uses a
+> > number calibrated for a path that did not run.
 > >
-> > **Three numbers in this file were corrected by measurement on 2026-09-11.**
-> > The true `r@1` is 0.412-0.533 and `0.645` was always the MRR · Voyage gives
-> > **3 RPM / 10K TPM** on a card-free account, not "4M TPM / 2,000 RPM" ·
-> > Cohere's headers carry a second ceiling, `x-trial-endpoint-call-limit: 10`.
+> > ### What is NOT piece 4's to decide
+> >
+> > Every top_n value, the window, merged vs per side, where the cut goes,
+> > whether reranking ships, whether `wRRF` replaces exact search - **all slice
+> > 8**, and its job list is now SEVEN measurements. The search query being the
+> > user's own question is a known weakness this file has named since 2026-08-13;
+> > claim extraction is **Step 2**.
 > >
 > > ## ✅ SLICE 4 IS DONE — do not restart it
 > >
@@ -4930,6 +4902,10 @@ RAG system exists on real artifacts.*
 | 1 | embedder ranking on a new fixture, several repos, more than one language | which model leads `MIGRATION` |
 | 2 | **reranker ranking — never measured at all** | which model leads chain 3 |
 | 3 | **exact vs HNSW, on real artifacts, inside the full pipeline** | whether the 2026-09-05 decision holds |
+| 4 | **END-TO-END TIME, never measured** - embed + search + rerank + generate, on a real artifact | `WARN_MINUTES` and `INGEST_MINUTES_BUDGET`, both GUESSES until this runs |
+| 5 | **MERGED vs PER SIDE reranking** | whether coverage can be left to the selector - and note merged hands Voyage 50 documents, which it refuses |
+| 6 | **`SEARCH_LIMIT` and `VECTOR_TOP_N` SWEPT JOINTLY** - the window 10 to 100 per side, and the cut anywhere from 1 to the whole window | all three of `SEARCH_LIMIT`, `VECTOR_TOP_N`, `RERANK_TOP_N`. Only their ORDER is a rule; `N/2` is a default nobody measured |
+| 7 | **WHERE THE CUT GOES** - before the reranker as shipped, or after it | whether the reranker may RESCUE from below the cut, against Voyage reachability and half the rerank tokens |
 
 **For measurement 3, what to record and what may not count:**
 
@@ -6922,11 +6898,12 @@ taking two files can never express that. Three things follow for free:
   search, and throw the database away on every request.
 
 **Measured, and it is why this is not a preference:** a FastAPI-sized repository
-on `codestral-embed` is **166 minutes** — per question, under the old shape.
+on `codestral-embed` was calculated at **166 minutes** per question under the
+old shape. **MEASURED 2026-09-14 it is about 15** - the quota that figure
+rested on is not enforced, see section 9. The argument survives the
+correction: 15 minutes per question is still unusable, and paying it once is
+still the point.
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
 ### 2. ONE LIST OF EMBEDDERS, SORTED TWO WAYS
 
 *The user's rule, and it corrects a two-pool version I proposed first.*
@@ -6948,49 +6925,19 @@ pool of two models, both exhausted, and nowhere left to go. A single list cannot
 dead-end, because every model is always present — only its **place** moves. So
 in the fast case, when `mistral-embed` and `embed-v4.0` are both gone, we
 continue to *the next fastest still alive*, rather than failing.
-=======
->>>>>>> feat/selector
-### 2. THE EMBEDDER IS CHOSEN BY TWO POOLS, EACH ORDERED BY POWER
-
-*The user's rule, and it replaces the single ordered `MIGRATION` list for the
-purpose of choosing an ingest model.*
-
-```
-chunks <= threshold  ->  STRONG POOL   walk it in power order
-chunks >  threshold  ->  FAST POOL     walk it in power order
-```
-
-Inside a pool, take the most powerful model. If its quota is spent — **both
-keys, for Google** — fall to the next tier **in that same pool**. Never cross
-pools: the whole point of the pool is the time budget.
-<<<<<<< HEAD
-=======
->>>>>>> main
->>>>>>> feat/selector
 
 **The threshold is TIME, not a chunk count:**
 
 $$
 T = \frac{t(A) + t(B)}{\text{rate of the model}}
 \qquad
-<<<<<<< HEAD
-T > 6\ \text{min} \;\Rightarrow\; \text{FAST POOL}
-=======
-<<<<<<< HEAD
 T > 6\ \text{min} \;\Rightarrow\; \text{sort by SPEED}
-=======
-T > 6\ \text{min} \;\Rightarrow\; \text{FAST POOL}
->>>>>>> main
->>>>>>> feat/selector
 $$
 
 Checked **before the first call**, which is the budget pre-check this file
 already demands: *"chunk count is known before the first call, so check it
 against remaining quota and refuse to start rather than dying halfway."*
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
 **The speed order is arithmetic and is known today** — chunks embeddable in six
 minutes, at the measured mean of 341.6 tokens per chunk:
 
@@ -7011,31 +6958,6 @@ it from the list.
 in the list and slice 8 owes it **both** numbers — how fast it embeds, and how
 well it ranks. Ordering by measured recall is this file's existing standard;
 this rule just says the same list gets a second ordering.
-=======
->>>>>>> feat/selector
-**Which models are fast is arithmetic, not opinion** — chunks embeddable in six
-minutes, at the measured mean of 341.6 tokens per chunk:
-
-| model | chunks / 6 min | pool |
-|---|---|---|
-| `mistral-embed` | ~10,800 | **fast** |
-| `embed-v4.0` (Cohere) | ~5,760 | **fast** |
-| `codestral-embed` | ~878 | strong |
-| `gemini-embedding-2` / `-001` | ~527 | strong |
-| `bge-base-en-v1.5` | unknown — neuron cost never recorded | unknown |
-
-**Cohere really is fast**: 10 requests/minute times a 96-chunk batch is 960
-chunks a minute, far quicker than codestral. Its 1,000-calls-a-month ceiling is
-a **budget factor for slice 8 to weigh inside the fast pool**, not a reason to
-exclude it from the pool.
-
-**SLICE 8 MEASURES THE POWER ORDER INSIDE EACH POOL. THE RULE APPLIES NOW.**
-Ordering by power is this file's existing standard — measured recall, never a
-vendor claim — applied separately to each pool.
-<<<<<<< HEAD
-=======
->>>>>>> main
->>>>>>> feat/selector
 
 **The fall-through is free, and it is important to say why it is not a
 migration.** It happens *before* any vector exists, so nothing has to be
@@ -7043,19 +6965,19 @@ re-embedded. Switching models *mid-corpus* would be the unrecoverable case, and
 this file already forbids it: *"never continue a half-finished corpus with a
 different model."* The pre-check exists to stop exactly that.
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
 ### 2b. A SLOW INGEST IS OFFERED, NEVER IMPOSED
 
 *The user's call.* In the fast case, if every genuinely fast model is spent, the
-walk eventually reaches a slow one — `codestral-embed` is **37 minutes** on a
-5,386-chunk repository.
+walk eventually reaches a slow one. ~~`codestral-embed` is **37 minutes** on a
+5,386-chunk repository~~ - **that number came from a quota measured 2026-09-14
+to be unenforced, and codestral really takes ~3.3 minutes (section 9).** The
+rule below is unchanged and still needed; today the slow model it reaches is
+`gemini-embedding-*` at ~63 minutes, which IS enforced.
 
 **We use it anyway rather than refusing — but we ASK FIRST.**
 
 ```
-pre-check   ->  "this will take about 37 minutes. continue?"
+pre-check   ->  "this will take about 63 minutes. continue?"
 user says ok in the UI  ->  embed
 user says no            ->  nothing is started
 ```
@@ -7069,9 +6991,6 @@ choice is theirs.
 B fit the prompt budget together, no embedder is chosen, nothing is stored, and
 none of this runs. See the ladder below.
 
-=======
->>>>>>> main
->>>>>>> feat/selector
 ### 3. One embedder per SESSION — a simplification, NOT a safety rule
 
 Both artifacts in a comparison use the same model. **Two models is a candidate
@@ -7115,25 +7034,12 @@ which Cohere bills as one unit, is safe on *scale* and unsafe only on
 
 ```
 1.  does EVERYTHING fit the prompt budget?
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
         yes -> STUFF IT ALL. no embedder, no search, no rerank, no database
         no  -> continue
 
 2.  estimate the time. sort the ONE list by SPEED or by STRENGTH.
     walk down to the first live model.
     if the estimate is long, SHOW IT AND ASK before starting.
-=======
->>>>>>> feat/selector
-        yes -> STUFF IT ALL. no embed, no search, no rerank
-        no  -> continue
-
-2.  pick the POOL by time, then the MODEL by power inside that pool
-<<<<<<< HEAD
-=======
->>>>>>> main
->>>>>>> feat/selector
     embed + store
 
 3.  search                  -> top 50    VECTOR_TOP_N   (slice 8 measures)
@@ -7168,8 +7074,11 @@ file**. Chunked over this whole repository:
 5,386 chunks   1,839,759 est tokens   mean 341.6   max 509
 ```
 
-**1.8x higher**, so `codestral-embed` on a real repository is **37 minutes**,
-not the 8 that argument rested on. **Condition 2 of the routing rule is
+**1.8x higher**. ~~so `codestral-embed` on a real repository is **37
+minutes**~~ - that followed from the published 50,000 quota, which section 9
+measured to be unenforced; codestral really takes ~3.3 minutes. The
+token-count correction stands on its own and the routing rule survives, but
+NOT for this reason. **Condition 2 of the routing rule is
 therefore STRONGER than this file claims, not weaker** — which is why rule 2
 above exists at all.
 
@@ -7200,20 +7109,8 @@ because the limit is enforced in the wrong units.
 **Not fixed, and not urgent: BGE has no caller, so nothing is truncated today.**
 **Strength of the claim:** the mechanism is certain; the 73.8% is extrapolated
 from one ratio measured on one Python file. One Cloudflare call would settle it,
-<<<<<<< HEAD
-since the response reports real token usage. **Slice 8 owns it**, together with
-which pool BGE belongs to — its neuron cost for embedding is recorded nowhere,
-so its speed is unknown.
-=======
-<<<<<<< HEAD
 since the response reports real token usage. **Slice 8 owns it, and owes BGE
 three numbers: its speed, its strength, and its real tokenizer ratio.**
-=======
-since the response reports real token usage. **Slice 8 owns it**, together with
-which pool BGE belongs to — its neuron cost for embedding is recorded nowhere,
-so its speed is unknown.
->>>>>>> main
->>>>>>> feat/selector
 
 > **A limit is only enforced if it is measured in the units the provider
 > counts.** Ours is enforced in units we invented.
@@ -7225,29 +7122,512 @@ embedding there would starve reranking. **Slice 6 demoted Cohere to rerank tier
 7 of 8**, behind four Google LLM tiers worth ~29,800 calls a day, so that
 argument died without anyone noticing.
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
 Under rule 2 Cohere is simply a member of the one list, and a fast one. What
 remains true is a budget fact for slice 8 to weigh: 1,000 calls a **month** is
 the smallest renewing bucket here, an embedded corpus spends it on **every
 future query** permanently, and there is a second ceiling this file recorded and
 never weighted — `x-trial-endpoint-call-limit: 10`.
-=======
->>>>>>> feat/selector
-Under rule 2, Cohere is now a **fast-pool candidate**, because it embeds ~960
-chunks a minute. What remains true is only a budget fact for slice 8 to weigh:
-1,000 calls a **month** is the smallest renewing bucket here, an embedded corpus
-spends it on **every future query** permanently, and there is a second ceiling
-this file recorded and never weighted — `x-trial-endpoint-call-limit: 10`.
-<<<<<<< HEAD
-=======
->>>>>>> main
->>>>>>> feat/selector
 
 > **When a decision has two reasons and one dies, say which one is still
 > carrying it.** Otherwise the decision looks unsupported the day somebody
 > checks the dead half.
+
+### 8. TIME IS A PRODUCT CONSTRAINT, and it has TWO thresholds
+
+*The user's decision, 2026-09-14, replacing a single 6-minute number that was
+doing two unrelated jobs.*
+
+```
+6 min   ->  which ORDER to sort the embedder list by   (strength vs speed)
+2 min   ->  whether to STOP and ask the user first     (a window, wait for yes)
+```
+
+They answer different questions, so they cannot be one number. A three-minute
+ingest needs no reordering and **does** need a warning.
+
+**Why the warning threshold is far lower than the routing one, and this is the
+part that was missing:** embedding is ONE STAGE OF SEVERAL. Everything measured
+in this project so far:
+
+| stage | measured |
+|---|---|
+| vector search, exact | **34 ms** - negligible |
+| rerank, `gemini-3.5-flash-lite` | **1.3 s** per call |
+| rerank, `gemma-4-31b-it` | **18-22 s** per call |
+| **one full report** | **52.7 s** live, `gemini-3.6-flash` |
+| embedding | 0.9 - 61 min, entirely model-dependent |
+
+**So a 2-minute embed is already a 3-4 minute answer, today, before the agent
+exists.** `Ingested.minutes` is the EMBEDDING estimate only and must be
+labelled that way; showing it as "total time" would be a lie the user acts on.
+
+### 8b. THE AGENT MAKES IT SLOWER, NOT FASTER - and that is the trade
+
+A reasonable assumption, and it is wrong: Step 2 is an **accuracy**
+optimisation, never a speed one.
+
+```
+Step 0, ONE call        ->  13 of 19 findings
+the 7 that were missed  ->  each needs a DIFFERENT question asked
+```
+
+This file already measured the cause: the misses came from asking ONE question,
+not from a weak model or bad retrieval - *"one probe with a different question
+recovered five findings that seventeen comparison runs had never found"*. Four
+questions cost four calls. **Control flow is more steps, not fewer.**
+
+> **"Simpler" applies to the DEVELOPER, never to the clock.** Each node does one
+> thing, which is simpler to build and reason about. The user waits longer.
+
+**But it is not 10x, because of routing.** A full report is ~10 calls and only
+ONE needs the strong slow model - the gate, both summaries, claim extraction and
+the batched `verify` calls all run on Flash-Lite or Gemma. Honest estimate:
+**2-3x Step 0's wall clock, not 10x.** Three things already in the design fight
+the rest: the correspondence gate halts a mismatched pair after one small call,
+`verify` batches 5 claims per call, and a corpus that FITS the prompt budget is
+stuffed with no embedding and no search at all.
+
+### 8c. THE PRODUCT CONSTRAINT, written down so it binds
+
+> **We will not ship a tool that costs ten minutes for a simple task.**
+
+This is not a preference, it is a requirement on the planner. *"What does this
+function do?"* must be one call, never the whole graph:
+
+```
+"summarize this"        ->  1 node
+"find bugs"             ->  a few
+"why do they diverge"   ->  the whole graph
+```
+
+The agent must not make EVERY question slower. It makes the hardest question
+better, and the planner keeps the easy ones cheap. When a simple question does
+get expensive, the fix is not a louder warning - it is to stuff instead of
+embed, which step 1 of the ladder already does.
+
+### 8d. THE END-TO-END NUMBER IS UNMEASURED, and slice 8 owes it
+
+We have per-stage numbers and have **never measured a total**. The stage that
+will dominate it - the agent - does not exist yet. So:
+
+- `WARN_MINUTES = 2.0` **is a guess**, exactly like the 6, and is labelled as
+  one in the code.
+- **Slice 8 must measure the real end-to-end time**, on the same run that
+  scores the embedder, and only that can set either number honestly.
+
+Writing a total now would repeat the `r = 5` mistake: a number with no
+derivation that gets quoted back six weeks later as if it were measured.
+
+### 8e. WHERE THIS ACTUALLY LIVES: STEP 3, NOT HERE
+
+*The user's framing, and it keeps slice 7 from growing.*
+
+**The warning window, the "this is not ChatGPT" notice, the progress display -
+all of it is STEP 3 work: the UI, Docker, the frontend.** Step 1 owes only the
+NUMBER and the honest label; nothing in `api/` or `retrieval/` should try to
+ask a user anything. `ingest_artifact` returns `minutes` and the caller decides.
+
+It is recorded now rather than at Step 3 because the thresholds are being chosen
+now, and a number chosen without its reason is the thing this file exists to
+prevent.
+
+**And one scheduled piece of work that follows from it:** the current page is
+deliberately throwaway - *"throw away 100 lines, not an app"* - and it was built
+when an artifact had no identity. **The frontend is worth REBUILDING at the END
+of Step 1**, once the RAG system is complete and artifacts are real stored
+things with ids, chunk counts and timings to show. Rebuilding it earlier means
+rebuilding it twice.
+
+### 9. THE PUBLISHED QUOTA DOES NOT PREDICT TIME — measured 2026-09-14
+
+*The user refused an estimator built on `tokens_per_minute` and asked for one
+built on our own measurements. He was right, and measuring it overturned four
+claims this file makes above.*
+
+**The finding, in one line:**
+
+```
+codestral-embed   DOCUMENTED quota   50,000 tokens/minute
+                  MEASURED           590,000 tokens/minute
+                  11.8x over, for 71 seconds, 37 requests, ZERO refusals
+```
+
+**And it is not universal, which is the whole difficulty.** Google enforces its
+published number exactly — `gemini-embedding-001` and `-2` both 429 on the
+SECOND call in a minute, measured at ~29,000 against a documented 30,000. So
+the quota is right for one provider and 10x wrong for another, and a number
+that behaves like that cannot predict anything.
+
+#### Every embedding timing this project has
+
+*Timeboxed pushes from a Frankfurt VPN exit, varying batch sizes on real
+chunks from this repository. `sustained` means 4+ requests, long enough for a
+limit to bite; `burst` means it never met one.*
+
+| model | measurement | tok/min | requests |
+|---|---|---|---|
+| `codestral-embed` | burst, 1 batch | 619,000 | 1 |
+| | sustained, 4 batches | 600,000 | 4 |
+| | **sustained, 71s push** | **590,000** | **37** |
+| | sustained, 30s push | 474,000 | 18 |
+| | **MEAN of the multi-request runs** | **554,000** | |
+| `mistral-embed` | burst, 1 batch | 703,000 | 1 |
+| | sustained, 40s push | 520,000 | 25 |
+| | **slice 4's 5-repo ingest** | **504,000** | **849** |
+| | **MEAN of the sustained runs** | **512,000** | |
+| `gemini-embedding-001` | burst, 1 batch | 274,000 | 1 |
+| | **throttled, 6x 429** | **29,000** | 1 |
+| `gemini-embedding-2` | **throttled, 6x 429** | **28,700** | 1 |
+| `embed-v4.0` | **burst only** | 641,000 | 6 |
+| `bge-base` | burst, day 1 | 288,000 | 1 |
+| | burst, day 2 | 926,000 | 1 |
+| | burst, 6 requests | 732,000 | 6 |
+
+**The two Mistral-family numbers corroborate each other across sessions weeks
+apart** — 520,000 measured today and 504,000 derived from slice 4's completely
+separate 849-request, 45-minute five-repo ingest. That is the "do not rely on
+one measurement" rule satisfied rather than asserted.
+
+#### Three traps this exposed, and each one produced a wrong number first
+
+**1. Averaging a burst with a throttled run is nonsense.** Google's two
+measurements are 274,000 and 29,000; their mean is 151,717 and it describes
+nothing. One sample never met the limit that governs the other. **So bursts
+count only where no limit exists** (codestral, BGE) and are excluded where one
+does (Google).
+
+**2. A quota is not a throttle, and treating it as one was 12x PESSIMISTIC.**
+`tokens / TPM` says a single 19,000-token call to codestral needs 23 seconds.
+It takes 1.8. A provider lets you send a minute's allowance at once; the limit
+only bites on the NEXT call.
+
+**3. Timing ONE batch gives a burst rate that cannot be sustained.** The first
+attempt at this measured one batch and got 619,000 for codestral — real, and
+useless, because nothing had pushed against a limit yet.
+
+#### What the estimator uses now
+
+```
+embedding_minutes = max( tokens / measured_tokens_per_minute ,
+                         requests / requests_per_minute )
+```
+
+- **`measured_tokens_per_minute` is OURS**, on `Spec`, and is the only basis
+  for the time. No provider reports throughput, so nothing can be learned from
+  a header — the seed is all there is until we time ourselves.
+- **`requests_per_minute` stays**, because it is a ceiling no throughput can
+  beat: Cohere accepts 10 calls a minute, so a 57-request corpus takes 5.7
+  minutes however fast the wire is. Measured at 641,000 tok/min, it would
+  otherwise have been predicted at 2.9 minutes and been wrong.
+- **`rate.tokens_per_minute` is recorded and NOT used to estimate.** It stays
+  so `rates.learn()` can warn when a header stops matching it — which is how
+  we would learn that Mistral has started enforcing.
+- **A model nobody has timed returns `inf` and sorts last.** An unknown is not
+  a promise, and the old fallback to the quota would have meant "when we do not
+  know, use the number we measured to be unreliable".
+
+#### The seeds are MEANS, and that was a correction too
+
+The first version used the LOWER of each pair, on a "never under-promise"
+instinct. **That instinct is a UX heuristic and it was applied in the wrong
+layer.** The number does two jobs — it chooses the ordering AND it warns the
+user — and a pessimistic value is helpful for the second and harmful for the
+first: it abandons the strongest model earlier than the data justifies.
+
+> **Keep the estimator unbiased. Padding belongs at the display.** Which is
+> this file's existing rule in a new place: *a safety margin belongs on
+> estimated quantities, never on known ones.*
+
+#### What it predicts, and what it overturns
+
+```
+this repository, 1,839,759 tokens, 57 requests
+
+  codestral      3.3 min     <- was claimed as 37 MINUTES above
+  mistral        3.6 min
+  cohere         5.7 min     <- requests bind, not throughput
+  gemini        63.4 min     <- enforced, and genuinely slow
+  bge           cannot - over its 684,000-token daily budget
+```
+
+**So the two-orderings rule of section 2 stands, and its motivating example
+evaporated.** Codestral is both the strongest model and about as fast as
+`mistral-embed`, so sorting by speed now only changes anything above roughly
+**9,700 chunks**, or when Google is the best model still alive. The rule is
+still right — it just fires far less often than the 37-minute figure implied.
+
+#### Honest limits
+
+- **One account, one VPN exit, two days.** Mistral may begin enforcing; if it
+  does, codestral returns to 37 minutes and the ordering starts mattering
+  again. The staleness warning in `rates.learn()` is what would tell us.
+- **BGE's three samples span 3.2x** — 288,000 to 926,000 on the same work. It
+  is the roughest number here, and academic anyway: its daily neuron budget
+  stops it long before a rate does.
+- **Cohere and BGE are BURST ONLY.** Both were capped at 6 requests to protect
+  a 1,000-a-MONTH and a 10,000-neuron-a-DAY budget, so neither met a limit.
+
+#### OPEN DEBT: nothing learns throughput at runtime
+
+`rates.py` learns `requests_per_minute` from a header and warns on a stale
+seed. It cannot learn throughput, because **no provider reports it** — only
+timing our own calls can, and nothing does.
+
+That is the piece that would make these seeds self-correcting, and it is
+deliberately NOT half-built: accumulating across calls needs a decision about
+what "elapsed" means — the sum of request durations (a burst rate) or wall
+clock including our own gaps (the true ingest rate). Choosing wrong
+reintroduces exactly the 619,000-against-554,000 error this section removed.
+
+**It belongs with the progress display at Step 3**, beside slice 8's
+end-to-end measurement.
+
+> **A vendor's published limit is a promise about what they will REFUSE, never
+> a prediction of what you will GET.** Measure the second; record the first
+> only so you notice when it changes.
+
+### 10. THE ASK PATH — decided 2026-09-14, before piece 4 was written
+
+*Taken with the user in the same discipline as sections 1-9: the decisions
+first, the code after. Three of them narrow or correct something this file
+already said.*
+
+#### 10a. THE STUFF CHECK MOVED, because artifacts became state
+
+The ladder in section 4 was written for the single endpoint, where the file
+arrived and everything was decided in one place. Option 2 split that in two,
+so the check moved with it:
+
+```
+POST /artifacts   ALWAYS chunk, embed, store.        state. no decision.
+
+POST /compare     do A and B TOGETHER fit the budget?
+                    yes -> read every row back. STUFF.
+                           no query embed, no search, no rerank.
+                    no  -> search
+```
+
+**Ingest never skips embedding, and that is deliberate.** A small A may later
+be paired with a huge B, and then A must be searchable. Deciding at ingest
+would make an artifact usable in only one mode, which contradicts *"artifacts
+are state"*. Embedding a small artifact costs seconds; the ask-time check costs
+one SQL aggregate.
+
+**The size needs no new column.** `estimate_tokens` is `ceil(chars/3)` and
+`embed_text` is `header + "\n" + text`, so
+
+```
+select count(*), sum(length(header) + length(text) + 1) from chunks where ...
+```
+
+is exactly the number our Python would produce, in one round trip with no rows
+moved. A stored token count would be a second copy of the truth — the argument
+that already rejected `chunk_count`.
+
+**And the cheap check must come FIRST.** Reading 24,000 rows back to discover
+they do not fit spends ~14MB over the VPN to learn one boolean.
+
+**`store/` therefore gains two functions** it has never needed: one that
+measures an artifact without moving rows, and one that reads all of it back.
+Search alone cannot serve the stuff path, because the stuff path has no query.
+
+#### 10b. THE THREE NUMBERS — only their ORDER is a rule, the rest is a knob
+
+*This file already said there are TWO numbers; it never said how they
+constrain each other. The answer is: barely. One ordering is forced by
+arithmetic, and every ratio inside it is an unmeasured default.*
+
+**`SEARCH_LIMIT = 50` counts documents in ONE call, on ONE artifact.** That is
+what `store.search()` takes - one `artifact_id`, one limit - and it is what
+every measured number in this file already assumes: the dense top-50 was one
+corpus, `we send 50 of a free 100` was one Cohere call, `61% of the 82-chunk
+quora corpus` was one corpus, and Voyage refusing a 50-document window was one
+call. **Read as a total, every one of those numbers halves.**
+
+```
+search     SEARCH_LIMIT = 50  PER SIDE      100 candidates
+retrieve   VECTOR_TOP_N = 25  PER SIDE      <- THE CUT HAPPENS HERE
+rerank     25 -> RERANK_TOP_N = 10          the reranker sees 25, not 50
+```
+
+**The cut comes BEFORE the reranker, and that is a decision.** The reranker
+re-orders exactly what the vector path would have sent on its own. So it can
+never introduce a chunk the vector path rejected - which means a BAD reranker
+costs ordering and never content, and slice 6 measured that a bad one actively
+hurts (`bge` took r@10 from 0.933 to 0.711).
+
+**What it gives up is the rescue.** Ranks 26-50 are where a good reranker finds
+what the bi-encoder ranked badly, and they are now discarded unseen. Measured:
+
+```
+requests   r@20 0.978   r@50 0.978    cutting at 25 costs 0.000
+quora      r@20 0.941   r@50 1.000    costs one query of 17
+```
+
+**And it is what makes Voyage reachable** - see 10d.
+
+**ONLY the ordering is a rule. Everything else is an unmeasured default.**
+
+```
+RERANK_TOP_N  <=  VECTOR_TOP_N  <=  SEARCH_LIMIT      all three PER SIDE
+    10               25               50
+```
+
+The ordering is forced by arithmetic, not by taste: you cannot send more than
+you kept, and you cannot keep more than you retrieved. A `RERANK_TOP_N` above
+`VECTOR_TOP_N` would also make the DEGRADED path sharper than the good one,
+which is backwards.
+
+**`N/2` is NOT a rule, and calling it one was my error.** There is no reason
+`VECTOR_TOP_N` should be half of `SEARCH_LIMIT` rather than 0.6 of it, or all
+of it when the budget has room. It is a default, chosen for symmetry and
+nothing else, and it is now written down as a knob so slice 8 sweeps it instead
+of inheriting it:
+
+```
+SEARCH_LIMIT = 50  ->  retrieve 25?  30?  or all 50 if the budget takes it?
+SEARCH_LIMIT = 30  ->  retrieve 15?  20?  25?  or all 30?
+```
+
+The two numbers are **joint, not independent** - a wider window with a hard cut
+is a different system from a narrow window sent whole, and only the pair can be
+scored. Slice 8 sweeps them together.
+
+> **A ratio that looks tidy is still a guess.** `N/2` earned its place by being
+> easy to say. pgvector's `ef_search = 40` and RRF's `k = 60` were both tidy
+> defaults too, and both were measured to be wrong here.
+
+**`RERANK_TOP_N` has a second, softer reason not to sit at the top of its
+range.** Slice 6 measured that a good reranker shifts the recall curve LEFT -
+reranked N=3 scores 0.882 where vector N=3 scores 0.765 - and that gain is only
+collected by cutting harder. At `RERANK_TOP_N = VECTOR_TOP_N` the model gets
+the same chunks in a better order and the compression is thrown away. **That is
+an argument, not a measurement**, and it is the same sweep.
+
+> **A constant's UNITS are part of its meaning, and a new section is the
+> easiest place to change them by accident.** This was nearly written the other
+> way - `SEARCH_LIMIT` as a total, 25 per side - and it would have silently
+> re-scaled every rerank, neuron, token and corpus-ratio figure recorded above,
+> none of which would have changed a line of code to disagree. The user caught
+> it. **Before reusing a number in a new section, grep for it and read what the
+> OLD sentences assume.**
+
+#### 10b-bis. `SEARCH_LIMIT` HAS NEVER BEEN SWEPT — slice 8 owes it
+
+Slice 6's measurement 2 varied how many chunks to **send** (3, 5, 10, 15, 20,
+50). It never varied the **retrieval window** they were drawn from.
+`SEARCH_LIMIT = 50` was written in slice 4 as *"retrieve wide, rerank to ~10"*
+and has been a default ever since - the same class of unmeasured number as
+pgvector's `ef_search = 40`, which quietly cost 14% of recall until someone
+looked.
+
+**Sweep it 10 -> 100, per side.** Both ends have a reason:
+
+```
+10    below this the reranker has almost nothing to reorder
+100   Cohere bills per CALL up to 100 documents and we send 50,
+      so half of every Cohere call is already wasted
+```
+
+Voyage caps the usable end far lower - 30 documents passed and 40 was refused
+on a card-free account - so the sweep measures QUALITY and the chain decides
+REACHABILITY, exactly as it does for the embedder.
+
+#### 10c. PER SIDE, NOT MERGED — and slice 8 must measure it
+
+This file said merging A and B into one rerank call is *"safe on scale and
+unsafe only on coverage — which 'fill A before B' already governs."* Both
+halves are still true. **The decision goes the other way anyway**, and the
+reason is which failure you are willing to have:
+
+```
+merged     100 documents, ONE call      half the rerank budget
+                                        one side can take every slot
+per side    50 documents, TWO calls     coverage is STRUCTURAL
+                                        twice the calls
+```
+
+Merged makes coverage depend on the selector behaving. Per side makes it
+impossible to lose a side at all. **A guarantee in the shape beats a guarantee
+in a downstream rule**, which is this file's own *"put a rule where it cannot
+be broken, not where it can be checked."*
+
+**And merged is the one shape that loses Voyage.** Per side hands it
+`VECTOR_TOP_N = 25` documents (~9,040 tokens, under the 10K ceiling). Merged
+hands it 25 + 25 = **50**, which slice 6 measured as refused at ~16,900 tokens.
+So the cheaper option on rerank CALLS is the one that costs a whole rerank
+TIER - which is exactly the kind of trade that cannot be settled by arithmetic
+on one axis.
+
+**SLICE 8 OWES THIS MEASUREMENT: merged against per side, on the same corpus.**
+It is a real question and it is not settled by the argument above — merged
+halves the rerank cost, and the rerank budget is the tightest one in the
+project once `verify` needs a call per claim. Per side is the DEFAULT, not the
+answer.
+
+#### 10d. THE PRE-RERANK CUT MAKES VOYAGE REACHABLE — predicted, not measured
+
+Slice 6 measured that Voyage cannot serve a 50-document window on a card-free
+account at all: 50 documents (~16,900 tokens) refused, 40 (~13,100) refused,
+30 (~8,900) passed, against a 10K TPM ceiling that counts a call whole.
+
+Cutting to `VECTOR_TOP_N` before the reranker hands it **25**, and Voyage's own
+published formula gives
+
+```
+t_q x N_d + sum(t_di)  =  20 x 25 + 25 x 341.6  =  ~9,040 tokens
+```
+
+Under the ceiling, and beside a measured 30-document call that passed at
+~8,900. **So the pre-rerank cut is the first shape in which our second-best
+measured reranker is usable free.** Reranking all 50 never could be.
+
+**This is a PREDICTION and must be labelled as one.** It rests on our
+`chars / 3` estimator, which slice 6 showed straddles Voyage's real boundary in
+both directions - it called a 50-chunk quora window 11,400 tokens (passes) and
+a 40-chunk requests window 13,100 (fails). One real call settles it, and it
+costs 1 of ~16,000.
+
+*A first draft of this section reached the same conclusion through a units
+error - reading `SEARCH_LIMIT` as a total and deriving 25 per side. The
+conclusion survived; the reasoning did not. Recorded because a right answer
+from a wrong premise is the kind that gets quoted back and then collapses.*
+
+#### 10e. "N in {20, 50} is ELIMINATED" was too strong — corrected
+
+Slice 6 wrote that, and this file repeats it in three places. It overstates
+what the frontier showed.
+
+```
+recall@N is MONOTONE  ->  N=50 has the HIGHEST recall of any N. always.
+15 -> 50 buys          ->  0.000 recall
+15 -> 50 costs         ->  DILUTION  <- a GENERATION property. NEVER measured.
+```
+
+The case against 50 rests entirely on dilution and lost-in-the-middle, which
+are taken from theory and the literature and have not been measured once in
+this project. So 50 is not eliminated — it is **unmeasured in the only
+direction that could condemn it.**
+
+`VECTOR_TOP_N = 50` therefore ships as the conservative choice: never discard a
+chunk already paid for. **Slice 8 measures DOWNWARD from it**, and 20 or 15 is
+where it is expected to land.
+
+> **A metric that only moves one way cannot eliminate a value, only fail to
+> reward it.** Slice 6 was right that retrieval cannot find the optimum, and
+> then treated the flat region as if it had.
+
+#### 10f. What piece 4 does NOT decide
+
+| decided here | NOT decided |
+|---|---|
+| stuff at ask time, search when it does not fit | the stuff threshold — it is `PROMPT_BUDGET`, unchanged |
+| per side reranking, `RERANK_TOP_N <= VECTOR_TOP_N` | merged vs per side — **slice 8** |
+| **every top_n is PER SIDE**: `SEARCH_LIMIT` 50, `VECTOR_TOP_N` 25, `RERANK_TOP_N` 10 | all three values — **slice 8**, sweeping the window and measuring the cuts downward |
+| exact search, no fusion on the query path | whether `wRRF` replaces it — **slice 8** |
+| the reranker RUNS, chain assembled at entry | whether reranking SHIPS — **slice 8** |
+| the search query is the user's question | claim extraction — **Step 2**, and this file already calls the question a bad query |
+
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 
