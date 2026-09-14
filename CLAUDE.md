@@ -36,6 +36,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**SLICE 6 — the theory + the reranking budget**](#slice-6--the-theory-recorded-2026-09-09) ·
 [**SLICE 6 DONE — reranking HURT, and why that is a routing finding**](#slice-6--done-2026-09-11-built-measured-and-not-switched-on) ·
 [**SLICE 7 — the decisions, and the one embedder list**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
+[**Quotas do not predict time — 6 embedders measured**](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -4922,6 +4923,7 @@ RAG system exists on real artifacts.*
 | 1 | embedder ranking on a new fixture, several repos, more than one language | which model leads `MIGRATION` |
 | 2 | **reranker ranking — never measured at all** | which model leads chain 3 |
 | 3 | **exact vs HNSW, on real artifacts, inside the full pipeline** | whether the 2026-09-05 decision holds |
+| 4 | **END-TO-END TIME, never measured** - embed + search + rerank + generate, on a real artifact | `WARN_MINUTES` and `INGEST_MINUTES_BUDGET`, both GUESSES until this runs |
 
 **For measurement 3, what to record and what may not count:**
 
@@ -6914,7 +6916,11 @@ taking two files can never express that. Three things follow for free:
   search, and throw the database away on every request.
 
 **Measured, and it is why this is not a preference:** a FastAPI-sized repository
-on `codestral-embed` is **166 minutes** — per question, under the old shape.
+on `codestral-embed` was calculated at **166 minutes** per question under the
+old shape. **MEASURED 2026-09-14 it is about 15** - the quota that figure
+rested on is not enforced, see section 9. The argument survives the
+correction: 15 minutes per question is still unusable, and paying it once is
+still the point.
 
 ### 2. ONE LIST OF EMBEDDERS, SORTED TWO WAYS
 
@@ -6980,13 +6986,16 @@ different model."* The pre-check exists to stop exactly that.
 ### 2b. A SLOW INGEST IS OFFERED, NEVER IMPOSED
 
 *The user's call.* In the fast case, if every genuinely fast model is spent, the
-walk eventually reaches a slow one — `codestral-embed` is **37 minutes** on a
-5,386-chunk repository.
+walk eventually reaches a slow one. ~~`codestral-embed` is **37 minutes** on a
+5,386-chunk repository~~ - **that number came from a quota measured 2026-09-14
+to be unenforced, and codestral really takes ~3.3 minutes (section 9).** The
+rule below is unchanged and still needed; today the slow model it reaches is
+`gemini-embedding-*` at ~63 minutes, which IS enforced.
 
 **We use it anyway rather than refusing — but we ASK FIRST.**
 
 ```
-pre-check   ->  "this will take about 37 minutes. continue?"
+pre-check   ->  "this will take about 63 minutes. continue?"
 user says ok in the UI  ->  embed
 user says no            ->  nothing is started
 ```
@@ -7083,8 +7092,11 @@ file**. Chunked over this whole repository:
 5,386 chunks   1,839,759 est tokens   mean 341.6   max 509
 ```
 
-**1.8x higher**, so `codestral-embed` on a real repository is **37 minutes**,
-not the 8 that argument rested on. **Condition 2 of the routing rule is
+**1.8x higher**. ~~so `codestral-embed` on a real repository is **37
+minutes**~~ - that followed from the published 50,000 quota, which section 9
+measured to be unenforced; codestral really takes ~3.3 minutes. The
+token-count correction stands on its own and the routing rule survives, but
+NOT for this reason. **Condition 2 of the routing rule is
 therefore STRONGER than this file claims, not weaker** — which is why rule 2
 above exists at all.
 
@@ -7137,6 +7149,260 @@ never weighted — `x-trial-endpoint-call-limit: 10`.
 > **When a decision has two reasons and one dies, say which one is still
 > carrying it.** Otherwise the decision looks unsupported the day somebody
 > checks the dead half.
+
+### 8. TIME IS A PRODUCT CONSTRAINT, and it has TWO thresholds
+
+*The user's decision, 2026-09-14, replacing a single 6-minute number that was
+doing two unrelated jobs.*
+
+```
+6 min   ->  which ORDER to sort the embedder list by   (strength vs speed)
+2 min   ->  whether to STOP and ask the user first     (a window, wait for yes)
+```
+
+They answer different questions, so they cannot be one number. A three-minute
+ingest needs no reordering and **does** need a warning.
+
+**Why the warning threshold is far lower than the routing one, and this is the
+part that was missing:** embedding is ONE STAGE OF SEVERAL. Everything measured
+in this project so far:
+
+| stage | measured |
+|---|---|
+| vector search, exact | **34 ms** - negligible |
+| rerank, `gemini-3.5-flash-lite` | **1.3 s** per call |
+| rerank, `gemma-4-31b-it` | **18-22 s** per call |
+| **one full report** | **52.7 s** live, `gemini-3.6-flash` |
+| embedding | 0.9 - 61 min, entirely model-dependent |
+
+**So a 2-minute embed is already a 3-4 minute answer, today, before the agent
+exists.** `Ingested.minutes` is the EMBEDDING estimate only and must be
+labelled that way; showing it as "total time" would be a lie the user acts on.
+
+### 8b. THE AGENT MAKES IT SLOWER, NOT FASTER - and that is the trade
+
+A reasonable assumption, and it is wrong: Step 2 is an **accuracy**
+optimisation, never a speed one.
+
+```
+Step 0, ONE call        ->  13 of 19 findings
+the 7 that were missed  ->  each needs a DIFFERENT question asked
+```
+
+This file already measured the cause: the misses came from asking ONE question,
+not from a weak model or bad retrieval - *"one probe with a different question
+recovered five findings that seventeen comparison runs had never found"*. Four
+questions cost four calls. **Control flow is more steps, not fewer.**
+
+> **"Simpler" applies to the DEVELOPER, never to the clock.** Each node does one
+> thing, which is simpler to build and reason about. The user waits longer.
+
+**But it is not 10x, because of routing.** A full report is ~10 calls and only
+ONE needs the strong slow model - the gate, both summaries, claim extraction and
+the batched `verify` calls all run on Flash-Lite or Gemma. Honest estimate:
+**2-3x Step 0's wall clock, not 10x.** Three things already in the design fight
+the rest: the correspondence gate halts a mismatched pair after one small call,
+`verify` batches 5 claims per call, and a corpus that FITS the prompt budget is
+stuffed with no embedding and no search at all.
+
+### 8c. THE PRODUCT CONSTRAINT, written down so it binds
+
+> **We will not ship a tool that costs ten minutes for a simple task.**
+
+This is not a preference, it is a requirement on the planner. *"What does this
+function do?"* must be one call, never the whole graph:
+
+```
+"summarize this"        ->  1 node
+"find bugs"             ->  a few
+"why do they diverge"   ->  the whole graph
+```
+
+The agent must not make EVERY question slower. It makes the hardest question
+better, and the planner keeps the easy ones cheap. When a simple question does
+get expensive, the fix is not a louder warning - it is to stuff instead of
+embed, which step 1 of the ladder already does.
+
+### 8d. THE END-TO-END NUMBER IS UNMEASURED, and slice 8 owes it
+
+We have per-stage numbers and have **never measured a total**. The stage that
+will dominate it - the agent - does not exist yet. So:
+
+- `WARN_MINUTES = 2.0` **is a guess**, exactly like the 6, and is labelled as
+  one in the code.
+- **Slice 8 must measure the real end-to-end time**, on the same run that
+  scores the embedder, and only that can set either number honestly.
+
+Writing a total now would repeat the `r = 5` mistake: a number with no
+derivation that gets quoted back six weeks later as if it were measured.
+
+### 8e. WHERE THIS ACTUALLY LIVES: STEP 3, NOT HERE
+
+*The user's framing, and it keeps slice 7 from growing.*
+
+**The warning window, the "this is not ChatGPT" notice, the progress display -
+all of it is STEP 3 work: the UI, Docker, the frontend.** Step 1 owes only the
+NUMBER and the honest label; nothing in `api/` or `retrieval/` should try to
+ask a user anything. `ingest_artifact` returns `minutes` and the caller decides.
+
+It is recorded now rather than at Step 3 because the thresholds are being chosen
+now, and a number chosen without its reason is the thing this file exists to
+prevent.
+
+**And one scheduled piece of work that follows from it:** the current page is
+deliberately throwaway - *"throw away 100 lines, not an app"* - and it was built
+when an artifact had no identity. **The frontend is worth REBUILDING at the END
+of Step 1**, once the RAG system is complete and artifacts are real stored
+things with ids, chunk counts and timings to show. Rebuilding it earlier means
+rebuilding it twice.
+
+### 9. THE PUBLISHED QUOTA DOES NOT PREDICT TIME — measured 2026-09-14
+
+*The user refused an estimator built on `tokens_per_minute` and asked for one
+built on our own measurements. He was right, and measuring it overturned four
+claims this file makes above.*
+
+**The finding, in one line:**
+
+```
+codestral-embed   DOCUMENTED quota   50,000 tokens/minute
+                  MEASURED           590,000 tokens/minute
+                  11.8x over, for 71 seconds, 37 requests, ZERO refusals
+```
+
+**And it is not universal, which is the whole difficulty.** Google enforces its
+published number exactly — `gemini-embedding-001` and `-2` both 429 on the
+SECOND call in a minute, measured at ~29,000 against a documented 30,000. So
+the quota is right for one provider and 10x wrong for another, and a number
+that behaves like that cannot predict anything.
+
+#### Every embedding timing this project has
+
+*Timeboxed pushes from a Frankfurt VPN exit, varying batch sizes on real
+chunks from this repository. `sustained` means 4+ requests, long enough for a
+limit to bite; `burst` means it never met one.*
+
+| model | measurement | tok/min | requests |
+|---|---|---|---|
+| `codestral-embed` | burst, 1 batch | 619,000 | 1 |
+| | sustained, 4 batches | 600,000 | 4 |
+| | **sustained, 71s push** | **590,000** | **37** |
+| | sustained, 30s push | 474,000 | 18 |
+| | **MEAN of the multi-request runs** | **554,000** | |
+| `mistral-embed` | burst, 1 batch | 703,000 | 1 |
+| | sustained, 40s push | 520,000 | 25 |
+| | **slice 4's 5-repo ingest** | **504,000** | **849** |
+| | **MEAN of the sustained runs** | **512,000** | |
+| `gemini-embedding-001` | burst, 1 batch | 274,000 | 1 |
+| | **throttled, 6x 429** | **29,000** | 1 |
+| `gemini-embedding-2` | **throttled, 6x 429** | **28,700** | 1 |
+| `embed-v4.0` | **burst only** | 641,000 | 6 |
+| `bge-base` | burst, day 1 | 288,000 | 1 |
+| | burst, day 2 | 926,000 | 1 |
+| | burst, 6 requests | 732,000 | 6 |
+
+**The two Mistral-family numbers corroborate each other across sessions weeks
+apart** — 520,000 measured today and 504,000 derived from slice 4's completely
+separate 849-request, 45-minute five-repo ingest. That is the "do not rely on
+one measurement" rule satisfied rather than asserted.
+
+#### Three traps this exposed, and each one produced a wrong number first
+
+**1. Averaging a burst with a throttled run is nonsense.** Google's two
+measurements are 274,000 and 29,000; their mean is 151,717 and it describes
+nothing. One sample never met the limit that governs the other. **So bursts
+count only where no limit exists** (codestral, BGE) and are excluded where one
+does (Google).
+
+**2. A quota is not a throttle, and treating it as one was 12x PESSIMISTIC.**
+`tokens / TPM` says a single 19,000-token call to codestral needs 23 seconds.
+It takes 1.8. A provider lets you send a minute's allowance at once; the limit
+only bites on the NEXT call.
+
+**3. Timing ONE batch gives a burst rate that cannot be sustained.** The first
+attempt at this measured one batch and got 619,000 for codestral — real, and
+useless, because nothing had pushed against a limit yet.
+
+#### What the estimator uses now
+
+```
+embedding_minutes = max( tokens / measured_tokens_per_minute ,
+                         requests / requests_per_minute )
+```
+
+- **`measured_tokens_per_minute` is OURS**, on `Spec`, and is the only basis
+  for the time. No provider reports throughput, so nothing can be learned from
+  a header — the seed is all there is until we time ourselves.
+- **`requests_per_minute` stays**, because it is a ceiling no throughput can
+  beat: Cohere accepts 10 calls a minute, so a 57-request corpus takes 5.7
+  minutes however fast the wire is. Measured at 641,000 tok/min, it would
+  otherwise have been predicted at 2.9 minutes and been wrong.
+- **`rate.tokens_per_minute` is recorded and NOT used to estimate.** It stays
+  so `rates.learn()` can warn when a header stops matching it — which is how
+  we would learn that Mistral has started enforcing.
+- **A model nobody has timed returns `inf` and sorts last.** An unknown is not
+  a promise, and the old fallback to the quota would have meant "when we do not
+  know, use the number we measured to be unreliable".
+
+#### The seeds are MEANS, and that was a correction too
+
+The first version used the LOWER of each pair, on a "never under-promise"
+instinct. **That instinct is a UX heuristic and it was applied in the wrong
+layer.** The number does two jobs — it chooses the ordering AND it warns the
+user — and a pessimistic value is helpful for the second and harmful for the
+first: it abandons the strongest model earlier than the data justifies.
+
+> **Keep the estimator unbiased. Padding belongs at the display.** Which is
+> this file's existing rule in a new place: *a safety margin belongs on
+> estimated quantities, never on known ones.*
+
+#### What it predicts, and what it overturns
+
+```
+this repository, 1,839,759 tokens, 57 requests
+
+  codestral      3.3 min     <- was claimed as 37 MINUTES above
+  mistral        3.6 min
+  cohere         5.7 min     <- requests bind, not throughput
+  gemini        63.4 min     <- enforced, and genuinely slow
+  bge           cannot - over its 684,000-token daily budget
+```
+
+**So the two-orderings rule of section 2 stands, and its motivating example
+evaporated.** Codestral is both the strongest model and about as fast as
+`mistral-embed`, so sorting by speed now only changes anything above roughly
+**9,700 chunks**, or when Google is the best model still alive. The rule is
+still right — it just fires far less often than the 37-minute figure implied.
+
+#### Honest limits
+
+- **One account, one VPN exit, two days.** Mistral may begin enforcing; if it
+  does, codestral returns to 37 minutes and the ordering starts mattering
+  again. The staleness warning in `rates.learn()` is what would tell us.
+- **BGE's three samples span 3.2x** — 288,000 to 926,000 on the same work. It
+  is the roughest number here, and academic anyway: its daily neuron budget
+  stops it long before a rate does.
+- **Cohere and BGE are BURST ONLY.** Both were capped at 6 requests to protect
+  a 1,000-a-MONTH and a 10,000-neuron-a-DAY budget, so neither met a limit.
+
+#### OPEN DEBT: nothing learns throughput at runtime
+
+`rates.py` learns `requests_per_minute` from a header and warns on a stale
+seed. It cannot learn throughput, because **no provider reports it** — only
+timing our own calls can, and nothing does.
+
+That is the piece that would make these seeds self-correcting, and it is
+deliberately NOT half-built: accumulating across calls needs a decision about
+what "elapsed" means — the sum of request durations (a burst rate) or wall
+clock including our own gaps (the true ingest rate). Choosing wrong
+reintroduces exactly the 619,000-against-554,000 error this section removed.
+
+**It belongs with the progress display at Step 3**, beside slice 8's
+end-to-end measurement.
+
+> **A vendor's published limit is a promise about what they will REFUSE, never
+> a prediction of what you will GET.** Measure the second; record the first
+> only so you notice when it changes.
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 

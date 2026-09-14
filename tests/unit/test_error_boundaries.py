@@ -48,6 +48,21 @@ ALLOWED_TO_ESCAPE: dict[str, str] = {
     "SourceTooLarge": "chunk_source has no caller yet - slice 7 must map it",
     "UnsafeArchive": "chunk_source has no caller yet - slice 7 must map it",
     "UnsupportedURL": "chunk_source has no caller yet - slice 7 must map it",
+    # store/ arrived with ingest_artifact, which imports it for write_artifact.
+    # None of these can fire there, for two separate reasons:
+    #
+    #   the CONNECTION is passed in, so opening it - and failing to - happens
+    #   in the caller. Piece 3 opens one inside the route and maps both.
+    #
+    #   search() is what raises the other two, and nothing calls search() yet.
+    #
+    # Catching them now would be a handler with no caller, which this project
+    # treats as dead code. They come off this list in pieces 3 and 4, and
+    # test_the_escape_list_does_not_outlive_its_reason deletes the excuse by
+    # itself if store/ ever stops being imported.
+    "StoreError": "the base class of the two below",
+    "UnknownArtifact": "search has no caller yet - piece 4 must map it",
+    "ModelMismatch": "search has no caller yet - piece 4 must map it",
 }
 
 

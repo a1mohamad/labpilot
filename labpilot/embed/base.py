@@ -30,6 +30,9 @@ class HTTPEmbedder(ABC):
     api_key_env: str
     account_env: str | None = None
     max_input_tokens: int | None = None
+    # MEASURED sustained throughput - the only honest basis for an estimate.
+    # None means never timed, and then we say inf rather than guess.
+    measured_tokens_per_minute: int | None = None
     # A SEED, not a truth. No header exists before the first call, and Google
     # sends none ever - so this is where the first decision comes from. Any
     # value the provider reports at runtime overrides it via rates.observed().
@@ -91,35 +94,47 @@ class HTTPEmbedder(ABC):
             prompt_tokens=prompt_tokens,
         )
 
-    def minutes(self, *, tokens: int, chunks: int) -> float:
-        """How long this model needs for a corpus, known BEFORE the first call.
+    def embedding_minutes(self, *, tokens: int, chunks: int) -> float:
+        """Wall clock to embed THIS corpus, known before the first call.
 
-        Whichever ceiling binds decides, never one picked by hand - the same
-        rule that models Groq as an 8,000 context window: model the limit that
-        binds, not the one the vendor advertises.
+        Named `embedding_minutes` and not `minutes` because it is ONE STAGE.
+        A full answer also pays for search, reranking and generation - a report
+        alone measured 52.7s - so this must never be read as a total.
 
-        A model that cannot finish TODAY takes infinite time, which is how a
-        daily budget sorts itself out of the walk without a second mechanism.
-        A model with nothing known returns inf for the same reason.
+        Two things bind, and both are needed:
+
+            throughput   MEASURED tokens/minute. The published quota is not
+                         used: codestral sustained 11.8x its documented limit.
+            requests     a hard ceiling. Cohere takes 10 calls a minute, so a
+                         57-request corpus is 5.7 minutes however fast the wire.
+
+        A model that cannot finish TODAY, or that nobody has timed, reports inf
+        and sorts itself out of the walk. An unknown is not a promise.
         """
         if tokens < 0 or chunks < 0:
             raise ValueError(
                 f"tokens and chunks must not be negative: {tokens}, {chunks}"
             )
+
         budget = self.rate.daily_token_budget
         if budget and tokens > budget:
             return math.inf
 
-        live = observed(self.model)
-        tpm = live.get("tokens_per_minute", self.rate.tokens_per_minute)
-        rpm = live.get("requests_per_minute", self.rate.requests_per_minute)
-        bounds = []
-        if tpm:
-            bounds.append(tokens / tpm)
-        if rpm:
-            bounds.append(math.ceil(chunks / MAX_BATCH_SIZE) / rpm)
+        rate = self.measured_tokens_per_minute
+        if not rate:
+            return math.inf
 
-        return max(bounds) if bounds else math.inf
+        # The REQUEST ceiling is the one limit a provider really does report -
+        # Mistral sends x-ratelimit-limit-req-minute on every 200 - so an
+        # observed value wins over the seed here, and only here. No header
+        # carries throughput, so `rate` above has nothing to learn from yet.
+        requests = math.ceil(chunks / MAX_BATCH_SIZE)
+        rpm = observed(self.model).get(
+            "requests_per_minute", self.rate.requests_per_minute
+        )
+        by_requests = requests / rpm if rpm else 0.0
+
+        return max(tokens / rate, by_requests)
 
     def _check_texts(self, texts: Sequence[str]) -> None:
         if not texts:

@@ -45,21 +45,30 @@ def test_no_two_errors_share_a_code():
 
 
 def test_every_status_the_endpoint_can_raise_is_documented():
-    """Derived from the hierarchy, not hardcoded.
+    """Derived from the hierarchy AND from the routes, neither hardcoded.
 
-    The first version of this test asserted a fixed set with `<=`, so adding an
-    ApiError with a new status would have left it green while OpenAPI lied
-    about what the endpoint returns.
+    The first version asserted a fixed set with `<=`, so adding an ApiError
+    with a new status would have left it green while OpenAPI lied about what
+    the endpoint returns.
+
+    The second version fixed that and then named ONE path. That was fine with
+    one route; the moment /artifacts arrived it demanded that /compare
+    document a status only /artifacts could raise - checking the wrong
+    endpoint while still looking green. Both halves are derived now.
     """
-    documented = set(
-        app.openapi()["paths"][f"{ApiConfig.PREFIX}/compare"]["post"]["responses"]
-    )
+    schema = app.openapi()["paths"]
+    routes = [path for path in schema if path.startswith(ApiConfig.PREFIX)]
+    assert routes, "no versioned routes found - the prefix probably moved"
+
     raisable_statuses = {str(failure.status) for failure in raisable()}
 
-    assert "200" in documented
-    assert raisable_statuses <= documented, (
-        f"undocumented: {sorted(raisable_statuses - documented)}"
-    )
+    for path in routes:
+        documented = set(schema[path]["post"]["responses"])
+
+        assert documented & {"200", "201"}, f"{path} documents no success"
+        assert raisable_statuses <= documented, (
+            f"{path} undocumented: {sorted(raisable_statuses - documented)}"
+        )
 
 
 def test_an_application_error_matches_the_published_envelope(client):
