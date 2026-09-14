@@ -43,6 +43,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**The selector + scenario matrix**](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14) ·
 [**Steps 1-3 SHIPPED + the rerank window**](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14) ·
 [**SLICE 7 COMPLETE — the ask path**](#15-slice-7-is-complete--steps-4-5-and-6-2026-09-14) ·
+[**SLICE 7 CLOSED — the review pass, 3 defects**](#16-slice-7-is-closed--the-review-pass-2026-09-15) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -714,15 +715,31 @@ longer at the front of the chain (section 14.3).**
 **`reserve()` HAD A 24,899-TOKEN OVER-ESTIMATE hiding behind the per-chunk
 outline — it charged an id label for every chunk in the corpus, letting 4 of
 8,333 chunks through instead of 266.**
-**SLICE 7 IS COMPLETE — all six build steps. `POST /artifacts` stores an artifact
-once; `POST /compare` takes IDS and answers many questions about it. 804 passed,
-4 skipped, 1 xfailed across unit/api/integration, ruff clean. Smoke NOT run.**
+**SLICE 7 IS CLOSED — 2026-09-15, after a review pass. SEVEN build steps, not
+six: the REPOSITORY DOOR landed too, so `POST /artifacts` takes a file, a `.zip`
+or a git URL, and `POST /compare` takes IDS. 843 passed, 4 skipped, 0 xfailed
+across unit/api/integration, ruff clean. SMOKE STILL NOT RUN.**
+**ONLY SLICE 8 (a measurement) AND THE FRONTEND REMAIN IN THE WHOLE OF STEP 1.**
+**THE REVIEW PASS FOUND THREE REAL DEFECTS, and the first is the worst: THE TEST
+SUITE WAS SPENDING LIVE RERANK QUOTA ON EVERY RUN — four Gemini tiers and then
+Cohere, whose free tier is 1,000 calls a MONTH and is the rerank primary. It hid
+because `_best` takes its chain as a DEFAULT ARGUMENT captured at import time, so
+monkeypatching the module attribute never reached it. Spending quota makes a
+suite slower, never redder. See
+[the review pass](#16-slice-7-is-closed--the-review-pass-2026-09-15).**
+**THE API ALSO LIED ABOUT COVERAGE: on the search path it reported `25 of 25` for
+a 120-chunk corpus, because `Comparison` never carried the totals `ask()` had
+already computed for the PROMPT. Fixed; the prompt and the response now agree.**
 **THE USER FOUND TWO DEFECTS BY READING THE CODE, not by any test: `ModelMismatch`
 left as unreachable when a re-ingest between measure() and search() makes it real
 (now a 409), and the rerank chain BUILT BUT NEVER BOUND, so the ask path would
 have used only the cross-encoders and never the four tiers that beat them.**
-**Branch `feat/ask-path`, off `main`. NOTHING IS COMMITTED — ten steps of work sit
-in the working tree. Last updated 2026-09-14 (twenty-fourth session).**
+**Branch `feat/ask-path`, off `main`, clean and PUSHED — 21 commits ahead.
+Last updated 2026-09-15 (twenty-fifth session).**
+**⚠ A SESSION REWIND REVERTED TWO TEST FILES ON DISK at the start of this
+session. Git still held the right versions; `git checkout --` restored them and
+the count went UP, not back. If files look wrong after a rewind, check git before
+rewriting anything.**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
 **`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
@@ -735,108 +752,93 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ▶ SLICE 7 IS HALF BUILT — pieces 1-3 SHIPPED, PIECE 4 IS NEXT
+> > ## ✅ SLICE 7 IS CLOSED — 2026-09-15. ONLY SLICE 8 AND THE FRONTEND REMAIN
 > >
-> > **STATE, verified 2026-09-14 rather than remembered.** Branch
-> > **`feat/selector`**, clean, everything committed, head `de3fef3`. Suite
-> > **763 passed, 48 skipped, 1 xfailed** in ~115s, ruff clean both ways.
-> > **DO NOT COMMIT TO `main`** - only the user does that, or when they say
-> > "merge and commit".
+> > **STATE, verified rather than remembered.** Branch **`feat/ask-path`**,
+> > clean, everything committed and pushed, **12 commits ahead of `main`** at
+> > the start of the session and 9 more added by it. Suite **843 passed,
+> > 4 skipped, 0 xfailed** in ~175s, ruff clean both ways. **DO NOT COMMIT TO
+> > `main`** - only the user does that, or when they say "merge and commit".
 > >
-> > ### What pieces 1-3 shipped
-> >
-> > | piece | landed |
-> > |---|---|
-> > | 1 | **the embedding-time estimator, rebuilt.** `Rate` records the PUBLISHED quota and no longer predicts with it; `Spec.measured_tokens_per_minute` is ours. `embed/rates.py` learns `requests_per_minute` from response headers and WARNS when a header contradicts the seed. `registry.SPECS` + `by_speed()`. See [section 9](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) - the quota is 11.8x wrong on codestral and exact on Google |
-> > | 2 | **`services.ingest_artifact()`** - chunk, pick an embedder, embed, write. Plus `_artifact_id` (content hash, so re-ingest REPLACES), `_pick_embedder` (one list, sorted two ways), `_records` (a generator, so 2,000 vectors never sit in memory at once) |
-> > | 3 | **`POST /api/v1/artifacts`** - Option 2's first door. One upload, stored once, `slow` reported and never waited on. `EmbeddingUnavailable` and `StorageUnavailable` added, both 503 |
-> >
-> > **Mutation-tested, 8 real mutations, 6 firing alone** - the pairing of chunk
-> > to vector, the side in the artifact id, the refusal to pick an `inf` model,
-> > the measured-rate table, the stable sort, and `StorageUnavailable`'s status.
-> > Two mutations were BROKEN and retried rather than believed: a missed anchor
-> > and an `or` that could never evaluate, both of which look exactly like a
-> > surviving mutation.
-> >
-> > ### PIECE 4 IS THE ASK PATH, and every decision is already taken
-> >
-> > **Read [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written)
-> > before writing a line.** It holds the decisions, three corrections to this
-> > file, and what piece 4 deliberately does not decide.
+> > **STEP 1 IS EFFECTIVELY DONE. Two things are left in the whole step:**
 > >
 > > ```
-> > POST /compare   takes IDS, not files
-> >
-> > 1  do A and B TOGETHER fit the budget?
-> >       yes -> read every row back. STUFF. no query embed, no search, no rerank
-> >       no  -> continue
-> > 2  search 50 PER SIDE          exact. no fusion. wRRF stays unreachable
-> > 3  cut to VECTOR_TOP_N = 25 PER SIDE
-> > 4  gate: SKIP_MARGIN is None, so it always says rerank
-> > 5  rerank PER SIDE, never merged: 25 -> RERANK_TOP_N = 10 per side
-> >       no tier available -> skip(), keep the vector order, send the 25
-> > 6  select, filling A BEFORE B
-> > 7  outline by FILE, never by chunk
+> > SLICE 8   a MEASUREMENT, not a build   - nine numbers, listed below
+> > FRONTEND  web/app.js still posts two FILES to /compare and gets a 422
 > > ```
 > >
-> > **SLICE 7 IS COMPLETE, 2026-09-14. See
-> > [section 14](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14) for steps
-> > 1-3 and [section 15](#15-slice-7-is-complete--steps-4-5-and-6-2026-09-14)
-> > for steps 4-6.**
+> > ### What slice 7 shipped, all six steps plus a seventh
 > >
 > > ```
-> > 1  store/      measure + read back                           DONE
-> > 2  prompts/    outline by FILE, as a LADDER                   DONE
-> > 3  retrieval/  equal share + leftover (NOT A before B)        DONE
-> > 4  api/        ask(): the ladder                              DONE
-> > 5  api/        the rerank chain, assembled at the entry layer DONE
-> > 6  api/        /compare takes IDS, not files                  DONE
+> > 1  store/      measure + read back                            DONE
+> > 2  prompts/    outline by FILE, as a LADDER                    DONE
+> > 3  retrieval/  equal share + leftover (NOT A before B)         DONE
+> > 4  api/        ask(): the ladder                               DONE
+> > 5  api/        the rerank chain, assembled at the entry layer  DONE
+> > 6  api/        /compare takes IDS, not files                   DONE
+> > 7  api/        THE REPOSITORY DOOR - a file, a .zip, or a git URL   DONE
 > > ```
 > >
-> > **NEXT IS SLICE 8, and it is a MEASUREMENT, not a build.** Its job list is
-> > now NINE: embedder ranking · reranker ranking · exact vs HNSW on real
-> > artifacts · end-to-end TIME · merged vs per-side reranking · SEARCH_LIMIT
-> > and VECTOR_TOP_N swept jointly · where the cut goes · whether the per-tier
-> > rerank window beats a global one · and whether `explain_divergence` really
-> > needs the strongest tier, which section 11.9 says was already measured OUT
-> > as a cause of coverage.
+> > **Step 7 was never in the plan and is not recorded in sections 14-15.** It
+> > landed in `a1415ca`: `POST /artifacts` now takes `file` **or** `url`,
+> > `services.ingest_source()` stores a whole repository as ONE artifact, and
+> > the old `MAX_ARCHIVE_BYTES` xfail became a real test when the limit moved
+> > 50MB -> 10MB. That is why the suite has no xfail left.
 > >
-> > **ONE THING IS KNOWINGLY BROKEN:** `web/app.js` still posts two files to
-> > `/compare` and now gets a 422. The frontend rebuild is scheduled for the
-> > END of Step 1 - it was written when an artifact had no identity, and
-> > rebuilding it earlier would mean rebuilding it twice.
+> > ### The review pass found THREE real defects — see [section 16](#16-slice-7-is-closed--the-review-pass-2026-09-15)
 > >
-> > **Step 4's four decisions are already taken - D1 side comes from the STORED
-> > row, D2 cut AFTER rerank on `Ranking.model != SKIP`, D3 one query embed per
-> > distinct model, D4 `ask()` has no caller until step 6 - see section 14.4.**
-> > `UnknownArtifact` and `ModelMismatch` come off `ALLOWED_TO_ESCAPE` at STEP
-> > 4, not step 6: they become reachable the moment `search()` has a caller.
+> > | # | defect | fixed? |
+> > |---|---|---|
+> > | 1 | **the test suite spent LIVE rerank quota on every run** - four Gemini tiers, then Cohere, whose free tier is 1,000 calls a MONTH | ✅ `tests/conftest.py` keeps the chain empty outside smoke |
+> > | 2 | **the API reported `25 of 25` for a 120-chunk corpus** - the prompt told the truth and the response did not | ✅ `Comparison.totals` |
+> > | 3 | **a dead line in `ingest_source`** - `replace(chunk, artifact_id=...)` changes nothing, because nothing reads `Chunk.artifact_id` | ❌ **reported, not fixed** |
 > >
-> > **Three things that will bite, all already written down.**
+> > **Defect 1 is the one to remember.** It hid behind a Python detail: `_best`
+> > takes its chain as a DEFAULT ARGUMENT, evaluated once at import time, so
+> > monkeypatching the module attribute never reached it. A path that looked
+> > stubbed was not, and **spending quota makes a suite slower, never redder**.
 > >
-> > **The two number spaces.** `search()` returns `SearchHit.chunk_index`, an ID
-> > in the corpus. `rerank()` returns POSITIONS into the list it was handed.
+> > ### NEXT IS SLICE 8, and it is a MEASUREMENT
+> >
+> > Its job list is NINE: embedder ranking · reranker ranking · exact vs HNSW
+> > on real artifacts · end-to-end TIME · merged vs per-side reranking ·
+> > `SEARCH_LIMIT` and `VECTOR_TOP_N` swept jointly · where the cut goes ·
+> > whether the per-tier rerank window beats a global one · and whether
+> > `explain_divergence` really needs the strongest tier, which section 11.9
+> > says was already measured OUT as a cause of coverage.
+> >
+> > **Every number it sweeps is now a NAMED CONSTANT**, so a sweep changes one
+> > number instead of a design:
+> >
+> > ```
+> > SEARCH_LIMIT 50 · VECTOR_TOP_N 25 · RERANK_TOP_N 10 · SIDE_SHARE 0.5
+> > OUTLINE_BUDGET 4,000 · per-tier max_documents · BM25_K1 · BM25_B
+> > ```
+> >
+> > **SMOKE HAS NEVER BEEN RUN ON THIS BRANCH**, and it is the one thing this
+> > session did not do. Check the exit ISP first - see
+> > [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).
+> > `tests/smoke/test_pipeline_answers.py` still exercises the OLD pipeline
+> > (`chunk_file` + `select` + `build_prompt`), never `ask()`, so the weekly
+> > run does not touch what we now ship. Fixing that needs a database and
+> > embedder quota, which is slice 8's end-to-end measurement anyway.
+> >
+> > ### Three traps that still bite, all already written down
+> >
+> > **The two number spaces.** `search()` returns `SearchHit.chunk_index`, an
+> > ID in the corpus. `rerank()` returns POSITIONS into the list it was handed.
 > > `hits[p]` is right; looking up chunk `p` cites the wrong file and line with
-> > full confidence. `tests/integration/test_retrieval_to_rerank.py` exists for
-> > this and numbers its ids from 100 so a position used as an id is provably
-> > wrong.
+> > full confidence. Two test files number their ids from 100 so the confusion
+> > is provable rather than plausible.
 > >
-> > **`test_error_boundaries` will fire** the moment `api/` can reach
-> > `UnknownArtifact` or `ModelMismatch`. That is the guard working. Map them,
-> > never delete the test.
+> > **`skip()` truncates to whatever `top_n` it is handed**, so the cut must
+> > happen AFTER the call and `rank()` must be asked for everything. Both
+> > halves are pinned now; the second half was unguarded until 2026-09-15.
 > >
-> > **`skip()` truncates to whatever `top_n` it is handed.** The degraded path
-> > must be given `VECTOR_TOP_N`, not `RERANK_TOP_N`, or it silently uses a
-> > number calibrated for a path that did not run.
-> >
-> > ### What is NOT piece 4's to decide
-> >
-> > Every top_n value, the window, merged vs per side, where the cut goes,
-> > whether reranking ships, whether `wRRF` replaces exact search - **all slice
-> > 8**, and its job list is now SEVEN measurements. The search query being the
-> > user's own question is a known weakness this file has named since 2026-08-13;
-> > claim extraction is **Step 2**.
-> >
+> > **A fixture numbered from zero, or holding one chunk, cannot fail.** A
+> > one-chunk file cannot tell a correct `start_line` from a lost one, and ids
+> > starting at 0 cannot tell an id from a position. Both were found by
+> > mutation, not by reading.
 > > ## ✅ SLICE 4 IS DONE — do not restart it
 > >
 > > The table, the write path and **exact search** all exist and are proven
@@ -8684,6 +8686,180 @@ really needs the strongest tier - section 11.9 says session 10 already measured
 model strength out as a cause, and the lean `REPORT` template has never once
 been run on a cheap tier.
 
+
+### 16. SLICE 7 IS CLOSED — the review pass, 2026-09-15
+
+*The twenty-fifth session wrote almost no product code and found three real
+defects. It began by restoring two test files a session rewind had reverted on
+disk, then wrote the tests the repository door shipped without, then swept
+every slice 7 invariant that had never been mutated. Suite **808 -> 843
+passed, 4 skipped, 0 xfailed**, and ~175s where it was ~260s.*
+
+#### 16.1 The rewind, and the rule it produced
+
+The session opened with `test_compare.py` reverted to its `eef2254` version
+and `test_reranking.py` deleted — **on disk only**. Every commit was intact
+and pushed. Hashing the working-tree blob against every commit proved nothing
+unique was in it, and `git checkout --` restored both.
+
+> **After a rewind, check git before rewriting anything.** The restore did not
+> roll the project back — it moved it FORWARD, because the on-disk copy was
+> older than HEAD. The suite went 668+1 failing to 808 passing.
+
+#### 16.2 DEFECT 1 — the suite was spending live rerank quota on every run
+
+The worst finding, and it was **measured, not suspected**. Any test reaching
+the search branch of the ask path went straight to real providers:
+
+```
+Gemini 3.5 Flash-Lite -> 3.1 Flash-Lite -> Gemma 26B -> Gemma 31B
+  -> Cohere -> Voyage -> Cloudflare
+```
+
+CLAUDE.md has said since the slice 6 notes that **tests must never call
+Cohere** — its 1,000 calls a *month* are one bucket shared with chat and
+embed, and it is the rerank primary.
+
+**It hid behind a Python detail worth keeping:**
+
+```python
+def _best(question, hits, *, rank: Callable[..., Ranking] = _rank):
+```
+
+A default argument is evaluated **once, at import time**, so the function
+object is captured. `monkeypatch.setattr(services, "_rank", ...)` rebinds the
+module name and never reaches it. **A path that looked stubbed was not.**
+
+> **Spending quota makes a suite slower, never redder.** Nothing would ever
+> have reported this. It was found by patching `requests.post` to raise and
+> watching four provider URLs scroll past.
+
+**The fix keeps `labpilot.api.reranking.CHAIN` EMPTY for every non-smoke
+test**, via an autouse fixture in `tests/conftest.py`. An empty chain is not a
+mock: `rerank()` walks it, finds nothing, and ends in `skip()`, which is the
+degraded path we already ship. So the default under test is *"no reranker was
+available"*, and a test that wants reranking must supply its own.
+
+`test_no_default_test_can_reach_a_real_reranker` joins the two rules in
+`test_suite_rules.py` that already protect a real cost. Removing the fixture
+fires it **alone** across 750 tests.
+
+#### 16.3 DEFECT 2 — the API lied about how much it had read
+
+Found by the new system test, the first thing to run both doors against each
+other. On the search path:
+
+```
+corpus       120 chunks stored
+the PROMPT   "20 of 8333 parts were retrieved"   <- honest
+the RESPONSE "25 of 25 chunks"                   <- not
+```
+
+`ask()` already computed the true per-side totals and handed them to
+`build_context`. **`Comparison` never carried them**, so the router counted
+the chunks it had in hand and called that the total.
+
+That is the number the page renders to prove the file was really read — and on
+the search path it instead claimed the file was read **whole**. The same
+dishonesty the outline totals were added to prevent, left in place one layer
+up. `Comparison.totals` now carries it and the router prefers it.
+
+> **Fixing a lie in one layer does not fix it in the next.** The prompt and the
+> response are two audiences for one fact, and only one of them had been told.
+
+#### 16.4 DEFECT 3 — a dead line, reported and NOT fixed
+
+In `ingest_source`:
+
+```python
+chunks = tuple(replace(chunk, artifact_id=artifact_id) for chunk in chunks)
+```
+
+Removing it changes nothing. `ChunkRecord` has no `artifact_id` field, `_row`
+takes the id from the `ArtifactRecord`, and grepping `labpilot/` shows **no
+production code reads `Chunk.artifact_id` at all** — every match is a SQL
+column name.
+
+**No test was written for it**, because it has no behaviour to pin. This is
+the case the mutation rule already names: *a mutation that survives is not
+always a bad test; sometimes it is a false claim in the code.*
+
+#### 16.5 What the new tests cover, and what was DELETED
+
+**35 tests added across four levels**, every invariant mutation-tested.
+
+| level | added | the mutation that proves it |
+|---|---|---|
+| unit (`test_ingest.py`) | 6 | hashing the container instead of the file paths breaks the zip-vs-clone test alone |
+| unit (`test_ask.py`) | 5 | `task="document"`, the wrong embedder, a retired model, an outage, and `top_n` handed down |
+| api (`test_artifacts.py`) | 11 | the case fold, the exactly-one-of guard, and each of the four error mappings |
+| integration | 13 | per-file numbering fails four tests with `UniqueViolation: chunks_pkey` |
+
+**Two tests were written and then DELETED for never firing alone** —
+re-uploading the same file, and a 404 for a missing id. Both duplicate tests
+that already exist: one test per COMBINATION rather than one per failure.
+
+**The highest-value single test** is
+`test_two_uploads_then_a_question_produces_a_cited_answer`: the model gives a
+pointer and we read the line back from our own copy **after it has been
+through Postgres**. A dropped header or a shifted `start_line` resolves to the
+wrong line with nothing raising.
+
+Its first fixture could not have caught that. A one-chunk file starts at line
+1, so forcing `start_line=1` broke nothing — proven by the mutation. The
+fixture was widened to two functions, so the cited line sits at **line 56**,
+and the mutation then fires alone.
+
+> **A fixture that cannot fail is worse than no test.** Two shapes cause it in
+> this project: ids numbered from zero (an id is indistinguishable from a
+> position) and a single chunk (a correct offset is indistinguishable from a
+> lost one).
+
+#### 16.6 The mutation sweep steps 4-6 never got
+
+Sections 14-15 record mutations for build steps 1-3 and **none** for 4-6. Six
+were run here. Four fired alone; **two survived**, which is what the exercise
+is for.
+
+| | mutation | result |
+|---|---|---|
+| P1 | the degraded cut uses `RERANK_TOP_N` | fires alone |
+| **P2** | **`top_n` handed DOWN to the chain** | **SURVIVED — gap closed** |
+| P3 | the LLM tiers keep their generation settings | fires alone |
+| P4 | every tier gets the full window | fires alone |
+| **P5** | **`min_length=1` on `question`** | **SURVIVED — gap closed** |
+| P6 | two artifacts from the same slot are accepted | fires alone |
+
+**P2**: `_best`'s docstring says the cut must happen AFTER the call, because
+`skip()` truncates to whatever it is handed. Its test pins the CUT but injects
+its own `rank`, so it never observes the ARGUMENT. A new test records the call.
+
+**P5**: `CompareRequest` documents a deliberate decision — no `min_length`, or
+FastAPI answers in ITS shape and a client parses two error formats from one
+endpoint. The test sent `"  "`, and **two spaces clear a `min_length` of 1**.
+The empty string is the case that pins it, now parametrized in.
+
+> **A docstring recording a decision is not a guard.** Both of these had been
+> written down, believed, and unenforced.
+
+**Three mutations were BROKEN rather than surviving**, and each looked exactly
+like a dead test: deleting an `except` clause left a `try` with no handler (a
+SyntaxError), and two anchors matched zero or three times. `mutate.py` now
+refuses to apply an anchor that is not unique, and prints *"the MUTATION is
+broken, not the test"*.
+
+#### 16.7 What was deliberately NOT added
+
+- **No new smoke test.** The repository door calls no LLM, and its embedder is
+  already covered by `test_embedders.py`. A smoke test would spend quota to
+  prove wiring the integration tests prove for free, and *"do not add tests to
+  raise a number"* binds hardest where the test costs quota.
+- **No fix for the dead line** in 16.4 — reported instead, because deleting
+  production code was not what the review was asked to do.
+- **`MAX_ARCHIVE_BYTES` vs `MAX_UPLOAD_BYTES` is a NAMED OPEN QUESTION.** The
+  archive limit is 10MB and the per-file upload limit is 5MB, so a zip between
+  the two is refused by the upload guard and the archive limit never fires.
+  That is the same shape as the xfail slice 7 just closed, one door further in.
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 
