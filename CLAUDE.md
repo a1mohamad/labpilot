@@ -784,8 +784,28 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > not exist yet. Typing state before it settles is the rewrite-twice trap
 > > this file named when the page was first written.
 > >
+> > **It also got a visual pass the same day** - a brand mark, a gradient
+> > wash, cards that REACT (accent border while reading, green with a check
+> > mark when stored, red when refused), a real drop zone, semantic pills,
+> > animated waiting dots, and a light palette that had never once been looked
+> > at. Still one stylesheet, one script and inline SVG.
+> >
+> > **Two bugs the visual pass exposed, both found by LOOKING, not reading.**
+> > `#status { display: flex }` BEAT the `[hidden]` attribute, so the loading
+> > dots sat on the page before anything was asked - a display rule always
+> > wins, and `[hidden]` is now forced off globally. And the two cards sat a
+> > few pixels out of line because one hint wraps and the other does not.
+> >
 > > Driven end to end against a THROWAWAY STUB, so no embedder or model quota
-> > was spent and no rows were written to the real database. Checked at 375px.
+> > was spent and no rows were written to the real database. Checked in dark
+> > and light, at desktop and 375px.
+> >
+> > **⚠ THE BROWSER PANE'S SCREENSHOTS WENT STALE MID-SESSION** - `End`
+> > changed nothing and the image showed a layout matching no real state. It
+> > was caught only because the DOM disagreed with the picture: `/compare`
+> > had returned 200 and `result.hidden` was false while the screenshot showed
+> > no report. **Trust a DOM read over a screenshot**; closing the tab and
+> > reopening fixed it.
 > >
 > > ### What slice 7 shipped, all six steps plus a seventh
 > >
@@ -2259,11 +2279,23 @@ matches a declaration line.
 | `docker/Dockerfile` | `python:3.13-slim`, non-root, `HEALTHCHECK` on `/health` |
 | `.dockerignore` | never ships `.env`, `tests/`, `data/`, `artifacts/` |
 
+> **REBUILT 2026-09-15 for the two doors, and given a visual pass. The table
+> above still describes the FILES; what the page DOES changed - see
+> [START HERE](#start-here-in-a-new-session).** It had posted two files to
+> `/compare` since that endpoint took ids, so it had been broken since slice 7.
+
 **Why plain HTML and not TypeScript yet.** The rewrite risk lives in **state**,
 not in the framework. A TS app that manages sessions, artifact slots and chat
 history must be rebuilt once Step 1 gives artifacts a real identity. A page that
 posts a form and prints the answer has almost no state to invalidate — throw away
 100 lines, not an app.
+
+**That argument was re-checked on 2026-09-15 and STILL HOLDS, for a different
+half.** Artifacts now DO have a real identity, so the original precondition is
+met - but the state a typed app would model is sessions, chat history, SSE
+progress and the 0/1/2-artifact modes, and every one of those is **Step 2** work
+that does not exist yet. So TypeScript stays a Step 3 job: typing state before
+it settles is the same rewrite-twice trap, one step later.
 
 **The page obeys the rules this file already set** for
 [the UI shape](#ui-shape--step-3-recorded-now): two **named** slots, the question
