@@ -719,7 +719,9 @@ outline — it charged an id label for every chunk in the corpus, letting 4 of
 six: the REPOSITORY DOOR landed too, so `POST /artifacts` takes a file, a `.zip`
 or a git URL, and `POST /compare` takes IDS. 843 passed, 4 skipped, 0 xfailed
 across unit/api/integration, ruff clean. SMOKE STILL NOT RUN.**
-**ONLY SLICE 8 (a measurement) AND THE FRONTEND REMAIN IN THE WHOLE OF STEP 1.**
+**ONLY SLICE 8 — A MEASUREMENT — REMAINS IN THE WHOLE OF STEP 1. The page was
+rebuilt for the two doors on 2026-09-15 and is no longer broken; the TypeScript
+rewrite stays a STEP 3 job, deliberately.**
 **THE REVIEW PASS FOUND THREE REAL DEFECTS, and the first is the worst: THE TEST
 SUITE WAS SPENDING LIVE RERANK QUOTA ON EVERY RUN — four Gemini tiers and then
 Cohere, whose free tier is 1,000 calls a MONTH and is the rerank primary. It hid
@@ -752,7 +754,7 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ✅ SLICE 7 IS CLOSED — 2026-09-15. ONLY SLICE 8 AND THE FRONTEND REMAIN
+> > ## ✅ SLICE 7 IS CLOSED — 2026-09-15. ONLY SLICE 8 REMAINS
 > >
 > > **STATE, verified rather than remembered.** Branch **`feat/ask-path`**,
 > > clean, everything committed and PUSHED, well ahead of `main` - ask git for
@@ -765,8 +767,25 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > >
 > > ```
 > > SLICE 8   a MEASUREMENT, not a build   - nine numbers, listed below
-> > FRONTEND  web/app.js still posts two FILES to /compare and gets a 422
 > > ```
+> >
+> > **THE PAGE IS FIXED, 2026-09-15.** It had posted two FILES to `/compare`
+> > since that endpoint took ids, so it had been broken since slice 7. Each
+> > slot now uploads on its own to `POST /artifacts` and keeps the id; the
+> > question box sends `{a, b, question}` as JSON. It also shows what the API
+> > already returned and the old page ignored: chunk count, embedder, the
+> > embed-time estimate with `slow` as a warning, the artifact id, a git URL
+> > field, and `sent/total` per side - so a searched side reads
+> > `B: 25/1094 chunks searched` rather than `25/25`.
+> >
+> > **Still plain HTML, JS and CSS, ON PURPOSE. NO TypeScript, no build step.**
+> > That is Step 3, and the state a typed app would model - sessions, chat
+> > history, SSE progress, the 0/1/2-artifact modes - is Step 2 work that does
+> > not exist yet. Typing state before it settles is the rewrite-twice trap
+> > this file named when the page was first written.
+> >
+> > Driven end to end against a THROWAWAY STUB, so no embedder or model quota
+> > was spent and no rows were written to the real database. Checked at 375px.
 > >
 > > ### What slice 7 shipped, all six steps plus a seventh
 > >
