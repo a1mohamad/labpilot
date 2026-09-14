@@ -15,6 +15,10 @@ import ast
 import pathlib
 
 import pytest
+import requests
+
+from labpilot.api import services
+from labpilot.store import SearchHit
 
 TESTS = pathlib.Path(__file__).resolve().parents[1]
 FREE_OF_CREDENTIALS = ("unit", "api")
@@ -85,3 +89,45 @@ def test_no_default_test_loads_real_credentials(folder):
         f"push and must not reach a real service. Move the test to "
         f"integration/ (a live database) or smoke/ (real API quota)."
     )
+
+
+def test_no_default_test_can_reach_a_real_reranker(monkeypatch):
+    """The third real cost this suite has to protect, and it was LEAKING.
+
+    Measured 2026-09-14: the search branch of the ask path went straight to
+    live providers on every full run - four Gemini rerank calls, then the
+    cross-encoders, including Cohere at 1,000 calls a MONTH for the rerank
+    primary. Nothing caught it, because spending quota makes a suite slower
+    and never redder.
+
+    It hid behind a Python detail worth remembering: _best takes its chain as
+    a DEFAULT ARGUMENT, evaluated once at import time, so monkeypatching the
+    module attribute rebinds the name and never reaches the captured object.
+    A test that looked stubbed was not.
+
+    This fires if the autouse fixture in tests/conftest.py is removed or
+    narrowed - it is the only thing standing between a routine `pytest` and
+    the smallest renewing budget in the project.
+    """
+
+    def blocked(*args, **kwargs):
+        raise AssertionError(f"a default-run test called a provider: {args[:1]}")
+
+    monkeypatch.setattr(requests, "post", blocked)
+
+    hits = tuple(
+        SearchHit(
+            chunk_index=100 + index,
+            text=f"chunk {index}",
+            header=f"[train.py - part {index}]",
+            source="train.py",
+            start_line=index,
+            end_line=index,
+            score=0.9 - index / 100,
+        )
+        for index in range(3)
+    )
+
+    kept = services._best("why do the results diverge?", hits)
+
+    assert [hit.chunk_index for hit in kept] == [100, 101, 102]
