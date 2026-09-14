@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -197,3 +198,52 @@ def test_a_minified_file_is_skipped_and_counted_while_the_rest_is_ingested(tmp_p
 
     assert {chunk.source for chunk in chunks} == {"app.js", "main.go"}
     assert skipped == {"generated or minified": 1}
+
+
+def a_file_of(functions: int) -> str:
+    """Source long enough to become SEVERAL chunks, not one.
+
+    Per-file numbering with one chunk per file gives [0, 0, 0], which almost
+    any assertion catches. The failure that needs a real fixture is a file
+    that restarts at 0 in the MIDDLE of a repository, so every file here has
+    to cross the chunker's size cap on its own.
+    """
+    body = "\n".join(f"    step_{n} = compute({n}) * 31 + offset" for n in range(40))
+    return "\n\n".join(
+        f"def routine_{index}(offset):\n{body}\n    return step_0\n"
+        for index in range(functions)
+    )
+
+
+def test_chunk_index_never_repeats_across_a_repository(tmp_path):
+    """(artifact_id, chunk_index) is the chunks PRIMARY KEY.
+
+    chunk_file numbers what IT produced, so every file starts again at 0. A
+    repository stored without a running counter therefore collides on the
+    SECOND file - a duplicate-key error at ingest, or, before the database
+    existed, two files both claiming B-0 in the prompt and every citation
+    after the collision naming the wrong file with full confidence.
+
+    The neighbouring test_ids_across_a_repository_do_not_collide cannot catch
+    this: assign_ids numbers chunks by POSITION and never reads chunk_index,
+    so it stays green while the stored key is broken.
+    """
+    build(
+        tmp_path / "repo",
+        {
+            "src/train.py": a_file_of(3),
+            "src/model.py": a_file_of(3),
+            "tests/test_train.py": a_file_of(3),
+        },
+    )
+
+    with open_folder(tmp_path / "repo") as source:
+        chunks = tuple(chunk_source(source, side="B"))
+
+    per_file = Counter(chunk.source for chunk in chunks)
+    assert len(per_file) == 3, "the fixture must span several files"
+    assert min(per_file.values()) > 1, "and each must become MORE than one chunk"
+
+    indexes = [chunk.chunk_index for chunk in chunks]
+    assert indexes == list(range(len(chunks)))
+    assert len(set(indexes)) == len(chunks), "a repeat is a duplicate primary key"
