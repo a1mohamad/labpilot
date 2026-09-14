@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
 
-import pytest
-
 from labpilot.api.config import ApiConfig
 from labpilot.sources.defaults import (
     MAX_ARCHIVE_BYTES,
@@ -31,15 +29,14 @@ def test_no_readable_suffix_is_also_a_skipped_directory():
     assert not {suffix.lstrip(".") for suffix in READABLE_SUFFIXES} & SKIP_DIRECTORIES
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MAX_ARCHIVE_BYTES is 50MB while the API body limit is about 10MB "
-    "(2 x MAX_UPLOAD_BYTES, which rose to 5MB for PDFs on 2026-08-30), so an "
-    "archive that size can never arrive. Harmless today because the endpoint "
-    "accepts no archive at all; slice 7 must settle which number moves, and "
-    "inventing one before the feature exists would be a guess.",
-)
 def test_an_archive_we_accept_must_be_able_to_reach_us():
+    """A limit the system can never reach is a lie.
+
+    Held as an xfail from 2026-08-28 until slice 7 wired the repository door -
+    the relationship was written down while the number was still a guess. The
+    archive's number is the one that moved: 50MB compressed against a 20MB
+    UNCOMPRESSED total was never coherent either.
+    """
     assert MAX_ARCHIVE_BYTES <= ApiConfig.MAX_REQUEST_BODY_BYTES
 
 
