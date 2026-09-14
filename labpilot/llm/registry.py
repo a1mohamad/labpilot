@@ -279,6 +279,44 @@ GEMMA_4_31B = _gemini(
     thinking=None,
 )
 
+# NOT IN CHAIN, and that is exactly why it is here.
+#
+# This is a RERANKER. Slice 6 measured it second best of everything scored -
+# MRR 0.732, and r@1 0.647 which is the BEST first-position score of the four
+# LLM tiers - and rerank/LLM_RERANK_ORDER names it. But rerank/ is an adapter
+# and may not import llm/, so the object must be built by a layer that may see
+# both, and it must EXIST somewhere production can reach.
+#
+# It did not. It lived in tests/smoke/test_rerankers.py as a dataclasses.replace
+# of the 31B, so the second-best reranker in the project was reachable only by
+# the weekly smoke run. Moving it here is the whole fix; the smoke test now
+# imports it instead of rebuilding it, so the two cannot drift apart.
+#
+# THE LIMITS ARE MEASURED, not inherited on faith. GET /v1beta/models reports
+# inputTokenLimit 262,144 and outputTokenLimit 32,768 - identical to the 31B,
+# which is what the smoke test had assumed. The 16,000 max_input_tokens is a
+# different limit: the per-minute input quota, 16K TPM for BOTH Gemma models.
+#
+# Google bills per project per MODEL, so this carries its OWN 14,400 requests a
+# day on top of the 31B's. It is also the faster of the two - 18.7s against
+# 22.8s on a 30-document ranking - though far less than its ~3.8B active
+# parameters suggest, because the bottleneck is Google's serving of these
+# models and not their size.
+#
+# Whether it belongs in CHAIN as a GENERATOR is a SEPARATE question and there
+# is no evidence for it yet: it appears on neither AA nor LMArena, and this
+# chain is ordered on measured capability. Adding it would also force two
+# "pin the exceptions by name" lists to change, which must be deliberate.
+GEMMA_4_26B = _gemini(
+    name="Gemma 4 26B A4B",
+    model="gemma-4-26b-a4b-it",
+    context_window=262_144,
+    max_output_tokens=32_768,
+    max_input_tokens=16_000,
+    thinking=None,
+)
+
+
 GPT_OSS_120B_GROQ = OpenAICompatibleProvider(
     name="GPT-OSS 120B (Groq)",
     tier=12,
