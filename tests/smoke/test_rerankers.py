@@ -23,18 +23,12 @@ happen", not "what is this set to", exactly as the bi-encoder does. A smoke
 test must not encode our hardest open research question as a pass condition.
 """
 
-import dataclasses
-
 import pytest
 from dotenv import load_dotenv
 
+from labpilot.api.reranking import LLM_RERANK_ORDER, PROVIDERS, _listwise
 from labpilot.ingest import chunk_file
-from labpilot.llm.registry import (
-    GEMINI_3_1_FLASH_LITE,
-    GEMINI_3_5_FLASH_LITE,
-    GEMMA_4_31B,
-)
-from labpilot.rerank import RERANK_CHAIN, LLMReranker
+from labpilot.rerank import RERANK_CHAIN
 from tests.smoke.test_embedders import SAMPLES
 
 load_dotenv()
@@ -52,6 +46,7 @@ DECOYS = [
 
 DOCUMENTS = [c.embed_text for c in (*DECOYS, ANSWER)]
 WANTED = len(DOCUMENTS) - 1
+LLM_TIERS = [_listwise(PROVIDERS[m]) for m in LLM_RERANK_ORDER]
 
 
 @pytest.mark.smoke
@@ -82,49 +77,6 @@ def test_every_reranker_is_alive_and_puts_the_real_answer_first(reranker):
         f"{reranker.name} ranked document {ranking.order[0]} above the chunk "
         f"that actually sets CLIP_NORM; scores were {ranking.scores}"
     )
-
-
-# THE LLM TIERS, which now LEAD chain 3 and had no liveness check at all - the
-# four we intend to use most were the only four nobody was watching.
-#
-# Cost is 4 calls a week against 500/day for each Flash-Lite and 14,400/day for
-# each Gemma. Negligible, and it is the only thing that would notice a model
-# being withdrawn or its output format changing.
-#
-# Built here rather than in labpilot/rerank/ because an LLM reranker needs
-# llm/, and an adapter may not import another adapter. This three-line binding
-# IS the seam - see labpilot/rerank/llm.py.
-RANKING_CONFIG = {
-    "thinking": None,
-    "generation_config": {
-        "responseMimeType": "application/json",
-        "responseSchema": {"type": "ARRAY", "items": {"type": "INTEGER"}},
-    },
-}
-
-GEMMA_4_26B = dataclasses.replace(
-    GEMMA_4_31B, name="Gemma 4 26B A4B", tier=16, model="gemma-4-26b-a4b-it"
-)
-
-
-def _listwise(provider) -> LLMReranker:
-    tuned = dataclasses.replace(provider, **RANKING_CONFIG)
-    return LLMReranker(
-        complete=lambda prompt, budget: tuned.complete(prompt, max_tokens=budget).text,
-        name=tuned.name,
-        model=tuned.model,
-    )
-
-
-LLM_TIERS = [
-    _listwise(provider)
-    for provider in (
-        GEMINI_3_5_FLASH_LITE,
-        GEMINI_3_1_FLASH_LITE,
-        GEMMA_4_26B,
-        GEMMA_4_31B,
-    )
-]
 
 
 @pytest.mark.smoke
