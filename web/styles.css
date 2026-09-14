@@ -1,12 +1,17 @@
 :root {
-  --bg: #ffffff;
+  color-scheme: light dark;
+
+  --bg: #fdfdfc;
   --fg: #1a1a1a;
   --muted: #666666;
   --line: #d8d8d8;
-  --panel: #f6f6f6;
+  --panel: #f6f6f5;
+  --raised: #ffffff;
   --accent: #2f5fd0;
+  --good: #1f7a45;
   --warn: #9a4b00;
   --error: #a01919;
+  --radius: 10px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -16,7 +21,9 @@
     --muted: #9aa0a6;
     --line: #33373d;
     --panel: #1e2126;
+    --raised: #232730;
     --accent: #7aa2f7;
+    --good: #6cc796;
     --warn: #e0a458;
     --error: #f07178;
   }
@@ -28,8 +35,8 @@
 
 body {
   margin: 0 auto;
-  padding: 2rem 1.25rem 4rem;
-  max-width: 52rem;
+  padding: 2.5rem 1.25rem 4rem;
+  max-width: 54rem;
   background: var(--bg);
   color: var(--fg);
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -37,7 +44,8 @@ body {
 
 h1 {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 1.7rem;
+  letter-spacing: -0.02em;
 }
 
 header p {
@@ -45,63 +53,180 @@ header p {
   color: var(--muted);
 }
 
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* --- the two slots ------------------------------------------------------ */
+
 .slots {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr 1fr;
 }
 
-@media (max-width: 40rem) {
+@media (max-width: 42rem) {
   .slots {
     grid-template-columns: 1fr;
   }
 }
 
-.slot,
-.question {
-  display: block;
-  padding: 1rem;
+.slot {
+  padding: 1.1rem;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--panel);
 }
 
-.question {
-  margin-top: 1rem;
+.slot h2 {
+  margin: 0;
+  font-size: 1rem;
 }
 
-.slot-title {
+.slot .hint {
+  margin: 0.25rem 0 0.9rem;
+}
+
+.slot.busy {
+  opacity: 0.75;
+}
+
+.drop {
+  display: grid;
+  place-items: center;
+  padding: 1.4rem 1rem;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.drop:hover,
+.drop.over {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.or {
+  margin: 0.6rem 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.url {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.url input {
+  flex: 1;
+  min-width: 0;
+}
+
+.url button {
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.url button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- what the server stored -------------------------------------------- */
+
+.state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0.9rem 0 0;
+  min-height: 1.4rem;
+  font-size: 0.8rem;
+}
+
+.state:empty {
+  display: none;
+}
+
+.state.working {
+  color: var(--muted);
+}
+
+.state.good {
+  color: var(--good);
+}
+
+.state.bad {
+  color: var(--error);
+}
+
+.artifact-id {
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+/* --- the question ------------------------------------------------------- */
+
+.question {
+  display: block;
+  margin-top: 1rem;
+  padding: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.label {
   display: block;
   font-weight: 600;
 }
 
-.slot-hint {
-  display: block;
-  margin-bottom: 0.6rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-input[type="file"] {
-  width: 100%;
-  color: var(--fg);
-  font-size: 0.85rem;
-}
-
+input,
 textarea {
-  width: 100%;
-  margin-top: 0.5rem;
   padding: 0.5rem;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
   font: inherit;
+}
+
+textarea {
+  width: 100%;
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
   resize: vertical;
 }
 
-button {
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  align-items: center;
   margin-top: 1rem;
+}
+
+button {
   padding: 0.6rem 1.4rem;
   border: 0;
   border-radius: 6px;
@@ -113,14 +238,16 @@ button {
 }
 
 button:disabled {
-  opacity: 0.55;
-  cursor: progress;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 #status {
   margin-top: 1.5rem;
   color: var(--muted);
 }
+
+/* --- the report --------------------------------------------------------- */
 
 .meta {
   display: flex;
@@ -133,6 +260,7 @@ button:disabled {
   padding: 0.2rem 0.6rem;
   border: 1px solid var(--line);
   border-radius: 999px;
+  background: var(--panel);
   font-size: 0.8rem;
 }
 
@@ -144,9 +272,9 @@ button:disabled {
 pre {
   padding: 1rem;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--panel);
-  font: 0.85rem/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+  font: 0.85rem/1.55 ui-monospace, "Cascadia Code", Consolas, monospace;
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-x: auto;
@@ -166,6 +294,10 @@ summary {
   font-size: 0.85rem;
 }
 
+#citations li {
+  margin-top: 0.3rem;
+}
+
 #citations code {
   color: var(--muted);
 }
@@ -179,4 +311,10 @@ summary {
 .request-id {
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
 }

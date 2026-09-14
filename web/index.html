@@ -12,31 +12,74 @@
       <p>Compares two pieces of work and explains why their results diverge.</p>
     </header>
 
-    <form id="compare">
-      <div class="slots">
-        <label class="slot">
-          <span class="slot-title">A &mdash; the reference</span>
-          <span class="slot-hint">the paper, spec or README</span>
-          <input type="file" name="a" required />
+    <!-- TWO DOORS, and the page has to show that shape.
+
+         An artifact is STORED once and then asked many questions. So a slot
+         uploads on its own, reports what came back, and the question box below
+         sends only IDS - nothing is re-read, re-chunked or re-embedded when
+         you ask a second question. -->
+    <section class="slots">
+      <article class="slot" data-side="A">
+        <h2>A &mdash; the reference</h2>
+        <p class="hint">What SAYS what should happen: a paper, spec or README.</p>
+
+        <label class="drop" data-drop>
+          <input type="file" data-file hidden />
+          <span class="drop-text">Choose a file, or drop one here</span>
         </label>
 
-        <label class="slot">
-          <span class="slot-title">B &mdash; the implementation</span>
-          <span class="slot-hint">the code being examined</span>
-          <input type="file" name="b" required />
-        </label>
-      </div>
+        <div class="or">or</div>
+        <form class="url" data-url-form>
+          <input
+            type="url"
+            data-url
+            placeholder="https://github.com/user/repo"
+            aria-label="Git URL for side A"
+          />
+          <button type="submit">Clone</button>
+        </form>
 
-      <!-- Prefilled and editable, never a placeholder: this text is also the
-           retrieval query, so the user must see what will be asked. v1. -->
+        <p class="state" data-state aria-live="polite"></p>
+      </article>
+
+      <article class="slot" data-side="B">
+        <h2>B &mdash; the implementation</h2>
+        <p class="hint">What actually RUNS: a file, a .zip, or a repository.</p>
+
+        <label class="drop" data-drop>
+          <input type="file" data-file hidden />
+          <span class="drop-text">Choose a file, or drop one here</span>
+        </label>
+
+        <div class="or">or</div>
+        <form class="url" data-url-form>
+          <input
+            type="url"
+            data-url
+            placeholder="https://github.com/user/repo"
+            aria-label="Git URL for side B"
+          />
+          <button type="submit">Clone</button>
+        </form>
+
+        <p class="state" data-state aria-live="polite"></p>
+      </article>
+    </section>
+
+    <!-- Prefilled and EDITABLE, never a placeholder: this text is also the
+         retrieval query, so the user must see what will be asked. v1. -->
+    <form id="ask">
       <label class="question">
-        <span class="slot-title">Question</span>
-        <textarea name="question" rows="2" required>
+        <span class="label">Question</span>
+        <textarea id="question" name="question" rows="2" required>
 Compare these and explain why the results diverge.</textarea
         >
       </label>
 
-      <button type="submit">Compare</button>
+      <div class="actions">
+        <button id="compare" type="submit" disabled>Compare</button>
+        <span id="ready" class="hint"></span>
+      </div>
     </form>
 
     <p id="status" hidden></p>
