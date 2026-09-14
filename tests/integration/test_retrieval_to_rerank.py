@@ -44,6 +44,10 @@ class FakeReranker:
 
     order: tuple[int, ...]
     model: str = "fake-rerank"
+    # Part of the Reranker protocol: rerank() reads it to decide how wide a
+    # window this tier may be given, because the limit belongs to the provider
+    # and not to the pipeline.
+    max_documents: int = 100
 
     def rank(self, query, documents, *, top_n=None):
         order = self.order if top_n is None else self.order[:top_n]
