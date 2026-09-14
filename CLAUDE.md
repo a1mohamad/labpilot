@@ -38,6 +38,12 @@ Read the two rule sections first — they change *how* everything below is done.
 [**SLICE 7 — the decisions, and the one embedder list**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
 [**Quotas do not predict time — 6 embedders measured**](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) ·
 [**The ask path — stuff, the N/2 rule, per side**](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written) ·
+[**The output budget — 9 decisions**](#11-the-output-budget--nine-decisions-taken-2026-09-14) ·
+[**The outline — step 2's ladder**](#12-the-outline--build-step-2s-design-decided-2026-09-14) ·
+[**The selector + scenario matrix**](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14) ·
+[**Steps 1-3 SHIPPED + the rerank window**](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14) ·
+[**SLICE 7 COMPLETE — the ask path**](#15-slice-7-is-complete--steps-4-5-and-6-2026-09-14) ·
+[**SLICE 7 CLOSED — the review pass, 3 defects**](#16-slice-7-is-closed--the-review-pass-2026-09-15) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -481,7 +487,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 ARE DONE AND CLOSED. SLICE 7 IS HALF BUILT.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 AND 7 ARE DONE. ONLY SLICE 8 — THE
+MEASUREMENT — REMAINS.**
 **PIECES 1-3 SHIPPED 2026-09-14 on `feat/selector`: the rebuilt embedding-time estimator, `ingest_artifact()`, and `POST /api/v1/artifacts`. PIECE 4 - THE ASK PATH - IS NEXT, and every decision it needs is already taken in [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written).**
 **SLICE 6 IS FINISHED 2026-09-11. `labpilot/rerank/` is the seventh package: four cross-encoder
 tiers proven live, an LLM reranker that takes a CALLABLE so the package still never imports `llm/`,
@@ -679,7 +686,60 @@ was too cautious.**
 per call, exactly how Gemma stayed broken for weeks. Now pinned by a test.**
 **GLM-5.2 IS STILL DEAD but the refusal CHANGED: 403 `tier_not_allowed` code 1910, not the
 old 429 with `limit: 0`. Cleaner for us — not retryable, never touches `dead_pools`.**
-**Last updated 2026-09-14 (twenty-third session). Branch `feat/selector`, clean at `de3fef3`.**
+**⚠ THE BRANCH LINE BELOW WAS STALE AND IS CORRECTED: pieces 1-3 live on `main`,
+re-committed piece by piece (~34 commits), NOT on `feat/selector`. That branch holds
+an OLDER SQUASHED variant (`de3fef3`, `d8cf62e`) that `main` does not contain - the
+same dead-branch shape as `feat/reranking` after slice 6. Do not resume there.**
+**SECTION 11 RECORDS NINE OUTPUT-BUDGET DECISIONS taken 2026-09-14, four of them the
+user's, two overturning claims this file already made - `max_tokens` vs
+`max_output_tokens` is a GRID whose missing operator is `min()`; check 1 of
+`_check_fits` rests on an assumption MEASURED FALSE on Mistral (200, not an error);
+a thinking preset must restrict the CHAIN, not only the numbers; a scarce tier
+belongs in an expensive chain and NEVER a cheap one; and reserving the strongest
+tier for the report is an ASSUMPTION that session 10 already measured against. See
+[the output budget](#11-the-output-budget--nine-decisions-taken-2026-09-14).**
+**`GEMMA_4_26B` IS NOW IN `llm/registry.py`. It was named in `LLM_RERANK_ORDER`,
+measured second best of everything slice 6 scored, and existed ONLY inside
+`tests/smoke/`, so no production code could build it. Limits read from
+`GET /v1beta/models`: 262,144 in / 32,768 out, identical to the 31B. NOT in `CHAIN` -
+whether it is a good GENERATOR is a separate question with no evidence yet.**
+**SLICE 7 BUILD STEPS 1, 2 AND 3 ARE SHIPPED — `store/reader.py`, the outline
+LADDER, and a selector that privileges NEITHER SIDE. 787 passed, 48 skipped,
+1 xfailed, ruff clean. 11 mutations, 10 real. See
+[section 14](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14).**
+**TWO RECORDED DECISIONS WERE OVERTURNED BY THE USER: "fill A before B" is dead
+(it leaves A UNCAPPED, so a large reference starves B to zero — section 13.2),
+and the pre-rerank cut is now PER TIER rather than a global 25, because the cut
+discarded exactly the queries reranking is best at while protecting a tier no
+longer at the front of the chain (section 14.3).**
+**`reserve()` HAD A 24,899-TOKEN OVER-ESTIMATE hiding behind the per-chunk
+outline — it charged an id label for every chunk in the corpus, letting 4 of
+8,333 chunks through instead of 266.**
+**SLICE 7 IS CLOSED — 2026-09-15, after a review pass. SEVEN build steps, not
+six: the REPOSITORY DOOR landed too, so `POST /artifacts` takes a file, a `.zip`
+or a git URL, and `POST /compare` takes IDS. 843 passed, 4 skipped, 0 xfailed
+across unit/api/integration, ruff clean. SMOKE STILL NOT RUN.**
+**ONLY SLICE 8 (a measurement) AND THE FRONTEND REMAIN IN THE WHOLE OF STEP 1.**
+**THE REVIEW PASS FOUND THREE REAL DEFECTS, and the first is the worst: THE TEST
+SUITE WAS SPENDING LIVE RERANK QUOTA ON EVERY RUN — four Gemini tiers and then
+Cohere, whose free tier is 1,000 calls a MONTH and is the rerank primary. It hid
+because `_best` takes its chain as a DEFAULT ARGUMENT captured at import time, so
+monkeypatching the module attribute never reached it. Spending quota makes a
+suite slower, never redder. See
+[the review pass](#16-slice-7-is-closed--the-review-pass-2026-09-15).**
+**THE API ALSO LIED ABOUT COVERAGE: on the search path it reported `25 of 25` for
+a 120-chunk corpus, because `Comparison` never carried the totals `ask()` had
+already computed for the PROMPT. Fixed; the prompt and the response now agree.**
+**THE USER FOUND TWO DEFECTS BY READING THE CODE, not by any test: `ModelMismatch`
+left as unreachable when a re-ingest between measure() and search() makes it real
+(now a 409), and the rerank chain BUILT BUT NEVER BOUND, so the ask path would
+have used only the cross-encoders and never the four tiers that beat them.**
+**Branch `feat/ask-path`, off `main`, clean and PUSHED — 21 commits ahead.
+Last updated 2026-09-15 (twenty-fifth session).**
+**⚠ A SESSION REWIND REVERTED TWO TEST FILES ON DISK at the start of this
+session. Git still held the right versions; `git checkout --` restored them and
+the count went UP, not back. If files look wrong after a rewind, check git before
+rewriting anything.**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
 **`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
@@ -692,87 +752,94 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ▶ SLICE 7 IS HALF BUILT — pieces 1-3 SHIPPED, PIECE 4 IS NEXT
+> > ## ✅ SLICE 7 IS CLOSED — 2026-09-15. ONLY SLICE 8 AND THE FRONTEND REMAIN
 > >
-> > **STATE, verified 2026-09-14 rather than remembered.** Branch
-> > **`feat/selector`**, clean, everything committed, head `de3fef3`. Suite
-> > **763 passed, 48 skipped, 1 xfailed** in ~115s, ruff clean both ways.
-> > **DO NOT COMMIT TO `main`** - only the user does that, or when they say
-> > "merge and commit".
+> > **STATE, verified rather than remembered.** Branch **`feat/ask-path`**,
+> > clean, everything committed and PUSHED, well ahead of `main` - ask git for
+> > the count rather than trusting a number here, because it goes stale on the
+> > very next commit (`git rev-list --count main..feat/ask-path`). Suite
+> > **843 passed, 4 skipped, 0 xfailed** in ~150s, ruff clean both ways. **DO NOT COMMIT TO
+> > `main`** - only the user does that, or when they say "merge and commit".
 > >
-> > ### What pieces 1-3 shipped
-> >
-> > | piece | landed |
-> > |---|---|
-> > | 1 | **the embedding-time estimator, rebuilt.** `Rate` records the PUBLISHED quota and no longer predicts with it; `Spec.measured_tokens_per_minute` is ours. `embed/rates.py` learns `requests_per_minute` from response headers and WARNS when a header contradicts the seed. `registry.SPECS` + `by_speed()`. See [section 9](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) - the quota is 11.8x wrong on codestral and exact on Google |
-> > | 2 | **`services.ingest_artifact()`** - chunk, pick an embedder, embed, write. Plus `_artifact_id` (content hash, so re-ingest REPLACES), `_pick_embedder` (one list, sorted two ways), `_records` (a generator, so 2,000 vectors never sit in memory at once) |
-> > | 3 | **`POST /api/v1/artifacts`** - Option 2's first door. One upload, stored once, `slow` reported and never waited on. `EmbeddingUnavailable` and `StorageUnavailable` added, both 503 |
-> >
-> > **Mutation-tested, 8 real mutations, 6 firing alone** - the pairing of chunk
-> > to vector, the side in the artifact id, the refusal to pick an `inf` model,
-> > the measured-rate table, the stable sort, and `StorageUnavailable`'s status.
-> > Two mutations were BROKEN and retried rather than believed: a missed anchor
-> > and an `or` that could never evaluate, both of which look exactly like a
-> > surviving mutation.
-> >
-> > ### PIECE 4 IS THE ASK PATH, and every decision is already taken
-> >
-> > **Read [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written)
-> > before writing a line.** It holds the decisions, three corrections to this
-> > file, and what piece 4 deliberately does not decide.
+> > **STEP 1 IS EFFECTIVELY DONE. Two things are left in the whole step:**
 > >
 > > ```
-> > POST /compare   takes IDS, not files
-> >
-> > 1  do A and B TOGETHER fit the budget?
-> >       yes -> read every row back. STUFF. no query embed, no search, no rerank
-> >       no  -> continue
-> > 2  search 50 PER SIDE          exact. no fusion. wRRF stays unreachable
-> > 3  cut to VECTOR_TOP_N = 25 PER SIDE
-> > 4  gate: SKIP_MARGIN is None, so it always says rerank
-> > 5  rerank PER SIDE, never merged: 25 -> RERANK_TOP_N = 10 per side
-> >       no tier available -> skip(), keep the vector order, send the 25
-> > 6  select, filling A BEFORE B
-> > 7  outline by FILE, never by chunk
+> > SLICE 8   a MEASUREMENT, not a build   - nine numbers, listed below
+> > FRONTEND  web/app.js still posts two FILES to /compare and gets a 422
 > > ```
 > >
-> > **The build order, six steps:**
+> > ### What slice 7 shipped, all six steps plus a seventh
 > >
 > > ```
-> > 1  store/      measure an artifact without moving rows, and read it all back
-> > 2  prompts/    outline by FILE - RAG holds 50 rows of a 5,000-chunk corpus
-> > 3  retrieval/  the new selector: hits -> chunks, A before B. DELETE select()
-> > 4  api/        ask(): the ladder above
-> > 5  api/        bind LLM_RERANK_ORDER to llm/ at the ENTRY layer
-> > 6  api/        /compare takes ids; UnknownArtifact + ModelMismatch come OFF
-> >                ALLOWED_TO_ESCAPE in tests/unit/test_error_boundaries.py
+> > 1  store/      measure + read back                            DONE
+> > 2  prompts/    outline by FILE, as a LADDER                    DONE
+> > 3  retrieval/  equal share + leftover (NOT A before B)         DONE
+> > 4  api/        ask(): the ladder                               DONE
+> > 5  api/        the rerank chain, assembled at the entry layer  DONE
+> > 6  api/        /compare takes IDS, not files                   DONE
+> > 7  api/        THE REPOSITORY DOOR - a file, a .zip, or a git URL   DONE
 > > ```
 > >
-> > **Three things that will bite, all already written down.**
+> > **Step 7 was never in the plan and is not recorded in sections 14-15.** It
+> > landed in `a1415ca`: `POST /artifacts` now takes `file` **or** `url`,
+> > `services.ingest_source()` stores a whole repository as ONE artifact, and
+> > the old `MAX_ARCHIVE_BYTES` xfail became a real test when the limit moved
+> > 50MB -> 10MB. That is why the suite has no xfail left.
 > >
-> > **The two number spaces.** `search()` returns `SearchHit.chunk_index`, an ID
-> > in the corpus. `rerank()` returns POSITIONS into the list it was handed.
+> > ### The review pass found THREE real defects — see [section 16](#16-slice-7-is-closed--the-review-pass-2026-09-15)
+> >
+> > | # | defect | fixed? |
+> > |---|---|---|
+> > | 1 | **the test suite spent LIVE rerank quota on every run** - four Gemini tiers, then Cohere, whose free tier is 1,000 calls a MONTH | ✅ `tests/conftest.py` keeps the chain empty outside smoke |
+> > | 2 | **the API reported `25 of 25` for a 120-chunk corpus** - the prompt told the truth and the response did not | ✅ `Comparison.totals` |
+> > | 3 | **a dead line in `ingest_source`** - `replace(chunk, artifact_id=...)` changes nothing, because nothing reads `Chunk.artifact_id` | ❌ **reported, not fixed** |
+> >
+> > **Defect 1 is the one to remember.** It hid behind a Python detail: `_best`
+> > takes its chain as a DEFAULT ARGUMENT, evaluated once at import time, so
+> > monkeypatching the module attribute never reached it. A path that looked
+> > stubbed was not, and **spending quota makes a suite slower, never redder**.
+> >
+> > ### NEXT IS SLICE 8, and it is a MEASUREMENT
+> >
+> > Its job list is NINE: embedder ranking · reranker ranking · exact vs HNSW
+> > on real artifacts · end-to-end TIME · merged vs per-side reranking ·
+> > `SEARCH_LIMIT` and `VECTOR_TOP_N` swept jointly · where the cut goes ·
+> > whether the per-tier rerank window beats a global one · and whether
+> > `explain_divergence` really needs the strongest tier, which section 11.9
+> > says was already measured OUT as a cause of coverage.
+> >
+> > **Every number it sweeps is now a NAMED CONSTANT**, so a sweep changes one
+> > number instead of a design:
+> >
+> > ```
+> > SEARCH_LIMIT 50 · VECTOR_TOP_N 25 · RERANK_TOP_N 10 · SIDE_SHARE 0.5
+> > OUTLINE_BUDGET 4,000 · per-tier max_documents · BM25_K1 · BM25_B
+> > ```
+> >
+> > **SMOKE HAS NEVER BEEN RUN ON THIS BRANCH**, and it is the one thing this
+> > session did not do. Check the exit ISP first - see
+> > [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).
+> > `tests/smoke/test_pipeline_answers.py` still exercises the OLD pipeline
+> > (`chunk_file` + `select` + `build_prompt`), never `ask()`, so the weekly
+> > run does not touch what we now ship. Fixing that needs a database and
+> > embedder quota, which is slice 8's end-to-end measurement anyway.
+> >
+> > ### Three traps that still bite, all already written down
+> >
+> > **The two number spaces.** `search()` returns `SearchHit.chunk_index`, an
+> > ID in the corpus. `rerank()` returns POSITIONS into the list it was handed.
 > > `hits[p]` is right; looking up chunk `p` cites the wrong file and line with
-> > full confidence. `tests/integration/test_retrieval_to_rerank.py` exists for
-> > this and numbers its ids from 100 so a position used as an id is provably
-> > wrong.
+> > full confidence. Two test files number their ids from 100 so the confusion
+> > is provable rather than plausible.
 > >
-> > **`test_error_boundaries` will fire** the moment `api/` can reach
-> > `UnknownArtifact` or `ModelMismatch`. That is the guard working. Map them,
-> > never delete the test.
+> > **`skip()` truncates to whatever `top_n` it is handed**, so the cut must
+> > happen AFTER the call and `rank()` must be asked for everything. Both
+> > halves are pinned now; the second half was unguarded until 2026-09-15.
 > >
-> > **`skip()` truncates to whatever `top_n` it is handed.** The degraded path
-> > must be given `VECTOR_TOP_N`, not `RERANK_TOP_N`, or it silently uses a
-> > number calibrated for a path that did not run.
-> >
-> > ### What is NOT piece 4's to decide
-> >
-> > Every top_n value, the window, merged vs per side, where the cut goes,
-> > whether reranking ships, whether `wRRF` replaces exact search - **all slice
-> > 8**, and its job list is now SEVEN measurements. The search query being the
-> > user's own question is a known weakness this file has named since 2026-08-13;
-> > claim extraction is **Step 2**.
-> >
+> > **A fixture numbered from zero, or holding one chunk, cannot fail.** A
+> > one-chunk file cannot tell a correct `start_line` from a lost one, and ids
+> > starting at 0 cannot tell an id from a position. Both were found by
+> > mutation, not by reading.
 > > ## ✅ SLICE 4 IS DONE — do not restart it
 > >
 > > The table, the write path and **exact search** all exist and are proven
@@ -945,6 +1012,8 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > `mistral-embed` wins, two of the three questions disappear).
 >
 > **Two Step 1 debts recorded elsewhere, easy to miss:** `select()` must fill
+> **⚠ OVERTURNED 2026-09-14 — see [the selector](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14). The selector shares the leftover instead: A before B leaves A UNCAPPED, so a large reference starves B entirely, and it biases every code-vs-code comparison by upload order. When A fits, the two rules give the identical answer.**
+> 
 > **A before B** (dropping part of A loses a statement we never learn exists),
 > and the outline must list **files, not chunks** — 2,000 chunks would cost
 > ~40,000 tokens, larger than the whole budget.
@@ -7629,6 +7698,1170 @@ where it is expected to land.
 | the search query is the user's question | claim extraction — **Step 2**, and this file already calls the question a bad query |
 
 
+### 11. THE OUTPUT BUDGET — nine decisions, taken 2026-09-14
+
+*Taken with the user during build step 1, which was interrupted by a question
+this file could not answer: "why does raising `max_tokens` hurt a model that
+would never reach it?" It could not answer it because the answer was a defect.
+Four of the nine below are the user's, and two of them overturn something this
+file already said. No code changed; every point is a decision or a debt.*
+
+#### 11.1 `max_tokens` and `max_output_tokens` are a GRID, and the missing operator is `min()`
+
+They are not two versions of one number. They are two axes:
+
+```
+max_tokens         what THIS JOB needs      changes per task, same on every model
+max_output_tokens  what THIS MODEL can do   changes per model, same for every task
+```
+
+Both count the same bar - `T_out = T_think + T_answer`. What differs is who
+owns them. `max_tokens` is SENT in the request; `max_output_tokens` never
+leaves the machine, it is a note we typed into `registry.py`.
+
+Neither can replace the other, because the number actually sent is a CELL:
+
+| | gate (200) | summarize (1,000) | report (32,000) |
+|---|---|---|---|
+| Gemini (65,536) | 200 | 1,000 | 32,000 |
+| Gemma (32,768) | 200 | 1,000 | 32,000 |
+| Devstral (16,384) | 200 | 1,000 | **16,384** |
+| Groq (8,000 total) | 200 | 1,000 | refused on INPUT |
+
+$$
+\text{sent} \;=\; \min\big(\text{what the job needs},\; \text{what the model can do}\big)
+$$
+
+**One number cannot index a grid.** A single global `max_tokens` would reserve
+65,536 tokens on Gemini to write a one-word gate answer - and on Groq, where a
+reservation is charged whether used or not, that is one call per minute instead
+of many. A single per-model `max_tokens` would make Gemini write a 65,536-token
+report and Gemma a 32,768-token one, so a difference between two reports could
+no longer be attributed to the model rather than to the budget. That is the
+same comparability rule that fixed `temperature: 0`.
+
+#### 11.2 CLAMP, not refuse - but only when the number rises
+
+`_check_fits` runs three checks, and only two earn their place:
+
+```
+1  max_tokens > max_output_tokens       -> refuse   <- WEAK
+2  padded > max_input_tokens            -> refuse   <- real, Gemma's 16K/min
+3  padded + max_tokens > context_window -> refuse   <- real, and what stops Groq
+```
+
+**Check 1 rests on an assumption that was later measured FALSE.** Its stated
+reason is *"caught locally instead of costing a request"* - that is, the
+provider would error. Mistral was asked for `max_tokens: 32000` on
+`devstral-2512`, whose cap is 16,384, and answered **200**. It simply wrote
+less.
+
+So for ceiling-style providers, check 1 refuses a call that would have worked.
+Today that is harmless: at `REPORT_MAX_TOKENS = 32_000` it excludes only
+Devstral (genuinely too small, measured) and Groq (already caught by check 3).
+
+**It becomes a real defect the moment the number rises past 32,768**, where it
+would exclude Gemma and Laguna - tiers that serve complete reports right now.
+A tier refused for being able to do exactly what we currently ask of it.
+
+> **THE DECISION: keep the refusal today; if `REPORT_MAX_TOKENS` ever rises,
+> change check 1 to `max_tokens = min(max_tokens, self.max_output_tokens)` in
+> the same commit.**
+
+The defect cannot land silently, and that is why waiting is safe:
+`test_only_known_tiers_cannot_serve_a_full_report` asserts the unable-list is
+EXACTLY `("GPT-OSS 120B (Groq)", "Devstral 2")`, so raising the number turns it
+red and forces the conversation at exactly the right moment. That test is doing
+more work than its name suggests - keep it when the task chains are written.
+
+#### 11.3 The one real loss the refusal costs
+
+When every tier that CAN finish is spent, the chain returns **503 and nothing**
+- where a clamped tier could have returned a truncated report. And truncation
+is already visible: `finish_reason` is on `LLMResult` and the page renders
+`MAX_TOKENS` as a warning, so the objection *"it looks complete"* is answered.
+
+Rare with 23 tiers, and it needs a second pass through a loop that is currently
+simple and well tested. **Recorded, not built.** Fix it only if it happens.
+
+#### 11.4 Four of six providers have NEVER been tested above their cap
+
+| provider | asked above its cap | |
+|---|---|---|
+| Mistral | **200** - caps itself, writes less | measured |
+| Groq | **413** - refuses, writes nothing | measured |
+| Google · OpenRouter · Cloudflare · Cline | **unknown** | never tried |
+
+Two measurements, opposite behaviour, and four blanks. Clamping sidesteps the
+blanks entirely, because a clamped number is one no provider can object to.
+**Do not generalise from either measured provider to the other four.**
+
+#### 11.5 A `HIGH` report cannot fit a 32,768 cap - arithmetic, not policy
+
+$$
+T_{\text{think}} + T_{\text{answer}} \;\le\; C_{\text{out}}
+$$
+
+Measured on `gemini-3.6-flash`: a complete report needs `T_answer` about 5,655,
+and `HIGH` spent `T_think` about 29,747.
+
+$$
+29{,}747 + 5{,}655 = 35{,}402 \;>\; 32{,}768
+$$
+
+So a 32,768-cap tier cannot serve a `HIGH` report at all. **Clamping does not
+rescue it** - clamping only turns a refusal into a truncation. The lever is the
+thinking level, not the budget, and that is measured: at `MEDIUM` the same
+model finished with 2.5x more report.
+
+> **More budget buys more thinking, not more answer.** Raising `max_tokens` to
+> survive reasoning burn treats the symptom. `thinking` is the cause.
+
+Visible even on a trivial prompt - the 2026-09-14 health check, 10 input tokens:
+
+```
+gemini-3.6-flash   STOP, 4 output tokens, 178 THOUGHT tokens
+gemini-3.5-flash   STOP, 4 output tokens, 178 THOUGHT tokens
+```
+
+44x the visible answer, on "say ok", because every Gemini tier ships `MEDIUM`.
+
+#### 11.6 A THINKING PRESET MUST RESTRICT THE CHAIN, NOT ONLY THE NUMBERS
+
+*The user's, and it extends a rule this file already had.* CLAUDE.md said the
+preset must set the level AND `max_tokens` together. It did not say this:
+
+> **Deep is not a dial that exists on every tier.**
+
+Two separate reasons a tier cannot serve it, and neither is about our code:
+
+- **no knob at all.** `REJECTS_THINKING = ("gemma-4-31b-it",)` - Gemma answers
+  **HTTP 400** to a thinking field. It has one mode, so "Deep on Gemma" is not
+  a setting we can offer.
+- **no room.** 11.5 above: thinking plus a finished report over-runs a 32,768
+  cap.
+
+```
+Fast / Balanced   every tier eligible
+Deep              only tiers that (a) have a thinking knob and
+                                  (b) have C_out >= thinking + a finished report
+```
+
+**And the user's better fix for the silent-downgrade risk: build the chain so
+it cannot happen.** Every real *Gemini* model carries a thinking level; only
+Gemma does not, and Gemma is not a Gemini. So a Gemini-only Deep chain has no
+downgrade to warn about - which is this file's own rule, *put a rule where it
+cannot be broken, not where it can be checked*, applied one level up.
+
+#### 11.7 A SCARCE TIER BELONGS IN AN EXPENSIVE CHAIN AND NEVER IN A CHEAP ONE
+
+*The user's.* A Step 2 report is ~10 calls, and the strong models are the
+scarce ones - every Gemini Flash is **20 requests a day**.
+
+```
+correspondence gate (~200 tokens)
+  -> Gemma       HTTP 500     <- measured, about 1 call in 3
+  -> Groq        refused
+  -> Flash-Lite  ok
+  -> ...if the chain continued: Gemini 3.7 Flash
+```
+
+One 200-token gate call would burn **1/20th of the day's report budget**, and
+nothing would report it - the report still works, it just runs out of days
+early. **A quota leak is silent by construction, so it needs a test.**
+
+The partition is comfortable at 23 tiers:
+
+```
+cheap work   Cline x2 (free) · Gemma x4 (57,600/day) · Flash-Lite x4 (2,000/day)
+             Groq (1,000/day, small jobs only) · Mistral (rate-limited, not capped)
+reserved     Gemini Flash x6 (120/day) · OpenRouter x3 (50/day SHARED)
+             Cloudflare GPT-OSS (~11 reports/day)
+```
+
+**The rule is one-directional**: a scarce tier may sit in the report chain, but
+a cheap chain must contain none. Each task chain must still end in something
+that cannot run out.
+
+#### 11.8 THE REPORT CHAIN IS BUILT FROM CAPABILITY, AND DEGRADATION MUST BE VISIBLE
+
+*The user's, and it corrects a loose claim made during the same conversation.*
+"`EXPLAIN_CHAIN = CHAIN`, everything, strong first" is wrong as a description.
+
+For TOKENS the chain already self-filters and it is free - `_check_fits`
+removes Groq and Devstral before any request. **For THINKING there is no filter
+at all**: `_check_fits` knows nothing about reasoning, so a Deep request that
+falls through to Gemma returns a report that is not deep, and nothing says so.
+That is a silent downgrade, which this project bans everywhere else.
+
+```
+report chain = tiers that can ACTUALLY serve THIS report, strong first
+  "can serve" = tokens    <- checked today, free
+              + thinking  <- NOT checked. the gap
+```
+
+The answer is not exclusion. It is the pattern this project already uses twice
+- `skip()` returns `model=SKIP` so a missing rerank is visible, and
+`MAX_TOKENS` renders as a warning so a cut report does not look whole:
+
+> **Degrade, but never silently.**
+
+Note the trap in the other direction: LOWERING `REPORT_MAX_TOKENS` would
+silently let weak tiers into the report chain. The same exact-list test in 11.2
+catches that too.
+
+#### 11.9 DO NOT RESERVE THE STRONGEST TIER FOR THE REPORT ON AN ASSUMPTION
+
+*The user's, and it challenges this file's own line "reserve tier 1 for
+`explain_divergence`, which is the actual product."*
+
+**Model strength was MEASURED and eliminated as the cause of coverage**, in
+this file, in session 10:
+
+> *Position, context and model strength are all eliminated as causes.*
+
+The same model, at LOWER thinking, in ONE call, recovered five findings that
+seventeen comparison runs had never found - once the QUESTION changed. Every
+fix that worked that day was a deletion.
+
+Two more measurements point the same way. Blind spots are **per-model and
+disjoint** - `3.5-flash` never finds #12/#14/#18/#10b, `3.6-flash` never finds
+`SKIP_CONNECTION`/loss-config/CUDA `Event` - and both score 11-13. So a
+different model gives DIFFERENT findings, not more, which argues for VARYING
+the model rather than maximising it. And in slice 6 the cheapest tier won
+outright: `gemini-3.5-flash-lite` at 0.799 beat `gemma-4-31b` (0.732), Voyage,
+and Cohere's purpose-built cross-encoder.
+
+**The one place strength is explicitly required, and it has evidence:**
+cross-language alignment - *"route the alignment reasoning to the top of the
+generator chain, never to a weak tier"* - because the same algorithm in two
+languages looks different and the gate can falsely reject it.
+
+**THE HONEST GAP: the lean `REPORT` template has NEVER been run on a cheap
+tier.** Every report number in this file came from `gemini-3.6-flash` or
+`3.5-flash`. So 11.9 is well supported by adjacent evidence and untested
+directly.
+
+**The measurement is nearly free and slice 8 owes it:**
+
+```
+run the saved lean REPORT prompt, STUFFED, and score against EXPECTED.md on
+    gemini-3.5-flash-lite     500/day pool
+    gemma-4-31b-it         14,400/day pool
+```
+
+Two requests, on pools that cannot run out. If either scores near 13/19, the
+payoff is large: **reports stop being capped at ~20 a day.**
+
+#### What section 11 does NOT change
+
+No code. `REPORT_MAX_TOKENS` stays **32,000**, measured to work at `MEDIUM`.
+Check 1 stays a refusal. Every task chain named here belongs to **Step 2**, and
+the Fast/Balanced/Deep control belongs to **Step 3**. The only thing that moved
+today is that nine decisions are written down instead of being re-derived.
+
+
+### 12. THE OUTLINE — build step 2's design, decided 2026-09-14
+
+*Decided with the user before writing it. Four of the calls are theirs, and one
+of them turned a single rewrite into a three-level ladder.*
+
+#### 12.1 What the outline is FOR, in one sentence
+
+It is a checklist of every chunk, marked sent or not sent, placed before the
+evidence. Its whole job:
+
+> **It lets the model tell "it is not there" apart from "I was not shown it."**
+
+Without it a gap in OUR retrieval is reported as a defect in the USER's code -
+a confident, false finding, which is the worst failure this tool can produce.
+The worked case is the one this project already measures: the paper states
+gradient clipping, retrieval drops the chunk holding `CLIP_NORM = 1.5`, and a
+model with no outline writes *"the code does not implement gradient clipping."*
+
+#### 12.2 The problem - measured 2026-09-14 on `labpilot/` alone
+
+```
+chunks             410
+files               94
+outline PER CHUNK   10,592 tokens    41% of PROMPT_BUDGET, before any evidence
+outline PER FILE     2,193 tokens     8%
+```
+
+$$
+\text{cost} \;=\; n \times \bar{h}, \qquad \bar{h} \approx 20\text{-}26\ \text{tokens per row}
+$$
+
+The saving is exactly the chunks-per-file ratio - only **4.4** here, because
+this package has many small files. CLAUDE.md's worst measured case is far
+uglier: **8,334 parts cost 210,541 tokens** against a 26,000 budget, so the
+table of contents alone was 8x the entire prompt.
+
+#### 12.3 THE DESIGN IS A LADDER, NOT A REWRITE
+
+*The user's call, and it is better than the single per-file shape first
+proposed.* Three renderings, measured per unit on the corpus above:
+
+| level | shape | cost |
+|---|---|---|
+| 1 | **per chunk** - one row per chunk, full header | **25.8 / chunk** |
+| 2 | **per file + `defines:`** - the file's distinct top-level labels | **44.9 / file** |
+| 3 | **per file plain** | **23.3 / file** |
+
+```
+level 2 renders as:
+
+  train.py  B-40..B-70  31 parts, lines 1-1420  ·  none included
+            defines: load, Tokenizer, Trainer, evaluate, main
+```
+
+**Take the richest level that fits the outline's share of the budget.** A
+corpus of a few hundred chunks gets per-chunk honesty for about 2,000 tokens; a
+repository degrades to level 2, then to level 3.
+
+**`defines:` is worth less than it looks, and the number is recorded so nobody
+re-derives it optimistically: 410 chunks compress to 270 distinct labels, a
+ratio of only 1.5.** Mean 2.9 labels per file, max 16. So level 2 is 2.5x
+cheaper than level 1, not 20x - real, and not the order-of-magnitude win the
+idea suggests.
+
+#### 12.4 The stuff path keeps a FILE LIST and nothing more
+
+*The user's call.* When everything fits, nothing is dropped, so the "what you
+did not get" job disappears entirely.
+
+**And a per-chunk outline there would be pure duplication**, which is the
+measured reason rather than a stylistic one: `_text()` already renders
+`{id}  {chunk.header}` immediately above every included chunk, so the outline
+would repeat a header the model reads two lines later.
+
+The file list stays because it is cheap and it tells the model how the corpus
+is organised - navigation, not accounting.
+
+**Note the arithmetic that makes this exact.** With `REPORT` at ~2,000 tokens
+and a measured mean of 341.6 tokens per chunk:
+
+$$
+341.6n + 25.8n + 2{,}000 \;\le\; 26{,}000 \;\Longrightarrow\; n \le 65
+$$
+
+So the stuff zone is about **65 chunks across both sides**, where a per-chunk
+outline would cost only ~1,700 tokens. Cheap, and still duplication.
+
+#### 12.5 THE FILE RANGE ASSUMES CONTIGUITY, AND A TEST MUST PIN IT
+
+*The user's call: a test, not a workaround.* `B-40..B-70` is only true if every
+chunk of one file sits together in id order. It does today, because
+`chunk_source` walks files in sorted order and `assign_ids` numbers the tuple
+as it arrives - but **nothing enforces it**, and if it ever breaks the range
+silently names the wrong chunks, which is the citation failure this whole
+section exists to prevent.
+
+Same class as slice 2's sorting rule: *chunk ids are positional, so if folder
+order shifts between machines, `B-42` names a different file.* Sorting was
+correctness there and contiguity is correctness here.
+
+#### 12.6 PER FILE IS NOT FREE EITHER - recorded, not capped
+
+*The user's call: record it, raise a cap later if needed.* 2,193 tokens for 94
+files is 8%; a 500-file repository would be ~11,000 tokens, or **42% of the
+budget**, with no evidence sent yet.
+
+Level 3 of the ladder is the answer, and beyond it a cap or a per-directory
+grouping. **Neither is built**, because we have no 500-file fixture and
+choosing the number now would be a guess dressed as a decision - the same
+reason `MAX_ARCHIVE_BYTES` stayed an xfail rather than being "fixed".
+
+#### 12.7 "NOT INCLUDED" IS THE WRONG WORD, AND IT IS `instructions.py`'s JOB
+
+*Raised by the user: won't a user who uploaded the whole file be confused to
+read that 31 parts were "not included"?* Yes - and the phrasing blames the
+upload for our own retrieval limit.
+
+```
+WRONG   "31 parts of train.py were not included"
+RIGHT   "I searched 21 of 82 parts of your code. Clipping was not in those 21;
+         it may be in the 61 I did not retrieve."
+```
+
+Two things make this survivable today. It only appears when the corpus really
+did not fit - a small upload is stuffed whole and the line never appears. And
+the API already reports `chunks: {side: {total, sent}}`, which the page renders
+as `21/82 chunks`, so the user has the context before reading a word.
+
+**But the wording rule belongs in the REPORT template, and CLAUDE.md's
+evidence-basis axis already demands it** - *"seen in one, not found in the
+provided context"* must be written as *"not present in the retrieved context"*,
+never *"absent from the code"*. Whether the lean 1,997-byte rewrite still
+carries that rule is **UNVERIFIED**, and it is worth checking: losing it is a
+live defect in the product's most dangerous direction.
+
+**This is Step 2's job, not build step 2's.** `context.py` decides what the
+model READS; `instructions.py` decides what it WRITES. Only the first changes
+here.
+
+#### What build step 2 changes, and what it does not
+
+```
+prompts/context.py   _outline()  ->  the ladder above
+prompts/builder.py   reserve()   ->  follows automatically
+```
+
+`_text()`, `assign_ids` and every id are untouched, so citations are unaffected.
+`retrieval/` is step 3.
+
+One over-estimate is knowingly left in place: `reserve()` adds an id prefix for
+EVERY chunk rather than for the selected ones, because selection happens after
+reserve. With the outline fixed it becomes the largest remaining slack. Leave it
+until step 4 shows whether it matters.
+
+
+### 13. THE SELECTOR, AND THE SCENARIO MATRIX BEHIND IT — decided 2026-09-14
+
+*Build step 2 shipped; step 3 was stopped before a line was written, because the
+user asked why A should be filled before B and the answer in this file did not
+survive the question. Most of what follows is theirs, and one item OVERTURNS a
+rule CLAUDE.md has carried since 2026-08-14.*
+
+#### 13.1 Build step 2 is DONE, and it exposed the next bottleneck
+
+```
+outline PER CHUNK   187,695 tokens    of a 26,000 budget
+outline PER FILE         26 tokens    measured on the same 8,333-part upload
+```
+
+`_outline` is a LADDER and takes the richest level that fits `OUTLINE_BUDGET`:
+per chunk, then per file plus `defines:`, then per file alone. A side where
+everything was sent gets a plain file list - nothing was dropped, so the
+accounting job is void.
+
+**And fixing it made the next defect visible.** `reserve()` charged a `B-1234 `
+id label for EVERY chunk in the corpus, though only the selected handful is
+ever printed:
+
+```
+before   reserve 25,616 of 26,000  ->  room    384  ->    4 chunks of 8,333
+after    reserve    759            ->  room 25,241  ->  266 chunks
+```
+
+It was always an over-estimate; the per-chunk outline merely hid it. Without
+removing it the outline fix would have bought 0 chunks -> 4 instead of -> 266.
+**The real ~3-token per-chunk cost belongs in the SELECTOR**, which charges per
+chunk as it packs - step 3.
+
+#### 13.2 "FILL A BEFORE B" IS REJECTED — and this file has said it since 2026-08-14
+
+The old rule, and its argument:
+
+> *Dropping part of B is recoverable, because A still tells us what to look for
+> and we can report "not found". Dropping part of A loses a statement we never
+> learn exists, and it disappears silently.*
+
+The asymmetry is REAL - a dropped A chunk is an **unknown unknown**, a dropped
+B chunk is a **known unknown**. It still does not earn A priority, for four
+reasons, and the last one is fatal.
+
+**1. It covers `verify` only.** Session 10 measured the opposite direction:
+removing side A ENTIRELY and asking *"what could go wrong?"* recovered **five
+findings that seventeen comparison runs had never found once**. Seven of the
+nineteen live in B alone with no A anchor at all. The flagship report runs both
+kinds of question, so privileging a side is wrong for half the job.
+
+**2. Half the scenarios have no reference.** Code-vs-code is SYMMETRIC - this
+file's own template says *"never say one side is wrong, say only that they
+differ."* There A-before-B biases the report by **upload order**.
+
+**3. The slots are the user's choice.** `POST /artifacts` takes `side` as a
+form field; nothing infers it. Privileging slot A privileges an upload habit.
+
+**4. THE KILLER, and it is the user's: "A before B" means A has NO CAP.** A
+30,000-token reference takes the whole budget and B gets **zero**. A comparison
+with one side is not a comparison.
+
+**And the rule was never load-bearing anyway.** This file's own note ends:
+*"it does not bite on this pair, because A already fits."* **When A fits,
+A-before-B and a fair split give the IDENTICAL answer.** They differ only in
+the case the note says does not arise - so the fair rule loses nothing and
+cannot starve a side.
+
+#### 13.3 THE RULE: equal share, and the leftover flows over
+
+```
+pass 1   each side takes up to its share       SIDE_SHARE = 0.5
+pass 2   anything unspent flows to the other side
+```
+
+| case | fixed halves (today) | A before B | share leftover |
+|---|---|---|---|
+| A small, B large | **wastes A's half** | good | **good - identical** |
+| A large, B small | wastes B's half | **starves B** | good |
+| both large | fair | **starves B** | **fair** |
+| one artifact | half wasted | - | **all of it** |
+| code vs code | fair | **biased** | **fair** |
+
+It fixes the measured waste - 14,273 tokens sent of a 20,000 budget on the
+sample pair - without guessing which file the user cares about.
+
+**`SIDE_SHARE` is a KNOB, not a law**, and slice 8 may sweep it exactly as it
+will sweep the retrieval window: *for now it is half; slice 8 may decide that
+of a 50-document limit, 30 go to each side.*
+
+**If a capability ever wants a side weighted, STEP 2's PLANNER passes that in.**
+It is the only layer that knows which capability is running, and therefore the
+only one entitled to the opinion.
+
+#### 13.4 THE SCENARIO MATRIX — arrival order is irrelevant, TYPE decides
+
+*The user's framing: the user sends whatever they want, however they want, and
+the system must be ready for every shape.*
+
+**Artifacts are STATE, so when they arrive changes nothing.** A capability
+becomes reachable the moment its precondition is met:
+
+```
+turn 1  upload A   ->  summarize(A), find_bugs(A)
+turn 4  upload B   ->  + verify, align, explain_divergence
+```
+
+Both at once, one by one, or B first - identical outcome. That is exactly what
+Option 2's split of ingest from ask bought.
+
+**What decides the MODE is the artifact TYPE, and it is known before any model
+call:**
+
+```
+A = document + B = code   ASYMMETRIC   extract claims from A, verify in B
+A = code     + B = code   SYMMETRIC    no claims exist - generate topics,
+                                       search BOTH, compare topic by topic
+one artifact              summarize, find_bugs
+none                      answer_question
+```
+
+**`sources/defaults.py` already splits `DOCUMENT_SUFFIXES` from
+`CODE_SUFFIXES`**, so the planner can pick the mode from the filename for free.
+This CORRECTS a claim made earlier in the same conversation: the model does
+decide the mode in its report, but the planner can decide it far earlier and
+far more cheaply.
+
+#### 13.5 A IS READ WHOLE, B IS SEARCHED — the asymmetry is ACCESS, not budget
+
+This is where the unknown-unknown argument finally earns its place:
+
+```
+call 1     extract_claims(A)    ALL of A. no retrieval, no B
+per claim  search(B, claim)     B is SEARCHED, never read whole
+           verify(claim, hits)
+```
+
+A is read completely because a missed claim is a question never asked. B is
+searched because it is too big to read. **They never share a budget here.**
+
+It works because A is small: `A_paper.md` is ~3,900 tokens, a typical paper
+8,000-15,000, against a 26,000 budget.
+
+**And B still gets a WHOLE read when both artifacts exist** - `find_bugs` is a
+1-artifact capability, so the planner runs it on B alone in its own call
+whether or not A is present. That is not a fallback: it is where session 10's
+five extra findings came from.
+
+#### 13.6 ONLY ONE PLACE SHARES A BUDGET
+
+```
+Step 2      A whole (own call) + B whole (own call) + B searched per claim
+TODAY       A and B in ONE prompt  ->  they share
+```
+
+Step 2 does not make the split fairer - it makes the question stop existing.
+But the one prompt that still shares is **the flagship report the user reads**,
+and the stuff path, so the split rule has to be right today regardless.
+
+#### 13.7 Three holes this opened, recorded rather than built
+
+**1. A HUGE REFERENCE HAS NO DESIGN.** Claim extraction assumes A fits one
+call. A reference *repository* would need its own map-reduce - one pass per
+file, then a merge - and nothing in this file covers it. Step 2 hole.
+
+**2. LOW COVERAGE SHOULD ASK THE USER, NOT GUESS.** *The user's idea.* On a
+huge repo `sent 266 of 8,333` is 3% coverage, and a confident report over 3% is
+the wrong answer. The honest one:
+
+> *"I could not find what you asked about in the 266 parts I retrieved of
+> 8,333. Point me at a file or a folder and I will look there."*
+
+Same pattern this file already uses for a missing artifact - *"I need a second
+file to compare"* - applied to COVERAGE instead of PRESENCE. Needs the agent
+(to know the search failed) and the UI (to ask): **Step 2 + Step 3**.
+
+**3. MAP-REDUCE'S COST OBJECTION IS STALE.** This file rejected it once -
+*"79 calls for one file against an OpenRouter cap of 50/day"* - and that was
+written before the quotas were measured. Gemma x4 is **57,600 calls a day** and
+Flash-Lite x4 is 2,000. A 94-file walk is 94 calls of 57,600.
+
+**The blocker is no longer quota. It is LATENCY**, which section 11 already
+names as the budget nobody writes down. Re-cost it rather than inheriting the
+old verdict.
+
+#### What step 3 builds, after all of this
+
+```
+retrieval/   Chunk in, Chunk out. equal share + leftover. charges the id label
+api/         SearchHit / StoredChunk -> Chunk       <- step 4, with ask()
+```
+
+**`retrieval/` is CORE and `store/` is an ADAPTER, so the selector CANNOT see
+`SearchHit` or `StoredChunk`** - test_architecture forbids it, and both store
+types lack `side` and `artifact_id` anyway. The build order's phrase "hits ->
+chunks" therefore splits across two steps, and writing the converter now would
+be a function with no caller.
+
+
+### 14. SLICE 7 BUILD STEPS 1-3 ARE SHIPPED — 2026-09-14
+
+*Everything below was built, measured and mutation-tested in one session on
+branch `feat/ask-path`. Three of the decisions are the user's, and two of them
+overturn something this file had already written down.*
+
+#### 14.1 What shipped
+
+| step | landed | mutations |
+|---|---|---|
+| **1** | `store/reader.py` - `measure()` and `read_chunks()` | 4, three real and firing alone |
+| **2** | `prompts/context.py` - the outline ladder, and `reserve()` fixed | 4, all real |
+| **3** | `retrieval/selector.py` - equal share + leftover; `dumb.py` deleted | 3, all real |
+
+```
+787 passed, 48 skipped, 1 xfailed     ruff clean both ways
+```
+
+**Step 1 - the cheap check comes first.** `measure()` is one round trip and no
+chunk row crosses the wire; `read_chunks()` reads everything back, in
+`chunk_index` order, and is only correct to call once `measure()` says it fits.
+No size is stored: `count(*)` and `sum(length(...))` give it on demand, and a
+stored copy is a second copy of the truth.
+
+**A correction to this file's own SQL sketch.** It wrote a flat `+ 1` for the
+newline in `embed_text`. The newline exists ONLY when the header does, so the
+flat version over-counts by one character per header-less chunk - right by luck
+on every real corpus, wrong by rule, and silent. The `case` expression counts it
+exactly.
+
+**One mutation SURVIVED and is recorded rather than hidden:** swapping the LEFT
+JOIN for an INNER changes nothing, because `write_artifact` refuses an artifact
+with zero chunks, so "stored and empty" is unreachable. The join is kept because
+it is free and honest, but no test pins it - the same treatment `search.py`
+gives the `::vector` cast.
+
+**Step 2 - the outline, measured on an 8,333-part upload:**
+
+```
+outline PER CHUNK   187,695 tokens    of a 26,000 budget
+outline PER FILE         26 tokens
+```
+
+**And it exposed the next defect immediately.** `reserve()` charged a
+`B-1234  ` id label for EVERY chunk in the corpus though only the selected
+handful is printed:
+
+```
+before   reserve 25,616 of 26,000  ->  room    384  ->    4 chunks of 8,333
+after    reserve    759            ->  room 25,241  ->  266 chunks
+```
+
+It was always an over-estimate; the per-chunk outline merely hid it. **Without
+removing it the outline fix would have gone from 0 chunks to 4 instead of to
+266.** The real ~3-token charge now lives in the selector, where the chunks are
+actually chosen.
+
+`instructions.py` taught the old shape in all five templates - *"Parts marked
+'text NOT included'"* - a format the ladder can no longer guarantee. Reworded in
+place in four locations, keeping each preamble's shape. FULL and CORE were
+updated too: a frozen baseline whose prompt describes a format we never render
+could not be re-run anyway.
+
+**Step 3 - the selector, and it behaves like this:**
+
+```
+A small / B huge   A   4   B  48    19,912 of 20,000
+A huge / B small   A  48   B   4    19,912            <- exact mirror
+both huge          A  24   B  24    19,488
+B only             A   0   B  49    19,894
+```
+
+`test_neither_side_is_privileged` is the mirror, and the mutation that
+re-implements "fill A before B" fires **four** tests. That decision is now
+defended by code rather than by a paragraph.
+
+#### 14.2 `VECTOR_TOP_N` WAS DOING TWO JOBS — the user found the conflation
+
+This file used one number for two unrelated questions:
+
+```
+how many the RERANKER SEES            a quality and cost knob
+how many we SEND if reranking failed  a degraded-path knob
+```
+
+They are not the same question and must not be forced to agree. **Four numbers,
+four jobs:**
+
+```
+SEARCH_LIMIT     50   what search returns, per side
+RERANK_WINDOW    --   what the reranker sees          <- NEW, and see 14.3
+RERANK_TOP_N     10   what survives reranking
+VECTOR_TOP_N     25   what we send when NO reranker ran
+```
+
+#### 14.3 THE RERANK WINDOW IS PER TIER, NOT GLOBAL — the user's call
+
+*This supersedes 10b's "the cut comes BEFORE the reranker".*
+
+The recorded cut to 25 bought three things: a bad reranker could only re-order,
+half the rerank tokens, and **Voyage reachability** - 50 documents is ~16,900
+tokens against a card-free 10K TPM ceiling, measured as 50 refused, 40 refused,
+30 passed.
+
+**Two things cut the other way, and they are stronger:**
+
+**1. The cut discards exactly the queries reranking is best at.** Slice 6
+measured reranking WINNING on `constant` questions (+0.186 MRR) - which are
+where the bi-encoder is worst (0.354). The worked example is `D2`, which sits in
+the FORTIES on codestral. Cut at 25 and it is gone before any reranker sees it;
+no rescue is possible.
+
+**2. The tier the cut protects is no longer at the front of the chain.** Slice 6
+measured the four LLM tiers beating Voyage. `gemini-3.5-flash-lite` is listwise:
+50 documents is ~17,000 tokens against a 1M context and 250K/min. It does not
+care.
+
+**So the cut was paying a real cost to protect a tier we may not reach.**
+
+**THE ANSWER IS PER TIER, and the shape already exists.** Every reranker carries
+`max_documents`. Voyage's says 1,000 - which is the BILLED tier's document
+limit, and the wrong number twice over, because the free constraint is TOKENS
+and not documents. Set it to its measured 30, and let `chain.rerank()` - the one
+layer that sees both the documents and the tier - hand each tier what it can
+take:
+
+```python
+reranker.rank(query, documents[: reranker.max_documents], top_n=top_n)
+```
+
+flash-lite then sees all 50, Voyage sees 30 and ANSWERS instead of burning a
+request on a refusal, and no global compromise is imposed on either.
+
+> **A limit that belongs to one provider should be modelled on that provider,
+> never averaged into the pipeline.** The same lesson as `quota_pool`, and as
+> Groq's `context_window = 8_000`.
+
+**Slice 8 still owns the sweep** - its measurement 7 is exactly "where the cut
+goes" - and a per-tier default does not prevent an experiment from overriding
+the window for everyone.
+
+#### 14.4 Step 4 is the ask path, and its decisions are taken
+
+```
+ask(conn, a_id, b_id, *, question, client) -> Comparison
+
+1  measure(A) + measure(B)                cheap, no rows move
+       fits PROMPT_BUDGET?  yes -> read_chunks both. STUFF, no embed, no search
+2  embed the question with EACH artifact's own model
+   search per side, SEARCH_LIMIT = 50
+3  gate: should_rerank(scores). SKIP_MARGIN is None, so always yes
+4  rerank PER SIDE, never merged, each tier taking up to its own max_documents
+5  SearchHit / StoredChunk -> Chunk      add side and artifact_id
+6  select -> build_prompt -> generate    already built
+```
+
+**D1 - a chunk's `side` comes from the STORED artifact row, not the request
+slot.** `_artifact_id` is `f"{side}-{hash}"`, so the side is already baked into
+the id and the same file uploaded twice is two corpora. Consequence: two `A-...`
+ids must be REFUSED, because the prompt would have no side B.
+
+**D2 - `skip()` truncates to whatever `top_n` it is handed**, so the degraded
+path must not be handed the reranked number. Call `rerank(top_n=None)` and cut
+afterwards on what actually happened:
+
+```python
+kept = RERANK_TOP_N if ranking.model != SKIP else VECTOR_TOP_N
+```
+
+`Ranking` already carries `model=SKIP`, so the degradation is visible and we cut
+on the visible fact rather than on a guess.
+
+**D3 - two artifacts may hold two different embedders**, because
+`ingest_artifact` picks per artifact. Embed the question once per DISTINCT
+model, and refuse an artifact whose model is not in `MIGRATION` at all.
+
+**D4 - `ask()` has no caller until step 6**, as `write_artifact` had none after
+slice 4. Scaffolding with a scheduled consumer, not dead code.
+
+**THE TRAP THAT LIVES IN STEP 4**, and it is why
+`tests/integration/test_retrieval_to_rerank.py` numbers its chunk ids from 100:
+
+```
+search()  returns  SearchHit.chunk_index   an ID in the corpus
+rerank()  returns  POSITIONS in the list it was handed
+```
+
+`hits[p]` is right. Treating `p` as an id cites the wrong file and line with
+full confidence.
+
+And `UnknownArtifact` and `ModelMismatch` become genuinely reachable the moment
+`search()` has a caller, so they are mapped and come off `ALLOWED_TO_ESCAPE`
+here - at step 4, not step 6 as the build order says.
+
+#### 14.5 What none of this decided
+
+Every number is still slice 8's: `SEARCH_LIMIT`, `RERANK_WINDOW`,
+`VECTOR_TOP_N`, `RERANK_TOP_N`, `SIDE_SHARE`, `OUTLINE_BUDGET`, merged vs per
+side, and whether reranking ships at all. What changed is that each of them is
+now a NAMED CONSTANT with its job written beside it, so a sweep changes one
+number instead of a design.
+
+
+### 15. SLICE 7 IS COMPLETE — steps 4, 5 and 6, 2026-09-14
+
+*The ask path, the assembled rerank chain, and the door that finally takes IDS.
+Two of the defects below were found by the USER reading the code rather than by
+any test, and one of them had been sitting in a test file for weeks.*
+
+```
+804 passed, 4 skipped, 1 xfailed     unit + api + integration, ruff clean
+                                     smoke deliberately not run
+```
+
+#### 15.1 Step 4 — `ask()`, the ladder
+
+```
+ask(conn, a_id, b_id, *, question, client) -> Comparison
+
+1  measure both                    one round trip each, no chunk row moves
+     fits?  yes -> read_chunks both. STUFF: no embed, no search, no rerank
+2  embed the question with EACH artifact's own model, task="query"
+3  search per side, SEARCH_LIMIT = 50
+4  gate: should_rerank(scores)
+5  rerank PER SIDE, never merged; each tier gets its own max_documents
+6  SearchHit / StoredChunk -> Chunk, adding side and artifact_id
+7  select -> build_prompt -> generate
+```
+
+**Three new errors, and each status is an argument rather than a habit.**
+`UnknownArtifactId` is **404** - `StorageUnavailable` is 503 because the
+database being down is OUR failure, while an id we never stored is a fact about
+the REQUEST. `ArtifactSidesClash` is **422** - the side is baked into the id by
+`_artifact_id`, so two `A-` ids is not a comparison and the prompt would have no
+side B to walk.
+
+**`ArtifactChanged` is 409, and it exists because the user refused
+"unreachable".** The draft left `ModelMismatch` in `ALLOWED_TO_ESCAPE`, reasoning
+that we pass `model=` from the very row `search()` checks it against. The user
+said that made no sense. They were right - `measure()` and `search()` are TWO
+round trips, and `write_artifact` DELETES then re-inserts, so re-ingesting an
+artifact with a different embedder moves the model under a request already in
+flight. Nobody's bug, and retrying fixes it, so a 500 would blame us and a 404
+would blame the user.
+
+**`ALLOWED_TO_ESCAPE` is now clear of `store/`.** `RerankError` took its place -
+the rerank chain swallows it per tier and ends in `skip()`, exactly the
+`LLMError` case.
+
+**THE SEARCH PATH WOULD HAVE LIED, and this was caught while designing rather
+than after.** `build_context` sees only the RETRIEVED chunks, and every one of
+them is "kept" - so it rendered *"FILES - every part below is included"* over 20
+rows of an 8,333-part corpus. That is precisely the failure the outline exists
+to prevent. `build_context` now takes `totals`, which `measure()` already
+supplies for free, and a partial side says so in the prompt:
+
+```
+SIDE B — 20 of 8333 parts were retrieved for this question.
+         The rest were NOT searched, and you have not read them.
+```
+
+**`_fits` is deliberately conservative.** It charges the outline its full
+`OUTLINE_BUDGET` even though the ladder usually renders far less, because the
+real cost cannot be known without the headers - and the headers are the thing
+the check exists to avoid fetching. So a corpus near the line is SEARCHED when
+it could have been stuffed. That is the safe direction: a wrong `yes` means
+reading ~14MB over the wire to discover it did not fit.
+
+**`_best` takes its reranker INJECTED** (`rank=`, defaulting to the assembled
+chain), which is what lets the door be tested with no provider at all - the same
+shape `LLMReranker` and `LLMClientDep` already use.
+
+#### 15.2 Step 5 — the chain assembled where both adapters are visible
+
+`api/reranking.py`: `RANKING_CONFIG`, `PROVIDERS`, `_listwise`, `CHAIN`, `rank`.
+
+**IT WAS BUILT AND NOT CONNECTED.** `_best` still defaulted to the bare
+`rerank`, so the ask path would have used ONLY the cross-encoders and never
+reached the four tiers that beat them. A chain built and never bound still
+returns rankings - from the weaker half of the measurement, with nothing to
+report it. `test_the_ask_path_reaches_the_assembled_chain_and_not_the_bare_one`
+now pins it.
+
+**The configuration is worth more than the choice of model:**
+
+```
+gemini-3.5-flash-lite  TUNED    MRR 0.799
+gemini-3.5-flash-lite  UNTUNED  MRR 0.706
+```
+
+0.093 apart - wider than the gap between flash-lite and Cohere's purpose-built
+cross-encoder. Every Gemini tier SHIPS `thinking=MEDIUM` for generation, so
+reusing a `CHAIN` entry unchanged throws most of the gain away and the ranking
+still looks plausible.
+
+**`_listwise` is a FACTORY, not a loop body**, and that is load-bearing.
+Building the lambdas inline would close over the loop VARIABLE, so all four
+tiers would call whichever provider the loop ended on while each still reported
+its own name. The chain would look healthy, one model would answer everything,
+and the measured order would be fiction.
+
+**And the code already existed in `tests/smoke/test_rerankers.py`** - the same
+shape as `GEMMA_4_26B`, working code trapped where production could not reach
+it. The smoke test now imports the production objects, so the weekly liveness
+check exercises what actually ships.
+
+#### 15.3 Step 6 — `/compare` takes ids
+
+```
+once      POST /artifacts   [file]            ->  {"artifact_id": "A-9f2c..."}
+per turn  POST /compare     {a, b, question}  ->  the report
+```
+
+JSON, not multipart, because there are no files left to upload. `question`
+carries NO `min_length` on purpose: a blank one must return through our own
+envelope as `invalid_question`, and a Pydantic constraint would make FastAPI
+answer in ITS shape - two error formats from one endpoint.
+
+`services.compare()` is DELETED; it had no caller once the route used `ask()`.
+
+**413 STAYS, and removing it was my error.** It is reachable two ways:
+`ArtifactsTooLargeToCompare` is a 413 raised inside `_prompt`, which `ask()`
+calls, and `RequestBodyLimitMiddleware` wraps every route.
+
+**A real bug a test caught.** The route passed `questions=` instead of
+`question=` - every `/compare` call would have been a `TypeError` and a 500. It
+was found by the test that asserts the VALUES reach `ask()`, not by the one that
+asserts a 200 comes back.
+
+#### 15.4 The test migration was smaller than 23 tests suggested
+
+`test_compare.py` held 23 tests and **eleven were never about comparing**.
+`read_artifact` is the guard, it is SHARED by both routes, and once `/artifacts`
+existed, testing it through `/compare` was one test per COMBINATION rather than
+one per failure.
+
+```
+MOVED to test_artifacts.py   binary · size limit x2 · empty · pdf ·
+                             scanned pdf · non-ascii · broken notebook
+DELETED as redundant         "a rejected upload never reaches the model" -
+                             at this door the loader runs INSIDE
+                             ingest_artifact, so stubbing it out removes the
+                             very code that does the refusing
+REWRITTEN for ids            11 tests, the new test_compare.py
+REWIRED                      test_api_over_the_chain.py - the store stubbed at
+                             its own door, while the prompt, the chain and the
+                             provider HTTP all stay real
+```
+
+#### 15.5 What slice 7 did NOT do
+
+**`web/app.js` still posts two files to `/compare` and now gets a 422.** The
+page is broken until the frontend is rebuilt, which this file already schedules
+for the END of Step 1 - it was written when an artifact had no identity, and
+rebuilding it before artifacts became real stored things would mean rebuilding
+it twice.
+
+**Every number is still slice 8's**, and each is now a NAMED CONSTANT with its
+job written beside it, so a sweep changes one number instead of a design:
+
+```
+SEARCH_LIMIT 50 · VECTOR_TOP_N 25 · RERANK_TOP_N 10 · SIDE_SHARE 0.5
+OUTLINE_BUDGET 4,000 · per-tier max_documents · merged vs per side
+whether reranking ships at all
+```
+
+**And two measurements this slice ADDED to slice 8's list:** whether the
+per-tier rerank window beats a global cut, and whether `explain_divergence`
+really needs the strongest tier - section 11.9 says session 10 already measured
+model strength out as a cause, and the lean `REPORT` template has never once
+been run on a cheap tier.
+
+
+### 16. SLICE 7 IS CLOSED — the review pass, 2026-09-15
+
+*The twenty-fifth session wrote almost no product code and found three real
+defects. It began by restoring two test files a session rewind had reverted on
+disk, then wrote the tests the repository door shipped without, then swept
+every slice 7 invariant that had never been mutated. Suite **808 -> 843
+passed, 4 skipped, 0 xfailed**, and ~175s where it was ~260s.*
+
+#### 16.1 The rewind, and the rule it produced
+
+The session opened with `test_compare.py` reverted to its `eef2254` version
+and `test_reranking.py` deleted — **on disk only**. Every commit was intact
+and pushed. Hashing the working-tree blob against every commit proved nothing
+unique was in it, and `git checkout --` restored both.
+
+> **After a rewind, check git before rewriting anything.** The restore did not
+> roll the project back — it moved it FORWARD, because the on-disk copy was
+> older than HEAD. The suite went 668+1 failing to 808 passing.
+
+#### 16.2 DEFECT 1 — the suite was spending live rerank quota on every run
+
+The worst finding, and it was **measured, not suspected**. Any test reaching
+the search branch of the ask path went straight to real providers:
+
+```
+Gemini 3.5 Flash-Lite -> 3.1 Flash-Lite -> Gemma 26B -> Gemma 31B
+  -> Cohere -> Voyage -> Cloudflare
+```
+
+CLAUDE.md has said since the slice 6 notes that **tests must never call
+Cohere** — its 1,000 calls a *month* are one bucket shared with chat and
+embed, and it is the rerank primary.
+
+**It hid behind a Python detail worth keeping:**
+
+```python
+def _best(question, hits, *, rank: Callable[..., Ranking] = _rank):
+```
+
+A default argument is evaluated **once, at import time**, so the function
+object is captured. `monkeypatch.setattr(services, "_rank", ...)` rebinds the
+module name and never reaches it. **A path that looked stubbed was not.**
+
+> **Spending quota makes a suite slower, never redder.** Nothing would ever
+> have reported this. It was found by patching `requests.post` to raise and
+> watching four provider URLs scroll past.
+
+**The fix keeps `labpilot.api.reranking.CHAIN` EMPTY for every non-smoke
+test**, via an autouse fixture in `tests/conftest.py`. An empty chain is not a
+mock: `rerank()` walks it, finds nothing, and ends in `skip()`, which is the
+degraded path we already ship. So the default under test is *"no reranker was
+available"*, and a test that wants reranking must supply its own.
+
+`test_no_default_test_can_reach_a_real_reranker` joins the two rules in
+`test_suite_rules.py` that already protect a real cost. Removing the fixture
+fires it **alone** across 750 tests.
+
+#### 16.3 DEFECT 2 — the API lied about how much it had read
+
+Found by the new system test, the first thing to run both doors against each
+other. On the search path:
+
+```
+corpus       120 chunks stored
+the PROMPT   "20 of 8333 parts were retrieved"   <- honest
+the RESPONSE "25 of 25 chunks"                   <- not
+```
+
+`ask()` already computed the true per-side totals and handed them to
+`build_context`. **`Comparison` never carried them**, so the router counted
+the chunks it had in hand and called that the total.
+
+That is the number the page renders to prove the file was really read — and on
+the search path it instead claimed the file was read **whole**. The same
+dishonesty the outline totals were added to prevent, left in place one layer
+up. `Comparison.totals` now carries it and the router prefers it.
+
+> **Fixing a lie in one layer does not fix it in the next.** The prompt and the
+> response are two audiences for one fact, and only one of them had been told.
+
+#### 16.4 DEFECT 3 — a dead line, reported and NOT fixed
+
+In `ingest_source`:
+
+```python
+chunks = tuple(replace(chunk, artifact_id=artifact_id) for chunk in chunks)
+```
+
+Removing it changes nothing. `ChunkRecord` has no `artifact_id` field, `_row`
+takes the id from the `ArtifactRecord`, and grepping `labpilot/` shows **no
+production code reads `Chunk.artifact_id` at all** — every match is a SQL
+column name.
+
+**No test was written for it**, because it has no behaviour to pin. This is
+the case the mutation rule already names: *a mutation that survives is not
+always a bad test; sometimes it is a false claim in the code.*
+
+#### 16.5 What the new tests cover, and what was DELETED
+
+**35 tests added across four levels**, every invariant mutation-tested.
+
+| level | added | the mutation that proves it |
+|---|---|---|
+| unit (`test_ingest.py`) | 6 | hashing the container instead of the file paths breaks the zip-vs-clone test alone |
+| unit (`test_ask.py`) | 5 | `task="document"`, the wrong embedder, a retired model, an outage, and `top_n` handed down |
+| api (`test_artifacts.py`) | 11 | the case fold, the exactly-one-of guard, and each of the four error mappings |
+| integration | 13 | per-file numbering fails four tests with `UniqueViolation: chunks_pkey` |
+
+**Two tests were written and then DELETED for never firing alone** —
+re-uploading the same file, and a 404 for a missing id. Both duplicate tests
+that already exist: one test per COMBINATION rather than one per failure.
+
+**The highest-value single test** is
+`test_two_uploads_then_a_question_produces_a_cited_answer`: the model gives a
+pointer and we read the line back from our own copy **after it has been
+through Postgres**. A dropped header or a shifted `start_line` resolves to the
+wrong line with nothing raising.
+
+Its first fixture could not have caught that. A one-chunk file starts at line
+1, so forcing `start_line=1` broke nothing — proven by the mutation. The
+fixture was widened to two functions, so the cited line sits at **line 56**,
+and the mutation then fires alone.
+
+> **A fixture that cannot fail is worse than no test.** Two shapes cause it in
+> this project: ids numbered from zero (an id is indistinguishable from a
+> position) and a single chunk (a correct offset is indistinguishable from a
+> lost one).
+
+#### 16.6 The mutation sweep steps 4-6 never got
+
+Sections 14-15 record mutations for build steps 1-3 and **none** for 4-6. Six
+were run here. Four fired alone; **two survived**, which is what the exercise
+is for.
+
+| | mutation | result |
+|---|---|---|
+| P1 | the degraded cut uses `RERANK_TOP_N` | fires alone |
+| **P2** | **`top_n` handed DOWN to the chain** | **SURVIVED — gap closed** |
+| P3 | the LLM tiers keep their generation settings | fires alone |
+| P4 | every tier gets the full window | fires alone |
+| **P5** | **`min_length=1` on `question`** | **SURVIVED — gap closed** |
+| P6 | two artifacts from the same slot are accepted | fires alone |
+
+**P2**: `_best`'s docstring says the cut must happen AFTER the call, because
+`skip()` truncates to whatever it is handed. Its test pins the CUT but injects
+its own `rank`, so it never observes the ARGUMENT. A new test records the call.
+
+**P5**: `CompareRequest` documents a deliberate decision — no `min_length`, or
+FastAPI answers in ITS shape and a client parses two error formats from one
+endpoint. The test sent `"  "`, and **two spaces clear a `min_length` of 1**.
+The empty string is the case that pins it, now parametrized in.
+
+> **A docstring recording a decision is not a guard.** Both of these had been
+> written down, believed, and unenforced.
+
+**Three mutations were BROKEN rather than surviving**, and each looked exactly
+like a dead test: deleting an `except` clause left a `try` with no handler (a
+SyntaxError), and two anchors matched zero or three times. `mutate.py` now
+refuses to apply an anchor that is not unique, and prints *"the MUTATION is
+broken, not the test"*.
+
+#### 16.7 What was deliberately NOT added
+
+- **No new smoke test.** The repository door calls no LLM, and its embedder is
+  already covered by `test_embedders.py`. A smoke test would spend quota to
+  prove wiring the integration tests prove for free, and *"do not add tests to
+  raise a number"* binds hardest where the test costs quota.
+- **No fix for the dead line** in 16.4 — reported instead, because deleting
+  production code was not what the review was asked to do.
+- **`MAX_ARCHIVE_BYTES` vs `MAX_UPLOAD_BYTES` is a NAMED OPEN QUESTION.** The
+  archive limit is 10MB and the per-file upload limit is 5MB, so a zip between
+  the two is refused by the upload guard and the archive limit never fires.
+  That is the same shape as the xfail slice 7 just closed, one door further in.
+
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 
 > **It now decides a third thing: exact vs HNSW.** Added 2026-09-05 — see
@@ -12882,6 +14115,8 @@ at all. The outline is that idea, needed early. **Map-reduce summarization** (on
 call per chunk, then one over the summaries) is rejected on cost: 79 calls for
 one file against an OpenRouter cap of 50/day.
 
+**⚠ OVERTURNED 2026-09-14 — see [the selector](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14). The selector shares the leftover instead: A before B leaves A UNCAPPED, so a large reference starves B entirely, and it biases every code-vs-code comparison by upload order. When A fits, the two rules give the identical answer.**
+
 **Filling A before B is the right selector rule — record it for Step 1, do not
 build it now.** Dropping part of B is recoverable, because A still tells us what
 to look for and we can report "not found". Dropping part of A loses a statement
@@ -12955,6 +14190,8 @@ Listing every chunk header costs ~2,400 tokens for the 96-chunk sample pair, and
 about **40,000 tokens for a 2,000-chunk repository** — larger than the whole
 budget. Step 1 must list **files**, not chunks. Recorded here so it is not
 discovered during a demo.
+
+**⚠ OVERTURNED 2026-09-14 — see [the selector](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14). The selector shares the leftover instead: A before B leaves A UNCAPPED, so a large reference starves B entirely, and it biases every code-vs-code comparison by upload order. When A fits, the two rules give the identical answer.**
 
 Related, and also for Step 1: **`select()` should fill A before B.** Dropping part
 of B is recoverable, because A still says what to look for and the answer can be
