@@ -38,6 +38,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**SLICE 7 — the decisions, and the one embedder list**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
 [**Quotas do not predict time — 6 embedders measured**](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) ·
 [**The ask path — stuff, the N/2 rule, per side**](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written) ·
+[**The output budget — 9 decisions**](#11-the-output-budget--nine-decisions-taken-2026-09-14) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -679,7 +680,24 @@ was too cautious.**
 per call, exactly how Gemma stayed broken for weeks. Now pinned by a test.**
 **GLM-5.2 IS STILL DEAD but the refusal CHANGED: 403 `tier_not_allowed` code 1910, not the
 old 429 with `limit: 0`. Cleaner for us — not retryable, never touches `dead_pools`.**
-**Last updated 2026-09-14 (twenty-third session). Branch `feat/selector`, clean at `de3fef3`.**
+**⚠ THE BRANCH LINE BELOW WAS STALE AND IS CORRECTED: pieces 1-3 live on `main`,
+re-committed piece by piece (~34 commits), NOT on `feat/selector`. That branch holds
+an OLDER SQUASHED variant (`de3fef3`, `d8cf62e`) that `main` does not contain - the
+same dead-branch shape as `feat/reranking` after slice 6. Do not resume there.**
+**SECTION 11 RECORDS NINE OUTPUT-BUDGET DECISIONS taken 2026-09-14, four of them the
+user's, two overturning claims this file already made - `max_tokens` vs
+`max_output_tokens` is a GRID whose missing operator is `min()`; check 1 of
+`_check_fits` rests on an assumption MEASURED FALSE on Mistral (200, not an error);
+a thinking preset must restrict the CHAIN, not only the numbers; a scarce tier
+belongs in an expensive chain and NEVER a cheap one; and reserving the strongest
+tier for the report is an ASSUMPTION that session 10 already measured against. See
+[the output budget](#11-the-output-budget--nine-decisions-taken-2026-09-14).**
+**`GEMMA_4_26B` IS NOW IN `llm/registry.py`. It was named in `LLM_RERANK_ORDER`,
+measured second best of everything slice 6 scored, and existed ONLY inside
+`tests/smoke/`, so no production code could build it. Limits read from
+`GET /v1beta/models`: 262,144 in / 32,768 out, identical to the 31B. NOT in `CHAIN` -
+whether it is a good GENERATOR is a separate question with no evidence yet.**
+**Branch `feat/ask-path`, off `main`. Last updated 2026-09-14 (twenty-fourth session).**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
 **`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
@@ -7627,6 +7645,269 @@ where it is expected to land.
 | exact search, no fusion on the query path | whether `wRRF` replaces it — **slice 8** |
 | the reranker RUNS, chain assembled at entry | whether reranking SHIPS — **slice 8** |
 | the search query is the user's question | claim extraction — **Step 2**, and this file already calls the question a bad query |
+
+
+### 11. THE OUTPUT BUDGET — nine decisions, taken 2026-09-14
+
+*Taken with the user during build step 1, which was interrupted by a question
+this file could not answer: "why does raising `max_tokens` hurt a model that
+would never reach it?" It could not answer it because the answer was a defect.
+Four of the nine below are the user's, and two of them overturn something this
+file already said. No code changed; every point is a decision or a debt.*
+
+#### 11.1 `max_tokens` and `max_output_tokens` are a GRID, and the missing operator is `min()`
+
+They are not two versions of one number. They are two axes:
+
+```
+max_tokens         what THIS JOB needs      changes per task, same on every model
+max_output_tokens  what THIS MODEL can do   changes per model, same for every task
+```
+
+Both count the same bar - `T_out = T_think + T_answer`. What differs is who
+owns them. `max_tokens` is SENT in the request; `max_output_tokens` never
+leaves the machine, it is a note we typed into `registry.py`.
+
+Neither can replace the other, because the number actually sent is a CELL:
+
+| | gate (200) | summarize (1,000) | report (32,000) |
+|---|---|---|---|
+| Gemini (65,536) | 200 | 1,000 | 32,000 |
+| Gemma (32,768) | 200 | 1,000 | 32,000 |
+| Devstral (16,384) | 200 | 1,000 | **16,384** |
+| Groq (8,000 total) | 200 | 1,000 | refused on INPUT |
+
+$$
+\text{sent} \;=\; \min\big(\text{what the job needs},\; \text{what the model can do}\big)
+$$
+
+**One number cannot index a grid.** A single global `max_tokens` would reserve
+65,536 tokens on Gemini to write a one-word gate answer - and on Groq, where a
+reservation is charged whether used or not, that is one call per minute instead
+of many. A single per-model `max_tokens` would make Gemini write a 65,536-token
+report and Gemma a 32,768-token one, so a difference between two reports could
+no longer be attributed to the model rather than to the budget. That is the
+same comparability rule that fixed `temperature: 0`.
+
+#### 11.2 CLAMP, not refuse - but only when the number rises
+
+`_check_fits` runs three checks, and only two earn their place:
+
+```
+1  max_tokens > max_output_tokens       -> refuse   <- WEAK
+2  padded > max_input_tokens            -> refuse   <- real, Gemma's 16K/min
+3  padded + max_tokens > context_window -> refuse   <- real, and what stops Groq
+```
+
+**Check 1 rests on an assumption that was later measured FALSE.** Its stated
+reason is *"caught locally instead of costing a request"* - that is, the
+provider would error. Mistral was asked for `max_tokens: 32000` on
+`devstral-2512`, whose cap is 16,384, and answered **200**. It simply wrote
+less.
+
+So for ceiling-style providers, check 1 refuses a call that would have worked.
+Today that is harmless: at `REPORT_MAX_TOKENS = 32_000` it excludes only
+Devstral (genuinely too small, measured) and Groq (already caught by check 3).
+
+**It becomes a real defect the moment the number rises past 32,768**, where it
+would exclude Gemma and Laguna - tiers that serve complete reports right now.
+A tier refused for being able to do exactly what we currently ask of it.
+
+> **THE DECISION: keep the refusal today; if `REPORT_MAX_TOKENS` ever rises,
+> change check 1 to `max_tokens = min(max_tokens, self.max_output_tokens)` in
+> the same commit.**
+
+The defect cannot land silently, and that is why waiting is safe:
+`test_only_known_tiers_cannot_serve_a_full_report` asserts the unable-list is
+EXACTLY `("GPT-OSS 120B (Groq)", "Devstral 2")`, so raising the number turns it
+red and forces the conversation at exactly the right moment. That test is doing
+more work than its name suggests - keep it when the task chains are written.
+
+#### 11.3 The one real loss the refusal costs
+
+When every tier that CAN finish is spent, the chain returns **503 and nothing**
+- where a clamped tier could have returned a truncated report. And truncation
+is already visible: `finish_reason` is on `LLMResult` and the page renders
+`MAX_TOKENS` as a warning, so the objection *"it looks complete"* is answered.
+
+Rare with 23 tiers, and it needs a second pass through a loop that is currently
+simple and well tested. **Recorded, not built.** Fix it only if it happens.
+
+#### 11.4 Four of six providers have NEVER been tested above their cap
+
+| provider | asked above its cap | |
+|---|---|---|
+| Mistral | **200** - caps itself, writes less | measured |
+| Groq | **413** - refuses, writes nothing | measured |
+| Google · OpenRouter · Cloudflare · Cline | **unknown** | never tried |
+
+Two measurements, opposite behaviour, and four blanks. Clamping sidesteps the
+blanks entirely, because a clamped number is one no provider can object to.
+**Do not generalise from either measured provider to the other four.**
+
+#### 11.5 A `HIGH` report cannot fit a 32,768 cap - arithmetic, not policy
+
+$$
+T_{\text{think}} + T_{\text{answer}} \;\le\; C_{\text{out}}
+$$
+
+Measured on `gemini-3.6-flash`: a complete report needs `T_answer` about 5,655,
+and `HIGH` spent `T_think` about 29,747.
+
+$$
+29{,}747 + 5{,}655 = 35{,}402 \;>\; 32{,}768
+$$
+
+So a 32,768-cap tier cannot serve a `HIGH` report at all. **Clamping does not
+rescue it** - clamping only turns a refusal into a truncation. The lever is the
+thinking level, not the budget, and that is measured: at `MEDIUM` the same
+model finished with 2.5x more report.
+
+> **More budget buys more thinking, not more answer.** Raising `max_tokens` to
+> survive reasoning burn treats the symptom. `thinking` is the cause.
+
+Visible even on a trivial prompt - the 2026-09-14 health check, 10 input tokens:
+
+```
+gemini-3.6-flash   STOP, 4 output tokens, 178 THOUGHT tokens
+gemini-3.5-flash   STOP, 4 output tokens, 178 THOUGHT tokens
+```
+
+44x the visible answer, on "say ok", because every Gemini tier ships `MEDIUM`.
+
+#### 11.6 A THINKING PRESET MUST RESTRICT THE CHAIN, NOT ONLY THE NUMBERS
+
+*The user's, and it extends a rule this file already had.* CLAUDE.md said the
+preset must set the level AND `max_tokens` together. It did not say this:
+
+> **Deep is not a dial that exists on every tier.**
+
+Two separate reasons a tier cannot serve it, and neither is about our code:
+
+- **no knob at all.** `REJECTS_THINKING = ("gemma-4-31b-it",)` - Gemma answers
+  **HTTP 400** to a thinking field. It has one mode, so "Deep on Gemma" is not
+  a setting we can offer.
+- **no room.** 11.5 above: thinking plus a finished report over-runs a 32,768
+  cap.
+
+```
+Fast / Balanced   every tier eligible
+Deep              only tiers that (a) have a thinking knob and
+                                  (b) have C_out >= thinking + a finished report
+```
+
+**And the user's better fix for the silent-downgrade risk: build the chain so
+it cannot happen.** Every real *Gemini* model carries a thinking level; only
+Gemma does not, and Gemma is not a Gemini. So a Gemini-only Deep chain has no
+downgrade to warn about - which is this file's own rule, *put a rule where it
+cannot be broken, not where it can be checked*, applied one level up.
+
+#### 11.7 A SCARCE TIER BELONGS IN AN EXPENSIVE CHAIN AND NEVER IN A CHEAP ONE
+
+*The user's.* A Step 2 report is ~10 calls, and the strong models are the
+scarce ones - every Gemini Flash is **20 requests a day**.
+
+```
+correspondence gate (~200 tokens)
+  -> Gemma       HTTP 500     <- measured, about 1 call in 3
+  -> Groq        refused
+  -> Flash-Lite  ok
+  -> ...if the chain continued: Gemini 3.7 Flash
+```
+
+One 200-token gate call would burn **1/20th of the day's report budget**, and
+nothing would report it - the report still works, it just runs out of days
+early. **A quota leak is silent by construction, so it needs a test.**
+
+The partition is comfortable at 23 tiers:
+
+```
+cheap work   Cline x2 (free) · Gemma x4 (57,600/day) · Flash-Lite x4 (2,000/day)
+             Groq (1,000/day, small jobs only) · Mistral (rate-limited, not capped)
+reserved     Gemini Flash x6 (120/day) · OpenRouter x3 (50/day SHARED)
+             Cloudflare GPT-OSS (~11 reports/day)
+```
+
+**The rule is one-directional**: a scarce tier may sit in the report chain, but
+a cheap chain must contain none. Each task chain must still end in something
+that cannot run out.
+
+#### 11.8 THE REPORT CHAIN IS BUILT FROM CAPABILITY, AND DEGRADATION MUST BE VISIBLE
+
+*The user's, and it corrects a loose claim made during the same conversation.*
+"`EXPLAIN_CHAIN = CHAIN`, everything, strong first" is wrong as a description.
+
+For TOKENS the chain already self-filters and it is free - `_check_fits`
+removes Groq and Devstral before any request. **For THINKING there is no filter
+at all**: `_check_fits` knows nothing about reasoning, so a Deep request that
+falls through to Gemma returns a report that is not deep, and nothing says so.
+That is a silent downgrade, which this project bans everywhere else.
+
+```
+report chain = tiers that can ACTUALLY serve THIS report, strong first
+  "can serve" = tokens    <- checked today, free
+              + thinking  <- NOT checked. the gap
+```
+
+The answer is not exclusion. It is the pattern this project already uses twice
+- `skip()` returns `model=SKIP` so a missing rerank is visible, and
+`MAX_TOKENS` renders as a warning so a cut report does not look whole:
+
+> **Degrade, but never silently.**
+
+Note the trap in the other direction: LOWERING `REPORT_MAX_TOKENS` would
+silently let weak tiers into the report chain. The same exact-list test in 11.2
+catches that too.
+
+#### 11.9 DO NOT RESERVE THE STRONGEST TIER FOR THE REPORT ON AN ASSUMPTION
+
+*The user's, and it challenges this file's own line "reserve tier 1 for
+`explain_divergence`, which is the actual product."*
+
+**Model strength was MEASURED and eliminated as the cause of coverage**, in
+this file, in session 10:
+
+> *Position, context and model strength are all eliminated as causes.*
+
+The same model, at LOWER thinking, in ONE call, recovered five findings that
+seventeen comparison runs had never found - once the QUESTION changed. Every
+fix that worked that day was a deletion.
+
+Two more measurements point the same way. Blind spots are **per-model and
+disjoint** - `3.5-flash` never finds #12/#14/#18/#10b, `3.6-flash` never finds
+`SKIP_CONNECTION`/loss-config/CUDA `Event` - and both score 11-13. So a
+different model gives DIFFERENT findings, not more, which argues for VARYING
+the model rather than maximising it. And in slice 6 the cheapest tier won
+outright: `gemini-3.5-flash-lite` at 0.799 beat `gemma-4-31b` (0.732), Voyage,
+and Cohere's purpose-built cross-encoder.
+
+**The one place strength is explicitly required, and it has evidence:**
+cross-language alignment - *"route the alignment reasoning to the top of the
+generator chain, never to a weak tier"* - because the same algorithm in two
+languages looks different and the gate can falsely reject it.
+
+**THE HONEST GAP: the lean `REPORT` template has NEVER been run on a cheap
+tier.** Every report number in this file came from `gemini-3.6-flash` or
+`3.5-flash`. So 11.9 is well supported by adjacent evidence and untested
+directly.
+
+**The measurement is nearly free and slice 8 owes it:**
+
+```
+run the saved lean REPORT prompt, STUFFED, and score against EXPECTED.md on
+    gemini-3.5-flash-lite     500/day pool
+    gemma-4-31b-it         14,400/day pool
+```
+
+Two requests, on pools that cannot run out. If either scores near 13/19, the
+payoff is large: **reports stop being capped at ~20 a day.**
+
+#### What section 11 does NOT change
+
+No code. `REPORT_MAX_TOKENS` stays **32,000**, measured to work at `MEDIUM`.
+Check 1 stays a refusal. Every task chain named here belongs to **Step 2**, and
+the Fast/Balanced/Deep control belongs to **Step 3**. The only thing that moved
+today is that nine decisions are written down instead of being re-derived.
 
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
