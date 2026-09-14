@@ -1,31 +1,65 @@
+/* LabPilot - one stylesheet, no build step, no web fonts.
+   Step 3 replaces this with the real TypeScript app. */
+
 :root {
   color-scheme: light dark;
 
-  --bg: #fdfdfc;
-  --fg: #1a1a1a;
-  --muted: #666666;
-  --line: #d8d8d8;
-  --panel: #f6f6f5;
-  --raised: #ffffff;
-  --accent: #2f5fd0;
-  --good: #1f7a45;
-  --warn: #9a4b00;
-  --error: #a01919;
-  --radius: 10px;
+  --bg: #fbfbfa;
+  --bg-tint: #f2f3f7;
+  --panel: #ffffff;
+  --sunken: #f5f6f8;
+  --fg: #16181d;
+  --muted: #6b7280;
+  --faint: #9aa1ac;
+  --line: #e3e5ea;
+  --line-soft: #eceef2;
+
+  --accent: #4f46e5;
+  --accent-2: #0ea5e9;
+  --accent-soft: #eef2ff;
+  --good: #0f7a48;
+  --good-soft: #e7f6ee;
+  --warn: #9a5b00;
+  --warn-soft: #fdf1df;
+  --error: #b4232b;
+  --error-soft: #fdeced;
+
+  --r-lg: 16px;
+  --r-md: 11px;
+  --r-sm: 8px;
+
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 5%);
+  --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 8%), 0 2px 6px -2px rgb(16 24 40 / 5%);
+  --shadow-lg: 0 18px 40px -12px rgb(16 24 40 / 18%);
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16181c;
-    --fg: #e8e8e8;
-    --muted: #9aa0a6;
-    --line: #33373d;
-    --panel: #1e2126;
-    --raised: #232730;
-    --accent: #7aa2f7;
-    --good: #6cc796;
-    --warn: #e0a458;
-    --error: #f07178;
+    --bg: #0e1014;
+    --bg-tint: #12151b;
+    --panel: #171a21;
+    --sunken: #1d2129;
+    --fg: #e9eaee;
+    --muted: #98a1af;
+    --faint: #6d7684;
+    --line: #262b34;
+    --line-soft: #1f242c;
+
+    --accent: #818cf8;
+    --accent-2: #38bdf8;
+    --accent-soft: #1c2030;
+    --good: #5fd39b;
+    --good-soft: #14251d;
+    --warn: #e5a75a;
+    --warn-soft: #2a2115;
+    --error: #f2777f;
+    --error-soft: #2a1619;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow-md: 0 6px 16px -4px rgb(0 0 0 / 50%);
+    --shadow-lg: 0 24px 48px -16px rgb(0 0 0 / 65%);
   }
 }
 
@@ -34,28 +68,61 @@
 }
 
 body {
+  position: relative;
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 4rem;
-  max-width: 54rem;
+  padding: 3rem 1.25rem 5rem;
+  max-width: 58rem;
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A soft wash behind the header, so the page is not a flat sheet. */
+.glow {
+  position: fixed;
+  inset: -20vh -10vw auto;
+  height: 60vh;
+  background:
+    radial-gradient(38rem 22rem at 20% 0%, color-mix(in oklab, var(--accent) 16%, transparent), transparent 70%),
+    radial-gradient(34rem 20rem at 78% 8%, color-mix(in oklab, var(--accent-2) 13%, transparent), transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* --- header ------------------------------------------------------------- */
+
+.brand {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+  margin-bottom: 2.25rem;
+}
+
+.mark {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  box-shadow: var(--shadow-md);
 }
 
 h1 {
   margin: 0;
-  font-size: 1.7rem;
-  letter-spacing: -0.02em;
+  font-size: 1.55rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
 }
 
-header p {
-  margin: 0.35rem 0 2rem;
+.brand p {
+  margin: 0.1rem 0 0;
   color: var(--muted);
+  font-size: 0.93rem;
 }
 
 .hint {
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.84rem;
 }
 
 /* --- the two slots ------------------------------------------------------ */
@@ -66,59 +133,167 @@ header p {
   grid-template-columns: 1fr 1fr;
 }
 
-@media (max-width: 42rem) {
+@media (max-width: 44rem) {
   .slots {
     grid-template-columns: 1fr;
   }
 }
 
 .slot {
-  padding: 1.1rem;
+  padding: 1.15rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.slot[data-status="ready"] {
+  border-color: color-mix(in oklab, var(--good) 45%, var(--line));
+  box-shadow: var(--shadow-md);
+}
+
+.slot[data-status="error"] {
+  border-color: color-mix(in oklab, var(--error) 45%, var(--line));
+}
+
+.slot[data-status="working"] {
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+}
+
+.slot-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.7rem;
+  align-items: start;
+  /* Holds the two drop zones on one line when one hint wraps and the
+     other does not. */
+  min-height: 3.4rem;
+  margin-bottom: 1rem;
+}
+
+.badge {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .slot h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.slot .hint {
-  margin: 0.25rem 0 0.9rem;
+.slot-head .hint {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  /* Reserve two lines in BOTH cards. One hint wraps and the other does not,
+     which otherwise leaves the two drop zones a few pixels out of line. */
+  min-height: 2.32rem;
 }
 
-.slot.busy {
-  opacity: 0.75;
+.check {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--good);
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.22s var(--ease), transform 0.22s var(--ease);
 }
+
+.check svg {
+  width: 14px;
+  height: 14px;
+}
+
+.slot[data-status="ready"] .check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* --- the drop zone ------------------------------------------------------ */
 
 .drop {
   display: grid;
+  gap: 0.5rem;
   place-items: center;
-  padding: 1.4rem 1rem;
+  padding: 1.35rem 1rem;
   border: 1.5px dashed var(--line);
-  border-radius: var(--radius);
-  background: var(--raised);
+  border-radius: var(--r-md);
+  background: var(--sunken);
   color: var(--muted);
   font-size: 0.85rem;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color 0.18s var(--ease), color 0.18s var(--ease),
+    background 0.18s var(--ease), transform 0.18s var(--ease);
 }
 
-.drop:hover,
-.drop.over {
+.drop:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.drop.over {
+  border-color: var(--accent);
+  border-style: solid;
+  color: var(--accent);
+  background: var(--accent-soft);
+  transform: scale(1.015);
+}
+
+.drop-icon {
+  width: 22px;
+  height: 22px;
+  opacity: 0.8;
+}
+
+.drop-text {
+  font-weight: 500;
+}
+
+@media (max-width: 26rem) {
+  .sep {
+    display: none;
+  }
 }
 
 .or {
-  margin: 0.6rem 0;
-  color: var(--muted);
-  font-size: 0.75rem;
-  text-align: center;
+  display: grid;
+  place-items: center;
+  margin: 0.85rem 0;
+  position: relative;
+}
+
+.or::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.or span {
+  position: relative;
+  padding: 0 0.6rem;
+  background: var(--panel);
+  color: var(--faint);
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 
 .url {
@@ -129,21 +304,25 @@ header p {
 .url input {
   flex: 1;
   min-width: 0;
+  font-size: 0.85rem;
 }
 
 .url button {
-  margin: 0;
-  padding: 0.45rem 0.8rem;
-  background: transparent;
+  flex: none;
+  padding: 0 0.85rem;
   border: 1px solid var(--line);
+  background: transparent;
   color: var(--fg);
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 0.84rem;
+  font-weight: 550;
+  box-shadow: none;
 }
 
 .url button:hover {
   border-color: var(--accent);
+  background: var(--accent-soft);
   color: var(--accent);
+  transform: none;
 }
 
 /* --- what the server stored -------------------------------------------- */
@@ -151,11 +330,10 @@ header p {
 .state {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.35rem;
   align-items: center;
-  margin: 0.9rem 0 0;
-  min-height: 1.4rem;
-  font-size: 0.8rem;
+  margin: 0.95rem 0 0;
+  font-size: 0.78rem;
 }
 
 .state:empty {
@@ -164,52 +342,77 @@ header p {
 
 .state.working {
   color: var(--muted);
-}
-
-.state.good {
-  color: var(--good);
+  font-style: italic;
 }
 
 .state.bad {
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--r-sm);
+  background: var(--error-soft);
   color: var(--error);
+  font-weight: 500;
 }
 
 .artifact-id {
-  color: var(--muted);
+  padding: 0.12rem 0.4rem;
+  border-radius: 5px;
+  background: var(--sunken);
+  color: var(--faint);
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
 /* --- the question ------------------------------------------------------- */
 
-.question {
-  display: block;
+.askbox {
   margin-top: 1rem;
-  padding: 1.1rem;
+  padding: 1.25rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   background: var(--panel);
+  box-shadow: var(--shadow-sm);
 }
 
 .label {
   display: block;
+  font-size: 0.95rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sublabel {
+  display: block;
+  margin-top: 0.1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 input,
 textarea {
-  padding: 0.5rem;
+  padding: 0.55rem 0.7rem;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg);
+  border-radius: var(--r-sm);
+  background: var(--bg-tint);
   color: var(--fg);
   font: inherit;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+
+input::placeholder {
+  color: var(--faint);
+}
+
+input:hover,
+textarea:hover {
+  border-color: color-mix(in oklab, var(--accent) 30%, var(--line));
 }
 
 textarea {
+  display: block;
   width: 100%;
-  margin-top: 0.5rem;
+  margin-top: 0.7rem;
   font-size: 0.95rem;
+  line-height: 1.55;
   resize: vertical;
 }
 
@@ -218,63 +421,161 @@ textarea {
   outline-offset: 2px;
 }
 
+input:focus,
+textarea:focus {
+  border-color: var(--accent);
+  background: var(--panel);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.9rem;
   align-items: center;
-  margin-top: 1rem;
+  margin-top: 1.1rem;
 }
 
 button {
-  padding: 0.6rem 1.4rem;
+  padding: 0.62rem 1.5rem;
   border: 0;
-  border-radius: 6px;
-  background: var(--accent);
-  color: #ffffff;
+  border-radius: var(--r-sm);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
   font: inherit;
   font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease),
+    opacity 0.15s var(--ease);
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 button:disabled {
-  opacity: 0.45;
+  background: var(--sunken);
+  color: var(--faint);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
+/* --- waiting ------------------------------------------------------------ */
+
+/* A `display` rule beats [hidden]'s display:none, so say so explicitly.
+   Without this the loading dots sit on the page before anything is asked. */
+[hidden] {
+  display: none !important;
+}
+
 #status {
-  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  margin-top: 1.6rem;
   color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.dots {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  transform: translateY(-2px);
+}
+
+.dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: pulse 1.15s var(--ease) infinite;
+}
+
+.dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes pulse {
+  0%,
+  70%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* --- the report --------------------------------------------------------- */
 
+#result {
+  animation: rise 0.3s var(--ease);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
 .meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.45rem;
   margin: 2rem 0 1rem;
 }
 
 .tag {
-  padding: 0.2rem 0.6rem;
+  padding: 0.24rem 0.7rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
-  font-size: 0.8rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
 }
 
 .tag.warn {
-  border-color: var(--warn);
+  border-color: color-mix(in oklab, var(--warn) 40%, transparent);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.state.good .tag {
+  border-color: color-mix(in oklab, var(--good) 30%, transparent);
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.state.good .tag.warn {
+  border-color: color-mix(in oklab, var(--warn) 40%, transparent);
+  background: var(--warn-soft);
   color: var(--warn);
 }
 
 pre {
-  padding: 1rem;
+  margin: 0;
+  padding: 1.25rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   background: var(--panel);
-  font: 0.85rem/1.55 ui-monospace, "Cascadia Code", Consolas, monospace;
+  box-shadow: var(--shadow-sm);
+  font: 0.83rem/1.7 ui-monospace, "Cascadia Code", Consolas, monospace;
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-x: auto;
@@ -282,39 +583,81 @@ pre {
 
 details {
   margin-top: 1rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel);
 }
 
 summary {
   cursor: pointer;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 
+summary::marker {
+  color: var(--faint);
+}
+
 #citations {
-  padding-left: 1.1rem;
-  font-size: 0.85rem;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.84rem;
 }
 
 #citations li {
-  margin-top: 0.3rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+#citations li:first-child {
+  border-top: 0;
 }
 
 #citations code {
-  color: var(--muted);
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+/* --- failure ------------------------------------------------------------ */
+
+#failure {
+  margin-top: 1.5rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid color-mix(in oklab, var(--error) 35%, var(--line));
+  border-radius: var(--r-lg);
+  background: var(--error-soft);
 }
 
 #failure h2 {
-  margin-bottom: 0.25rem;
+  margin: 0 0 0.3rem;
   color: var(--error);
-  font-size: 1.05rem;
+  font-size: 0.95rem;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+#failure p {
+  margin: 0.2rem 0;
 }
 
 .request-id {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+#failure-attempts {
+  margin: 0.6rem 0 0;
+  padding-left: 1.1rem;
   color: var(--muted);
   font-size: 0.8rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
     transition: none !important;
   }
 }

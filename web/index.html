@@ -7,9 +7,31 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div class="glow" aria-hidden="true"></div>
+
     <header>
-      <h1>LabPilot</h1>
-      <p>Compares two pieces of work and explains why their results diverge.</p>
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="var(--accent)" />
+              <stop offset="1" stop-color="var(--accent-2)" />
+            </linearGradient>
+          </defs>
+          <rect x="1" y="1" width="30" height="30" rx="9" fill="url(#g)" />
+          <path
+            d="M9 21.5 14 10.5M23 21.5 18 10.5M11.4 17h9.2"
+            stroke="#fff"
+            stroke-width="2.1"
+            stroke-linecap="round"
+            fill="none"
+          />
+        </svg>
+        <div>
+          <h1>LabPilot</h1>
+          <p>Compares two pieces of work and explains why their results diverge.</p>
+        </div>
+      </div>
     </header>
 
     <!-- TWO DOORS, and the page has to show that shape.
@@ -19,16 +41,44 @@
          sends only IDS - nothing is re-read, re-chunked or re-embedded when
          you ask a second question. -->
     <section class="slots">
-      <article class="slot" data-side="A">
-        <h2>A &mdash; the reference</h2>
-        <p class="hint">What SAYS what should happen: a paper, spec or README.</p>
+      <article class="slot" data-side="A" data-status="empty">
+        <header class="slot-head">
+          <span class="badge">A</span>
+          <div>
+            <h2>The reference</h2>
+            <p class="hint">What SAYS what should happen &mdash; a paper, spec or README.</p>
+          </div>
+          <span class="check" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <path
+                d="M3.5 8.5 6.5 11.5 12.5 5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+        </header>
 
         <label class="drop" data-drop>
           <input type="file" data-file hidden />
-          <span class="drop-text">Choose a file, or drop one here</span>
+          <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="drop-text">Choose a file<span class="sep"> or drop it here</span></span>
         </label>
 
-        <div class="or">or</div>
+        <div class="or"><span>or</span></div>
+
         <form class="url" data-url-form>
           <input
             type="url"
@@ -42,16 +92,44 @@
         <p class="state" data-state aria-live="polite"></p>
       </article>
 
-      <article class="slot" data-side="B">
-        <h2>B &mdash; the implementation</h2>
-        <p class="hint">What actually RUNS: a file, a .zip, or a repository.</p>
+      <article class="slot" data-side="B" data-status="empty">
+        <header class="slot-head">
+          <span class="badge">B</span>
+          <div>
+            <h2>The implementation</h2>
+            <p class="hint">What actually RUNS &mdash; a file, a .zip, or a repository.</p>
+          </div>
+          <span class="check" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <path
+                d="M3.5 8.5 6.5 11.5 12.5 5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+        </header>
 
         <label class="drop" data-drop>
           <input type="file" data-file hidden />
-          <span class="drop-text">Choose a file, or drop one here</span>
+          <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="drop-text">Choose a file<span class="sep"> or drop it here</span></span>
         </label>
 
-        <div class="or">or</div>
+        <div class="or"><span>or</span></div>
+
         <form class="url" data-url-form>
           <input
             type="url"
@@ -68,21 +146,27 @@
 
     <!-- Prefilled and EDITABLE, never a placeholder: this text is also the
          retrieval query, so the user must see what will be asked. v1. -->
-    <form id="ask">
+    <form id="ask" class="askbox">
       <label class="question">
         <span class="label">Question</span>
+        <span class="sublabel">
+          This text is also the search query, so it decides what gets retrieved.
+        </span>
         <textarea id="question" name="question" rows="2" required>
 Compare these and explain why the results diverge.</textarea
         >
       </label>
 
       <div class="actions">
-        <button id="compare" type="submit" disabled>Compare</button>
+        <button id="compare" type="submit" disabled>
+          <span class="button-label">Compare</span>
+        </button>
         <span id="ready" class="hint"></span>
       </div>
     </form>
 
-    <p id="status" hidden></p>
+    <p id="status" hidden><span class="dots"><i></i><i></i><i></i></span
+      ><span id="status-text"></span></p>
 
     <section id="result" hidden>
       <div id="meta" class="meta"></div>

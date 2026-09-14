@@ -63,7 +63,7 @@ async function upload(slot, side, source) {
 
   stored[side] = null;
   refreshReady();
-  slot.classList.add("busy");
+  slot.dataset.status = "working";
   state.className = "state working";
   state.textContent = `Reading ${label}…`;
 
@@ -77,19 +77,21 @@ async function upload(slot, side, source) {
     const payload = await response.json();
 
     if (!response.ok) {
+      slot.dataset.status = "error";
       state.className = "state bad";
       state.textContent = `${payload.error.code}: ${payload.error.message}`;
       return;
     }
 
     stored[side] = payload;
+    slot.dataset.status = "ready";
     state.className = "state good";
     state.replaceChildren(...describe(payload));
   } catch (error) {
+    slot.dataset.status = "error";
     state.className = "state bad";
     state.textContent = String(error);
   } finally {
-    slot.classList.remove("busy");
     refreshReady();
   }
 }
@@ -146,7 +148,7 @@ ask.addEventListener("submit", async (event) => {
   hide(failure);
   compareButton.disabled = true;
   status.hidden = false;
-  status.textContent =
+  document.getElementById("status-text").textContent =
     "Waiting on the model. A full report usually takes about a minute, and the " +
     "chain may fall through several tiers before one answers.";
 
