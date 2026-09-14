@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Form, UploadFile, status
 
 from labpilot.api import services
-from labpilot.api.errors import StorageUnavailable
+from labpilot.api.contracts import Ingested
+from labpilot.api.errors import (
+    SourceTooLargeToIngest,
+    StorageUnavailable,
+    UnreadableSource,
+    UnsafeArchiveUpload,
+)
 from labpilot.api.schemas import ErrorEnvelope, IngestResponse
 from labpilot.api.uploads import read_artifact
 from labpilot.ingest import Side
+from labpilot.sources import (
+    CloneFailed,
+    SourceNotFound,
+    SourceTooLarge,
+    UnsafeArchive,
+    UnsupportedURL,
+    open_git,
+    open_zip,
+)
 from labpilot.store import ConnectionFailed, NotConfigured, connect
 
 router = APIRouter(tags=["artifacts"])
@@ -37,31 +54,42 @@ FAILURES = {
 )
 def ingest(
     side: Annotated[Side, Form()],
-    file: UploadFile,
+    file: UploadFile | None = None,
+    url: Annotated[str | None, Form()] = None,
 ) -> IngestResponse:
-    """Chunk, embed and store one file.
+    """Chunk, embed and store ONE artifact: a file, a .zip, or a git URL.
 
-    This door exists so artifacts can be STATE rather than input. Under the
-    old single endpoint every question re-chunked and re-embedded both files -
-    measured, 166 minutes per question for a FastAPI-sized repository. Here it
-    is paid once.
+    This door exists so artifacts can be STATE rather than input. Under the old
+    single endpoint every question re-chunked and re-embedded both sides -
+    measured at about fifteen minutes per question for a FastAPI-sized
+    repository. Here it is paid once.
 
-    It reports `slow` and does not wait: asking a human is the UI's job, and
-    an HTTP handler that blocks on a person is a handler that times out.
+    All three inputs collapse to the same shape after one step:
+
+        a single file  ->  bytes   ->  chunk   ->  embed  ->  pgvector
+        a .zip         ->  a folder on disk ->  walk  ->  ...
+        a git URL      ->  a shallow clone  ->  walk  ->  ...
+
+    Only "get me the files" differs; everything downstream is shared, which is
+    why `_store` exists rather than three copies of the write path.
+
+    It reports `slow` and does not wait: asking a human is the UI's job, and an
+    HTTP handler that blocks on a person is one that times out.
     """
+    if (file is None) == (url is None):
+        raise UnreadableSource("send exactly one of `file` or `url`")
 
-    artifact = read_artifact(file, field="file")
-
-    # The connection is opened HERE, not inside ingest_artifact, because
-    # store/'s own functions all take one - so this is the layer that has to
-    # own reaching the database, and mapping the two ways that fails.
     try:
         with connect() as conn:
-            result = services.ingest_artifact(
-                conn, artifact.raw, name=artifact.name, side=side, field="file"
-            )
+            result = _ingest(conn, side, file, url)
     except (NotConfigured, ConnectionFailed) as exc:
         raise StorageUnavailable(str(exc)) from exc
+    except SourceTooLarge as exc:
+        raise SourceTooLargeToIngest(str(exc)) from exc
+    except UnsafeArchive as exc:
+        raise UnsafeArchiveUpload(str(exc)) from exc
+    except (CloneFailed, SourceNotFound, UnsupportedURL) as exc:
+        raise UnreadableSource(str(exc)) from exc
 
     return IngestResponse(
         artifact_id=result.artifact.id,
@@ -72,3 +100,30 @@ def ingest(
         embedding_minutes=result.embedding_minutes,
         slow=result.embedding_minutes > services.WARN_MINUTES,
     )
+
+
+def _ingest(conn, side: Side, file: UploadFile | None, url: str | None) -> Ingested:
+    """One of three openers, then the same store path.
+
+    The connection is opened by the CALLER, not here, because every function in
+    store/ takes one - so the route is the layer that owns reaching the
+    database and mapping the two ways that fails.
+    """
+    if url is not None:
+        with open_git(url) as source:
+            return services.ingest_source(conn, source, side=side)
+
+    artifact = read_artifact(file, field="file")
+    if not artifact.name.lower().endswith(".zip"):
+        return services.ingest_artifact(
+            conn, artifact.raw, name=artifact.name, side=side, field="file"
+        )
+
+    # open_zip takes a PATH, because a zip is read entry by entry rather than
+    # held whole - which is also what lets it refuse a bomb from the header
+    # before decompressing a single byte.
+    with tempfile.TemporaryDirectory(prefix="labpilot-") as temporary:
+        archive = Path(temporary) / artifact.name
+        archive.write_bytes(artifact.raw)
+        with open_zip(archive) as source:
+            return services.ingest_source(conn, source, side=side)
