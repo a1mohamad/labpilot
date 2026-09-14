@@ -6,7 +6,12 @@ which are the ones that fail SILENTLY rather than loudly.
 
 from __future__ import annotations
 
+import pytest
+
 from labpilot.api import services
+from labpilot.api.errors import EmbeddingUnavailable
+from labpilot.embed import EmbeddingError
+from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.rerank import SKIP, Ranking
 from labpilot.store import SearchHit
 
@@ -78,3 +83,97 @@ def test_a_real_reranker_cuts_to_the_reranked_number():
 def test_nothing_found_is_not_an_error():
     """An empty result is an answer. Reranking nothing would be a ValueError."""
     assert services._best("q", ()) == []
+
+
+# --- the query embed: which model, which task, and how it fails -------------
+
+
+class FakeEmbedder:
+    """Records what it was asked for. Nothing here reaches a provider."""
+
+    def __init__(self, model: str, value: float = 1.0) -> None:
+        self.model = model
+        self.name = f"Fake {model}"
+        self.value = value
+        self.calls: list[tuple[tuple[str, ...], str]] = []
+
+    def embed(self, texts, *, task: str = "document"):
+        self.calls.append((tuple(texts), task))
+        return EmbeddingBatch(
+            vectors=((self.value, 0.0, 0.0),),
+            model=self.model,
+            dim=3,
+            prompt_tokens=0,
+        )
+
+
+def only(monkeypatch, *embedders: FakeEmbedder) -> None:
+    monkeypatch.setattr(services, "MIGRATION", tuple(embedders))
+
+
+def test_a_question_is_embedded_as_a_QUERY_and_never_as_a_document(monkeypatch):
+    """A question is a REQUEST; a chunk is a STATEMENT.
+
+    The providers that model that asymmetry rank measurably better for it, and
+    getting it wrong costs NOTHING VISIBLE - the search still returns fifty
+    rows, just worse ones. Nothing raises, so only a test can hold it.
+    """
+    embedder = FakeEmbedder("codestral-embed")
+    only(monkeypatch, embedder)
+
+    services._embed_question("why do they diverge?", model="codestral-embed")
+
+    ((texts, task),) = embedder.calls
+    assert task == "query"
+    assert texts == ("why do they diverge?",)
+
+
+def test_the_question_goes_to_the_embedder_THAT_MATCHES_the_stored_model(monkeypatch):
+    """Two artifacts may hold two different embedders, and mixing is allowed.
+
+    The lookup is by model NAME, not by position, so the corpus decides. Using
+    the first embedder in MIGRATION instead would put the question in a
+    different vector space from the rows it is compared against - and cosine
+    similarity across two spaces is noise that still sorts and still returns
+    a confident top fifty.
+    """
+    first = FakeEmbedder("codestral-embed", value=1.0)
+    second = FakeEmbedder("mistral-embed", value=2.0)
+    only(monkeypatch, first, second)
+
+    vector = services._embed_question("a question", model="mistral-embed")
+
+    assert vector == (2.0, 0.0, 0.0)
+    assert first.calls == [], "the wrong space must not be asked"
+    assert len(second.calls) == 1
+
+
+def test_a_corpus_whose_embedder_is_gone_is_refused_and_not_searched_anyway(
+    monkeypatch,
+):
+    """MIGRATION is a migration ORDER, and models leave it.
+
+    A corpus stored with a model we no longer carry cannot be questioned at
+    all - there is no way to put the question in its space. Falling back to
+    any other embedder would search noise and answer confidently, so the only
+    honest outcome is a refusal that names the model.
+    """
+    only(monkeypatch, FakeEmbedder("codestral-embed"))
+
+    with pytest.raises(EmbeddingUnavailable, match="retired-embed"):
+        services._embed_question("a question", model="retired-embed")
+
+
+def test_an_embedder_that_fails_is_OUR_outage_not_the_users_mistake(monkeypatch):
+    """EmbeddingError is not an ApiError, so unmapped it reaches the 500
+    handler and reads as our bug. It IS our bug in a sense - the provider is
+    down - but the caller needs a 503 that says so, not an opaque 500."""
+
+    class Broken(FakeEmbedder):
+        def embed(self, texts, *, task="document"):
+            raise EmbeddingError("codestral is down")
+
+    only(monkeypatch, Broken("codestral-embed"))
+
+    with pytest.raises(EmbeddingUnavailable, match="codestral is down"):
+        services._embed_question("a question", model="codestral-embed")
