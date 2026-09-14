@@ -54,3 +54,17 @@ class GenerationUnavailable(ApiError):
     def __init__(self, message: str, *, attempts: tuple[Attempt, ...]) -> None:
         super().__init__(message)
         self.attempts = attempts
+
+
+class EmbeddingUnavailable(ApiError):
+    status = 503
+    code = "embedding_unavailable"
+
+
+class StorageUnavailable(ApiError):
+    # 503, never 404. The database being unreachable is OUR infrastructure
+    # failing, the same class as AllFreeTiersExhausted - the user's file was
+    # fine. A 404 would tell them their upload was not found, which is a lie
+    # about whose fault it is.
+    status = 503
+    code = "storage_unavailable"
