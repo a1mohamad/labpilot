@@ -38,33 +38,18 @@ ALLOWED_TO_ESCAPE: dict[str, str] = {
     # it cannot reach api/. AllFreeTiersExhausted is the one that does escape,
     # and services.py catches it.
     "LLMError": "the fallback chain swallows it inside LLMClient",
-    # chunk_source() lives in services.py but NO route calls it - the endpoint
-    # still accepts two uploaded files only. Slice 7 wires the repository door
-    # and must map these first, or an oversized repo becomes a 500 that blames
-    # us for the user's input.
-    "SourceError": "chunk_source has no caller yet - slice 7 must map it",
-    "CloneFailed": "chunk_source has no caller yet - slice 7 must map it",
-    "SourceNotFound": "chunk_source has no caller yet - slice 7 must map it",
-    "SourceTooLarge": "chunk_source has no caller yet - slice 7 must map it",
-    "UnsafeArchive": "chunk_source has no caller yet - slice 7 must map it",
-    "UnsupportedURL": "chunk_source has no caller yet - slice 7 must map it",
-    # store/ arrived with ingest_artifact, which imports it for write_artifact.
-    # None of these can fire there, for two separate reasons:
-    #
-    #   the CONNECTION is passed in, so opening it - and failing to - happens
-    #   in the caller. Piece 3 opens one inside the route and maps both.
-    #
-    #   search() is what raises the other two, and nothing calls search() yet.
-    #
-    # Catching them now would be a handler with no caller, which this project
-    # treats as dead code. They come off this list in pieces 3 and 4, and
-    # test_the_escape_list_does_not_outlive_its_reason deletes the excuse by
-    # itself if store/ ever stops being imported.
     # rerank() catches this PER TIER and walks to the next one, ending in
     # skip() rather than an exception - so it cannot reach api/ at all. Exactly
     # the LLMError case: a chain that degrades on purpose swallows its own
     # failures, and the degradation is visible as Ranking.model == SKIP.
     "RerankError": "the rerank chain swallows it and ends in skip()",
+    # Slice 7 wired the repository door, so every concrete source failure is
+    # now mapped: SourceTooLarge -> 413, UnsafeArchive -> 422, and the three
+    # ways a source will not open -> 422. Only the base class is left, and
+    # nothing raises it.
+    "SourceError": (
+        "never raised directly - only its subclasses are, and all are caught"
+    ),
     "StoreError": (
         "never raised directly - only its subclasses are, and both are caught"
     ),

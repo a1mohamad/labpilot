@@ -95,3 +95,27 @@ class ArtifactChanged(ApiError):
     # it, so the status has to say that.
     status = 409
     code = "artifact_changed"
+
+
+class SourceTooLargeToIngest(ApiError):
+    # 413, the same class as an oversized upload: the repository really is too
+    # big for us. Refuse rather than truncate - half a corpus searched silently
+    # returns confident wrong answers, which is worse than a rejection.
+    status = 413
+    code = "source_too_large"
+
+
+class UnsafeArchiveUpload(ApiError):
+    # 422. CPython's zipfile already strips `..` and drive letters, measured -
+    # so the danger is not escape, it is the SILENT REWRITE that follows. A
+    # zip bomb is the other half: 48KB declaring 50MB.
+    status = 422
+    code = "unsafe_archive"
+
+
+class UnreadableSource(ApiError):
+    # 422 for every remaining way a source will not open: a URL we refuse, a
+    # clone that failed, a path that is not there. All are facts about the
+    # REQUEST, and all are things the caller can fix.
+    status = 422
+    code = "unreadable_source"

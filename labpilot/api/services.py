@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import replace
 
 import psycopg
 
@@ -109,6 +110,40 @@ def ingest_artifact(
     artifact_id = _artifact_id(raw, side)
     chunks = _cut_bytes(raw, name=name, side=side, artifact_id=artifact_id, field=field)
 
+    return _store(conn, chunks, artifact_id=artifact_id, name=name, side=side)
+
+
+def ingest_source(conn: psycopg.Connection, source: Source, *, side: Side) -> Ingested:
+    """A whole folder, archive or repository, stored as ONE artifact.
+
+    The walk counts what it skipped rather than dropping it - a repository is
+    the case where one unreadable file used to abort the entire ingest, twice,
+    silently, because a generator stops at the first raise.
+    """
+    chunks = tuple(chunk_source(source, side=side))
+    if not chunks:
+        raise EmptyArtifact(f"{source.name} holds no text we can read")
+
+    artifact_id = _source_id(chunks, side)
+    chunks = tuple(replace(chunk, artifact_id=artifact_id) for chunk in chunks)
+
+    return _store(conn, chunks, artifact_id=artifact_id, name=source.name, side=side)
+
+
+def _store(
+    conn: psycopg.Connection,
+    chunks: Sequence[Chunk],
+    *,
+    artifact_id: str,
+    name: str,
+    side: Side,
+) -> Ingested:
+    """Pick an embedder, embed, and write - shared by both ingest doors.
+
+    Extracted when the repository door arrived rather than duplicated, because
+    the two doors differ ONLY in how they get chunks. Slice 3 was bitten twice
+    by two doors drifting apart on exactly this kind of shared step.
+    """
     tokens = sum(estimate_tokens(chunk.embed_text) for chunk in chunks)
     embedder, minutes = _pick_embedder(tokens=tokens, chunks=len(chunks))
     artifact = ArtifactRecord(
@@ -123,7 +158,23 @@ def ingest_artifact(
         written = write_artifact(conn, artifact, _records(embedder, chunks))
     except EmbeddingError as exc:
         raise EmbeddingUnavailable(f"{embedder.name}: {exc}") from exc
+
     return Ingested(artifact=artifact, chunks=written, embedding_minutes=minutes)
+
+
+def _source_id(chunks: Sequence[Chunk], side: Side) -> str:
+    """The CONTENT decides the id, as it does for a single file.
+
+    Hashed from what was really read - each file's path and text - rather than
+    from the archive's bytes, so the same repository arriving as a zip and as a
+    git URL is ONE artifact and re-ingesting replaces it.
+    """
+    digest = hashlib.sha256()
+    for chunk in chunks:
+        digest.update(chunk.source.encode("utf-8"))
+        digest.update(chunk.text.encode("utf-8"))
+
+    return f"{side}-{digest.hexdigest()[:16]}"
 
 
 def _artifact_id(raw: bytes, side: Side) -> str:
@@ -256,6 +307,7 @@ def _prompt(
 
 
 def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
+    index = 0
     for found in walk(source):
         try:
             pieces = chunk_file(
@@ -277,7 +329,14 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
             source.skip("unreadable file")
             continue
 
-        yield from pieces
+        for piece in pieces:
+            # chunk_index restarts at 0 in every file, because chunk_file
+            # numbers what IT produced. The chunks table's primary key is
+            # (artifact_id, chunk_index), so a repository of twenty files would
+            # collide on the second one - and prompt ids are positional, so
+            # even without a database two files would both claim B-0.
+            yield replace(piece, chunk_index=index)
+            index += 1
 
 
 # How many chunks survive the vector path when NO reranker ran.
