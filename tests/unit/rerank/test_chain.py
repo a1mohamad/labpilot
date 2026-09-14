@@ -14,6 +14,7 @@ DOCS = ("first", "second", "third")
 class FakeReranker:
     name: str
     model: str
+    max_documents: int = 100
     answer: Ranking | None = None
     error: Exception | None = None
     calls: list[tuple[str, tuple[str, ...], int | None]] = field(default_factory=list)
@@ -111,3 +112,32 @@ def test_skip_refuses_a_caller_bug_like_every_other_tier():
 
     with pytest.raises(ValueError, match="top_n must be positive"):
         skip(DOCS, top_n=0)
+
+
+def test_each_tier_is_given_only_the_width_it_can_serve():
+    """The window belongs to the PROVIDER, not to the pipeline.
+
+    Voyage is capped at 30 documents by a card-free 10K TPM ceiling, measured;
+    gemini-3.5-flash-lite is listwise and takes all 50 against a 1M context.
+    Cutting everyone to the narrowest would pay Voyage's price on every tier -
+    and that cut discards exactly the queries reranking is best at, since
+    slice 6 measured it WINNING on `constant` questions, which are where the
+    bi-encoder is weakest.
+
+    The caller cannot do this: it does not know which tier will answer. A tier
+    cannot do it either, because truncating itself would silently lose
+    documents the caller believed it had sent. So the chain does it, and it is
+    the only layer that sees both.
+    """
+    narrow = FakeReranker(
+        name="narrow", model="n", max_documents=3, error=RerankError("spent")
+    )
+    wide = FakeReranker(
+        name="wide", model="w", max_documents=100, answer=Ranking(order=(0,), model="w")
+    )
+    documents = [f"doc {i}" for i in range(10)]
+
+    rerank("q", documents, chain=(narrow, wide))
+
+    assert len(narrow.calls[0][1]) == 3, "a narrow tier is never handed more"
+    assert len(wide.calls[0][1]) == 10, "and a wide one is not punished for it"

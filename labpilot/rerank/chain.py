@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 class Reranker(Protocol):
     name: str
     model: str
+    # Part of the CONTRACT, not an implementation detail, because rerank()
+    # reads it to decide how wide a window this tier may be given. A tier that
+    # did not declare one would be handed everything and refuse.
+    max_documents: int
 
     def rank(
         self, query: str, documents: Sequence[str], *, top_n: int | None = ...
@@ -60,7 +64,21 @@ def rerank(
 
     for reranker in chain:
         try:
-            return reranker.rank(query, documents, top_n=top_n)
+            # EACH TIER GETS WHAT IT CAN TAKE, and this is the only layer that
+            # can do it - the caller does not know which tier will answer, and
+            # a tier cannot truncate itself without silently losing documents
+            # the caller believed it had sent.
+            #
+            # It exists because the limit belongs to the PROVIDER, not to the
+            # pipeline. Voyage is capped at 30 by a card-free 10K TPM ceiling,
+            # measured; gemini-3.5-flash-lite is listwise and takes all 50
+            # against a 1M context. Cutting everyone to 30 would pay Voyage's
+            # price on every tier - and the cut discards exactly the queries
+            # reranking is best at, since slice 6 measured it WINNING on
+            # `constant` questions, which are where the bi-encoder is worst.
+            return reranker.rank(
+                query, documents[: reranker.max_documents], top_n=top_n
+            )
         except RerankError as exc:
             logger.warning("%s failed, trying the next tier: %s", reranker.name, exc)
 

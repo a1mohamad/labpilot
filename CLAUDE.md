@@ -41,6 +41,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**The output budget — 9 decisions**](#11-the-output-budget--nine-decisions-taken-2026-09-14) ·
 [**The outline — step 2's ladder**](#12-the-outline--build-step-2s-design-decided-2026-09-14) ·
 [**The selector + scenario matrix**](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14) ·
+[**Steps 1-3 SHIPPED + the rerank window**](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -699,6 +700,18 @@ measured second best of everything slice 6 scored, and existed ONLY inside
 `tests/smoke/`, so no production code could build it. Limits read from
 `GET /v1beta/models`: 262,144 in / 32,768 out, identical to the 31B. NOT in `CHAIN` -
 whether it is a good GENERATOR is a separate question with no evidence yet.**
+**SLICE 7 BUILD STEPS 1, 2 AND 3 ARE SHIPPED — `store/reader.py`, the outline
+LADDER, and a selector that privileges NEITHER SIDE. 787 passed, 48 skipped,
+1 xfailed, ruff clean. 11 mutations, 10 real. See
+[section 14](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14).**
+**TWO RECORDED DECISIONS WERE OVERTURNED BY THE USER: "fill A before B" is dead
+(it leaves A UNCAPPED, so a large reference starves B to zero — section 13.2),
+and the pre-rerank cut is now PER TIER rather than a global 25, because the cut
+discarded exactly the queries reranking is best at while protecting a tier no
+longer at the front of the chain (section 14.3).**
+**`reserve()` HAD A 24,899-TOKEN OVER-ESTIMATE hiding behind the per-chunk
+outline — it charged an id label for every chunk in the corpus, letting 4 of
+8,333 chunks through instead of 266.**
 **Branch `feat/ask-path`, off `main`. Last updated 2026-09-14 (twenty-fourth session).**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
@@ -756,18 +769,23 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > 7  outline by FILE, never by chunk
 > > ```
 > >
-> > **The build order, six steps:**
+> > **The build order — STEPS 1-3 ARE SHIPPED, 2026-09-14. See
+> > [section 14](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14).**
 > >
 > > ```
-> > 1  store/      measure an artifact without moving rows, and read it all back
-> > 2  prompts/    outline by FILE - RAG holds 50 rows of a 5,000-chunk corpus
-> > 3  retrieval/  the new selector: EQUAL SHARE + leftover (NOT A before B,
-> >                overturned - see section 13). DELETE select()
-> > 4  api/        ask(): the ladder above
+> > 1  store/      measure + read back                           DONE
+> > 2  prompts/    outline by FILE, as a LADDER                   DONE
+> > 3  retrieval/  equal share + leftover (NOT A before B)        DONE
+> > 4  api/        ask(): the ladder above                        <- NEXT
 > > 5  api/        bind LLM_RERANK_ORDER to llm/ at the ENTRY layer
-> > 6  api/        /compare takes ids; UnknownArtifact + ModelMismatch come OFF
-> >                ALLOWED_TO_ESCAPE in tests/unit/test_error_boundaries.py
+> > 6  api/        /compare takes ids
 > > ```
+> >
+> > **Step 4's four decisions are already taken - D1 side comes from the STORED
+> > row, D2 cut AFTER rerank on `Ranking.model != SKIP`, D3 one query embed per
+> > distinct model, D4 `ask()` has no caller until step 6 - see section 14.4.**
+> > `UnknownArtifact` and `ModelMismatch` come off `ALLOWED_TO_ESCAPE` at STEP
+> > 4, not step 6: they become reachable the moment `search()` has a caller.
 > >
 > > **Three things that will bite, all already written down.**
 > >
@@ -8267,6 +8285,209 @@ api/         SearchHit / StoredChunk -> Chunk       <- step 4, with ask()
 types lack `side` and `artifact_id` anyway. The build order's phrase "hits ->
 chunks" therefore splits across two steps, and writing the converter now would
 be a function with no caller.
+
+
+### 14. SLICE 7 BUILD STEPS 1-3 ARE SHIPPED — 2026-09-14
+
+*Everything below was built, measured and mutation-tested in one session on
+branch `feat/ask-path`. Three of the decisions are the user's, and two of them
+overturn something this file had already written down.*
+
+#### 14.1 What shipped
+
+| step | landed | mutations |
+|---|---|---|
+| **1** | `store/reader.py` - `measure()` and `read_chunks()` | 4, three real and firing alone |
+| **2** | `prompts/context.py` - the outline ladder, and `reserve()` fixed | 4, all real |
+| **3** | `retrieval/selector.py` - equal share + leftover; `dumb.py` deleted | 3, all real |
+
+```
+787 passed, 48 skipped, 1 xfailed     ruff clean both ways
+```
+
+**Step 1 - the cheap check comes first.** `measure()` is one round trip and no
+chunk row crosses the wire; `read_chunks()` reads everything back, in
+`chunk_index` order, and is only correct to call once `measure()` says it fits.
+No size is stored: `count(*)` and `sum(length(...))` give it on demand, and a
+stored copy is a second copy of the truth.
+
+**A correction to this file's own SQL sketch.** It wrote a flat `+ 1` for the
+newline in `embed_text`. The newline exists ONLY when the header does, so the
+flat version over-counts by one character per header-less chunk - right by luck
+on every real corpus, wrong by rule, and silent. The `case` expression counts it
+exactly.
+
+**One mutation SURVIVED and is recorded rather than hidden:** swapping the LEFT
+JOIN for an INNER changes nothing, because `write_artifact` refuses an artifact
+with zero chunks, so "stored and empty" is unreachable. The join is kept because
+it is free and honest, but no test pins it - the same treatment `search.py`
+gives the `::vector` cast.
+
+**Step 2 - the outline, measured on an 8,333-part upload:**
+
+```
+outline PER CHUNK   187,695 tokens    of a 26,000 budget
+outline PER FILE         26 tokens
+```
+
+**And it exposed the next defect immediately.** `reserve()` charged a
+`B-1234  ` id label for EVERY chunk in the corpus though only the selected
+handful is printed:
+
+```
+before   reserve 25,616 of 26,000  ->  room    384  ->    4 chunks of 8,333
+after    reserve    759            ->  room 25,241  ->  266 chunks
+```
+
+It was always an over-estimate; the per-chunk outline merely hid it. **Without
+removing it the outline fix would have gone from 0 chunks to 4 instead of to
+266.** The real ~3-token charge now lives in the selector, where the chunks are
+actually chosen.
+
+`instructions.py` taught the old shape in all five templates - *"Parts marked
+'text NOT included'"* - a format the ladder can no longer guarantee. Reworded in
+place in four locations, keeping each preamble's shape. FULL and CORE were
+updated too: a frozen baseline whose prompt describes a format we never render
+could not be re-run anyway.
+
+**Step 3 - the selector, and it behaves like this:**
+
+```
+A small / B huge   A   4   B  48    19,912 of 20,000
+A huge / B small   A  48   B   4    19,912            <- exact mirror
+both huge          A  24   B  24    19,488
+B only             A   0   B  49    19,894
+```
+
+`test_neither_side_is_privileged` is the mirror, and the mutation that
+re-implements "fill A before B" fires **four** tests. That decision is now
+defended by code rather than by a paragraph.
+
+#### 14.2 `VECTOR_TOP_N` WAS DOING TWO JOBS — the user found the conflation
+
+This file used one number for two unrelated questions:
+
+```
+how many the RERANKER SEES            a quality and cost knob
+how many we SEND if reranking failed  a degraded-path knob
+```
+
+They are not the same question and must not be forced to agree. **Four numbers,
+four jobs:**
+
+```
+SEARCH_LIMIT     50   what search returns, per side
+RERANK_WINDOW    --   what the reranker sees          <- NEW, and see 14.3
+RERANK_TOP_N     10   what survives reranking
+VECTOR_TOP_N     25   what we send when NO reranker ran
+```
+
+#### 14.3 THE RERANK WINDOW IS PER TIER, NOT GLOBAL — the user's call
+
+*This supersedes 10b's "the cut comes BEFORE the reranker".*
+
+The recorded cut to 25 bought three things: a bad reranker could only re-order,
+half the rerank tokens, and **Voyage reachability** - 50 documents is ~16,900
+tokens against a card-free 10K TPM ceiling, measured as 50 refused, 40 refused,
+30 passed.
+
+**Two things cut the other way, and they are stronger:**
+
+**1. The cut discards exactly the queries reranking is best at.** Slice 6
+measured reranking WINNING on `constant` questions (+0.186 MRR) - which are
+where the bi-encoder is worst (0.354). The worked example is `D2`, which sits in
+the FORTIES on codestral. Cut at 25 and it is gone before any reranker sees it;
+no rescue is possible.
+
+**2. The tier the cut protects is no longer at the front of the chain.** Slice 6
+measured the four LLM tiers beating Voyage. `gemini-3.5-flash-lite` is listwise:
+50 documents is ~17,000 tokens against a 1M context and 250K/min. It does not
+care.
+
+**So the cut was paying a real cost to protect a tier we may not reach.**
+
+**THE ANSWER IS PER TIER, and the shape already exists.** Every reranker carries
+`max_documents`. Voyage's says 1,000 - which is the BILLED tier's document
+limit, and the wrong number twice over, because the free constraint is TOKENS
+and not documents. Set it to its measured 30, and let `chain.rerank()` - the one
+layer that sees both the documents and the tier - hand each tier what it can
+take:
+
+```python
+reranker.rank(query, documents[: reranker.max_documents], top_n=top_n)
+```
+
+flash-lite then sees all 50, Voyage sees 30 and ANSWERS instead of burning a
+request on a refusal, and no global compromise is imposed on either.
+
+> **A limit that belongs to one provider should be modelled on that provider,
+> never averaged into the pipeline.** The same lesson as `quota_pool`, and as
+> Groq's `context_window = 8_000`.
+
+**Slice 8 still owns the sweep** - its measurement 7 is exactly "where the cut
+goes" - and a per-tier default does not prevent an experiment from overriding
+the window for everyone.
+
+#### 14.4 Step 4 is the ask path, and its decisions are taken
+
+```
+ask(conn, a_id, b_id, *, question, client) -> Comparison
+
+1  measure(A) + measure(B)                cheap, no rows move
+       fits PROMPT_BUDGET?  yes -> read_chunks both. STUFF, no embed, no search
+2  embed the question with EACH artifact's own model
+   search per side, SEARCH_LIMIT = 50
+3  gate: should_rerank(scores). SKIP_MARGIN is None, so always yes
+4  rerank PER SIDE, never merged, each tier taking up to its own max_documents
+5  SearchHit / StoredChunk -> Chunk      add side and artifact_id
+6  select -> build_prompt -> generate    already built
+```
+
+**D1 - a chunk's `side` comes from the STORED artifact row, not the request
+slot.** `_artifact_id` is `f"{side}-{hash}"`, so the side is already baked into
+the id and the same file uploaded twice is two corpora. Consequence: two `A-...`
+ids must be REFUSED, because the prompt would have no side B.
+
+**D2 - `skip()` truncates to whatever `top_n` it is handed**, so the degraded
+path must not be handed the reranked number. Call `rerank(top_n=None)` and cut
+afterwards on what actually happened:
+
+```python
+kept = RERANK_TOP_N if ranking.model != SKIP else VECTOR_TOP_N
+```
+
+`Ranking` already carries `model=SKIP`, so the degradation is visible and we cut
+on the visible fact rather than on a guess.
+
+**D3 - two artifacts may hold two different embedders**, because
+`ingest_artifact` picks per artifact. Embed the question once per DISTINCT
+model, and refuse an artifact whose model is not in `MIGRATION` at all.
+
+**D4 - `ask()` has no caller until step 6**, as `write_artifact` had none after
+slice 4. Scaffolding with a scheduled consumer, not dead code.
+
+**THE TRAP THAT LIVES IN STEP 4**, and it is why
+`tests/integration/test_retrieval_to_rerank.py` numbers its chunk ids from 100:
+
+```
+search()  returns  SearchHit.chunk_index   an ID in the corpus
+rerank()  returns  POSITIONS in the list it was handed
+```
+
+`hits[p]` is right. Treating `p` as an id cites the wrong file and line with
+full confidence.
+
+And `UnknownArtifact` and `ModelMismatch` become genuinely reachable the moment
+`search()` has a caller, so they are mapped and come off `ALLOWED_TO_ESCAPE`
+here - at step 4, not step 6 as the build order says.
+
+#### 14.5 What none of this decided
+
+Every number is still slice 8's: `SEARCH_LIMIT`, `RERANK_WINDOW`,
+`VECTOR_TOP_N`, `RERANK_TOP_N`, `SIDE_SHARE`, `OUTLINE_BUDGET`, merged vs per
+side, and whether reranking ships at all. What changed is that each of them is
+now a NAMED CONSTANT with its job written beside it, so a sweep changes one
+number instead of a design.
 
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28

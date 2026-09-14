@@ -46,7 +46,16 @@ def test_top_n_is_sent_as_top_k_because_voyage_spells_it_differently():
     assert "top_n" not in body
 
 
-def test_voyage_accepts_far_more_documents_than_cohere_and_says_so():
-    """It bills by token, so width is not free - but the limit is genuinely
-    1,000, and a cap that lives only in a comment is enforced by nothing."""
-    assert RERANKER.max_documents == 1_000
+def test_voyage_is_capped_at_the_width_a_card_free_account_can_actually_serve():
+    """1,000 is Voyage's PUBLISHED limit and the wrong number twice over.
+
+    That is the billed tier's DOCUMENT limit, and what binds a card-free
+    account is TOKENS: 10,000 a minute, counting a call whole. Measured
+    2026-09-11 on our own chunks, each after a clean 90-second wait -
+    50 documents refused, 40 refused, 30 passed.
+
+    So the honest ceiling is 30, and declaring it is what lets the ask path
+    send its full window to tiers that can take it while Voyage still ANSWERS
+    instead of burning one of its 3 requests a minute on a refusal.
+    """
+    assert RERANKER.max_documents == 30
