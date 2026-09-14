@@ -10,9 +10,18 @@ from __future__ import annotations
 import pytest
 
 from labpilot.api import services
-from labpilot.api.errors import ArtifactSidesClash, UnknownArtifactId
+from labpilot.api.errors import (
+    ArtifactChanged,
+    ArtifactSidesClash,
+    UnknownArtifactId,
+)
 from labpilot.llm import LLMResult
-from labpilot.store import ArtifactRecord, ChunkRecord, write_artifact
+from labpilot.store import (
+    ArtifactRecord,
+    ChunkRecord,
+    ModelMismatch,
+    write_artifact,
+)
 
 pytestmark = pytest.mark.database
 
@@ -115,3 +124,56 @@ def test_two_artifacts_from_the_same_slot_are_refused(db):
 
     with pytest.raises(ArtifactSidesClash):
         services.ask(db, a, a, question="why?", client=FakeClient())
+
+
+def test_a_re_ingest_mid_request_is_a_conflict_and_not_our_bug(db, monkeypatch):
+    """ModelMismatch is REACHABLE, and reasoning said it was not.
+
+    The draft left it in ALLOWED_TO_ESCAPE because search() is handed the model
+    from the very row it checks against. But measure() and search() are two
+    round trips, and write_artifact DELETES then re-inserts - so re-ingesting
+    an artifact with a different embedder moves the model under a request
+    already in flight.
+
+    Nobody's bug, and asking again fixes it: a 500 would blame us and a 404
+    would blame the user, so it is a 409.
+    """
+    a_id = stored(db, "A", parts=400, words=60)
+    b_id = stored(db, "B", parts=400, words=60)
+    monkeypatch.setattr(services, "_embed_question", lambda *a, **k: V)
+
+    def re_ingested(*args, **kwargs):
+        raise ModelMismatch(
+            "artifact was embedded with 'mistral-embed', not 'codestral-embed'"
+        )
+
+    monkeypatch.setattr(services, "search", re_ingested)
+
+    with pytest.raises(ArtifactChanged, match="ask again"):
+        services.ask(db, a_id, b_id, question="why?", client=FakeClient())
+
+
+def test_the_side_comes_from_the_stored_row_and_not_from_the_slot(db, monkeypatch):
+    """Sending B in the first slot must still produce an A-vs-B comparison.
+
+    The side is baked into the id by _artifact_id, so the row already knows
+    it. Letting the SLOT decide would be a second source of truth for one
+    fact, and the two would disagree the first time a user filled the boxes in
+    the order they happened to have the files.
+    """
+    a_id = stored(db, "A", parts=2, words=5)
+    b_id = stored(db, "B", parts=2, words=5)
+    client = FakeClient()
+
+    # deliberately the wrong way round
+    comparison = services.ask(db, b_id, a_id, question="why?", client=client)
+
+    by_side = {chunk.side for chunk in comparison.chunks}
+    assert by_side == {"A", "B"}
+    assert all(
+        chunk.artifact_id.startswith(chunk.side) for chunk in comparison.chunks
+    ), "a chunk's side must match the artifact it was stored under"
+
+    prompt = client.prompts[0]
+    assert "SIDE A" in prompt
+    assert "SIDE B" in prompt
