@@ -220,17 +220,23 @@ def test_all_tiers_exhausted_reports_which_tiers_failed(
     ]
 
 
+@pytest.mark.parametrize("blank", ["", "  ", "\n\t "])
 def test_a_blank_question_answers_in_our_envelope_and_not_pydantics(
-    client, no_database, monkeypatch
+    client, no_database, monkeypatch, blank
 ):
     """CompareRequest deliberately puts NO min_length on `question`.
 
     A constraint there would make FastAPI answer in ITS shape, and a client
     would have to parse two different error formats from one endpoint.
+
+    THE EMPTY STRING IS THE CASE THAT PINS IT, and it was missing until
+    2026-09-15. With only "  " the test passes either way - two spaces clear a
+    min_length of 1 - so a mutation adding the constraint broke nothing and
+    the recorded decision was guarded by its docstring alone.
     """
     stub(monkeypatch, InvalidQuestion("question must not be empty"))
 
-    response = client.post(COMPARE, json={**BODY, "question": "  "})
+    response = client.post(COMPARE, json={**BODY, "question": blank})
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_question"

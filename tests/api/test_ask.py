@@ -70,6 +70,33 @@ def test_a_skipped_rerank_keeps_the_VECTOR_number_not_the_reranked_one():
     assert len(best) == services.VECTOR_TOP_N
 
 
+def test_the_cut_is_never_handed_DOWN_to_the_rerank_chain():
+    """The other half of the skip rule, and it was unguarded.
+
+    Its neighbour above pins the CUT - VECTOR_TOP_N when the ranking is a
+    skip. This pins the CALL: rank() must be asked for everything, because
+    skip() truncates to whatever top_n it is given and would then apply the
+    reranked number to a path that never reranked.
+
+    The neighbour cannot catch it, because it injects a rank that returns a
+    full ranking and so never observes the argument. Found by a mutation that
+    handed top_n down and broke nothing at all.
+    """
+    hits = tuple(hit(index) for index in range(40))
+    seen: dict[str, int | None] = {}
+
+    def recording(question, documents, *, top_n):
+        seen["top_n"] = top_n
+        # what skip() really does with whatever it is handed
+        order = tuple(range(len(documents)))[: top_n or len(documents)]
+        return Ranking(order=order, model=SKIP)
+
+    best = services._best("q", hits, rank=recording)
+
+    assert seen["top_n"] is None, "asking for fewer would truncate the degraded path"
+    assert len(best) == services.VECTOR_TOP_N
+
+
 def test_a_real_reranker_cuts_to_the_reranked_number():
     """The other half: when a tier DID order them, the tighter cut is earned."""
     hits = tuple(hit(i) for i in range(40))
