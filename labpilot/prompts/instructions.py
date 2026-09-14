@@ -18,10 +18,11 @@ In TWO-WAY mode never say that one side is wrong. Say only that they differ.
 Decide the mode yourself and say which one you chose.
 
 WHAT YOU RECEIVE
-Each side is given as a list of all its parts, in order.
+Each side is given as a list of what it holds: every part, or a summary per file.
 Each part has a short id such as A-3 or B-17.
-Parts marked "text included" have their text below the list.
-Parts marked "text NOT included" were not sent to you. You have not read them."""
+Parts shown as included have their text below the list.
+Anything the list does not mark as included was not sent to you.
+You have not read it."""
 
 _RULES = """\
 RULES
@@ -228,7 +229,7 @@ B is the subject: it is the thing that actually runs.
 Read B on its own first. Only then compare it with A.
 
 Each side is a list of parts with ids like A-3 and B-17.
-Parts marked "text NOT included" were not sent to you."""
+Anything the list does not mark as included was not sent to you."""
 
 _LEAN_RULES = """\
 Cite every claim as [B-17 "one line copied exactly from that part"].
@@ -264,7 +265,7 @@ You are reading one piece of work. There is nothing to compare it against.
 Say what is wrong with it.
 
 It is given as a list of parts with ids like B-17.
-Parts marked "text NOT included" were not sent to you."""
+Anything the list does not mark as included was not sent to you."""
 
 _SCAN_RULES = """\
 Cite every claim as [B-17 "one line copied exactly from that part"].
@@ -374,7 +375,7 @@ B is the subject: it is the thing that actually runs.
 B has already been read on its own; those findings are given to you below.
 
 Each side is a list of parts with ids like A-3 and B-17.
-Parts marked "text NOT included" were not sent to you."""
+Anything the list does not mark as included was not sent to you."""
 
 COMPARE = _instructions(
     "compare",

@@ -160,23 +160,41 @@ def test_the_failed_tiers_of_a_successful_answer_reach_the_response(client, fake
     ]
 
 
-def test_an_artifact_too_large_to_outline_is_refused_before_the_model(client, fake):
-    """A legal upload can still make the outline alone exceed the whole budget.
+def test_a_huge_single_file_is_retrieved_from_rather_than_refused(client, fake):
+    """The upload that used to be a 413, and why it no longer is.
 
-    Measured 2026-08-17: 875KB of Python is 8,334 parts, whose outline costs
-    210,541 tokens of a 26,000 budget. select() then returns nothing and the
-    prompt is 185,640 tokens of headers with no artifact text in it at all.
-    Gemini's 1M context means it would be sent, spending a scarce request to
-    ask a model about a list of filenames.
+    THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-09-14, and the change is build
+    step 2 working rather than a regression. Measured on this exact payload -
+    875KB of Python, 8,333 parts:
+
+        outline PER CHUNK   187,695 tokens   of a 26,000 budget
+        outline PER FILE         26 tokens
+
+    The old refusal was never about the artifact being too big to RETRIEVE
+    from. It was about the table of contents alone costing 7x the whole
+    prompt, so select() had nothing left to spend and the model would have
+    been sent a list of headers with no code in it. One row per file removes
+    the cause.
+
+    The guard itself stays and is still correct - it simply needs MANY FILES
+    to fire now, which no door accepts yet, so it is unreachable through this
+    endpoint until the repository door lands.
     """
     many_parts = b"def step(x):\n    return x * 2 + 1\n\n" * 25_000
     assert len(many_parts) < ApiConfig.MAX_UPLOAD_BYTES, "must pass the size check"
 
     response = post(client, b=("many.py", many_parts, "text/x-python"))
 
-    assert response.status_code == 413
-    assert problem(response)["code"] == "artifacts_too_large_to_compare"
-    assert fake.prompts == []
+    assert response.status_code == 200
+
+    prompt = fake.prompts[0]
+    assert "FILES" in prompt, "one row per file, not one per chunk"
+    assert "ALL PARTS, IN ORDER" not in prompt
+
+    # The point of the fix: real code reaches the model, not a wall of headers.
+    sent = response.json()["chunks"]["B"]
+    assert sent["total"] > 8_000
+    assert sent["sent"] > 100, "retrieval has room to work now"
 
 
 def test_non_ascii_content_survives_the_round_trip(client, fake):
