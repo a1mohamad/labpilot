@@ -3,10 +3,15 @@ from __future__ import annotations
 import pytest
 
 from labpilot.api.errors import EmbeddingUnavailable
-from labpilot.api.services import _artifact_id, _pick_embedder, _records
+from labpilot.api.services import (
+    _artifact_id,
+    _pick_embedder,
+    _records,
+    _source_id,
+)
 from labpilot.embed import MAX_BATCH_SIZE, MIGRATION
 from labpilot.embed.contracts import EmbeddingBatch
-from labpilot.ingest import chunk_bytes
+from labpilot.ingest import Chunk, chunk_bytes
 
 PAPER = b"# Title\n\nsome words about a method.\n"
 
@@ -132,3 +137,91 @@ def test_a_small_corpus_keeps_the_strength_order():
     picked, _ = _pick_embedder(tokens=20_000, chunks=60)
 
     assert picked is MIGRATION[0]
+
+
+# --- _source_id: a whole repository, hashed from what was really READ --------
+
+
+def repo_chunks(
+    files: dict[str, str], *, artifact_id: str = "repo"
+) -> tuple[Chunk, ...]:
+    """Chunks as chunk_source would hand them over, from a {path: text} map.
+
+    `artifact_id` is what the OPENER named the source - "my-repo.zip" for an
+    archive, "my-repo" for a clone. _source_id must ignore it, which is the
+    whole point of the tests below.
+    """
+    return tuple(
+        Chunk(
+            text=text,
+            source=path,
+            start_line=1,
+            end_line=1 + text.count("\n"),
+            side="B",
+            artifact_id=artifact_id,
+            chunk_index=index,
+            header=f"[{path}]",
+        )
+        for index, (path, text) in enumerate(files.items())
+    )
+
+
+FILES = {"src/train.py": "lr = 3e-4\n", "README.md": "# Title\n"}
+
+
+def test_the_same_repository_always_gets_the_same_id():
+    assert _source_id(repo_chunks(FILES), "B") == _source_id(repo_chunks(FILES), "B")
+
+
+def test_the_same_repository_as_a_zip_and_as_a_clone_is_ONE_artifact():
+    """The id is hashed from the CONTENT, never from the archive's bytes.
+
+    A zip and a git clone of the same commit give different container bytes
+    and different source NAMES, so an id taken from either would store the
+    same repository twice - and every later question would search one of the
+    two copies with nothing reporting it.
+    """
+    as_zip = repo_chunks(FILES, artifact_id="my-repo.zip")
+    as_clone = repo_chunks(FILES, artifact_id="my-repo")
+
+    assert _source_id(as_zip, "B") == _source_id(as_clone, "B")
+
+
+def test_moving_a_file_changes_the_id_even_when_the_text_does_not():
+    """The PATH is hashed as well as the text.
+
+    Two repositories can hold identical files in different places, and that
+    is a different repository - `src/train.py` and `old/train.py` are not the
+    same artifact, so a re-ingest must not silently replace one with the other.
+    """
+    moved = {"old/train.py": FILES["src/train.py"], "README.md": FILES["README.md"]}
+
+    assert _source_id(repo_chunks(FILES), "B") != _source_id(repo_chunks(moved), "B")
+
+
+def test_changing_one_line_changes_the_id():
+    edited = {**FILES, "src/train.py": "lr = 1e-3\n"}
+
+    assert _source_id(repo_chunks(FILES), "B") != _source_id(repo_chunks(edited), "B")
+
+
+def test_the_same_repository_on_two_sides_gets_two_ids():
+    """Comparing a repository against ITSELF is a legal request - an earlier
+    commit as A, the working tree as B. One id would make the two sides the
+    same row and the comparison would have nothing to compare."""
+    chunks = repo_chunks(FILES)
+
+    assert _source_id(chunks, "A") != _source_id(chunks, "B")
+    assert _source_id(chunks, "A").startswith("A-")
+    assert _source_id(chunks, "B").startswith("B-")
+
+
+def test_the_id_never_leaks_the_repository_into_a_database_key():
+    """An id reaches logs, URLs and error messages. A user's private source
+    must not be readable from it, so it is a digest and not a path."""
+    secret = repo_chunks({"deploy/keys.py": "TOKEN = 'hunter2'\n"})
+    artifact_id = _source_id(secret, "B")
+
+    assert "hunter2" not in artifact_id
+    assert "deploy" not in artifact_id
+    assert len(artifact_id) == len("B-") + 16
