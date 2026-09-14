@@ -755,9 +755,9 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > ## ✅ SLICE 7 IS CLOSED — 2026-09-15. ONLY SLICE 8 AND THE FRONTEND REMAIN
 > >
 > > **STATE, verified rather than remembered.** Branch **`feat/ask-path`**,
-> > clean, everything committed and pushed, **12 commits ahead of `main`** at
-> > the start of the session and 9 more added by it. Suite **843 passed,
-> > 4 skipped, 0 xfailed** in ~175s, ruff clean both ways. **DO NOT COMMIT TO
+> > clean, everything committed and pushed, **22 commits ahead of `main`** -
+> > 12 at the start of the session and 10 added by it. Suite **843 passed,
+> > 4 skipped, 0 xfailed** in ~150s, ruff clean both ways. **DO NOT COMMIT TO
 > > `main`** - only the user does that, or when they say "merge and commit".
 > >
 > > **STEP 1 IS EFFECTIVELY DONE. Two things are left in the whole step:**
