@@ -6,7 +6,7 @@ from labpilot.prompts.builder import (
     reserve,
 )
 from labpilot.prompts.citations import Citation, find_citations, resolve
-from labpilot.prompts.context import build_context
+from labpilot.prompts.context import OUTLINE_BUDGET, build_context
 from labpilot.prompts.instructions import (
     COMPARE,
     CORE,
@@ -20,6 +20,7 @@ __all__ = [
     "COMPARE",
     "CORE",
     "FULL",
+    "OUTLINE_BUDGET",
     "PRIOR_HEADING",
     "REPORT",
     "SCAN",
