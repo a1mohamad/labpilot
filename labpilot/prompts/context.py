@@ -53,7 +53,7 @@ def build_context(
         # gap in OUR retrieval reported as a defect in the USER's code.
         total = (totals or {}).get(side)
         partial = total is not None and total > len(on_side)
-        heading = f"Side {side}"
+        heading = f"SIDE {side}"
         if partial:
             heading += (
                 f" — {len(on_side)} of {total} parts were retrieved for this "
@@ -110,7 +110,7 @@ def _per_file(on_side: list[Row], kept: set[Chunk], *, labels: bool = False) -> 
 
 def _all_included(on_side: list[Row]) -> str:
     rows = "\n".join(_file_row(source, group) for source, group in _by_file(on_side))
-    return f"FILES - every part below in included\n{rows}"
+    return f"FILES - every part below is included\n{rows}"
 
 
 def _by_file(on_side: list[Row]) -> list[tuple[str, list[Row]]]:

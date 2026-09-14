@@ -23,6 +23,36 @@ class CitationOut(BaseModel):
     unique: bool = Field(description="False when the quote matches more than one line.")
 
 
+class CompareRequest(BaseModel):
+    """Two stored artifacts and a question.
+
+    JSON, not multipart, because there are no files left to upload - that is
+    the whole point of the split: ingest is paid once at POST /artifacts, and
+    what crosses the wire each turn is a question.
+
+    `question` is deliberately NOT constrained here. A blank one must come back
+    through our own envelope as `invalid_question`; a min_length would make
+    FastAPI answer in ITS shape instead, and a client would have to parse two
+    different error formats from one endpoint.
+    """
+
+    a: str = Field(
+        description="Artifact id of the reference - what SAYS what should "
+        "happen. Returned by POST /artifacts.",
+        examples=["A-9f2c1b7e4d3a5c60"],
+    )
+    b: str = Field(
+        description="Artifact id of the subject - the thing that actually "
+        "runs. Must be the opposite side to `a`.",
+        examples=["B-3e8a04f1c927bd55"],
+    )
+    question: str = Field(
+        description="What to ask of the pair. It steers the answer AND is the "
+        "retrieval query, so re-wording it changes which parts are found.",
+        examples=["Compare these and explain why the results diverge."],
+    )
+
+
 class CitationReport(BaseModel):
     written: int = Field(description="Citations the model wrote.")
     resolved: int = Field(description="Citations that point at real lines.")

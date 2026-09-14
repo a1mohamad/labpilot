@@ -60,6 +60,11 @@ ALLOWED_TO_ESCAPE: dict[str, str] = {
     # treats as dead code. They come off this list in pieces 3 and 4, and
     # test_the_escape_list_does_not_outlive_its_reason deletes the excuse by
     # itself if store/ ever stops being imported.
+    # rerank() catches this PER TIER and walks to the next one, ending in
+    # skip() rather than an exception - so it cannot reach api/ at all. Exactly
+    # the LLMError case: a chain that degrades on purpose swallows its own
+    # failures, and the degradation is visible as Ranking.model == SKIP.
+    "RerankError": "the rerank chain swallows it and ends in skip()",
     "StoreError": (
         "never raised directly - only its subclasses are, and both are caught"
     ),

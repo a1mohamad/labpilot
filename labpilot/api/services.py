@@ -18,6 +18,7 @@ from labpilot.api.errors import (
     UnknownArtifactId,
     UnreadableUpload,
 )
+from labpilot.api.reranking import rank as _rank
 from labpilot.embed import (
     MIGRATION,
     EmbeddingError,
@@ -43,7 +44,7 @@ from labpilot.prompts import (
     build_prompt,
     reserve,
 )
-from labpilot.rerank import RERANK_TOP_N, SKIP, Ranking, rerank
+from labpilot.rerank import RERANK_TOP_N, SKIP, Ranking
 from labpilot.retrieval import LABEL_TOKENS, select, should_rerank
 from labpilot.sources import Source, walk
 from labpilot.store import (
@@ -84,25 +85,6 @@ WARN_MINUTES = 2.0
 #
 # UNMEASURED, like every other top_n here - slice 8 owns them all.
 VECTOR_TOP_N = 25
-
-
-def compare(
-    a: Artifact, b: Artifact, *, question: str, client: LLMClient
-) -> Comparison:
-    if not question.strip():
-        raise InvalidQuestion("question must not be empty")
-
-    chunks = _cut(a, side="A", field="a") + _cut(b, side="B", field="b")
-    prompt, selected = _prompt(chunks, question=question)
-
-    try:
-        result = client.generate(prompt, max_tokens=REPORT_MAX_TOKENS)
-    except AllFreeTiersExhausted as exc:
-        raise GenerationUnavailable(
-            "every free tier failed", attempts=exc.attempts
-        ) from exc
-
-    return Comparison(result=result, chunks=chunks, selected=selected, prompt=prompt)
 
 
 def ingest_artifact(
@@ -453,7 +435,7 @@ def _retrieved(
 
 
 def _best(
-    question: str, hits: tuple[SearchHit, ...], *, rank: Callable[..., Ranking] = rerank
+    question: str, hits: tuple[SearchHit, ...], *, rank: Callable[..., Ranking] = _rank
 ) -> list[SearchHit]:
     """Gate, rerank, and map POSITIONS back to hits.
 

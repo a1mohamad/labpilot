@@ -42,6 +42,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**The outline — step 2's ladder**](#12-the-outline--build-step-2s-design-decided-2026-09-14) ·
 [**The selector + scenario matrix**](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14) ·
 [**Steps 1-3 SHIPPED + the rerank window**](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14) ·
+[**SLICE 7 COMPLETE — the ask path**](#15-slice-7-is-complete--steps-4-5-and-6-2026-09-14) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -485,7 +486,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 ARE DONE AND CLOSED. SLICE 7 IS HALF BUILT.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 AND 7 ARE DONE. ONLY SLICE 8 — THE
+MEASUREMENT — REMAINS.**
 **PIECES 1-3 SHIPPED 2026-09-14 on `feat/selector`: the rebuilt embedding-time estimator, `ingest_artifact()`, and `POST /api/v1/artifacts`. PIECE 4 - THE ASK PATH - IS NEXT, and every decision it needs is already taken in [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written).**
 **SLICE 6 IS FINISHED 2026-09-11. `labpilot/rerank/` is the seventh package: four cross-encoder
 tiers proven live, an LLM reranker that takes a CALLABLE so the package still never imports `llm/`,
@@ -712,7 +714,15 @@ longer at the front of the chain (section 14.3).**
 **`reserve()` HAD A 24,899-TOKEN OVER-ESTIMATE hiding behind the per-chunk
 outline — it charged an id label for every chunk in the corpus, letting 4 of
 8,333 chunks through instead of 266.**
-**Branch `feat/ask-path`, off `main`. Last updated 2026-09-14 (twenty-fourth session).**
+**SLICE 7 IS COMPLETE — all six build steps. `POST /artifacts` stores an artifact
+once; `POST /compare` takes IDS and answers many questions about it. 804 passed,
+4 skipped, 1 xfailed across unit/api/integration, ruff clean. Smoke NOT run.**
+**THE USER FOUND TWO DEFECTS BY READING THE CODE, not by any test: `ModelMismatch`
+left as unreachable when a re-ingest between measure() and search() makes it real
+(now a 409), and the rerank chain BUILT BUT NEVER BOUND, so the ask path would
+have used only the cross-encoders and never the four tiers that beat them.**
+**Branch `feat/ask-path`, off `main`. NOTHING IS COMMITTED — ten steps of work sit
+in the working tree. Last updated 2026-09-14 (twenty-fourth session).**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
 **`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
@@ -769,17 +779,32 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > 7  outline by FILE, never by chunk
 > > ```
 > >
-> > **The build order — STEPS 1-3 ARE SHIPPED, 2026-09-14. See
-> > [section 14](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14).**
+> > **SLICE 7 IS COMPLETE, 2026-09-14. See
+> > [section 14](#14-slice-7-build-steps-1-3-are-shipped--2026-09-14) for steps
+> > 1-3 and [section 15](#15-slice-7-is-complete--steps-4-5-and-6-2026-09-14)
+> > for steps 4-6.**
 > >
 > > ```
 > > 1  store/      measure + read back                           DONE
 > > 2  prompts/    outline by FILE, as a LADDER                   DONE
 > > 3  retrieval/  equal share + leftover (NOT A before B)        DONE
-> > 4  api/        ask(): the ladder above                        <- NEXT
-> > 5  api/        bind LLM_RERANK_ORDER to llm/ at the ENTRY layer
-> > 6  api/        /compare takes ids
+> > 4  api/        ask(): the ladder                              DONE
+> > 5  api/        the rerank chain, assembled at the entry layer DONE
+> > 6  api/        /compare takes IDS, not files                  DONE
 > > ```
+> >
+> > **NEXT IS SLICE 8, and it is a MEASUREMENT, not a build.** Its job list is
+> > now NINE: embedder ranking · reranker ranking · exact vs HNSW on real
+> > artifacts · end-to-end TIME · merged vs per-side reranking · SEARCH_LIMIT
+> > and VECTOR_TOP_N swept jointly · where the cut goes · whether the per-tier
+> > rerank window beats a global one · and whether `explain_divergence` really
+> > needs the strongest tier, which section 11.9 says was already measured OUT
+> > as a cause of coverage.
+> >
+> > **ONE THING IS KNOWINGLY BROKEN:** `web/app.js` still posts two files to
+> > `/compare` and now gets a 422. The frontend rebuild is scheduled for the
+> > END of Step 1 - it was written when an artifact had no identity, and
+> > rebuilding it earlier would mean rebuilding it twice.
 > >
 > > **Step 4's four decisions are already taken - D1 side comes from the STORED
 > > row, D2 cut AFTER rerank on `Ranking.model != SKIP`, D3 one query embed per
@@ -8488,6 +8513,176 @@ Every number is still slice 8's: `SEARCH_LIMIT`, `RERANK_WINDOW`,
 side, and whether reranking ships at all. What changed is that each of them is
 now a NAMED CONSTANT with its job written beside it, so a sweep changes one
 number instead of a design.
+
+
+### 15. SLICE 7 IS COMPLETE — steps 4, 5 and 6, 2026-09-14
+
+*The ask path, the assembled rerank chain, and the door that finally takes IDS.
+Two of the defects below were found by the USER reading the code rather than by
+any test, and one of them had been sitting in a test file for weeks.*
+
+```
+804 passed, 4 skipped, 1 xfailed     unit + api + integration, ruff clean
+                                     smoke deliberately not run
+```
+
+#### 15.1 Step 4 — `ask()`, the ladder
+
+```
+ask(conn, a_id, b_id, *, question, client) -> Comparison
+
+1  measure both                    one round trip each, no chunk row moves
+     fits?  yes -> read_chunks both. STUFF: no embed, no search, no rerank
+2  embed the question with EACH artifact's own model, task="query"
+3  search per side, SEARCH_LIMIT = 50
+4  gate: should_rerank(scores)
+5  rerank PER SIDE, never merged; each tier gets its own max_documents
+6  SearchHit / StoredChunk -> Chunk, adding side and artifact_id
+7  select -> build_prompt -> generate
+```
+
+**Three new errors, and each status is an argument rather than a habit.**
+`UnknownArtifactId` is **404** - `StorageUnavailable` is 503 because the
+database being down is OUR failure, while an id we never stored is a fact about
+the REQUEST. `ArtifactSidesClash` is **422** - the side is baked into the id by
+`_artifact_id`, so two `A-` ids is not a comparison and the prompt would have no
+side B to walk.
+
+**`ArtifactChanged` is 409, and it exists because the user refused
+"unreachable".** The draft left `ModelMismatch` in `ALLOWED_TO_ESCAPE`, reasoning
+that we pass `model=` from the very row `search()` checks it against. The user
+said that made no sense. They were right - `measure()` and `search()` are TWO
+round trips, and `write_artifact` DELETES then re-inserts, so re-ingesting an
+artifact with a different embedder moves the model under a request already in
+flight. Nobody's bug, and retrying fixes it, so a 500 would blame us and a 404
+would blame the user.
+
+**`ALLOWED_TO_ESCAPE` is now clear of `store/`.** `RerankError` took its place -
+the rerank chain swallows it per tier and ends in `skip()`, exactly the
+`LLMError` case.
+
+**THE SEARCH PATH WOULD HAVE LIED, and this was caught while designing rather
+than after.** `build_context` sees only the RETRIEVED chunks, and every one of
+them is "kept" - so it rendered *"FILES - every part below is included"* over 20
+rows of an 8,333-part corpus. That is precisely the failure the outline exists
+to prevent. `build_context` now takes `totals`, which `measure()` already
+supplies for free, and a partial side says so in the prompt:
+
+```
+SIDE B — 20 of 8333 parts were retrieved for this question.
+         The rest were NOT searched, and you have not read them.
+```
+
+**`_fits` is deliberately conservative.** It charges the outline its full
+`OUTLINE_BUDGET` even though the ladder usually renders far less, because the
+real cost cannot be known without the headers - and the headers are the thing
+the check exists to avoid fetching. So a corpus near the line is SEARCHED when
+it could have been stuffed. That is the safe direction: a wrong `yes` means
+reading ~14MB over the wire to discover it did not fit.
+
+**`_best` takes its reranker INJECTED** (`rank=`, defaulting to the assembled
+chain), which is what lets the door be tested with no provider at all - the same
+shape `LLMReranker` and `LLMClientDep` already use.
+
+#### 15.2 Step 5 — the chain assembled where both adapters are visible
+
+`api/reranking.py`: `RANKING_CONFIG`, `PROVIDERS`, `_listwise`, `CHAIN`, `rank`.
+
+**IT WAS BUILT AND NOT CONNECTED.** `_best` still defaulted to the bare
+`rerank`, so the ask path would have used ONLY the cross-encoders and never
+reached the four tiers that beat them. A chain built and never bound still
+returns rankings - from the weaker half of the measurement, with nothing to
+report it. `test_the_ask_path_reaches_the_assembled_chain_and_not_the_bare_one`
+now pins it.
+
+**The configuration is worth more than the choice of model:**
+
+```
+gemini-3.5-flash-lite  TUNED    MRR 0.799
+gemini-3.5-flash-lite  UNTUNED  MRR 0.706
+```
+
+0.093 apart - wider than the gap between flash-lite and Cohere's purpose-built
+cross-encoder. Every Gemini tier SHIPS `thinking=MEDIUM` for generation, so
+reusing a `CHAIN` entry unchanged throws most of the gain away and the ranking
+still looks plausible.
+
+**`_listwise` is a FACTORY, not a loop body**, and that is load-bearing.
+Building the lambdas inline would close over the loop VARIABLE, so all four
+tiers would call whichever provider the loop ended on while each still reported
+its own name. The chain would look healthy, one model would answer everything,
+and the measured order would be fiction.
+
+**And the code already existed in `tests/smoke/test_rerankers.py`** - the same
+shape as `GEMMA_4_26B`, working code trapped where production could not reach
+it. The smoke test now imports the production objects, so the weekly liveness
+check exercises what actually ships.
+
+#### 15.3 Step 6 — `/compare` takes ids
+
+```
+once      POST /artifacts   [file]            ->  {"artifact_id": "A-9f2c..."}
+per turn  POST /compare     {a, b, question}  ->  the report
+```
+
+JSON, not multipart, because there are no files left to upload. `question`
+carries NO `min_length` on purpose: a blank one must return through our own
+envelope as `invalid_question`, and a Pydantic constraint would make FastAPI
+answer in ITS shape - two error formats from one endpoint.
+
+`services.compare()` is DELETED; it had no caller once the route used `ask()`.
+
+**413 STAYS, and removing it was my error.** It is reachable two ways:
+`ArtifactsTooLargeToCompare` is a 413 raised inside `_prompt`, which `ask()`
+calls, and `RequestBodyLimitMiddleware` wraps every route.
+
+**A real bug a test caught.** The route passed `questions=` instead of
+`question=` - every `/compare` call would have been a `TypeError` and a 500. It
+was found by the test that asserts the VALUES reach `ask()`, not by the one that
+asserts a 200 comes back.
+
+#### 15.4 The test migration was smaller than 23 tests suggested
+
+`test_compare.py` held 23 tests and **eleven were never about comparing**.
+`read_artifact` is the guard, it is SHARED by both routes, and once `/artifacts`
+existed, testing it through `/compare` was one test per COMBINATION rather than
+one per failure.
+
+```
+MOVED to test_artifacts.py   binary · size limit x2 · empty · pdf ·
+                             scanned pdf · non-ascii · broken notebook
+DELETED as redundant         "a rejected upload never reaches the model" -
+                             at this door the loader runs INSIDE
+                             ingest_artifact, so stubbing it out removes the
+                             very code that does the refusing
+REWRITTEN for ids            11 tests, the new test_compare.py
+REWIRED                      test_api_over_the_chain.py - the store stubbed at
+                             its own door, while the prompt, the chain and the
+                             provider HTTP all stay real
+```
+
+#### 15.5 What slice 7 did NOT do
+
+**`web/app.js` still posts two files to `/compare` and now gets a 422.** The
+page is broken until the frontend is rebuilt, which this file already schedules
+for the END of Step 1 - it was written when an artifact had no identity, and
+rebuilding it before artifacts became real stored things would mean rebuilding
+it twice.
+
+**Every number is still slice 8's**, and each is now a NAMED CONSTANT with its
+job written beside it, so a sweep changes one number instead of a design:
+
+```
+SEARCH_LIMIT 50 · VECTOR_TOP_N 25 · RERANK_TOP_N 10 · SIDE_SHARE 0.5
+OUTLINE_BUDGET 4,000 · per-tier max_documents · merged vs per side
+whether reranking ships at all
+```
+
+**And two measurements this slice ADDED to slice 8's list:** whether the
+per-tier rerank window beats a global cut, and whether `explain_divergence`
+really needs the strongest tier - section 11.9 says session 10 already measured
+model strength out as a cause, and the lean `REPORT` template has never once
+been run on a cheap tier.
 
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
