@@ -39,6 +39,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Quotas do not predict time — 6 embedders measured**](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) ·
 [**The ask path — stuff, the N/2 rule, per side**](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written) ·
 [**The output budget — 9 decisions**](#11-the-output-budget--nine-decisions-taken-2026-09-14) ·
+[**The outline — step 2's ladder**](#12-the-outline--build-step-2s-design-decided-2026-09-14) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -7908,6 +7909,161 @@ No code. `REPORT_MAX_TOKENS` stays **32,000**, measured to work at `MEDIUM`.
 Check 1 stays a refusal. Every task chain named here belongs to **Step 2**, and
 the Fast/Balanced/Deep control belongs to **Step 3**. The only thing that moved
 today is that nine decisions are written down instead of being re-derived.
+
+
+### 12. THE OUTLINE — build step 2's design, decided 2026-09-14
+
+*Decided with the user before writing it. Four of the calls are theirs, and one
+of them turned a single rewrite into a three-level ladder.*
+
+#### 12.1 What the outline is FOR, in one sentence
+
+It is a checklist of every chunk, marked sent or not sent, placed before the
+evidence. Its whole job:
+
+> **It lets the model tell "it is not there" apart from "I was not shown it."**
+
+Without it a gap in OUR retrieval is reported as a defect in the USER's code -
+a confident, false finding, which is the worst failure this tool can produce.
+The worked case is the one this project already measures: the paper states
+gradient clipping, retrieval drops the chunk holding `CLIP_NORM = 1.5`, and a
+model with no outline writes *"the code does not implement gradient clipping."*
+
+#### 12.2 The problem - measured 2026-09-14 on `labpilot/` alone
+
+```
+chunks             410
+files               94
+outline PER CHUNK   10,592 tokens    41% of PROMPT_BUDGET, before any evidence
+outline PER FILE     2,193 tokens     8%
+```
+
+$$
+\text{cost} \;=\; n \times \bar{h}, \qquad \bar{h} \approx 20\text{-}26\ \text{tokens per row}
+$$
+
+The saving is exactly the chunks-per-file ratio - only **4.4** here, because
+this package has many small files. CLAUDE.md's worst measured case is far
+uglier: **8,334 parts cost 210,541 tokens** against a 26,000 budget, so the
+table of contents alone was 8x the entire prompt.
+
+#### 12.3 THE DESIGN IS A LADDER, NOT A REWRITE
+
+*The user's call, and it is better than the single per-file shape first
+proposed.* Three renderings, measured per unit on the corpus above:
+
+| level | shape | cost |
+|---|---|---|
+| 1 | **per chunk** - one row per chunk, full header | **25.8 / chunk** |
+| 2 | **per file + `defines:`** - the file's distinct top-level labels | **44.9 / file** |
+| 3 | **per file plain** | **23.3 / file** |
+
+```
+level 2 renders as:
+
+  train.py  B-40..B-70  31 parts, lines 1-1420  ·  none included
+            defines: load, Tokenizer, Trainer, evaluate, main
+```
+
+**Take the richest level that fits the outline's share of the budget.** A
+corpus of a few hundred chunks gets per-chunk honesty for about 2,000 tokens; a
+repository degrades to level 2, then to level 3.
+
+**`defines:` is worth less than it looks, and the number is recorded so nobody
+re-derives it optimistically: 410 chunks compress to 270 distinct labels, a
+ratio of only 1.5.** Mean 2.9 labels per file, max 16. So level 2 is 2.5x
+cheaper than level 1, not 20x - real, and not the order-of-magnitude win the
+idea suggests.
+
+#### 12.4 The stuff path keeps a FILE LIST and nothing more
+
+*The user's call.* When everything fits, nothing is dropped, so the "what you
+did not get" job disappears entirely.
+
+**And a per-chunk outline there would be pure duplication**, which is the
+measured reason rather than a stylistic one: `_text()` already renders
+`{id}  {chunk.header}` immediately above every included chunk, so the outline
+would repeat a header the model reads two lines later.
+
+The file list stays because it is cheap and it tells the model how the corpus
+is organised - navigation, not accounting.
+
+**Note the arithmetic that makes this exact.** With `REPORT` at ~2,000 tokens
+and a measured mean of 341.6 tokens per chunk:
+
+$$
+341.6n + 25.8n + 2{,}000 \;\le\; 26{,}000 \;\Longrightarrow\; n \le 65
+$$
+
+So the stuff zone is about **65 chunks across both sides**, where a per-chunk
+outline would cost only ~1,700 tokens. Cheap, and still duplication.
+
+#### 12.5 THE FILE RANGE ASSUMES CONTIGUITY, AND A TEST MUST PIN IT
+
+*The user's call: a test, not a workaround.* `B-40..B-70` is only true if every
+chunk of one file sits together in id order. It does today, because
+`chunk_source` walks files in sorted order and `assign_ids` numbers the tuple
+as it arrives - but **nothing enforces it**, and if it ever breaks the range
+silently names the wrong chunks, which is the citation failure this whole
+section exists to prevent.
+
+Same class as slice 2's sorting rule: *chunk ids are positional, so if folder
+order shifts between machines, `B-42` names a different file.* Sorting was
+correctness there and contiguity is correctness here.
+
+#### 12.6 PER FILE IS NOT FREE EITHER - recorded, not capped
+
+*The user's call: record it, raise a cap later if needed.* 2,193 tokens for 94
+files is 8%; a 500-file repository would be ~11,000 tokens, or **42% of the
+budget**, with no evidence sent yet.
+
+Level 3 of the ladder is the answer, and beyond it a cap or a per-directory
+grouping. **Neither is built**, because we have no 500-file fixture and
+choosing the number now would be a guess dressed as a decision - the same
+reason `MAX_ARCHIVE_BYTES` stayed an xfail rather than being "fixed".
+
+#### 12.7 "NOT INCLUDED" IS THE WRONG WORD, AND IT IS `instructions.py`'s JOB
+
+*Raised by the user: won't a user who uploaded the whole file be confused to
+read that 31 parts were "not included"?* Yes - and the phrasing blames the
+upload for our own retrieval limit.
+
+```
+WRONG   "31 parts of train.py were not included"
+RIGHT   "I searched 21 of 82 parts of your code. Clipping was not in those 21;
+         it may be in the 61 I did not retrieve."
+```
+
+Two things make this survivable today. It only appears when the corpus really
+did not fit - a small upload is stuffed whole and the line never appears. And
+the API already reports `chunks: {side: {total, sent}}`, which the page renders
+as `21/82 chunks`, so the user has the context before reading a word.
+
+**But the wording rule belongs in the REPORT template, and CLAUDE.md's
+evidence-basis axis already demands it** - *"seen in one, not found in the
+provided context"* must be written as *"not present in the retrieved context"*,
+never *"absent from the code"*. Whether the lean 1,997-byte rewrite still
+carries that rule is **UNVERIFIED**, and it is worth checking: losing it is a
+live defect in the product's most dangerous direction.
+
+**This is Step 2's job, not build step 2's.** `context.py` decides what the
+model READS; `instructions.py` decides what it WRITES. Only the first changes
+here.
+
+#### What build step 2 changes, and what it does not
+
+```
+prompts/context.py   _outline()  ->  the ladder above
+prompts/builder.py   reserve()   ->  follows automatically
+```
+
+`_text()`, `assign_ids` and every id are untouched, so citations are unaffected.
+`retrieval/` is step 3.
+
+One over-estimate is knowingly left in place: `reserve()` adds an id prefix for
+EVERY chunk rather than for the selected ones, because selection happens after
+reserve. With the outline fixed it becomes the largest remaining slack. Leave it
+until step 4 shows whether it matters.
 
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
