@@ -32,6 +32,7 @@ from labpilot.ingest import chunk_file
 from labpilot.llm.registry import (
     GEMINI_3_1_FLASH_LITE,
     GEMINI_3_5_FLASH_LITE,
+    GEMMA_4_26B,
     GEMMA_4_31B,
 )
 from labpilot.rerank import RERANK_CHAIN, LLMReranker
@@ -101,10 +102,6 @@ RANKING_CONFIG = {
         "responseSchema": {"type": "ARRAY", "items": {"type": "INTEGER"}},
     },
 }
-
-GEMMA_4_26B = dataclasses.replace(
-    GEMMA_4_31B, name="Gemma 4 26B A4B", tier=16, model="gemma-4-26b-a4b-it"
-)
 
 
 def _listwise(provider) -> LLMReranker:
