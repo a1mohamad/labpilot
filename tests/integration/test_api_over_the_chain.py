@@ -10,12 +10,15 @@ Mocked at the provider boundary with `responses`, so no network and no quota.
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 import responses
 from fastapi.testclient import TestClient
 
 from labpilot.api import ApiConfig, app, get_client
 from labpilot.llm import GeminiProvider, LLMClient
+from labpilot.store import ArtifactRecord, StoredArtifact, StoredChunk
 
 COMPARE = f"{ApiConfig.PREFIX}/compare"
 
@@ -62,8 +65,56 @@ def answered(model: str, text: str = "A and B agree.") -> dict:
     }
 
 
+# The two artifacts as STORED rows. /compare takes ids now, so the door needs
+# something in the database - but this file exists to prove the chain's
+# five-way verdict survives into an HTTP body, and the store is not what it
+# tests. So the store is stubbed at its own door while the prompt, the client,
+# the chain and the provider HTTP all stay real.
+ROWS = {
+    "A-x": (PAPER[0], PAPER[1].decode()),
+    "B-x": (CODE[0], CODE[1].decode()),
+}
+
+
+def _measure(conn, artifact_id):
+    name, text = ROWS[artifact_id]
+
+    return StoredArtifact(
+        artifact=ArtifactRecord(
+            id=artifact_id,
+            name=name,
+            side=artifact_id[0],
+            embedding_model="fake-embed",
+            dim=3,
+        ),
+        chunks=1,
+        characters=len(text),
+    )
+
+
+def _read_chunks(conn, artifact_id):
+    name, text = ROWS[artifact_id]
+
+    return (
+        StoredChunk(
+            chunk_index=0,
+            text=text,
+            header=f"[{name}]",
+            source=name,
+            start_line=1,
+            end_line=2,
+        ),
+    )
+
+
 @pytest.fixture
 def client(monkeypatch):
+    monkeypatch.setattr(
+        "labpilot.api.routers.compare.connect",
+        lambda *a, **k: contextlib.nullcontext(object()),
+    )
+    monkeypatch.setattr("labpilot.api.services.measure", _measure)
+    monkeypatch.setattr("labpilot.api.services.read_chunks", _read_chunks)
     monkeypatch.setenv("TEST_API_KEY", "secret-key")
     # The lifespan validates the real CHAIN, not the fake one injected below,
     # and refuses to start when no tier has a key.
@@ -76,11 +127,7 @@ def client(monkeypatch):
 
 
 def post(client):
-    return client.post(
-        COMPARE,
-        files={"a": PAPER, "b": CODE},
-        data={"question": QUESTION},
-    )
+    return client.post(COMPARE, json={"a": "A-x", "b": "B-x", "question": QUESTION})
 
 
 @responses.activate
