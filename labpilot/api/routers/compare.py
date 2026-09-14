@@ -97,8 +97,17 @@ def _response(comparison: Comparison) -> CompareResponse:
 
 
 def _counts(comparison: Comparison, side: str) -> SideChunks:
+    """`n of m` for one side, where m is what the artifact HOLDS.
+
+    On the search path `chunks` is only what retrieval returned, so counting
+    it would report "25 of 25" for a corpus of 120 and the number that exists
+    to prove the file was read would instead claim it was read whole.
+    """
+    read = sum(1 for chunk in comparison.chunks if chunk.side == side)
+    held = (comparison.totals or {}).get(side, read)
+
     return SideChunks(
-        total=sum(1 for chunk in comparison.chunks if chunk.side == side),
+        total=held,
         sent=sum(1 for chunk in comparison.selected if chunk.side == side),
     )
 

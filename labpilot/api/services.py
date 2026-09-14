@@ -389,7 +389,13 @@ def ask(
             "every free tier failed", attempts=exc.attempts
         ) from exc
 
-    return Comparison(result=result, chunks=chunks, selected=selected, prompt=prompt)
+    return Comparison(
+        result=result,
+        chunks=chunks,
+        selected=selected,
+        prompt=prompt,
+        totals=totals,
+    )
 
 
 def _sides(
