@@ -19,12 +19,13 @@ def build_prompt(
     question: str,
     instructions: Instructions,
     prior: str = "",
+    totals: dict[str, int] | None = None,
 ) -> str:
     if not question.strip():
         raise ValueError("question must not be empty")
 
     ending = f"{instructions.closing}\n\nQUESTION: {question.strip()}"
-    blocks = [instructions.header, build_context(chunks, selected)]
+    blocks = [instructions.header, build_context(chunks, selected, totals=totals)]
     if prior.strip():
         blocks.append(f"{PRIOR_HEADING}\n\n{prior.strip()}")
     blocks.append(ending)

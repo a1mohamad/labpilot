@@ -60,9 +60,9 @@ ALLOWED_TO_ESCAPE: dict[str, str] = {
     # treats as dead code. They come off this list in pieces 3 and 4, and
     # test_the_escape_list_does_not_outlive_its_reason deletes the excuse by
     # itself if store/ ever stops being imported.
-    "StoreError": "the base class of the two below",
-    "UnknownArtifact": "search has no caller yet - piece 4 must map it",
-    "ModelMismatch": "search has no caller yet - piece 4 must map it",
+    "StoreError": (
+        "never raised directly - only its subclasses are, and both are caught"
+    ),
 }
 
 

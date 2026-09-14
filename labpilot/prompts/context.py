@@ -28,7 +28,12 @@ OUTLINE_BUDGET = 4000
 Row = tuple[str, Chunk]
 
 
-def build_context(chunks: tuple[Chunk, ...], selected: tuple[Chunk, ...]) -> str:
+def build_context(
+    chunks: tuple[Chunk, ...],
+    selected: tuple[Chunk, ...],
+    *,
+    totals: dict[str, int] | None = None,
+) -> str:
     ids = assign_ids(chunks)
     kept = set(selected)
 
@@ -41,15 +46,34 @@ def build_context(chunks: tuple[Chunk, ...], selected: tuple[Chunk, ...]) -> str
         on_side = [(name, chunk) for name, chunk in ids.items() if chunk.side == side]
         if not on_side:
             continue
+        # On the SEARCH path these chunks are all we retrieved, not all there
+        # is - and every one of them is "kept", so without this the outline
+        # would render "every part below is included" over 20 rows of an 8,333
+        # part corpus. That is the exact lie the outline exists to prevent: a
+        # gap in OUR retrieval reported as a defect in the USER's code.
+        total = (totals or {}).get(side)
+        partial = total is not None and total > len(on_side)
+        heading = f"Side {side}"
+        if partial:
+            heading += (
+                f" — {len(on_side)} of {total} parts were retrieved for this "
+                f"question. The rest were NOT searched, and you have not read them."
+            )
         parts.append(
-            f"SIDE {side}\n\n{_outline(on_side, kept)}\n\n{_text(on_side, kept)}"
+            f"{heading}\n\n{_outline(on_side, kept, partial=partial)}"
+            f"\n\n{_text(on_side, kept)}"
         )
 
     return "\n\n\n".join(parts)
 
 
-def _outline(on_side: list[tuple[str, Chunk]], kept: set[Chunk]) -> str:
-    if all(chunk in kept for _, chunk in on_side):
+def _outline(
+    on_side: list[tuple[str, Chunk]],
+    kept: set[Chunk],
+    *,
+    partial: bool = False,
+) -> str:
+    if not partial and all(chunk in kept for _, chunk in on_side):
         return _all_included(on_side)
 
     rendered = ""

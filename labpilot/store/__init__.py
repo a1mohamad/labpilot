@@ -8,6 +8,7 @@ from labpilot.store.contracts import (
     StoredChunk,
     Vector,
 )
+from labpilot.store.defaults import SEARCH_LIMIT
 from labpilot.store.errors import (
     ConnectionFailed,
     ModelMismatch,
@@ -31,6 +32,7 @@ __all__ = [
     "NotConfigured",
     "read_chunks",
     "SearchHit",
+    "SEARCH_LIMIT",
     "Side",
     "StoreError",
     "StoredArtifact",

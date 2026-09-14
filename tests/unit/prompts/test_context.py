@@ -209,3 +209,43 @@ def test_defines_recovers_the_label_ingest_actually_wrote():
 
     assert "def alpha" in labels
     assert "def beta" in labels
+
+
+def test_a_partial_side_never_claims_everything_was_included():
+    """THE LIE THE SEARCH PATH WOULD TELL, and the reason `totals` exists.
+
+    On the search path the chunks handed to build_context are all we RETRIEVED,
+    not all there is - and every one of them is "kept". Without the total, the
+    outline renders "every part below is included" over 2 rows of an 8,333-part
+    corpus, and the model reads it as the whole file.
+
+    That is exactly the failure the outline exists to prevent: a gap in OUR
+    retrieval reported as a defect in the USER's code.
+    """
+    retrieved = tuple(_in_file("B", i, "train.py") for i in range(2))
+
+    honest = build_context(retrieved, retrieved, totals={"B": 8_333})
+    lying = build_context(retrieved, retrieved)
+
+    assert "every part below is included" in lying, "the case being guarded"
+    assert "every part below is included" not in honest
+
+
+def test_a_partial_side_says_how_much_of_it_was_read():
+    """A count the model can reason with, not just the absence of a claim."""
+    retrieved = tuple(_in_file("B", i, "train.py") for i in range(2))
+
+    context = build_context(retrieved, retrieved, totals={"B": 8_333})
+
+    assert "2 of 8333 parts" in context
+    assert "NOT searched" in context
+
+
+def test_a_side_that_was_read_whole_is_not_marked_partial():
+    """The stuff path must not apologise for something it did not do."""
+    chunks = tuple(_in_file("A", i, "f.py") for i in range(3))
+
+    context = build_context(chunks, chunks, totals={"A": 3})
+
+    assert "NOT searched" not in context
+    assert "every part below is included" in context

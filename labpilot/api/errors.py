@@ -68,3 +68,30 @@ class StorageUnavailable(ApiError):
     # about whose fault it is.
     status = 503
     code = "storage_unavailable"
+
+
+class UnknownArtifactId(ApiError):
+    # 404, not 503. StorageUnavailable is 503 because the database being down
+    # is OUR failure; an id we never stored is a fact about the REQUEST, and
+    # the caller could have avoided it.
+    status = 404
+    code = "unknown_artifact"
+
+
+class ArtifactSidesClash(ApiError):
+    # A comparison needs one reference and one subject. The side is baked into
+    # the artifact id by _artifact_id - `f"{side}-{hash}"` - so two ids from
+    # the same slot is not a comparison at all, and the prompt would have no
+    # side B to walk.
+    status = 422
+    code = "artifact_sides_clash"
+
+
+class ArtifactChanged(ApiError):
+    # 409, and it is nobody's bug. measure() and search() are two round trips,
+    # and write_artifact DELETES then re-inserts - so re-ingesting an artifact
+    # with a different embedder moves the model under a request already in
+    # flight. A 500 would blame us; a 404 would blame the user. Retrying fixes
+    # it, so the status has to say that.
+    status = 409
+    code = "artifact_changed"
