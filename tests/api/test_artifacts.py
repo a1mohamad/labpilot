@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import zipfile
+
 import pytest
 from fastapi import status
 
 from labpilot.api import ApiConfig
 from labpilot.api.contracts import Ingested
+from labpilot.sources import (
+    CloneFailed,
+    Source,
+    SourceNotFound,
+    SourceTooLarge,
+    UnsafeArchive,
+    UnsupportedURL,
+)
 from labpilot.store import ConnectionFailed, NotConfigured
 from labpilot.store.contracts import ArtifactRecord
 from tests.api.conftest import SAMPLES
@@ -245,3 +257,221 @@ def test_a_broken_notebook_is_a_422_not_a_500(client, no_database):
     body = response.json()["error"]
     assert body["code"] == "unreadable_upload"
     assert "run.ipynb" in body["message"]
+
+
+# --- the repository door: one of three inputs, then one shared store path ----
+
+
+def zip_bytes(files: dict[str, str]) -> bytes:
+    raw = io.BytesIO()
+    with zipfile.ZipFile(raw, "w") as archive:
+        for relpath, text in files.items():
+            archive.writestr(relpath, text)
+    return raw.getvalue()
+
+
+@pytest.fixture
+def opened(monkeypatch):
+    """Capture the Source that reached the store, without storing anything.
+
+    The door's whole job is CHOOSING an opener, so what has to be observed is
+    which one ran and what it produced - not the write path, which the
+    ingest_source integration tests cover against a real database.
+    """
+    seen: list[tuple[str, set[str], str]] = []
+
+    def fake_ingest_source(conn, source, *, side):
+        # Read the folder HERE, not in the test. open_zip and open_git both
+        # delete their temporary directory on the way out, so by the time an
+        # assertion runs, source.root is gone and every listing is empty.
+        files = {path.name for path in source.root.rglob("*") if path.is_file()}
+        seen.append((source.name, files, side))
+        return stored(0.2)
+
+    monkeypatch.setattr("labpilot.api.services.ingest_source", fake_ingest_source)
+    return seen
+
+
+@pytest.fixture
+def never_a_single_file(monkeypatch):
+    """ingest_artifact is the OTHER branch. It must not run for an archive."""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the single-file path ran for an archive")
+
+    monkeypatch.setattr("labpilot.api.services.ingest_artifact", refuse)
+
+
+def test_a_zip_is_unpacked_and_stored_as_one_artifact(
+    client, no_database, opened, never_a_single_file
+):
+    """A real archive through the real opener - only the store is faked.
+
+    Uploading a repository must not be read as ONE file. On the single-file
+    path a zip is binary, so it would die at the door as 'not UTF-8 text' and
+    the repository door would silently never have worked at all.
+    """
+    raw = zip_bytes({"src/train.py": "lr = 3e-4\n", "README.md": "# Title\n"})
+
+    response = client.post(
+        "/api/v1/artifacts",
+        data={"side": "B"},
+        files={"file": ("my-repo.zip", raw, "application/zip")},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    ((name, unpacked, side),) = opened
+    assert unpacked == {"train.py", "README.md"}
+    assert side == "B", "the side on the form must reach the store"
+    assert name == "my-repo"
+
+
+def test_an_archive_is_recognised_whatever_the_case_of_its_suffix(
+    client, no_database, opened, never_a_single_file
+):
+    """The branch folds case, and Windows really does hand over REPO.ZIP.
+
+    Without the fold it takes the single-file path, where a zip is binary and
+    is refused as 'not UTF-8 text' - a confusing 422 for an upload the door
+    does in fact support.
+    """
+    response = client.post(
+        "/api/v1/artifacts",
+        data={"side": "B"},
+        files={"file": ("REPO.ZIP", zip_bytes({"a.py": "x = 1\n"}), "application/zip")},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert len(opened) == 1
+
+
+def test_an_ordinary_file_never_takes_the_archive_path(
+    client, no_database, opened, monkeypatch
+):
+    """The mirror of the two tests above: one file is ONE file."""
+    monkeypatch.setattr(
+        "labpilot.api.services.ingest_artifact", lambda *a, **k: stored(0.1)
+    )
+
+    assert upload(client, "train.py", CODE).status_code == status.HTTP_201_CREATED
+    assert opened == [], "a .py must not be opened as a repository"
+
+
+def test_a_git_url_is_cloned_and_stored_as_one_artifact(
+    client, no_database, opened, monkeypatch, tmp_path
+):
+    """No file crosses the wire at all - the URL is the whole request."""
+    (tmp_path / "train.py").write_text("lr = 3e-4\n", encoding="utf-8")
+    cloned = []
+
+    @contextlib.contextmanager
+    def fake_open_git(url: str):
+        cloned.append(url)
+        yield Source(name="labpilot", root=tmp_path)
+
+    monkeypatch.setattr("labpilot.api.routers.artifacts.open_git", fake_open_git)
+
+    response = client.post(
+        "/api/v1/artifacts",
+        data={"side": "B", "url": "https://github.com/a1mohamad/labpilot"},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert cloned == ["https://github.com/a1mohamad/labpilot"]
+    assert [name for name, _, _ in opened] == ["labpilot"]
+
+
+@pytest.mark.parametrize(
+    "sent",
+    [
+        pytest.param({"side": "B"}, id="neither"),
+        pytest.param(
+            {"side": "B", "url": "https://github.com/a1mohamad/labpilot"}, id="both"
+        ),
+    ],
+)
+def test_exactly_one_of_a_file_and_a_url_is_required(client, no_database, sent):
+    """Neither is nothing to ingest. BOTH is worse than nothing: the door
+    would quietly honour one and drop the other, and the user would be told
+    their upload was stored when a different artifact was."""
+    files = {"file": ("train.py", CODE, "text/x-python")} if "url" in sent else None
+
+    response = client.post("/api/v1/artifacts", data=sent, files=files)
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["error"]["code"] == "unreadable_source"
+
+
+def test_a_repository_over_the_limit_is_a_413_that_names_the_size(
+    client, no_database, monkeypatch
+):
+    """Refuse, never truncate. Half a corpus searched silently returns
+    confident wrong answers, which is worse than a rejection - and 413 is the
+    same class as an oversized upload, because the cause is the same."""
+
+    def too_big(conn, source, *, side):
+        raise SourceTooLarge("repo is 41000000 bytes, over the 20000000 limit")
+
+    monkeypatch.setattr("labpilot.api.services.ingest_source", too_big)
+
+    response = client.post(
+        "/api/v1/artifacts",
+        data={"side": "B"},
+        files={"file": ("big.zip", zip_bytes({"a.py": "x = 1\n"}), "application/zip")},
+    )
+
+    assert response.status_code == status.HTTP_413_CONTENT_TOO_LARGE
+    body = response.json()["error"]
+    assert body["code"] == "source_too_large"
+    assert "20000000" in body["message"]
+
+
+def test_a_zip_bomb_is_a_422_and_not_a_500(client, no_database, monkeypatch):
+    """UnsafeArchive is raised by open_zip, which runs INSIDE the route's try.
+
+    Unmapped it reaches the 500 handler and reads as our bug rather than as a
+    hostile upload - the boundary failure this project has now hit three
+    times, each with a new error type crossing an older except clause.
+    """
+
+    @contextlib.contextmanager
+    def bomb(path):
+        raise UnsafeArchive("declares 200000000 bytes, over the limit")
+        yield  # pragma: no cover - unreachable, and required to be a manager
+
+    monkeypatch.setattr("labpilot.api.routers.artifacts.open_zip", bomb)
+
+    response = client.post(
+        "/api/v1/artifacts",
+        data={"side": "B"},
+        files={"file": ("bomb.zip", zip_bytes({"a.py": "x = 1\n"}), "application/zip")},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["error"]["code"] == "unsafe_archive"
+
+
+@pytest.mark.parametrize("failure", [CloneFailed, SourceNotFound, UnsupportedURL])
+def test_every_way_a_source_will_not_open_is_the_callers_fault(
+    client, no_database, monkeypatch, failure
+):
+    """422 for all three: a URL we refuse, a clone that failed, a path that is
+    not there. Each is a fact about the REQUEST and each is fixable by the
+    caller, so none of them may be reported as a server error."""
+
+    @contextlib.contextmanager
+    def refuse(url):
+        raise failure("git said no")
+        yield  # pragma: no cover - unreachable, and required to be a manager
+
+    monkeypatch.setattr("labpilot.api.routers.artifacts.open_git", refuse)
+
+    response = client.post(
+        "/api/v1/artifacts",
+        data={"side": "B", "url": "https://github.com/a1mohamad/labpilot"},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    body = response.json()["error"]
+    assert body["code"] == "unreadable_source"
+    assert "git said no" in body["message"]
