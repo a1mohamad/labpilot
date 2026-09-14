@@ -40,7 +40,6 @@ FAILURES: dict[int | str, dict] = {
 
 @router.post(
     "/compare",
-    response_model=CompareResponse,
     responses=FAILURES,
     summary="Compare two artifacts and explain why their results diverge",
 )
