@@ -37,6 +37,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**SLICE 6 DONE — reranking HURT, and why that is a routing finding**](#slice-6--done-2026-09-11-built-measured-and-not-switched-on) ·
 [**SLICE 7 — the decisions, and the one embedder list**](#slice-7--the-decisions-taken-before-any-code-2026-09-13) ·
 [**Quotas do not predict time — 6 embedders measured**](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) ·
+[**The ask path — stuff, the N/2 rule, per side**](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -480,7 +481,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 ARE DONE AND CLOSED. SLICE 7 IS NEXT - the selector.**
+**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 ARE DONE AND CLOSED. SLICE 7 IS HALF BUILT.**
+**PIECES 1-3 SHIPPED 2026-09-14 on `feat/selector`: the rebuilt embedding-time estimator, `ingest_artifact()`, and `POST /api/v1/artifacts`. PIECE 4 - THE ASK PATH - IS NEXT, and every decision it needs is already taken in [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written).**
 **SLICE 6 IS FINISHED 2026-09-11. `labpilot/rerank/` is the seventh package: four cross-encoder
 tiers proven live, an LLM reranker that takes a CALLABLE so the package still never imports `llm/`,
 the margin gate in `retrieval/`, and a chain that ends in `skip` instead of an exception.**
@@ -614,14 +616,16 @@ artifacts, and TIME is the only thing that can overturn it — not recall, not s
 **Step 1 is NINE slices: 1 · 1b · 2 … 8. Slice 4 (pgvector) is COMPLETE and MERGED into `main`.**
 **The table, the WRITE PATH and EXACT SEARCH exist, proven against the real Supabase project.**
 **`store/` is the sixth package: contracts · errors · defaults · schema.sql · connection · writer · search · keyword.**
-**715 passed, 46 skipped, 1 xfailed, ruff clean — measured 2026-09-13, on `main`.**
+**763 passed, 48 skipped, 1 xfailed, ruff clean — measured 2026-09-14, on `feat/selector`.**
 **ALL 46 SKIPS ARE SMOKE (41) PLUS 5 ENVIRONMENT ONES. NOT ONE `database` TEST SKIPPED,**
 **so the 54 store tests really ran. A `database` test is green-by-absence, so the skip**
 **reasons must be READ (`pytest -q -rs`) before the count is believed.**
-**⚠ SLICE 7 MUST READ THIS FIRST: `api/services.py` catches NOTHING from `store/` or
-`embed/`, so wiring them sends `UnknownArtifact`, `ModelMismatch`, `ConnectionFailed`,
-`NotConfigured` and `EmbeddingError` straight to the 500 handler. Third time this shape
-is predictable — see [the closing review](#the-slice-4-closing-review--2026-09-05).**
+**⚠ THE ERROR BOUNDARY IS HALF CLOSED. Pieces 2-3 mapped `EmbeddingError` -> 503
+`EmbeddingUnavailable`, and `NotConfigured` / `ConnectionFailed` -> 503
+`StorageUnavailable` (503, never 404 — the database being down is OUR failure, not a
+missing upload). `UnknownArtifact` and `ModelMismatch` are STILL named in
+`ALLOWED_TO_ESCAPE`, because `search()` has no caller yet. PIECE 4 gives it one and
+must take them off that list — see [the closing review](#the-slice-4-closing-review--2026-09-05).**
 **The FLAKY SUITE IS FIXED — THREE causes, all in the test fixture, none in `store/`:
 a pooler reset threw away `set search_path` silently · a pooled connection was held per module ·
 and every run shared ONE schema name, so two runs at once deleted each other's tables.
@@ -675,8 +679,7 @@ was too cautious.**
 per call, exactly how Gemma stayed broken for weeks. Now pinned by a test.**
 **GLM-5.2 IS STILL DEAD but the refusal CHANGED: 403 `tier_not_allowed` code 1910, not the
 old 429 with `limit: 0`. Cleaner for us — not retryable, never touches `dead_pools`.**
-**725 passed, 48 skipped, 1 xfailed, ruff clean. Branch `feat/llm-client`, pushed.**
-**Last updated 2026-09-13 (twenty-second session).**
+**Last updated 2026-09-14 (twenty-third session). Branch `feat/selector`, clean at `de3fef3`.**
 **⚠ SLICE 6 IS ON `main`, NOT ON A BRANCH. It was re-committed piece by piece (~40 commits),
 not merged, so the hashes differ from `feat/reranking`. `main` is level with `origin/main`.**
 **`feat/reranking` IS NOW BEHIND `main` AND IS DEAD — its only content difference is an OLDER
@@ -689,110 +692,86 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ▶ SLICE 7 STARTS HERE — the new selector, and `select()` finally dies
+> > ## ▶ SLICE 7 IS HALF BUILT — pieces 1-3 SHIPPED, PIECE 4 IS NEXT
 > >
-> > **STATE, verified 2026-09-13 rather than remembered.** You are on **`main`**,
-> > clean, level with `origin/main`. **Slice 6 is ON `main`** — re-committed
-> > piece by piece, not merged. **`feat/reranking` is behind `main` and dead.**
-> > Suite: **715 passed, 46 skipped, 1 xfailed**, ruff clean, and the 46 skips
-> > are smoke plus environment — **no `database` test skipped**, so the store
-> > really is reachable again.
+> > **STATE, verified 2026-09-14 rather than remembered.** Branch
+> > **`feat/selector`**, clean, everything committed, head `de3fef3`. Suite
+> > **763 passed, 48 skipped, 1 xfailed** in ~115s, ruff clean both ways.
+> > **DO NOT COMMIT TO `main`** - only the user does that, or when they say
+> > "merge and commit".
 > >
-> > **Two defects were closed before slice 7 opened, and the second matters
-> > more than the first.** `rerank/__init__.py` promised `RERANK_MAX_TOKENS` in
-> > `__all__` and never imported it, so `from labpilot.rerank import *` raised
-> > `AttributeError` with the suite and both ruff commands green. It survived
-> > because **ruff exempts `__init__.py` from F822** and the slice 4 closing
-> > review had deleted the only test that held the rule, on exactly that false
-> > premise — see
-> > [the rejected test](#rejected--and-the-reason-is-worth-more-than-the-test-would-have-been).
-> > `tests/unit/test_public_api.py` now guards every package door.
+> > ### What pieces 1-3 shipped
 > >
-> > **⚠ THE BRANCHING RULE AND THE PRACTICE DISAGREE, and nobody has decided
-> > which wins.** This file says *"Never commit on `main`. Only merge into
-> > it"* and *"branch per slice"*. Slice 6 and these two fixes went **straight
-> > onto `main`**. Pick one before slice 7's first commit: either branch
-> > `feat/selector` now, or update the rule to match what is actually done.
+> > | piece | landed |
+> > |---|---|
+> > | 1 | **the embedding-time estimator, rebuilt.** `Rate` records the PUBLISHED quota and no longer predicts with it; `Spec.measured_tokens_per_minute` is ours. `embed/rates.py` learns `requests_per_minute` from response headers and WARNS when a header contradicts the seed. `registry.SPECS` + `by_speed()`. See [section 9](#9-the-published-quota-does-not-predict-time--measured-2026-09-14) - the quota is 11.8x wrong on codestral and exact on Google |
+> > | 2 | **`services.ingest_artifact()`** - chunk, pick an embedder, embed, write. Plus `_artifact_id` (content hash, so re-ingest REPLACES), `_pick_embedder` (one list, sorted two ways), `_records` (a generator, so 2,000 vectors never sit in memory at once) |
+> > | 3 | **`POST /api/v1/artifacts`** - Option 2's first door. One upload, stored once, `slow` reported and never waited on. `EmbeddingUnavailable` and `StorageUnavailable` added, both 503 |
 > >
-> > **Slice 6 is CLOSED.** Read
-> > [slice 6 DONE](#slice-6--done-2026-09-11-built-measured-and-not-switched-on)
-> > before anything else: it holds the code, four measurements, two eliminated
-> > confounds, and a negative result that must not be over-read.
-> > **Do not rebuild `rerank/`.** Three cross-encoders are proven live, the
-> > chain ends in `skip`, the gate is in `retrieval/gate.py`, and **nothing
-> > calls any of it** — which is what "off" means here, exactly as it means for
-> > slice 5's keyword channel.
+> > **Mutation-tested, 8 real mutations, 6 firing alone** - the pairing of chunk
+> > to vector, the side in the artifact id, the refusal to pick an `inf` model,
+> > the measured-rate table, the stable sort, and `StorageUnavailable`'s status.
+> > Two mutations were BROKEN and retried rather than believed: a missed anchor
+> > and an `or` that could never evaluate, both of which look exactly like a
+> > surviving mutation.
 > >
-> > **The one-line summary of slice 6, and it is not what anyone expected:**
+> > ### PIECE 4 IS THE ASK PATH, and every decision is already taken
+> >
+> > **Read [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written)
+> > before writing a line.** It holds the decisions, three corrections to this
+> > file, and what piece 4 deliberately does not decide.
 > >
 > > ```
-> > vector alone      r@10 0.933   MRR 0.646      requests / codestral
-> > + rerank          r@10 0.711   MRR 0.476      bge-reranker-base
+> > POST /compare   takes IDS, not files
+> >
+> > 1  do A and B TOGETHER fit the budget?
+> >       yes -> read every row back. STUFF. no query embed, no search, no rerank
+> >       no  -> continue
+> > 2  search 50 PER SIDE          exact. no fusion. wRRF stays unreachable
+> > 3  cut to VECTOR_TOP_N = 25 PER SIDE
+> > 4  gate: SKIP_MARGIN is None, so it always says rerank
+> > 5  rerank PER SIDE, never merged: 25 -> RERANK_TOP_N = 10 per side
+> >       no tier available -> skip(), keep the vector order, send the 25
+> > 6  select, filling A BEFORE B
+> > 7  outline by FILE, never by chunk
 > > ```
 > >
-> > **Reranking made it worse on all four runs.** That is a measured fact about
-> > `bge-reranker-base`, and it is NOT a fact about reranking: it is the weakest
-> > of the three providers and the only one that can afford 124 calls. Cohere is
-> > unmeasured because its 1,000/month is the chain primary's own bucket, and
-> > Voyage allows roughly one 50-document call per 70 seconds free.
-> >
-> > **What slice 7 must do.** Delete `retrieval/select()` — the 50/50 positional
-> > split — and replace it with the real selector. Three things this file
-> > already owes it, and all three are easy to miss:
-> >
-> > - **Fill A before B.** Dropping part of B is recoverable, because A still
-> >   says what to look for and the answer can be "not found". Dropping part of
-> >   A loses a statement we never learn exists, silently.
-> > - **The outline must list FILES, not chunks.** A 2,000-chunk repository
-> >   costs ~40,000 tokens of headers — larger than the whole prompt budget.
-> >   This is already a reachable 413, not a future problem.
-> > - **Route by question type.** Three independent measurements now say the
-> >   same thing: `constant` questions ("what is this value set to") want a
-> >   local relevance model, `structure` questions want the embedding. Slice 6's
-> >   breakdown is the third.
-> >
-> > **⚠ SLICE 7 WILL BREAK `test_error_boundaries` THE MOMENT IT WIRES ANYTHING.**
-> > That is the guard working, and it was written for exactly this. `api/` today
-> > catches nothing from `store/`, `embed/` or `rerank/`, so wiring them sends
-> > `UnknownArtifact`, `ModelMismatch`, `ConnectionFailed`, `NotConfigured`,
-> > `EmbeddingError` and `RerankError` straight to the 500 handler — reporting
-> > the user's input as OUR bug. Map each one to an `ApiError`, or name it in
-> > `ALLOWED_TO_ESCAPE` with the reason. **Never delete the test.** The
-> > checklist is in [the slice 4 closing review](#the-slice-4-closing-review--2026-09-05).
-> >
-> > **Reranking WORKS, with the right model — that conclusion reversed twice
-> > during slice 6 and the final numbers are what count.** The four LLM tiers
-> > lead chain 3 and beat every purpose-built cross-encoder:
+> > **The build order, six steps:**
 > >
 > > ```
-> > gemini-3.5-flash-lite  0.799      rerank-3-lite (Voyage)  0.725
-> > gemini-3.1-flash-lite  0.745      rerank-v4.0-fast        0.669
-> > gemma-4-26b-a4b-it     0.732      VECTOR ALONE            0.608
-> > gemma-4-31b-it         0.732      bge-reranker-base       0.520
+> > 1  store/      measure an artifact without moving rows, and read it all back
+> > 2  prompts/    outline by FILE - RAG holds 50 rows of a 5,000-chunk corpus
+> > 3  retrieval/  the new selector: hits -> chunks, A before B. DELETE select()
+> > 4  api/        ask(): the ladder above
+> > 5  api/        bind LLM_RERANK_ORDER to llm/ at the ENTRY layer
+> > 6  api/        /compare takes ids; UnknownArtifact + ModelMismatch come OFF
+> >                ALLOWED_TO_ESCAPE in tests/unit/test_error_boundaries.py
 > > ```
 > >
-> > **Slice 7 assembles the chain, because slice 6 could not.** The LLM tiers
-> > need `llm/` and `rerank/` is an adapter, so they are `LLM_RERANK_ORDER` —
-> > data — and the entry layer binds them:
+> > **Three things that will bite, all already written down.**
 > >
-> > ```python
-> > rerank(query, docs, chain=(*llm_tiers, *RERANK_CHAIN))
-> > ```
+> > **The two number spaces.** `search()` returns `SearchHit.chunk_index`, an ID
+> > in the corpus. `rerank()` returns POSITIONS into the list it was handed.
+> > `hits[p]` is right; looking up chunk `p` cites the wrong file and line with
+> > full confidence. `tests/integration/test_retrieval_to_rerank.py` exists for
+> > this and numbers its ids from 100 so a position used as an id is provably
+> > wrong.
 > >
-> > `LLMReranker` takes `complete(prompt, max_tokens) -> str`, so binding one is
-> > three lines. Copy the `RANKING_CONFIG` from `scripts/score_rerank.py` —
-> > `thinking=None` plus a JSON schema is worth more than the gap between
-> > flash-lite and Cohere.
+> > **`test_error_boundaries` will fire** the moment `api/` can reach
+> > `UnknownArtifact` or `ModelMismatch`. That is the guard working. Map them,
+> > never delete the test.
 > >
-> > **Still do not decide whether reranking SHIPS.** That is slice 8, taken
-> > together with the embedder and with fusion — slice 6 measured that
-> > **fusion's gain vanishes under reranking**, so the three cannot be decided
-> > separately.
+> > **`skip()` truncates to whatever `top_n` it is handed.** The degraded path
+> > must be given `VECTOR_TOP_N`, not `RERANK_TOP_N`, or it silently uses a
+> > number calibrated for a path that did not run.
 > >
-> > **Three numbers in this file were corrected by measurement on 2026-09-11.**
-> > The true `r@1` is 0.412-0.533 and `0.645` was always the MRR · Voyage gives
-> > **3 RPM / 10K TPM** on a card-free account, not "4M TPM / 2,000 RPM" ·
-> > Cohere's headers carry a second ceiling, `x-trial-endpoint-call-limit: 10`.
+> > ### What is NOT piece 4's to decide
+> >
+> > Every top_n value, the window, merged vs per side, where the cut goes,
+> > whether reranking ships, whether `wRRF` replaces exact search - **all slice
+> > 8**, and its job list is now SEVEN measurements. The search query being the
+> > user's own question is a known weakness this file has named since 2026-08-13;
+> > claim extraction is **Step 2**.
 > >
 > > ## ✅ SLICE 4 IS DONE — do not restart it
 > >
@@ -4924,6 +4903,9 @@ RAG system exists on real artifacts.*
 | 2 | **reranker ranking — never measured at all** | which model leads chain 3 |
 | 3 | **exact vs HNSW, on real artifacts, inside the full pipeline** | whether the 2026-09-05 decision holds |
 | 4 | **END-TO-END TIME, never measured** - embed + search + rerank + generate, on a real artifact | `WARN_MINUTES` and `INGEST_MINUTES_BUDGET`, both GUESSES until this runs |
+| 5 | **MERGED vs PER SIDE reranking** | whether coverage can be left to the selector - and note merged hands Voyage 50 documents, which it refuses |
+| 6 | **`SEARCH_LIMIT` and `VECTOR_TOP_N` SWEPT JOINTLY** - the window 10 to 100 per side, and the cut anywhere from 1 to the whole window | all three of `SEARCH_LIMIT`, `VECTOR_TOP_N`, `RERANK_TOP_N`. Only their ORDER is a rule; `N/2` is a default nobody measured |
+| 7 | **WHERE THE CUT GOES** - before the reranker as shipped, or after it | whether the reranker may RESCUE from below the cut, against Voyage reachability and half the rerank tokens |
 
 **For measurement 3, what to record and what may not count:**
 
@@ -7403,6 +7385,249 @@ end-to-end measurement.
 > **A vendor's published limit is a promise about what they will REFUSE, never
 > a prediction of what you will GET.** Measure the second; record the first
 > only so you notice when it changes.
+
+### 10. THE ASK PATH — decided 2026-09-14, before piece 4 was written
+
+*Taken with the user in the same discipline as sections 1-9: the decisions
+first, the code after. Three of them narrow or correct something this file
+already said.*
+
+#### 10a. THE STUFF CHECK MOVED, because artifacts became state
+
+The ladder in section 4 was written for the single endpoint, where the file
+arrived and everything was decided in one place. Option 2 split that in two,
+so the check moved with it:
+
+```
+POST /artifacts   ALWAYS chunk, embed, store.        state. no decision.
+
+POST /compare     do A and B TOGETHER fit the budget?
+                    yes -> read every row back. STUFF.
+                           no query embed, no search, no rerank.
+                    no  -> search
+```
+
+**Ingest never skips embedding, and that is deliberate.** A small A may later
+be paired with a huge B, and then A must be searchable. Deciding at ingest
+would make an artifact usable in only one mode, which contradicts *"artifacts
+are state"*. Embedding a small artifact costs seconds; the ask-time check costs
+one SQL aggregate.
+
+**The size needs no new column.** `estimate_tokens` is `ceil(chars/3)` and
+`embed_text` is `header + "\n" + text`, so
+
+```
+select count(*), sum(length(header) + length(text) + 1) from chunks where ...
+```
+
+is exactly the number our Python would produce, in one round trip with no rows
+moved. A stored token count would be a second copy of the truth — the argument
+that already rejected `chunk_count`.
+
+**And the cheap check must come FIRST.** Reading 24,000 rows back to discover
+they do not fit spends ~14MB over the VPN to learn one boolean.
+
+**`store/` therefore gains two functions** it has never needed: one that
+measures an artifact without moving rows, and one that reads all of it back.
+Search alone cannot serve the stuff path, because the stuff path has no query.
+
+#### 10b. THE THREE NUMBERS — only their ORDER is a rule, the rest is a knob
+
+*This file already said there are TWO numbers; it never said how they
+constrain each other. The answer is: barely. One ordering is forced by
+arithmetic, and every ratio inside it is an unmeasured default.*
+
+**`SEARCH_LIMIT = 50` counts documents in ONE call, on ONE artifact.** That is
+what `store.search()` takes - one `artifact_id`, one limit - and it is what
+every measured number in this file already assumes: the dense top-50 was one
+corpus, `we send 50 of a free 100` was one Cohere call, `61% of the 82-chunk
+quora corpus` was one corpus, and Voyage refusing a 50-document window was one
+call. **Read as a total, every one of those numbers halves.**
+
+```
+search     SEARCH_LIMIT = 50  PER SIDE      100 candidates
+retrieve   VECTOR_TOP_N = 25  PER SIDE      <- THE CUT HAPPENS HERE
+rerank     25 -> RERANK_TOP_N = 10          the reranker sees 25, not 50
+```
+
+**The cut comes BEFORE the reranker, and that is a decision.** The reranker
+re-orders exactly what the vector path would have sent on its own. So it can
+never introduce a chunk the vector path rejected - which means a BAD reranker
+costs ordering and never content, and slice 6 measured that a bad one actively
+hurts (`bge` took r@10 from 0.933 to 0.711).
+
+**What it gives up is the rescue.** Ranks 26-50 are where a good reranker finds
+what the bi-encoder ranked badly, and they are now discarded unseen. Measured:
+
+```
+requests   r@20 0.978   r@50 0.978    cutting at 25 costs 0.000
+quora      r@20 0.941   r@50 1.000    costs one query of 17
+```
+
+**And it is what makes Voyage reachable** - see 10d.
+
+**ONLY the ordering is a rule. Everything else is an unmeasured default.**
+
+```
+RERANK_TOP_N  <=  VECTOR_TOP_N  <=  SEARCH_LIMIT      all three PER SIDE
+    10               25               50
+```
+
+The ordering is forced by arithmetic, not by taste: you cannot send more than
+you kept, and you cannot keep more than you retrieved. A `RERANK_TOP_N` above
+`VECTOR_TOP_N` would also make the DEGRADED path sharper than the good one,
+which is backwards.
+
+**`N/2` is NOT a rule, and calling it one was my error.** There is no reason
+`VECTOR_TOP_N` should be half of `SEARCH_LIMIT` rather than 0.6 of it, or all
+of it when the budget has room. It is a default, chosen for symmetry and
+nothing else, and it is now written down as a knob so slice 8 sweeps it instead
+of inheriting it:
+
+```
+SEARCH_LIMIT = 50  ->  retrieve 25?  30?  or all 50 if the budget takes it?
+SEARCH_LIMIT = 30  ->  retrieve 15?  20?  25?  or all 30?
+```
+
+The two numbers are **joint, not independent** - a wider window with a hard cut
+is a different system from a narrow window sent whole, and only the pair can be
+scored. Slice 8 sweeps them together.
+
+> **A ratio that looks tidy is still a guess.** `N/2` earned its place by being
+> easy to say. pgvector's `ef_search = 40` and RRF's `k = 60` were both tidy
+> defaults too, and both were measured to be wrong here.
+
+**`RERANK_TOP_N` has a second, softer reason not to sit at the top of its
+range.** Slice 6 measured that a good reranker shifts the recall curve LEFT -
+reranked N=3 scores 0.882 where vector N=3 scores 0.765 - and that gain is only
+collected by cutting harder. At `RERANK_TOP_N = VECTOR_TOP_N` the model gets
+the same chunks in a better order and the compression is thrown away. **That is
+an argument, not a measurement**, and it is the same sweep.
+
+> **A constant's UNITS are part of its meaning, and a new section is the
+> easiest place to change them by accident.** This was nearly written the other
+> way - `SEARCH_LIMIT` as a total, 25 per side - and it would have silently
+> re-scaled every rerank, neuron, token and corpus-ratio figure recorded above,
+> none of which would have changed a line of code to disagree. The user caught
+> it. **Before reusing a number in a new section, grep for it and read what the
+> OLD sentences assume.**
+
+#### 10b-bis. `SEARCH_LIMIT` HAS NEVER BEEN SWEPT — slice 8 owes it
+
+Slice 6's measurement 2 varied how many chunks to **send** (3, 5, 10, 15, 20,
+50). It never varied the **retrieval window** they were drawn from.
+`SEARCH_LIMIT = 50` was written in slice 4 as *"retrieve wide, rerank to ~10"*
+and has been a default ever since - the same class of unmeasured number as
+pgvector's `ef_search = 40`, which quietly cost 14% of recall until someone
+looked.
+
+**Sweep it 10 -> 100, per side.** Both ends have a reason:
+
+```
+10    below this the reranker has almost nothing to reorder
+100   Cohere bills per CALL up to 100 documents and we send 50,
+      so half of every Cohere call is already wasted
+```
+
+Voyage caps the usable end far lower - 30 documents passed and 40 was refused
+on a card-free account - so the sweep measures QUALITY and the chain decides
+REACHABILITY, exactly as it does for the embedder.
+
+#### 10c. PER SIDE, NOT MERGED — and slice 8 must measure it
+
+This file said merging A and B into one rerank call is *"safe on scale and
+unsafe only on coverage — which 'fill A before B' already governs."* Both
+halves are still true. **The decision goes the other way anyway**, and the
+reason is which failure you are willing to have:
+
+```
+merged     100 documents, ONE call      half the rerank budget
+                                        one side can take every slot
+per side    50 documents, TWO calls     coverage is STRUCTURAL
+                                        twice the calls
+```
+
+Merged makes coverage depend on the selector behaving. Per side makes it
+impossible to lose a side at all. **A guarantee in the shape beats a guarantee
+in a downstream rule**, which is this file's own *"put a rule where it cannot
+be broken, not where it can be checked."*
+
+**And merged is the one shape that loses Voyage.** Per side hands it
+`VECTOR_TOP_N = 25` documents (~9,040 tokens, under the 10K ceiling). Merged
+hands it 25 + 25 = **50**, which slice 6 measured as refused at ~16,900 tokens.
+So the cheaper option on rerank CALLS is the one that costs a whole rerank
+TIER - which is exactly the kind of trade that cannot be settled by arithmetic
+on one axis.
+
+**SLICE 8 OWES THIS MEASUREMENT: merged against per side, on the same corpus.**
+It is a real question and it is not settled by the argument above — merged
+halves the rerank cost, and the rerank budget is the tightest one in the
+project once `verify` needs a call per claim. Per side is the DEFAULT, not the
+answer.
+
+#### 10d. THE PRE-RERANK CUT MAKES VOYAGE REACHABLE — predicted, not measured
+
+Slice 6 measured that Voyage cannot serve a 50-document window on a card-free
+account at all: 50 documents (~16,900 tokens) refused, 40 (~13,100) refused,
+30 (~8,900) passed, against a 10K TPM ceiling that counts a call whole.
+
+Cutting to `VECTOR_TOP_N` before the reranker hands it **25**, and Voyage's own
+published formula gives
+
+```
+t_q x N_d + sum(t_di)  =  20 x 25 + 25 x 341.6  =  ~9,040 tokens
+```
+
+Under the ceiling, and beside a measured 30-document call that passed at
+~8,900. **So the pre-rerank cut is the first shape in which our second-best
+measured reranker is usable free.** Reranking all 50 never could be.
+
+**This is a PREDICTION and must be labelled as one.** It rests on our
+`chars / 3` estimator, which slice 6 showed straddles Voyage's real boundary in
+both directions - it called a 50-chunk quora window 11,400 tokens (passes) and
+a 40-chunk requests window 13,100 (fails). One real call settles it, and it
+costs 1 of ~16,000.
+
+*A first draft of this section reached the same conclusion through a units
+error - reading `SEARCH_LIMIT` as a total and deriving 25 per side. The
+conclusion survived; the reasoning did not. Recorded because a right answer
+from a wrong premise is the kind that gets quoted back and then collapses.*
+
+#### 10e. "N in {20, 50} is ELIMINATED" was too strong — corrected
+
+Slice 6 wrote that, and this file repeats it in three places. It overstates
+what the frontier showed.
+
+```
+recall@N is MONOTONE  ->  N=50 has the HIGHEST recall of any N. always.
+15 -> 50 buys          ->  0.000 recall
+15 -> 50 costs         ->  DILUTION  <- a GENERATION property. NEVER measured.
+```
+
+The case against 50 rests entirely on dilution and lost-in-the-middle, which
+are taken from theory and the literature and have not been measured once in
+this project. So 50 is not eliminated — it is **unmeasured in the only
+direction that could condemn it.**
+
+`VECTOR_TOP_N = 50` therefore ships as the conservative choice: never discard a
+chunk already paid for. **Slice 8 measures DOWNWARD from it**, and 20 or 15 is
+where it is expected to land.
+
+> **A metric that only moves one way cannot eliminate a value, only fail to
+> reward it.** Slice 6 was right that retrieval cannot find the optimum, and
+> then treated the flat region as if it had.
+
+#### 10f. What piece 4 does NOT decide
+
+| decided here | NOT decided |
+|---|---|
+| stuff at ask time, search when it does not fit | the stuff threshold — it is `PROMPT_BUDGET`, unchanged |
+| per side reranking, `RERANK_TOP_N <= VECTOR_TOP_N` | merged vs per side — **slice 8** |
+| **every top_n is PER SIDE**: `SEARCH_LIMIT` 50, `VECTOR_TOP_N` 25, `RERANK_TOP_N` 10 | all three values — **slice 8**, sweeping the window and measuring the cuts downward |
+| exact search, no fusion on the query path | whether `wRRF` replaces it — **slice 8** |
+| the reranker RUNS, chain assembled at entry | whether reranking SHIPS — **slice 8** |
+| the search query is the user's question | claim extraction — **Step 2**, and this file already calls the question a bad query |
+
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 
