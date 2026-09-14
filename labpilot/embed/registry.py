@@ -17,59 +17,69 @@ COHERE_URL = "https://api.cohere.com/v2/embed"
 
 # EVERY MODEL'S FACTS IN ONE PLACE, so they can be read against each other
 # instead of hunted through eight constructors. Only what the PROVIDER decides
-# lives here; our own choices - the display name, the URL, which key it uses -
-# stay on the entry.
+# lives here; the display name, the URL and the key stay on the entry.
 #
-# `dim` and `max_input_tokens` are CHECKED against reality on the first real
-# call: _validated() raises when the vector width disagrees, _check_texts()
-# refuses an over-long input. The rates are SEEDS instead, because the first
-# decision - which model to use - happens before any call, so no header can
-# inform it. Where a provider does report a limit, rates.learn() compares it
-# with the seed and WARNS on a disagreement.
+# `measured_tokens_per_minute` IS OURS, NOT THE VENDOR'S, and that distinction
+# is why it exists. Measured 2026-09-13/14 from a Frankfurt VPN exit, varying
+# batch sizes, averaged over every run we have:
 #
-#   codestral / mistral  50K and 20M TPM from Mistral's limits page. The 60 RPM
-#                        is OURS - read live from x-ratelimit-limit-req-minute
-#                        on a 200, 2026-09-13 - and re-checked on every call,
-#                        so that pair cannot go stale silently.
-#   google               Google's rate-limit page, 2026-08-28. UNCHECKABLE: it
-#                        sends no rate header at all (measured 2026-09-13), so
-#                        this seed can never correct itself. Re-read the page
-#                        rather than trusting the number.
-#   bge-base             MEASURED 2026-09-13: 96 real chunks / 17,913 tokens
-#                        cost 261.68 neurons in 3.73s. So it is FAST - 1,544
-#                        chunks/minute - and nearly broke: 10,000 neurons/day
-#                        is only ~684,000 tokens, so it cannot ingest a
-#                        repository at all. The daily budget is what says so.
-#   embed-v4.0           x-trial-endpoint-call-limit: 10. No token limit is
-#                        published, so none is claimed - minutes() then bounds
-#                        it by requests alone.
+#   codestral-embed   620k / 600k / 590k / 474k over 1, 4, 37 and 18 requests.
+#                     Mean of the three MULTI-REQUEST runs = 554k. Its
+#                     DOCUMENTED quota is 50,000 and we exceeded it 11.8x for
+#                     71 seconds with zero refusals, so the published number
+#                     predicts nothing on this account.
+#   mistral-embed     520k over 25 requests today, and 504k across slice 4's
+#                     separate 849-request, 45-minute five-repo ingest. Two
+#                     sessions weeks apart, mean 512k.
+#   gemini-*          Google ENFORCES its published 30,000 exactly. A single
+#                     unthrottled batch measured 274k, and averaging that in
+#                     would be nonsense - it never met the limit that governs
+#                     the other run. Only the throttled measurement counts.
+#   embed-v4.0        641k over 6 requests, BURST ONLY: capped at 6 to protect
+#                     a 1,000-a-MONTH budget, so no limit was reached. Its 10
+#                     requests/minute is what actually binds.
+#   bge-base          288k, 926k and 732k - a 3.2x spread on the SAME work, so
+#                     the roughest number here. Academic anyway: the daily
+#                     neuron budget stops it long before a rate does.
+#
+# These are MEANS, not promises - our best estimate of the truth, UNBIASED on
+# purpose. Padding belongs at the display, never in the estimator, or we
+# abandon the strongest model earlier than the data justifies. One account,
+# one VPN, two days.
+
 SPECS: dict[str, Spec] = {
     "codestral-embed": Spec(
         dim=1536,
         rate=Rate(tokens_per_minute=50_000, requests_per_minute=60),
+        measured_tokens_per_minute=550_000,
     ),
     "mistral-embed": Spec(
         dim=1024,
         rate=Rate(tokens_per_minute=20_000_000, requests_per_minute=60),
+        measured_tokens_per_minute=510_000,
     ),
     "@cf/baai/bge-base-en-v1.5": Spec(
         dim=768,
         max_input_tokens=512,
         rate=Rate(requests_per_minute=16, daily_token_budget=684_000),
+        measured_tokens_per_minute=650_000,
     ),
     "gemini-embedding-2": Spec(
         dim=3072,
         max_input_tokens=8192,
         rate=Rate(tokens_per_minute=30_000, requests_per_minute=100),
+        measured_tokens_per_minute=29_000,
     ),
     "gemini-embedding-001": Spec(
         dim=3072,
         max_input_tokens=2048,
         rate=Rate(tokens_per_minute=30_000, requests_per_minute=100),
+        measured_tokens_per_minute=29_000,
     ),
     "embed-v4.0": Spec(
         dim=1536,
         rate=Rate(requests_per_minute=10),
+        measured_tokens_per_minute=640_000,
     ),
 }
 
@@ -87,6 +97,7 @@ def _spec(model: str) -> dict[str, object]:
         "dim": spec.dim,
         "max_input_tokens": spec.max_input_tokens,
         "rate": spec.rate,
+        "measured_tokens_per_minute": spec.measured_tokens_per_minute,
     }
 
 
@@ -225,5 +236,7 @@ def by_speed(
     ordering; there is no second list to keep in step with it.
     """
     return tuple(
-        sorted(candidates, key=lambda e: e.minutes(tokens=tokens, chunks=chunks))
+        sorted(
+            candidates, key=lambda e: e.embedding_minutes(tokens=tokens, chunks=chunks)
+        )
     )
