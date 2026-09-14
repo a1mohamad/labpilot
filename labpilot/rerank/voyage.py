@@ -8,7 +8,25 @@ from labpilot.rerank.base import HTTPReranker
 # wider call is a proportionally larger bill - the opposite of Cohere, where
 # width is free up to 100. The cap is declared anyway, because a limit that
 # lives only in a comment is a limit nothing enforces.
-MAX_DOCUMENTS = 1_000
+# Voyage's PUBLISHED document limit is 1,000. That is the BILLED tier's number
+# and it is the wrong limit twice over, because what binds a card-free account
+# is TOKENS, not documents: 10,000 per minute, counting a call WHOLE.
+#
+# Measured 2026-09-11 on our own chunks, each after a clean 90-second wait:
+#
+#     50 documents  ~16,900 tokens   REFUSED
+#     40 documents  ~13,100 tokens   REFUSED
+#     30 documents   ~8,900 tokens   passed
+#
+# So 30 is the honest ceiling here, and modelling it as such is what lets the
+# ask path send its full SEARCH_LIMIT window to the tiers that can take it -
+# flash-lite is listwise and 50 documents is ~17,000 tokens against a 1M
+# context - while Voyage gets 30 and ANSWERS, instead of burning one of its 3
+# requests per minute on a refusal.
+#
+# Same lesson as quota_pool and Groq's context_window = 8_000: MODEL THE LIMIT
+# THAT BINDS, not the one the vendor advertises.
+MAX_DOCUMENTS = 30
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
