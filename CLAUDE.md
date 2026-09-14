@@ -40,6 +40,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**The ask path — stuff, the N/2 rule, per side**](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written) ·
 [**The output budget — 9 decisions**](#11-the-output-budget--nine-decisions-taken-2026-09-14) ·
 [**The outline — step 2's ladder**](#12-the-outline--build-step-2s-design-decided-2026-09-14) ·
+[**The selector + scenario matrix**](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14) ·
 [**Queries: generate, do not hardcode**](#the-fixed-checklist-is-domain-locked--corrected-2026-09-09) ·
 [**Fan-out: 6 queries, 1 rerank**](#six-queries-one-rerank--the-half-this-section-was-missing) ·
 [Why loaders take bytes](#loaders-take-bytes--decided-2026-08-30) ·
@@ -760,7 +761,8 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > ```
 > > 1  store/      measure an artifact without moving rows, and read it all back
 > > 2  prompts/    outline by FILE - RAG holds 50 rows of a 5,000-chunk corpus
-> > 3  retrieval/  the new selector: hits -> chunks, A before B. DELETE select()
+> > 3  retrieval/  the new selector: EQUAL SHARE + leftover (NOT A before B,
+> >                overturned - see section 13). DELETE select()
 > > 4  api/        ask(): the ladder above
 > > 5  api/        bind LLM_RERANK_ORDER to llm/ at the ENTRY layer
 > > 6  api/        /compare takes ids; UnknownArtifact + ModelMismatch come OFF
@@ -964,6 +966,8 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > `mistral-embed` wins, two of the three questions disappear).
 >
 > **Two Step 1 debts recorded elsewhere, easy to miss:** `select()` must fill
+> **⚠ OVERTURNED 2026-09-14 — see [the selector](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14). The selector shares the leftover instead: A before B leaves A UNCAPPED, so a large reference starves B entirely, and it biases every code-vs-code comparison by upload order. When A fits, the two rules give the identical answer.**
+> 
 > **A before B** (dropping part of A loses a statement we never learn exists),
 > and the outline must list **files, not chunks** — 2,000 chunks would cost
 > ~40,000 tokens, larger than the whole budget.
@@ -8066,6 +8070,205 @@ reserve. With the outline fixed it becomes the largest remaining slack. Leave it
 until step 4 shows whether it matters.
 
 
+### 13. THE SELECTOR, AND THE SCENARIO MATRIX BEHIND IT — decided 2026-09-14
+
+*Build step 2 shipped; step 3 was stopped before a line was written, because the
+user asked why A should be filled before B and the answer in this file did not
+survive the question. Most of what follows is theirs, and one item OVERTURNS a
+rule CLAUDE.md has carried since 2026-08-14.*
+
+#### 13.1 Build step 2 is DONE, and it exposed the next bottleneck
+
+```
+outline PER CHUNK   187,695 tokens    of a 26,000 budget
+outline PER FILE         26 tokens    measured on the same 8,333-part upload
+```
+
+`_outline` is a LADDER and takes the richest level that fits `OUTLINE_BUDGET`:
+per chunk, then per file plus `defines:`, then per file alone. A side where
+everything was sent gets a plain file list - nothing was dropped, so the
+accounting job is void.
+
+**And fixing it made the next defect visible.** `reserve()` charged a `B-1234 `
+id label for EVERY chunk in the corpus, though only the selected handful is
+ever printed:
+
+```
+before   reserve 25,616 of 26,000  ->  room    384  ->    4 chunks of 8,333
+after    reserve    759            ->  room 25,241  ->  266 chunks
+```
+
+It was always an over-estimate; the per-chunk outline merely hid it. Without
+removing it the outline fix would have bought 0 chunks -> 4 instead of -> 266.
+**The real ~3-token per-chunk cost belongs in the SELECTOR**, which charges per
+chunk as it packs - step 3.
+
+#### 13.2 "FILL A BEFORE B" IS REJECTED — and this file has said it since 2026-08-14
+
+The old rule, and its argument:
+
+> *Dropping part of B is recoverable, because A still tells us what to look for
+> and we can report "not found". Dropping part of A loses a statement we never
+> learn exists, and it disappears silently.*
+
+The asymmetry is REAL - a dropped A chunk is an **unknown unknown**, a dropped
+B chunk is a **known unknown**. It still does not earn A priority, for four
+reasons, and the last one is fatal.
+
+**1. It covers `verify` only.** Session 10 measured the opposite direction:
+removing side A ENTIRELY and asking *"what could go wrong?"* recovered **five
+findings that seventeen comparison runs had never found once**. Seven of the
+nineteen live in B alone with no A anchor at all. The flagship report runs both
+kinds of question, so privileging a side is wrong for half the job.
+
+**2. Half the scenarios have no reference.** Code-vs-code is SYMMETRIC - this
+file's own template says *"never say one side is wrong, say only that they
+differ."* There A-before-B biases the report by **upload order**.
+
+**3. The slots are the user's choice.** `POST /artifacts` takes `side` as a
+form field; nothing infers it. Privileging slot A privileges an upload habit.
+
+**4. THE KILLER, and it is the user's: "A before B" means A has NO CAP.** A
+30,000-token reference takes the whole budget and B gets **zero**. A comparison
+with one side is not a comparison.
+
+**And the rule was never load-bearing anyway.** This file's own note ends:
+*"it does not bite on this pair, because A already fits."* **When A fits,
+A-before-B and a fair split give the IDENTICAL answer.** They differ only in
+the case the note says does not arise - so the fair rule loses nothing and
+cannot starve a side.
+
+#### 13.3 THE RULE: equal share, and the leftover flows over
+
+```
+pass 1   each side takes up to its share       SIDE_SHARE = 0.5
+pass 2   anything unspent flows to the other side
+```
+
+| case | fixed halves (today) | A before B | share leftover |
+|---|---|---|---|
+| A small, B large | **wastes A's half** | good | **good - identical** |
+| A large, B small | wastes B's half | **starves B** | good |
+| both large | fair | **starves B** | **fair** |
+| one artifact | half wasted | - | **all of it** |
+| code vs code | fair | **biased** | **fair** |
+
+It fixes the measured waste - 14,273 tokens sent of a 20,000 budget on the
+sample pair - without guessing which file the user cares about.
+
+**`SIDE_SHARE` is a KNOB, not a law**, and slice 8 may sweep it exactly as it
+will sweep the retrieval window: *for now it is half; slice 8 may decide that
+of a 50-document limit, 30 go to each side.*
+
+**If a capability ever wants a side weighted, STEP 2's PLANNER passes that in.**
+It is the only layer that knows which capability is running, and therefore the
+only one entitled to the opinion.
+
+#### 13.4 THE SCENARIO MATRIX — arrival order is irrelevant, TYPE decides
+
+*The user's framing: the user sends whatever they want, however they want, and
+the system must be ready for every shape.*
+
+**Artifacts are STATE, so when they arrive changes nothing.** A capability
+becomes reachable the moment its precondition is met:
+
+```
+turn 1  upload A   ->  summarize(A), find_bugs(A)
+turn 4  upload B   ->  + verify, align, explain_divergence
+```
+
+Both at once, one by one, or B first - identical outcome. That is exactly what
+Option 2's split of ingest from ask bought.
+
+**What decides the MODE is the artifact TYPE, and it is known before any model
+call:**
+
+```
+A = document + B = code   ASYMMETRIC   extract claims from A, verify in B
+A = code     + B = code   SYMMETRIC    no claims exist - generate topics,
+                                       search BOTH, compare topic by topic
+one artifact              summarize, find_bugs
+none                      answer_question
+```
+
+**`sources/defaults.py` already splits `DOCUMENT_SUFFIXES` from
+`CODE_SUFFIXES`**, so the planner can pick the mode from the filename for free.
+This CORRECTS a claim made earlier in the same conversation: the model does
+decide the mode in its report, but the planner can decide it far earlier and
+far more cheaply.
+
+#### 13.5 A IS READ WHOLE, B IS SEARCHED — the asymmetry is ACCESS, not budget
+
+This is where the unknown-unknown argument finally earns its place:
+
+```
+call 1     extract_claims(A)    ALL of A. no retrieval, no B
+per claim  search(B, claim)     B is SEARCHED, never read whole
+           verify(claim, hits)
+```
+
+A is read completely because a missed claim is a question never asked. B is
+searched because it is too big to read. **They never share a budget here.**
+
+It works because A is small: `A_paper.md` is ~3,900 tokens, a typical paper
+8,000-15,000, against a 26,000 budget.
+
+**And B still gets a WHOLE read when both artifacts exist** - `find_bugs` is a
+1-artifact capability, so the planner runs it on B alone in its own call
+whether or not A is present. That is not a fallback: it is where session 10's
+five extra findings came from.
+
+#### 13.6 ONLY ONE PLACE SHARES A BUDGET
+
+```
+Step 2      A whole (own call) + B whole (own call) + B searched per claim
+TODAY       A and B in ONE prompt  ->  they share
+```
+
+Step 2 does not make the split fairer - it makes the question stop existing.
+But the one prompt that still shares is **the flagship report the user reads**,
+and the stuff path, so the split rule has to be right today regardless.
+
+#### 13.7 Three holes this opened, recorded rather than built
+
+**1. A HUGE REFERENCE HAS NO DESIGN.** Claim extraction assumes A fits one
+call. A reference *repository* would need its own map-reduce - one pass per
+file, then a merge - and nothing in this file covers it. Step 2 hole.
+
+**2. LOW COVERAGE SHOULD ASK THE USER, NOT GUESS.** *The user's idea.* On a
+huge repo `sent 266 of 8,333` is 3% coverage, and a confident report over 3% is
+the wrong answer. The honest one:
+
+> *"I could not find what you asked about in the 266 parts I retrieved of
+> 8,333. Point me at a file or a folder and I will look there."*
+
+Same pattern this file already uses for a missing artifact - *"I need a second
+file to compare"* - applied to COVERAGE instead of PRESENCE. Needs the agent
+(to know the search failed) and the UI (to ask): **Step 2 + Step 3**.
+
+**3. MAP-REDUCE'S COST OBJECTION IS STALE.** This file rejected it once -
+*"79 calls for one file against an OpenRouter cap of 50/day"* - and that was
+written before the quotas were measured. Gemma x4 is **57,600 calls a day** and
+Flash-Lite x4 is 2,000. A 94-file walk is 94 calls of 57,600.
+
+**The blocker is no longer quota. It is LATENCY**, which section 11 already
+names as the budget nobody writes down. Re-cost it rather than inheriting the
+old verdict.
+
+#### What step 3 builds, after all of this
+
+```
+retrieval/   Chunk in, Chunk out. equal share + leftover. charges the id label
+api/         SearchHit / StoredChunk -> Chunk       <- step 4, with ask()
+```
+
+**`retrieval/` is CORE and `store/` is an ADAPTER, so the selector CANNOT see
+`SearchHit` or `StoredChunk`** - test_architecture forbids it, and both store
+types lack `side` and `artifact_id` anyway. The build order's phrase "hits ->
+chunks" therefore splits across two steps, and writing the converter now would
+be a function with no caller.
+
+
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 
 > **It now decides a third thing: exact vs HNSW.** Added 2026-09-05 — see
@@ -13319,6 +13522,8 @@ at all. The outline is that idea, needed early. **Map-reduce summarization** (on
 call per chunk, then one over the summaries) is rejected on cost: 79 calls for
 one file against an OpenRouter cap of 50/day.
 
+**⚠ OVERTURNED 2026-09-14 — see [the selector](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14). The selector shares the leftover instead: A before B leaves A UNCAPPED, so a large reference starves B entirely, and it biases every code-vs-code comparison by upload order. When A fits, the two rules give the identical answer.**
+
 **Filling A before B is the right selector rule — record it for Step 1, do not
 build it now.** Dropping part of B is recoverable, because A still tells us what
 to look for and we can report "not found". Dropping part of A loses a statement
@@ -13392,6 +13597,8 @@ Listing every chunk header costs ~2,400 tokens for the 96-chunk sample pair, and
 about **40,000 tokens for a 2,000-chunk repository** — larger than the whole
 budget. Step 1 must list **files**, not chunks. Recorded here so it is not
 discovered during a demo.
+
+**⚠ OVERTURNED 2026-09-14 — see [the selector](#13-the-selector-and-the-scenario-matrix-behind-it--decided-2026-09-14). The selector shares the leftover instead: A before B leaves A UNCAPPED, so a large reference starves B entirely, and it biases every code-vs-code comparison by upload order. When A fits, the two rules give the identical answer.**
 
 Related, and also for Step 1: **`select()` should fill A before B.** Dropping part
 of B is recoverable, because A still says what to look for and the answer can be
