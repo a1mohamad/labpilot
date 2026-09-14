@@ -121,7 +121,18 @@ MAX_FILE_BYTES = 5_000_000
 MAX_TOTAL_BYTES = 20_000_000
 MAX_FILES = 20_000
 
-MAX_ARCHIVE_BYTES = 50_000_000
+# An archive we accept must be able to REACH us, and 50MB never could: the API
+# body limit is 2 x MAX_UPLOAD_BYTES plus overhead, about 10MB. Pinned as an
+# xfail since 2026-08-28 because choosing the number before the feature existed
+# would have been a guess; slice 7 wired the door, so it is chosen now.
+#
+# THE ARCHIVE'S NUMBER IS THE ONE THAT MOVES, for a reason that has nothing to
+# do with the API: 50MB COMPRESSED against MAX_TOTAL_BYTES of 20MB UNCOMPRESSED
+# was never coherent, since source code never expands to less than it packs to.
+# The old value could not be reached through the door OR through the walk.
+#
+# 10MB compressed is a large source-only repository and fits both ceilings.
+MAX_ARCHIVE_BYTES = 10_000_000
 MAX_UNCOMPRESSED_BYTES = 200_000_000
 
 COPY_CHUNK_BYTES = 65_536
