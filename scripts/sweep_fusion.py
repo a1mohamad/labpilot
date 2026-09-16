@@ -25,7 +25,9 @@ sweep is arithmetic.
 
 from __future__ import annotations
 
+import json
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -167,6 +169,31 @@ def main() -> int:
     ]
     print(
         f"  settings never worse than vector on BOTH r@50 and MRR: {len(never_worse)}"
+    )
+
+    # Machine-readable, because the question "which wRRF setting" has to be
+    # answered ACROSS corpora. A setting that tops one corpus and is the worst
+    # on another is what slice 5 shipped, and reading twelve printed grids is
+    # how that happens again.
+    out = Path(".logs/results")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"fusion_{name}_{embedder.model}.json").write_text(
+        json.dumps(
+            {
+                "corpus": name,
+                "embedder": embedder.model,
+                "chunks": n,
+                "queries": len(queries),
+                "vector": base,
+                "grid": [
+                    {"k": k, "w": w, **{m: v for m, v in scores.items()}}
+                    for k, w, scores in rows
+                ],
+                "never_worse": [list(kw) for kw in never_worse],
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
     )
     return 0
 

@@ -1,0 +1,249 @@
+{
+  "corpus": {
+    "key": "docs",
+    "env": "LABPILOT_DOCS_SRC",
+    "include": [
+      "cobra/**/*.md",
+      "log/**/*.md",
+      "websocket/**/*.md",
+      "gson/**/*.md",
+      "requests/**/*.md",
+      "geo/**/*.md",
+      "zod/packages/docs/**/*.md"
+    ],
+    "exclude": [
+      "**/node_modules/**",
+      "**/CHANGELOG*",
+      "**/.github/**"
+    ],
+    "source": "relpath",
+    "language": "Markdown",
+    "splitter": "markdown-header",
+    "domain": "documentation of six unrelated projects",
+    "repo": "the .corpora checkouts already fetched",
+    "commit": "n/a",
+    "licence": "each project's own",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 463,
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "DO01",
+      "query": "what is the lowest android version supported by the latest version of the library",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "gson/README.md",
+      "expects": [
+        72
+      ],
+      "anchor": "- Gson 2.15.0 and newer: API level 24"
+    },
+    {
+      "id": "DO02",
+      "query": "how long do the maintainers take to acknowledge a security vulnerability report",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "cobra/SECURITY.md",
+      "expects": [
+        29
+      ],
+      "anchor": "1. Confirm receipt of the vulnerability report within 7 days."
+    },
+    {
+      "id": "DO03",
+      "query": "what git flag should i use to avoid errors with commit timestamps",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "requests/README.md",
+      "expects": [
+        60
+      ],
+      "anchor": "When cloning the Requests repository, you may need to add the `-c fetch.fsck.badTimezone=ignore` flag to avoid an error about a bad commit timestamp (see [this issue](https://github.com/psf/requests/issues/2690) for more background):"
+    },
+    {
+      "id": "DO04",
+      "query": "where to go to talk to the community for cobra",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "cobra/CONDUCT.md",
+      "expects": [
+        16
+      ],
+      "anchor": "Cobra maintainers will use GitHub issues and the [#cobra slack channel](https://gophers.slack.com/archives/CD3LP1199) as the primary means of communication with the community."
+    },
+    {
+      "id": "DO05",
+      "query": "text file containing reflection metadata for native image creation",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "gson/test-graal-native-image/README.md",
+      "expects": [
+        17
+      ],
+      "anchor": "The file [`reflect-config.json`](./src/test/resources/META-INF/native-image/reflect-config.json) contains this reflection metadata."
+    },
+    {
+      "id": "DO06",
+      "query": "where are the generated documentation files saved by default in the example",
+      "asks": "constant",
+      "wording": "named",
+      "file": "cobra/site/content/docgen/rest.md",
+      "expects": [
+        49
+      ],
+      "anchor": "err := doc.GenReSTTree(kubectl, \"./\")"
+    },
+    {
+      "id": "DO07",
+      "query": "how to start the server for the websocket test suite",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "websocket/examples/autobahn/README.md",
+      "expects": [
+        7
+      ],
+      "anchor": "go run server.go"
+    },
+    {
+      "id": "DO08",
+      "query": "how do i create a man page for my command",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "cobra/site/content/docgen/man.md",
+      "expects": [
+        24
+      ],
+      "anchor": "err := doc.GenManTree(cmd, header, \"/tmp\")"
+    },
+    {
+      "id": "DO09",
+      "query": "why is there a separate maven module for jpms tests",
+      "asks": "structure",
+      "wording": "named",
+      "file": "gson/test-jpms/README.md",
+      "expects": [
+        5
+      ],
+      "anchor": "This is a separate Maven module to test Gson's final JAR instead of just the compiled classes."
+    },
+    {
+      "id": "DO10",
+      "query": "which shell is the old way of doing dynamic completions compatible with",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "cobra/site/content/completions/bash.md",
+      "expects": [
+        7
+      ],
+      "anchor": "Unlike the `ValidArgsFunction` solution, the legacy solution will only work for Bash shell-completion and not for other shells."
+    },
+    {
+      "id": "DO11",
+      "query": "how do i run the file watch example",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "websocket/examples/filewatch/README.md",
+      "expects": [
+        7
+      ],
+      "anchor": "$ go run main.go <name of file to watch>"
+    },
+    {
+      "id": "DO12",
+      "query": "which spherical geometry types are not available in go",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "geo/README.md",
+      "expects": [
+        142
+      ],
+      "anchor": "S2CellIdVector       | ❌"
+    },
+    {
+      "id": "DO13",
+      "query": "how do i stop the automatic generation of the attribution string in the docs",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "cobra/site/content/docgen/_index.md",
+      "expects": [
+        11
+      ],
+      "anchor": "You may set `cmd.DisableAutoGenTag = true` to _entirely_ remove the auto generated string \"Auto generated by spf13/cobra...\" from any documentation source."
+    },
+    {
+      "id": "DO14",
+      "query": "how do i submit my changes to the project",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "geo/CONTRIBUTING.md",
+      "expects": [
+        51
+      ],
+      "anchor": "Finally, push the commits to your fork and submit a [pull request][]."
+    },
+    {
+      "id": "DO15",
+      "query": "why are most of the classes not allowed to be extended",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "gson/GsonDesignDocument.md",
+      "expects": [
+        39
+      ],
+      "anchor": "We chose to limit such use-cases by marking classes as final, and waiting until a good use-case emerges to allow extensibility."
+    },
+    {
+      "id": "DO16",
+      "query": "how do i run the server in the example",
+      "asks": "api",
+      "wording": "named",
+      "file": "websocket/examples/echo/README.md",
+      "expects": [
+        10
+      ],
+      "anchor": "$ go run server.go"
+    },
+    {
+      "id": "DO17",
+      "query": "how do i recreate the certificates for testing",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "requests/tests/certs/expired/README.md",
+      "expects": [
+        6
+      ],
+      "anchor": "This can all be regenerated with:"
+    },
+    {
+      "id": "DO18",
+      "query": "how should i run the integration tests if i want to use my ide",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "gson/test-shrinker/README.md",
+      "expects": [
+        9
+      ],
+      "anchor": "Run `mvn clean verify` before trying to run the integration tests from the IDE."
+    },
+    {
+      "id": "DO19",
+      "query": "how do i run the performance tests for collection deserialization",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "gson/ReleaseProcess.md",
+      "expects": [
+        108
+      ],
+      "anchor": "For example, here is how to run the [CollectionsDeserializationBenchmark](gson/src/main/java/com/google/gson/metrics/CollectionsDeserializationBenchmark.java):"
+    }
+  ]
+}

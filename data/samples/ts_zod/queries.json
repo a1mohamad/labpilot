@@ -1,0 +1,254 @@
+{
+  "corpus": {
+    "key": "zod",
+    "env": "LABPILOT_ZOD_SRC",
+    "include": [
+      "packages/zod/src/**/*.ts"
+    ],
+    "exclude": [
+      "**/*.test.ts",
+      "**/tests/**",
+      "**/__tests__/**"
+    ],
+    "source": "relpath",
+    "language": "TypeScript",
+    "splitter": "recursive",
+    "domain": "schema validation",
+    "repo": "https://github.com/colinhacks/zod",
+    "commit": "59bbc03",
+    "licence": "MIT",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 1160,
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "ZO01",
+      "query": "what is the korean translation for an invalid union",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/ko.ts",
+      "expects": [
+        112
+      ],
+      "anchor": "case \"invalid_union\":"
+    },
+    {
+      "id": "ZO02",
+      "query": "how does the system handle converting a message object to a string",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "packages/zod/src/v3/helpers/errorUtil.ts",
+      "expects": [
+        6
+      ],
+      "anchor": "export const toString = (message?: ErrMessage): string | undefined =>"
+    },
+    {
+      "id": "ZO03",
+      "query": "which functions are available for encoding and decoding in the mini version",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/mini/parse.ts",
+      "expects": [
+        16
+      ],
+      "anchor": "from \"../core/index.js\";"
+    },
+    {
+      "id": "ZO04",
+      "query": "what are the possible types of issues that can occur during validation",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/core/errors.ts",
+      "expects": [
+        182
+      ],
+      "anchor": "export type $ZodIssue ="
+    },
+    {
+      "id": "ZO05",
+      "query": "what is the malay translation for a string that does not start with the required prefix",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/ms.ts",
+      "expects": [
+        94
+      ],
+      "anchor": "if (_issue.format === \"starts_with\") return `String tidak sah: mesti bermula dengan \"${_issue.prefix}\"`;"
+    },
+    {
+      "id": "ZO06",
+      "query": "what happens when the user presses ctrl-c during benchmarks",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v3/benchmarks/index.ts",
+      "expects": [
+        56
+      ],
+      "anchor": "process.on(\"SIGINT\", function () {"
+    },
+    {
+      "id": "ZO07",
+      "query": "what are the old names for getting the output type of a schema",
+      "asks": "api",
+      "wording": "named",
+      "file": "packages/zod/src/v4/classic/compat.ts",
+      "expects": [
+        9
+      ],
+      "anchor": "export type Infer<T> = core.output<T>;"
+    },
+    {
+      "id": "ZO08",
+      "query": "where are the coercion types exported from",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/classic/external.ts",
+      "expects": [
+        57
+      ],
+      "anchor": "export * as coerce from \"./coerce.js\";"
+    },
+    {
+      "id": "ZO09",
+      "query": "what is the tajik translation for a value that is too small",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/tg.ts",
+      "expects": [
+        89
+      ],
+      "anchor": "case \"too_small\": {"
+    },
+    {
+      "id": "ZO10",
+      "query": "how is an invalid type error message formatted in czech",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/cs.ts",
+      "expects": [
+        74
+      ],
+      "anchor": "return `Neplatný vstup: očekáváno ${expected}, obdrženo ${received}`;"
+    },
+    {
+      "id": "ZO11",
+      "query": "what is exported from the external helpers file",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v3/external.ts",
+      "expects": [
+        4
+      ],
+      "anchor": "export * from \"./helpers/util.js\";"
+    },
+    {
+      "id": "ZO12",
+      "query": "what is the version of the common schema interface",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v3/standard-schema.ts",
+      "expects": [
+        19
+      ],
+      "anchor": "readonly version: 1;"
+    },
+    {
+      "id": "ZO13",
+      "query": "what is the catalan error message for an unrecognized key",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/ca.ts",
+      "expects": [
+        104
+      ],
+      "anchor": "return `Clau${issue.keys.length > 1 ? \"s\" : \"\"} no reconeguda${issue.keys.length > 1 ? \"s\" : \"\"}: ${util.joinValues(issue.keys, \", \")}`;"
+    },
+    {
+      "id": "ZO14",
+      "query": "what is the error message for an unknown key in canadian french",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/fr-CA.ts",
+      "expects": [
+        104
+      ],
+      "anchor": "return `Clé${issue.keys.length > 1 ? \"s\" : \"\"} non reconnue${issue.keys.length > 1 ? \"s\" : \"\"} : ${util.joinValues(issue.keys, \", \")}`;"
+    },
+    {
+      "id": "ZO15",
+      "query": "how does the system check if a date is valid for february",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v3/benchmarks/datetime.ts",
+      "expects": [
+        38
+      ],
+      "anchor": "if ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0) {"
+    },
+    {
+      "id": "ZO16",
+      "query": "what is the error message for an unknown key in russian",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/ru.ts",
+      "expects": [
+        171
+      ],
+      "anchor": "return `Нераспознанн${issue.keys.length > 1 ? \"ые\" : \"ый\"} ключ${issue.keys.length > 1 ? \"и\" : \"\"}: ${util.joinValues(issue.keys, \", \")}`;"
+    },
+    {
+      "id": "ZO17",
+      "query": "how is an invalid type error message formatted in finnish",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/fi.ts",
+      "expects": [
+        74
+      ],
+      "anchor": "return `Virheellinen tyyppi: odotettiin ${expected}, oli ${received}`;"
+    },
+    {
+      "id": "ZO18",
+      "query": "what is the error message for an unknown key in spanish",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/es.ts",
+      "expects": [
+        128
+      ],
+      "anchor": "return `Llave${issue.keys.length > 1 ? \"s\" : \"\"} desconocida${issue.keys.length > 1 ? \"s\" : \"\"}: ${util.joinValues(issue.keys, \", \")}`;"
+    },
+    {
+      "id": "ZO19",
+      "query": "what happens when a helper method is first accessed on an error object",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/classic/errors.ts",
+      "expects": [
+        41
+      ],
+      "anchor": "Object.defineProperty(this, key, { value, configurable: true, writable: true });"
+    },
+    {
+      "id": "ZO20",
+      "query": "what is the slovak translation for a list",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "packages/zod/src/v4/locales/sk.ts",
+      "expects": [
+        62
+      ],
+      "anchor": "array: \"pole\","
+    }
+  ]
+}

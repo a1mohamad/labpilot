@@ -232,14 +232,26 @@ GATE_GRID = (0.0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.10)
 FUSION_K, FUSION_WEIGHT = 5, 0.15
 
 
-def cached_vectors(corpus: str, model: str, what: str) -> list:
+def cached_vectors(corpus: str, model: str, what: str, expect: int = 0) -> list:
     path = EMBED_CACHE / f"{corpus}_{model}_{what}.pkl"
     if not path.exists():
         raise SystemExit(
             f"{path} is missing. Run score_hybrid.py for this corpus and "
             f"embedder first - it caches the embeddings this script reuses."
         )
-    return pickle.loads(path.read_bytes())
+    vectors = pickle.loads(path.read_bytes())
+    # The cache is keyed by CORPUS AND MODEL, not by the query set, so a
+    # re-drafted fixture silently reuses the vectors of the questions it used
+    # to have - and every score after that describes the old fixture. A count
+    # check is not proof of freshness, but it catches the case that actually
+    # happens, which is a fixture that changed SIZE.
+    if expect and len(vectors) != expect:
+        raise SystemExit(
+            f"{path} holds {len(vectors)} vectors but this corpus now has "
+            f"{expect} {what}. The fixture changed under the cache: delete "
+            f"that file and re-run score_hybrid.py."
+        )
+    return vectors
 
 
 def dense_orders(queries, query_vectors, chunk_vectors) -> dict[str, list]:
@@ -434,8 +446,8 @@ def main() -> int:
         f"10,000-chunk artifact it would be {window / 10_000:.1%}"
     )
 
-    chunk_vectors = cached_vectors(corpus, embedder.model, "chunks")
-    query_vectors = cached_vectors(corpus, embedder.model, "queries")
+    chunk_vectors = cached_vectors(corpus, embedder.model, "chunks", len(chunks))
+    query_vectors = cached_vectors(corpus, embedder.model, "queries", len(queries))
     dense = dense_orders(queries, query_vectors, chunk_vectors)
 
     pairs = PairScores(corpus, "_bare" if bare else "")

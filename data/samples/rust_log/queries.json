@@ -1,0 +1,253 @@
+{
+  "corpus": {
+    "key": "log",
+    "env": "LABPILOT_LOG_SRC",
+    "include": [
+      "**/*.rs"
+    ],
+    "exclude": [
+      "tests/**",
+      "benches/**"
+    ],
+    "source": "relpath",
+    "language": "Rust",
+    "splitter": "recursive",
+    "domain": "logging facade",
+    "repo": "https://github.com/rust-lang/log",
+    "commit": "8034743",
+    "licence": "MIT OR Apache-2.0",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 146,
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "LO01",
+      "query": "which integer range can be converted into floats",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "src/kv/value.rs",
+      "expects": [
+        1389
+      ],
+      "anchor": "// Only integers from i32::MIN..=u32::MAX can be converted into floats"
+    },
+    {
+      "id": "LO02",
+      "query": "how does the debug macro expand to a single log call if no logger or target is provided",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/macros.rs",
+      "expects": [
+        312
+      ],
+      "anchor": "($($arg:tt)+) => ($crate::log!($crate::Level::Debug, $($arg)+))"
+    },
+    {
+      "id": "LO03",
+      "query": "what happens if i try to use serde serialization for values without the right feature enabled",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/macros.rs",
+      "expects": [
+        560
+      ],
+      "anchor": "\"capturing values as `serde::Serialize` requires the `kv_serde` feature of `log`\""
+    },
+    {
+      "id": "LO04",
+      "query": "how can one obtain a borrowed string slice from a key",
+      "asks": "api",
+      "wording": "named",
+      "file": "src/kv/key.rs",
+      "expects": [
+        62
+      ],
+      "anchor": "pub fn as_str(&self) -> &str {"
+    },
+    {
+      "id": "LO05",
+      "query": "is the visitor trait object safe",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "src/kv/source.rs",
+      "expects": [
+        477
+      ],
+      "anchor": "fn _check(_: &dyn VisitSource) {}"
+    },
+    {
+      "id": "LO06",
+      "query": "which log level provides the most detail",
+      "asks": "constant",
+      "wording": "named",
+      "file": "src/lib.rs",
+      "expects": [
+        1383
+      ],
+      "anchor": "Note that `Trace` is the maximum level, because it provides the maximum amount of detail in the emitted logs."
+    },
+    {
+      "id": "LO07",
+      "query": "what happens to the last log entry in a test environment where debug assertions are thanks",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "test_max_level_features/main.rs",
+      "expects": [
+        54
+      ],
+      "anchor": "if cfg!(debug_assertions) {"
+    },
+    {
+      "id": "LO08",
+      "query": "how does the system handle an invalid log level name during deserialization",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/serde.rs",
+      "expects": [
+        61
+      ],
+      "anchor": "FromStr::from_str(s).map_err(|_| Error::unknown_variant(s, &LOG_LEVEL_NAMES[1..]))"
+    },
+    {
+      "id": "LO09",
+      "query": "what is the provided fallback-only method for handling complex types like maps and sequences",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/kv/value.rs",
+      "expects": [
+        499
+      ],
+      "anchor": "fn visit_any(&mut self, value: Value) -> Result<(), Error>;"
+    },
+    {
+      "id": "LO10",
+      "query": "what is the purpose of the global logger proxy",
+      "asks": "structure",
+      "wording": "named",
+      "file": "src/__private_api.rs",
+      "expects": [
+        39
+      ],
+      "anchor": "/// The global logger proxy."
+    },
+    {
+      "id": "LO11",
+      "query": "what happens if the value bag feature is disabled",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/kv/value.rs",
+      "expects": [
+        753
+      ],
+      "anchor": "This is a dependency-free implementation of `Value` when there's no serialization frameworks involved."
+    },
+    {
+      "id": "LO12",
+      "query": "what happens if i try to capture a value as an error without the required feature",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/macros.rs",
+      "expects": [
+        580
+      ],
+      "anchor": "\"capturing values as `std::error::Error` requires the `kv_std` feature of `log`\""
+    },
+    {
+      "id": "LO13",
+      "query": "how can i iterate over all the pairs in a log record",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/kv/mod.rs",
+      "expects": [
+        102
+      ],
+      "anchor": "record.key_values().visit(&mut visitor)?"
+    },
+    {
+      "id": "LO14",
+      "query": "where are the key and value types defined",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "src/kv/mod.rs",
+      "expects": [
+        255
+      ],
+      "anchor": "pub use self::key::{Key, ToKey};"
+    },
+    {
+      "id": "LO15",
+      "query": "how is the total number of entries in a source calculated",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/kv/source.rs",
+      "expects": [
+        114
+      ],
+      "anchor": "fn count_default(source: impl Source) -> usize {"
+    },
+    {
+      "id": "LO16",
+      "query": "what happens if you try to use key value support without the required feature",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/macros.rs",
+      "expects": [
+        465
+      ],
+      "anchor": "compile_error!(\"key value support requires the `kv` feature of `log`\")"
+    },
+    {
+      "id": "LO17",
+      "query": "how do i convert a string slice to a key",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/kv/key.rs",
+      "expects": [
+        106
+      ],
+      "anchor": "Key::from_str(s)"
+    },
+    {
+      "id": "LO18",
+      "query": "can a borrowed key be equal to a static key",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/kv/key.rs",
+      "expects": [
+        200
+      ],
+      "anchor": "assert_eq!(static_key, borrowed_key);"
+    },
+    {
+      "id": "LO19",
+      "query": "how can i try to convert a value into a string",
+      "asks": "api",
+      "wording": "named",
+      "file": "src/kv/value.rs",
+      "expects": [
+        468
+      ],
+      "anchor": "pub fn to_cow_str(&self) -> Option<Cow<'v, str>> {"
+    },
+    {
+      "id": "LO20",
+      "query": "how does the system handle an empty optional source",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/kv/source.rs",
+      "expects": [
+        230
+      ],
+      "anchor": "self.as_ref().map_or(0, Source::count)"
+    }
+  ]
+}

@@ -180,7 +180,13 @@ def embedded(embedder, texts: list[str], *, task: str, tag: str) -> list:
     CACHE.mkdir(parents=True, exist_ok=True)
     cached = CACHE / f"{tag}.pkl"
     if cached.exists():
-        return pickle.loads(cached.read_bytes())
+        vectors = pickle.loads(cached.read_bytes())
+        # A cache keyed by corpus and model, holding the wrong NUMBER of
+        # vectors, means the fixture changed under it - so every score after
+        # this point would describe the questions this corpus used to have.
+        if len(vectors) == len(texts):
+            return vectors
+        print(f"    cache is stale ({len(vectors)} != {len(texts)}), re-embedding")
 
     budget = TOKENS_PER_MINUTE[embedder.model]
     vectors: list = []

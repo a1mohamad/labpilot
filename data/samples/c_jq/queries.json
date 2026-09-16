@@ -1,0 +1,251 @@
+{
+  "corpus": {
+    "key": "jq",
+    "env": "LABPILOT_JQ_SRC",
+    "include": [
+      "src/*.c",
+      "src/*.h"
+    ],
+    "exclude": [],
+    "source": "relpath",
+    "language": "C",
+    "splitter": "recursive",
+    "domain": "JSON query processor",
+    "repo": "https://github.com/jqlang/jq",
+    "commit": "1b4109b",
+    "licence": "MIT",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 693,
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "JQ01",
+      "query": "how many arguments does the insert operation take",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "src/opcode_list.h",
+      "expects": [
+        22
+      ],
+      "anchor": "OP(INSERT, NONE,    4, 2)"
+    },
+    {
+      "id": "JQ02",
+      "query": "how does the test runner handle the number of tests to execute",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/jq_test.c",
+      "expects": [
+        133
+      ],
+      "anchor": "printf(\"Hit the number of tests limit (%d), breaking\\n\", tests_to_take);"
+    },
+    {
+      "id": "JQ03",
+      "query": "how does the system handle a missing start position for an error message",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/locfile.c",
+      "expects": [
+        73
+      ],
+      "anchor": "if (loc.start == -1) {"
+    },
+    {
+      "id": "JQ04",
+      "query": "how do i check if a character is a space",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/jv_unicode.h",
+      "expects": [
+        13
+      ],
+      "anchor": "int jvp_codepoint_is_whitespace(int c);"
+    },
+    {
+      "id": "JQ05",
+      "query": "which binary operations are supported",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "src/builtin.h",
+      "expects": [
+        10
+      ],
+      "anchor": "#define BINOPS \\"
+    },
+    {
+      "id": "JQ06",
+      "query": "what is the default value for a location that is not known",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "src/locfile.h",
+      "expects": [
+        10
+      ],
+      "anchor": "static const location UNKNOWN_LOCATION = {-1, -1};"
+    },
+    {
+      "id": "JQ07",
+      "query": "how does the system identify if a call can be optimized as a tail call",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/execute.c",
+      "expects": [
+        1185
+      ],
+      "anchor": "if (ret_follows(pc))"
+    },
+    {
+      "id": "JQ08",
+      "query": "what happens when a closing bracket is found but no array was started",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/jv_parse.c",
+      "expects": [
+        205
+      ],
+      "anchor": "return \"Unmatched ']'\""
+    },
+    {
+      "id": "JQ09",
+      "query": "how do i create a basic instruction sequence for a fixed value",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/compile.h",
+      "expects": [
+        23
+      ],
+      "anchor": "block gen_const(jv constant);"
+    },
+    {
+      "id": "JQ10",
+      "query": "how is the memory alignment for the execution stack calculated",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "src/exec_stack.h",
+      "expects": [
+        44
+      ],
+      "anchor": "enum {ALIGNMENT = offsetof(struct determine_alignment, u)};"
+    },
+    {
+      "id": "JQ11",
+      "query": "what is the maximum length for a formatted double to string conversion",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "src/jv_dtoa.h",
+      "expects": [
+        20
+      ],
+      "anchor": "#define JVP_DTOA_FMT_MAX_LEN 64"
+    },
+    {
+      "id": "JQ12",
+      "query": "what happens when the lookahead token cannot be reused after a syntax error",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/parser.c",
+      "expects": [
+        4015
+      ],
+      "anchor": "yydestruct (\"Error: discarding\","
+    },
+    {
+      "id": "JQ13",
+      "query": "what happens if you try to slice a value that is not a list or a string",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/jv_aux.c",
+      "expects": [
+        58
+      ],
+      "anchor": "return jv_invalid_with_msg(jv_string(\"Only arrays and strings can be sliced\"));"
+    },
+    {
+      "id": "JQ14",
+      "query": "how do i allocate memory that is not guarded",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/jv_alloc.h",
+      "expects": [
+        7
+      ],
+      "anchor": "void* jv_mem_alloc_unguarded(size_t);"
+    },
+    {
+      "id": "JQ15",
+      "query": "how are the sizes of the instructions represented",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "src/bytecode.h",
+      "expects": [
+        39
+      ],
+      "anchor": "int length;"
+    },
+    {
+      "id": "JQ16",
+      "query": "what happens when writing to an index that exceeds the current capacity",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/jv.c",
+      "expects": [
+        882
+      ],
+      "anchor": "jvp_array* new_array = jvp_array_alloc(ARRAY_SIZE_ROUND_UP(new_length));"
+    },
+    {
+      "id": "JQ17",
+      "query": "what is the general rule for how functions that handle values handle their reference counts",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/jv.h",
+      "expects": [
+        46
+      ],
+      "anchor": "All jv_* functions consume (decref) input and produce (incref) output"
+    },
+    {
+      "id": "JQ18",
+      "query": "why are filenames stored as simple character pointers instead of the internal value type",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "src/jq.h",
+      "expects": [
+        55
+      ],
+      "anchor": "We use char * instead of jf for filenames here because filenames"
+    },
+    {
+      "id": "JQ19",
+      "query": "how is the thread local storage key creation handled",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/jv_thread.h",
+      "expects": [
+        67
+      ],
+      "anchor": "int pthread_key_create(pthread_key_t *, void (*)(void *));"
+    },
+    {
+      "id": "JQ20",
+      "query": "what functions are available to parse a source file or a library",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/jq_parser.h",
+      "expects": [
+        6
+      ],
+      "anchor": "int jq_parse(struct locfile* source, block* answer);"
+    }
+  ]
+}

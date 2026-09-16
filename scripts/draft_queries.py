@@ -160,18 +160,42 @@ def extract(chunk, n: int) -> str:
 def anchor_line(chunk, anchor: str) -> int | None:
     """Resolve the quoted line to a line NUMBER in the real file.
 
-    Matched on the stripped line, so indentation the drafter dropped does not
-    lose the anchor - the same tolerance citations.resolve already applies for
-    the same reason. A drafter that invented a line returns None and the query
-    is dropped rather than given a plausible wrong number.
+    Matched on WHITESPACE-NORMALISED text, so indentation the drafter dropped
+    does not lose the anchor - the same tolerance citations.resolve already
+    applies, for the same reason. A drafter that invented a line returns None
+    and the query is dropped rather than given a plausible wrong number.
+
+    Stripping alone was not enough, and PDF is why: extracted text carries the
+    spacing of the PAGE, not of a sentence, so a faithfully copied line comes
+    back with runs of spaces the model quietly collapses. Measured on the
+    papers corpus - 23 of 36 drafts dropped on an anchor that was really
+    there, against 1 of 36 on Rust.
     """
-    wanted = anchor.strip()
+    wanted = " ".join(anchor.split())
     if not wanted:
         return None
-    for offset, line in enumerate(chunk.text.splitlines()):
-        if line.strip() == wanted or (len(wanted) > 20 and wanted in line):
+
+    lines = chunk.text.splitlines()
+    flat = [" ".join(line.split()) for line in lines]
+    for offset, line in enumerate(flat):
+        if line == wanted or (len(wanted) > 20 and wanted in line):
             return chunk.start_line + offset
-    return None
+
+    # Still nothing, so try ACROSS the line break. Extracted prose wraps
+    # wherever the page wrapped, and a quoted sentence then spans two lines
+    # that no per-line comparison can match. The line reported is where the
+    # match STARTS, which is the line a citation would point at.
+    if len(wanted) <= 20:
+        return None
+    joined, starts = "", []
+    for line in flat:
+        starts.append(len(joined))
+        joined += line + " "
+    found = joined.find(wanted)
+    if found < 0:
+        return None
+    offset = max(i for i, start in enumerate(starts) if start <= found)
+    return chunk.start_line + offset
 
 
 def structured(model_key: str) -> tuple:

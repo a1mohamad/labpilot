@@ -87,3 +87,51 @@ by somebody else, and was **not** about machine learning -- so that a result
 measured on `quora_siamese` could be shown to hold, or not, somewhere else. It
 also gave the first multi-file corpus, which exposed that a query file needs a
 `file` field: line 186 exists in most of the 19 files.
+
+## `golang_geo/queries.json` — the third retrieval fixture
+
+- **Queries and ground truth: ours.** Written 2026-09-16 for slice 8, from
+  reading the corpus. No source text is copied into them.
+- **The corpus is NOT committed.** `golang/geo` at commit `b200a11`,
+  https://github.com/golang/geo, **BSD-3-Clause**. It is third-party source,
+  so the provenance rule keeps it out of the repository: clone it with
+  `--depth 1` and point `LABPILOT_GEO_SRC` at the checkout.
+- **Why this corpus:** the first fixture that is neither Python nor machine
+  learning, the first measured through `split_recursive`, and the first whose
+  vector `r@50` is not saturated.
+
+
+## The slice 8 corpus zoo — ten more fixtures, 2026-09-16
+
+Slice 8's first run measured three corpora, two of which had been used before.
+These ten were added so a retrieval claim can be made across languages and
+formats instead of across one language and one domain.
+
+**Queries and ground truth are OURS** for every corpus below. They are drafted
+by the gemma chain against the real chunk text, then machine-validated for
+resolvability, breadth, duplication and identifier leakage, and spot-checked by
+hand. `scripts/draft_queries.py` and `scripts/validate_fixture.py` carry the
+rules; the drafter is recorded in each fixture's `drafted_by`.
+
+**No corpus is committed.** Each `queries.json` names its repository, its
+commit and its licence, and an environment variable pointing at a checkout —
+the same rule `geo` and `requests` already followed.
+
+| fixture | source | licence |
+|---|---|---|
+| `go_cobra` | github.com/spf13/cobra @ `adbc881` | Apache-2.0 |
+| `go_websocket` | github.com/gorilla/websocket @ `e064f32` | BSD-3-Clause |
+| `rust_log` | github.com/rust-lang/log @ `8034743` | MIT OR Apache-2.0 |
+| `c_jq` | github.com/jqlang/jq @ `1b4109b` | MIT |
+| `java_gson` | github.com/google/gson @ `698ba9e` | Apache-2.0 |
+| `ts_zod` | github.com/colinhacks/zod @ `59bbc03` | MIT |
+| `md_docs` | the Markdown of six of the repositories above | each project's own |
+| `pdf_papers` | eight arXiv papers, fetched | each paper's own arXiv licence |
+| `ipynb_notebooks` | the user's own notebooks, local | personal, never committed |
+| `docx_reports` | the user's own Word documents, local | personal, never committed |
+
+**Why these.** Five of them have no AST splitter, so `split_recursive` is
+measured five more times rather than once. Three of them are document formats
+whose loader path had never been scored at all. Two are above 1,000 chunks and
+two are under 150, so "it works at our size" stops meaning "it works at the one
+size we tried".

@@ -1,0 +1,250 @@
+{
+  "corpus": {
+    "key": "notebooks",
+    "env": "LABPILOT_NOTEBOOKS_SRC",
+    "include": [
+      "*.ipynb"
+    ],
+    "exclude": [],
+    "source": "name",
+    "language": "Python + Markdown",
+    "splitter": "notebook-cell",
+    "domain": "applied generative AI labs",
+    "repo": "the user's own notebooks, local",
+    "commit": "n/a",
+    "licence": "personal material, never committed",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 382,
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "NO01",
+      "query": "which model is used to generate the vector representations",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "day-2-embeddings-and-similarity-scores.ipynb",
+      "expects": [
+        106
+      ],
+      "anchor": "model='models/text-embedding-004',"
+    },
+    {
+      "id": "NO02",
+      "query": "what are some examples of tasks that can be improved by adjusting the model weights",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "day-4-fine-tuning-a-custom-model.ipynb",
+      "expects": [
+        22
+      ],
+      "anchor": "Fine-tuning can be used for a variety of tasks from classic NLP problems like entity extraction or summarisation, to creative tasks like stylised generation."
+    },
+    {
+      "id": "NO03",
+      "query": "what happens when a tool is called that is not supported",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "day-3-building-an-agent-with-langgraph.ipynb",
+      "expects": [
+        667
+      ],
+      "anchor": "raise NotImplementedError(f'Unknown tool call: {tool_call[\"name\"]}')"
+    },
+    {
+      "id": "NO04",
+      "query": "where can i open the prompt in the web interface",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "day-4-google-search-grounding.ipynb",
+      "expects": [
+        162
+      ],
+      "anchor": "<a target=\"_blank\" href=\"https://aistudio.google.com/prompts/14lDR0VjSni6BEUCZUBqj5PzTn3J194Th\"><img src=\"https://ai.google.dev/site-assets/images/marketing/home/icon-ais.png\" style=\"height: 24px\" height=24/> Open in AI Studio</a>"
+    },
+    {
+      "id": "NO05",
+      "query": "what database is used to store the documents",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "day-2-document-q-a-with-rag.ipynb",
+      "expects": [
+        148
+      ],
+      "anchor": "Now create a [Chroma database client](https://docs.trychroma.com/getting-started) that uses the `GeminiEmbeddingFunction` and populate the database with the documents you defined above."
+    },
+    {
+      "id": "NO06",
+      "query": "how many items are in the database",
+      "asks": "constant",
+      "wording": "named",
+      "file": "day-2-document-q-a-with-rag.ipynb",
+      "expects": [
+        171
+      ],
+      "anchor": "3"
+    },
+    {
+      "id": "NO07",
+      "query": "how do i make the car warmer",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "day-2-document-q-a-with-rag.ipynb",
+      "expects": [
+        103
+      ],
+      "anchor": "Turn the knob clockwise to increase the temperature or counterclockwise to decrease the temperature."
+    },
+    {
+      "id": "NO08",
+      "query": "what should i do if the system says there are no user secrets for the kernel",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "day-4-google-search-grounding.ipynb",
+      "expects": [
+        108
+      ],
+      "anchor": "If you received an error response along the lines of `No user secrets exist for kernel id ...`, then you need to add your API key via `Add-ons`, `Secrets` **and** enable it."
+    },
+    {
+      "id": "NO09",
+      "query": "which api is needed for the model to combine multiple tool calls while writing code",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "day-3-function-calling-with-the-gemini-api.ipynb",
+      "expects": [
+        392
+      ],
+      "anchor": "The feature requires the Live API, so this step uses different setup code than most of the examples you have seen so far."
+    },
+    {
+      "id": "NO10",
+      "query": "what is the purpose of the guidance prompt class",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "day-1-evaluation-and-structured-output.ipynb",
+      "expects": [
+        597
+      ],
+      "anchor": "\"A question-answering guidance prompt or system instruction.\""
+    },
+    {
+      "id": "NO11",
+      "query": "what is the maximum length of the processed text",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "day-2-classifying-embeddings-with-keras.ipynb",
+      "expects": [
+        146
+      ],
+      "anchor": "text = text[:5000]"
+    },
+    {
+      "id": "NO12",
+      "query": "how does the code handle the labels after filtering the categories",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "day-2-classifying-embeddings-with-keras.ipynb",
+      "expects": [
+        200
+      ],
+      "anchor": "df[\"Encoded Label\"] = df[\"Class Name\"].cat.codes"
+    },
+    {
+      "id": "NO13",
+      "query": "how do you tell the model to return a specific set of predefined options",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "day-1-prompting.ipynb",
+      "expects": [
+        544
+      ],
+      "anchor": "response_schema=Sentiment"
+    },
+    {
+      "id": "NO14",
+      "query": "where can i find a list of frequent problems and their solutions",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "day-1-prompting.ipynb",
+      "expects": [
+        36
+      ],
+      "anchor": "**Common issues are covered in the [FAQ and troubleshooting guide](https://www.kaggle.com/code/markishere/day-0-troubleshooting-and-faqs).**"
+    },
+    {
+      "id": "NO15",
+      "query": "which version of the flash model is used in the guide",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "day-4-google-search-grounding.ipynb",
+      "expects": [
+        133
+      ],
+      "anchor": "In this guide, you'll use `gemini-2.0-flash`."
+    },
+    {
+      "id": "NO16",
+      "query": "how do you stop a loop in the graph from running forever",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "day-3-building-an-agent-with-langgraph.ipynb",
+      "expects": [
+        297
+      ],
+      "anchor": "One way to break the cycle is to add a check for a human input like `q` or `quit` and use that to break the loop."
+    },
+    {
+      "id": "NO17",
+      "query": "what is the name of the technique for evaluating a single input and output pair",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "day-1-evaluation-and-structured-output.ipynb",
+      "expects": [
+        286
+      ],
+      "anchor": "The technique used above, where you evaluate a single input/output pair against some criteria is known as pointwise evaluation."
+    },
+    {
+      "id": "NO18",
+      "query": "how long does the script wait before switching to a pre-made model",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "day-4-fine-tuning-a-custom-model.ipynb",
+      "expects": [
+        540
+      ],
+      "anchor": "MAX_WAIT = datetime.timedelta(minutes=10)"
+    },
+    {
+      "id": "NO19",
+      "query": "how are the unique identifiers for the stored documents generated",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "day-2-document-q-a-with-rag.ipynb",
+      "expects": [
+        161
+      ],
+      "anchor": "db.add(documents=documents, ids=[str(i) for i in range(len(documents))])"
+    },
+    {
+      "id": "NO20",
+      "query": "where does the system get the authentication token from",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "day-2-classifying-embeddings-with-keras.ipynb",
+      "expects": [
+        55
+      ],
+      "anchor": "GOOGLE_API_KEY = UserSecretsClient().get_secret(\"GOOGLE_API_KEY\")"
+    }
+  ]
+}
