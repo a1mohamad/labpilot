@@ -30,7 +30,6 @@ import statistics
 import sys
 import time
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
@@ -38,12 +37,16 @@ from dotenv import load_dotenv
 
 from labpilot.embed import (
     CODESTRAL_EMBED,
+    COHERE_EMBED,
     GEMINI_EMBED_001,
     GEMINI_EMBED_2,
+    MISTRAL_EMBED,
     embed_batches,
 )
 from labpilot.ingest import chunk_file
 from labpilot.tokens import estimate_tokens
+from scripts import corpora
+from scripts.corpora import Query
 
 SAMPLES = Path("data/samples")
 CACHE = Path(".cache/hybrid")
@@ -55,14 +58,19 @@ EMBEDDERS = {
     "codestral": CODESTRAL_EMBED,
     "google": GEMINI_EMBED_001,
     "google2": GEMINI_EMBED_2,
+    "mistral": MISTRAL_EMBED,
+    "cohere": COHERE_EMBED,
 }
 
 # Each provider publishes a per-minute token budget, and the embedder raises on
 # a 429 rather than retrying, so pacing is the caller's job.
 TOKENS_PER_MINUTE = {
     "codestral-embed": 50_000,
+    "mistral-embed": 50_000,
     "gemini-embedding-001": 30_000,
     "gemini-embedding-2": 30_000,
+    "embed-v4.0": 100_000,  # MEASURED 2026-09-16 by hitting the trial 429
+    "@cf/baai/bge-base-en-v1.5": 500_000,
 }
 
 # BM25's two knobs. These are the TEXTBOOK values and, unlike RRF's k and
@@ -96,16 +104,6 @@ OR_QUERY = """
 """
 
 
-@dataclass(frozen=True)
-class Query:
-    id: str
-    text: str
-    file: str
-    expects: tuple[int, ...]
-    asks: str
-    wording: str
-
-
 def load_quora() -> tuple[list, list[Query]]:
     chunks = list(
         chunk_file(SAMPLES / "quora_siamese" / "B_train.py", side="B", artifact_id="q")
@@ -120,31 +118,51 @@ def load_quora() -> tuple[list, list[Query]]:
     return chunks, queries
 
 
-def load_requests() -> tuple[list, list[Query]]:
-    src = os.environ.get("LABPILOT_REQUESTS_SRC", "").strip()
-    if not src or not Path(src).is_dir():
-        raise SystemExit(
-            "LABPILOT_REQUESTS_SRC is not set to a directory. This corpus is "
-            "third-party source and is not committed; see the module docstring."
-        )
+def labpilot_chunks() -> list:
+    """This repository, as a BENCHMARK CORPUS ONLY - it has no query fixture.
+
+    Slice 8 job 3 asks whether exact search still beats HNSW on REAL
+    artifacts, and job 4 what the pipeline costs end to end. Both need a
+    corpus in the size range the project actually targets - 1,000 to 10,000
+    chunks - and geo (729) and requests (335) are both below it. This repo
+    chunks to about 5,400, right in the middle, and its vectors are real
+    rather than the uniform random that made the 2026-09-05 benchmark
+    meaningless twice.
+    """
+    root = Path(".")
     chunks = []
-    for path in sorted(Path(src).glob("*.py")):
-        chunks.extend(
-            chunk_file(path, side="B", artifact_id="requests", source=path.name)
-        )
-    raw = json.loads(
-        (SAMPLES / "requests_http" / "queries.json").read_text(encoding="utf-8")
-    )
-    queries = [
-        Query(
-            q["id"], q["query"], q["file"], tuple(q["expects"]), q["asks"], q["wording"]
-        )
-        for q in raw["queries"]
-    ]
-    return chunks, queries
+    for path in sorted(root.glob("labpilot/**/*.py")) + sorted(
+        root.glob("tests/**/*.py")
+    ):
+        rel = str(path).replace("\\", "/")
+        chunks.extend(chunk_file(path, side="B", artifact_id="labpilot", source=rel))
+    return chunks
 
 
-CORPORA = {"quora": load_quora, "requests": load_requests}
+def quora_chunks() -> list:
+    return load_quora()[0]
+
+
+# The registry is DATA now, not code. Every fixture whose `corpus` block names
+# an environment variable is discovered on disk by scripts/corpora.py, so the
+# twelfth corpus is a JSON file rather than a twelfth loader function.
+#
+# `quora` keeps a hand-written loader: its queries.json is a bare LIST written
+# before the schema existed, and its two sides live in the repository rather
+# than in a checkout. Migrating it would rewrite the only fixture whose ground
+# truth was ever hand-checked against an answer key.
+CORPORA = {
+    "quora": load_quora,
+    **{name: (lambda n=name: corpora.load(n)) for name in corpora.SPECS},
+}
+
+# Chunk vectors do not depend on the query set, so the slow models can be paid
+# for before the fixture exists. scripts/warm_embeddings.py reads this.
+CHUNK_LOADERS = {
+    "labpilot": labpilot_chunks,
+    "quora": quora_chunks,
+    **{name: (lambda n=name: corpora.chunks_for(n)) for name in corpora.SPECS},
+}
 
 
 def targets(chunks, query: Query) -> set[int]:

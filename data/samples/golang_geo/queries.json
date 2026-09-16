@@ -1,0 +1,525 @@
+{
+  "corpus": {
+    "key": "geo",
+    "env": "LABPILOT_GEO_SRC",
+    "include": [
+      "**/*.go"
+    ],
+    "exclude": [
+      "**/*_test.go"
+    ],
+    "source": "relpath",
+    "language": "Go",
+    "splitter": "recursive",
+    "domain": "spherical geometry",
+    "licence": "Apache-2.0",
+    "repo": "https://github.com/golang/geo",
+    "commit": "b200a11",
+    "note": "Line numbers are valid only for this commit. Clone with --depth 1 and point LABPILOT_GEO_SRC at the checkout before scoring. The source is NOT committed: it is third-party code, and the provenance rule keeps it out of the repository.",
+    "include_note": "**/*.go, excluding *_test.go"
+  },
+  "why": [
+    "THE THIRD FIXTURE, and it exists to break two monocultures at once.",
+    "Language: both older corpora are Python, so every retrieval number this project has recorded describes ONE language. Go has no AST splitter here, so this is also the first corpus measured through split_recursive - and its chunk headers carry NO function label, only file and lines.",
+    "Domain: quora is machine learning and requests is an HTTP client. This is computational geometry on the sphere - tolerances, epsilons, cell hierarchies, exact predicates. It is the closest fixture in the project to LabPilot's own pitch of a paper against a solver.",
+    "Size: 729 chunks, so a 50-document window is 7% of the corpus, against 15% on requests and 61% on the 30-document quora runs. The FIRST fixture with a production-like window ratio.",
+    "ORDER: the categories are INTERLEAVED, deliberately. requests/queries.json is grouped by `asks`, so its first k queries are a category study wearing a corpus study's clothes - which is exactly how the 2026-09-11 Voyage run produced a biased 8-query result. Here any prefix is a stratified sample."
+  ],
+  "fields": {
+    "file": "the file holding the answer, relative to the repository root",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the code. paraphrase = the question deliberately avoids the words the code uses. NEITHER may contain the identifier being searched for, or the run measures string matching instead of retrieval."
+  },
+  "queries": [
+    {
+      "id": "G01",
+      "asks": "constant",
+      "wording": "named",
+      "file": "s2/cellid.go",
+      "expects": [
+        84
+      ],
+      "query": "how many levels are there down to the smallest cell"
+    },
+    {
+      "id": "G02",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "s2/cap.go",
+      "expects": [
+        194,
+        195,
+        196,
+        197,
+        198
+      ],
+      "query": "turning a disc inside out gives back the whole sphere when it started with nothing"
+    },
+    {
+      "id": "G03",
+      "asks": "error",
+      "wording": "named",
+      "file": "s2/nthderivative.go",
+      "expects": [
+        65,
+        66
+      ],
+      "query": "asking for a derivative order outside the allowed range stops the program"
+    },
+    {
+      "id": "G04",
+      "asks": "api",
+      "wording": "named",
+      "file": "s2/cap.go",
+      "expects": [
+        72
+      ],
+      "query": "how do i build a cap from a centre point and an angle"
+    },
+    {
+      "id": "G05",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "s2/region.go",
+      "expects": [
+        22
+      ],
+      "query": "which contract must a shape satisfy so it can be approximated by cells"
+    },
+    {
+      "id": "G06",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "earth/earth.go",
+      "expects": [
+        44
+      ],
+      "query": "what value does the library use for the size of our planet"
+    },
+    {
+      "id": "G07",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "s2/latlng.go",
+      "expects": [
+        49,
+        50,
+        51,
+        52,
+        53,
+        54
+      ],
+      "query": "a latitude past the pole is clamped while a longitude is wrapped around"
+    },
+    {
+      "id": "G08",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "s2/cell_index.go",
+      "expects": [
+        389,
+        390
+      ],
+      "query": "storing an entry under a tag below zero is refused"
+    },
+    {
+      "id": "G09",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "s2/edge_crosser.go",
+      "expects": [
+        110
+      ],
+      "query": "which helper starts a repeated test where each segment continues from the last one"
+    },
+    {
+      "id": "G10",
+      "asks": "structure",
+      "wording": "named",
+      "file": "r3/vector.go",
+      "expects": [
+        25
+      ],
+      "query": "where is the struct holding three cartesian components"
+    },
+    {
+      "id": "G11",
+      "asks": "constant",
+      "wording": "named",
+      "file": "s2/cellid.go",
+      "expects": [
+        81
+      ],
+      "query": "how many faces does the enclosing cube have"
+    },
+    {
+      "id": "G12",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "s2/latlng.go",
+      "expects": [
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68
+      ],
+      "query": "the separation between two coordinates is worked out with the half angle formula"
+    },
+    {
+      "id": "G13",
+      "asks": "error",
+      "wording": "named",
+      "file": "s2/pointcompression.go",
+      "expects": [
+        161,
+        162
+      ],
+      "query": "decoding rejects a run of faces whose count is not positive"
+    },
+    {
+      "id": "G14",
+      "asks": "api",
+      "wording": "named",
+      "file": "s2/cap.go",
+      "expects": [
+        96
+      ],
+      "query": "how do i make a cap that covers a given area"
+    },
+    {
+      "id": "G15",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "s2/edge_crosser.go",
+      "expects": [
+        37
+      ],
+      "query": "which type keeps the running state while one segment is tested against many others"
+    },
+    {
+      "id": "G16",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "s1/chordangle.go",
+      "expects": [
+        120
+      ],
+      "query": "the largest turn the squared length representation can hold"
+    },
+    {
+      "id": "G17",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "s1/interval.go",
+      "expects": [
+        77
+      ],
+      "query": "an empty interval is stored with its low end above its high end"
+    },
+    {
+      "id": "G18",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "s2/lax_loop.go",
+      "expects": [
+        45,
+        46
+      ],
+      "query": "a ring covering the entire sphere is not handled yet and stops the program"
+    },
+    {
+      "id": "G19",
+      "asks": "api",
+      "wording": "named",
+      "file": "s2/regioncoverer.go",
+      "expects": [
+        83
+      ],
+      "query": "which constructor hands back a coverer already set to its defaults"
+    },
+    {
+      "id": "G20",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "s2/metric.go",
+      "expects": [
+        28
+      ],
+      "query": "where is the type pairing a scale factor with a dimension so sizes compare across levels"
+    },
+    {
+      "id": "G21",
+      "asks": "constant",
+      "wording": "named",
+      "file": "s2/regioncoverer.go",
+      "expects": [
+        88
+      ],
+      "query": "how many cells does a covering produce by default"
+    },
+    {
+      "id": "G22",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "s2/point.go",
+      "expects": [
+        111,
+        118,
+        119,
+        120,
+        121
+      ],
+      "query": "three directions count as being in order around a centre when at least two of the three turns agree"
+    },
+    {
+      "id": "G23",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "s2/cell.go",
+      "expects": [
+        329,
+        352
+      ],
+      "query": "asking for a corner that is not one of the four stops the program"
+    },
+    {
+      "id": "G24",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "s2/metric.go",
+      "expects": [
+        120,
+        121,
+        122
+      ],
+      "query": "which call finds the coarsest subdivision whose measure stays under a bound"
+    },
+    {
+      "id": "G25",
+      "asks": "structure",
+      "wording": "named",
+      "file": "s2/shapeindex.go",
+      "expects": [
+        207
+      ],
+      "query": "where is the iterator type for walking over the index cells"
+    },
+    {
+      "id": "G26",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "s2/polygon.go",
+      "expects": [
+        1150
+      ],
+      "query": "the ceiling on how many rings one filled shape may have when written out"
+    },
+    {
+      "id": "G27",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "s1/interval.go",
+      "expects": [
+        64,
+        65,
+        66,
+        67,
+        68
+      ],
+      "query": "a point given at the negative end of the range is moved to the positive end"
+    },
+    {
+      "id": "G28",
+      "asks": "error",
+      "wording": "named",
+      "file": "s2/shapeindex.go",
+      "expects": [
+        223
+      ],
+      "query": "passing more position arguments than the iterator accepts stops the program"
+    },
+    {
+      "id": "G29",
+      "asks": "api",
+      "wording": "named",
+      "file": "s2/cap.go",
+      "expects": [
+        317
+      ],
+      "query": "how do i grow a cap outwards by a given angle"
+    },
+    {
+      "id": "G30",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "s2/loop.go",
+      "expects": [
+        45
+      ],
+      "query": "where is the type holding a closed chain of vertices that bounds an area"
+    },
+    {
+      "id": "G31",
+      "asks": "constant",
+      "wording": "named",
+      "file": "s2/cellid.go",
+      "expects": [
+        79
+      ],
+      "query": "how many bits are used to encode the face number"
+    },
+    {
+      "id": "G32",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "r3/vector.go",
+      "expects": [
+        104,
+        105,
+        106,
+        107,
+        108
+      ],
+      "query": "a direction at right angles is produced by looking at whichever component is largest"
+    },
+    {
+      "id": "G33",
+      "asks": "error",
+      "wording": "named",
+      "file": "s2/loop.go",
+      "expects": [
+        1337
+      ],
+      "query": "writing compressed vertices whose count does not match stops the program"
+    },
+    {
+      "id": "G34",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "s2/predicates.go",
+      "expects": [
+        180
+      ],
+      "query": "which function decides which way three directions turn and is guaranteed exact"
+    },
+    {
+      "id": "G35",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "r1/interval.go",
+      "expects": [
+        25
+      ],
+      "query": "where is the plain one dimensional range of real numbers defined"
+    },
+    {
+      "id": "G36",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "s2/point.go",
+      "expects": [
+        131
+      ],
+      "query": "how close must two positions be before they are treated as the same"
+    },
+    {
+      "id": "G37",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "s1/interval.go",
+      "expects": [
+        80
+      ],
+      "query": "the full interval spans the whole range from minus pi to pi"
+    },
+    {
+      "id": "G38",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "s2/rect.go",
+      "expects": [
+        550,
+        551
+      ],
+      "query": "a gap in longitude that came out below zero should be impossible and stops the program"
+    },
+    {
+      "id": "G39",
+      "asks": "api",
+      "wording": "named",
+      "file": "s2/cap.go",
+      "expects": [
+        67
+      ],
+      "query": "how do i build a cap that contains only one point"
+    },
+    {
+      "id": "G40",
+      "asks": "structure",
+      "wording": "named",
+      "file": "r2/rect.go",
+      "expects": [
+        61
+      ],
+      "query": "where is the axis aligned rectangle in the plane defined"
+    },
+    {
+      "id": "G41",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "s2/pointcompression.go",
+      "expects": [
+        26
+      ],
+      "query": "the most positions in a row that may be read back before it is treated as an attack"
+    },
+    {
+      "id": "G42",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "s2/metric.go",
+      "expects": [
+        121,
+        122
+      ],
+      "query": "a measure below zero falls back to the deepest subdivision"
+    },
+    {
+      "id": "G43",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "s2/edge_distances.go",
+      "expects": [
+        413
+      ],
+      "query": "reaching a branch that should not be possible while measuring a separation stops the program"
+    },
+    {
+      "id": "G44",
+      "asks": "api",
+      "wording": "named",
+      "file": "s2/edge_crosser.go",
+      "expects": [
+        55
+      ],
+      "query": "how do i start a crossing test for one fixed segment"
+    },
+    {
+      "id": "G45",
+      "asks": "structure",
+      "wording": "named",
+      "file": "s2/regioncoverer.go",
+      "expects": [
+        76,
+        77,
+        78,
+        79
+      ],
+      "query": "where are the fields limiting the levels and the number of cells in a covering"
+    }
+  ]
+}
