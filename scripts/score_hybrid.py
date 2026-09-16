@@ -442,6 +442,13 @@ def evaluate(chunks, queries, dense_by_q, sparse_by_q, matched, pg, n, sweep):
             )
             found.append(place_of(order, targets(chunks, q), n))
         results[label] = metrics(found, n)
+        # The PLACE of every answer, kept beside the averages. An average over
+        # 20 queries cannot be split by question kind or by wording afterwards,
+        # and those splits are the only way thirteen corpora say more than
+        # three did. Cheap: one integer per query per ranker.
+        results[label]["places"] = dict(
+            zip((q.id for q in queries), found, strict=True)
+        )
     return results
 
 
@@ -535,6 +542,7 @@ def main() -> int:
                 "queries": len(queries),
                 "by_bm25": saved,
                 "kinds": {q.id: q.asks for q in queries},
+                "wording": {q.id: q.wording for q in queries},
             },
             indent=1,
         ),

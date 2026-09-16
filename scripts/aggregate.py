@@ -26,6 +26,7 @@ about two saturated corpora that had nothing left to win.
 from __future__ import annotations
 
 import json
+import statistics
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -159,6 +160,69 @@ def reranking(metric: str) -> None:
         )
 
 
+def facets() -> dict[str, dict]:
+    """What each corpus IS, read from its own fixture.
+
+    Thirteen corpora can be grouped; three could not. Every earlier
+    conclusion in this project is a per-corpus one, and the first slice 8 run
+    read "Go chunks are big" off a single Go corpus when the real property was
+    "no AST splitter".
+    """
+    from scripts import corpora
+
+    out: dict[str, dict] = {}
+    for name, spec in corpora.SPECS.items():
+        splitter = spec.get("splitter", "?")
+        out[name] = {
+            "language": spec.get("language", "?"),
+            "splitter": splitter,
+            "format": "prose"
+            if splitter in {"pdf-page", "markdown-header"}
+            else "notebook"
+            if splitter == "notebook-cell"
+            else "code",
+        }
+    out["quora"] = {"language": "Python", "splitter": "python-ast", "format": "code"}
+    return out
+
+
+def grouped(runs: dict[str, dict], metric: str, bm25: str, by: str) -> None:
+    """One ranker's score, pooled by a property of the corpus or the query.
+
+    `wording` and `kind` pool per QUERY, which needs the per-query places the
+    scorer now saves; the rest pool per CORPUS.
+    """
+    info = facets()
+    pools: dict[str, list[float]] = defaultdict(list)
+    counts: dict[str, int] = defaultdict(int)
+
+    for corpus, data in runs.items():
+        scores = data["by_bm25"][bm25]
+        if by in {"wording", "kind"}:
+            labels = data.get("wording" if by == "wording" else "kinds", {})
+            places = scores.get(BASELINE, {}).get("places")
+            if not places or not labels:
+                continue
+            for query_id, place in places.items():
+                key = labels.get(query_id, "?")
+                pools[key].append(1 / place)
+                counts[key] += 1
+        else:
+            key = info.get(corpus, {}).get(by, "?")
+            pools[key].append(scores[BASELINE][metric])
+            counts[key] += 1
+
+    unit = "queries" if by in {"wording", "kind"} else "corpora"
+    label = "MRR" if by in {"wording", "kind"} else metric
+    print(f"\nvector alone, pooled by {by} ({label})")
+    print(f"  {by:16} {unit:>8} {'mean':>7} {'worst':>7} {'best':>7}")
+    for key, values in sorted(pools.items(), key=lambda kv: -statistics.mean(kv[1])):
+        print(
+            f"  {key:16} {counts[key]:8} {statistics.mean(values):7.3f} "
+            f"{min(values):7.3f} {max(values):7.3f}"
+        )
+
+
 def main(argv: list[str]) -> int:
     metric = next((a.split("=")[1] for a in argv if a.startswith("--metric=")), "MRR")
     embedder = next(
@@ -176,8 +240,16 @@ def main(argv: list[str]) -> int:
 
     bm25 = next(iter(next(iter(runs.values()))["by_bm25"]))
     print(f"{len(runs)} corpora, embedder {embedder}, BM25 {bm25}")
+
+    by = next((a.split("=")[1] for a in argv if a.startswith("--by=")), "")
+    if by:
+        grouped(runs, metric, bm25, by)
+        return 0
+
     headroom(runs, bm25)
     table(runs, metric, bm25)
+    for facet in ("format", "splitter", "language"):
+        grouped(runs, metric, bm25, facet)
     return 0
 
 
