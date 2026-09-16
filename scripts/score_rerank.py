@@ -35,12 +35,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from labpilot.llm.openai_compatible import OpenAICompatibleProvider
 from labpilot.llm.registry import (
     GEMINI_3_1_FLASH_LITE,
     GEMINI_3_5_FLASH_LITE,
     GEMMA_4_31B,
-    MISTRAL_URL,
 )
 from labpilot.rerank import (
     CLOUDFLARE_RERANK,
@@ -94,18 +92,13 @@ GEMMA_4_26B = dataclasses.replace(
     GEMMA_4_31B, name="Gemma 4 26B A4B", tier=16, model="gemma-4-26b-a4b-it"
 )
 
-# CLAUDE.md's tier 4 of chain 3. Not in labpilot/llm/registry.py for the same
-# reason - a registry entry with no consumer is dead data.
-MINISTRAL_3B = OpenAICompatibleProvider(
-    name="Ministral 3B",
-    tier=99,
-    url=MISTRAL_URL,
-    model="ministral-3b-2512",
-    api_key_env="MISTRAL_API_KEY",
-    context_window=131_072,
-    max_output_tokens=131_072,
-)
-
+# `ministral-3b-2512` WAS CLAUDE.md's tier 4 of chain 3 and is GONE from here,
+# for two reasons that agree. It measured 0.440 MRR against vector alone's
+# 0.608 - worse than not reranking - so slice 6 dropped it from the registry.
+# And building it broke this module outright: RANKING_CONFIG carries `thinking`
+# and `generation_config`, which are GEMINI fields, so
+# `dataclasses.replace(OpenAICompatibleProvider, thinking=...)` raises at
+# import. A tier nobody should use, that also stops the script loading.
 CACHE = Path(".cache/rerank")
 EMBED_CACHE = Path(".cache/hybrid")
 
@@ -136,7 +129,6 @@ def listwise(provider) -> LLMReranker:
 
 RERANKERS = {
     "local": LOCAL_RERANK,
-    "ministral": listwise(MINISTRAL_3B),
     "flashlite": listwise(GEMINI_3_5_FLASH_LITE),
     "gemma": listwise(GEMMA_4_31B),
     "gemma26": listwise(GEMMA_4_26B),
@@ -150,7 +142,7 @@ RERANKERS = {
 # Cohere's trial header reports 10 requests/minute, so pace just under it.
 BUDGET_WARNING = {"rerank-v4.0-fast": "1,000 calls a MONTH, shared with chat and embed"}
 RERANKER = CLOUDFLARE_RERANK  # main() replaces this from the command line
-WINDOWS = (1, 5, 10, 20, 50)
+WINDOWS = (1, 3, 5, 10, 15, 20, 25, 30, 50)
 
 # Seconds to wait between calls, because the provider raises on a 429 rather
 # than retrying and pacing is the caller's job - the same split score_hybrid
@@ -173,11 +165,15 @@ PACE = {
     "rerank-v4.0-fast": 7.0,
     # LLM rerankers spend GENERATION quota, which is the scarcest thing
     # here. flash-lite is 500/day, so 17 queries is 3.4% of a day.
-    "gemini-3.5-flash-lite": 2.0,
-    "ministral-3b-2512": 2.0,
-    "gemma-4-31b-it": 2.0,
-    "gemini-3.1-flash-lite": 2.0,
-    "gemma-4-26b-a4b-it": 2.0,
+    #
+    # 2.0s WAS WRONG and cost a whole run in 70-second stalls, 2026-09-16.
+    # Google's Flash-Lite tiers are 15 REQUESTS PER MINUTE, and 2.0s is 30 a
+    # minute - so every other call 429'd and then slept 70s, a wait tuned for
+    # Voyage's token bucket. 4.5s is 13 a minute, just under the ceiling.
+    "gemini-3.5-flash-lite": 4.5,
+    "gemma-4-31b-it": 2.5,
+    "gemini-3.1-flash-lite": 4.5,
+    "gemma-4-26b-a4b-it": 2.5,
 }
 # How far a pair's score may move between batch sizes before the per-pair
 # cache is unsafe. An API cross-encoder is exact - measured drift 0.0 on Voyage
@@ -202,7 +198,6 @@ POINTWISE_TOLERANCE = {"ms-marco-MiniLM-L-6-v2": 1e-2}
 LISTWISE = {
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
-    "ministral-3b-2512",
     "gemma-4-31b-it",
     "gemma-4-26b-a4b-it",
 }
@@ -601,6 +596,48 @@ def main() -> int:
 
     if "DATABASE_URL" not in os.environ and want_fusion:
         print("\n  (--fusion needs DATABASE_URL for the BM25 channel)")
+
+    # Machine-readable, for the same reason score_hybrid writes it: "reranking
+    # helped on 11 of 12 corpora" cannot be claimed by reading twelve printed
+    # tables, and the per-category deltas are the evidence the routing question
+    # turns on.
+    per_kind = {}
+    for asks in sorted(kinds):
+        group = kinds[asks]
+        per_kind[asks] = {
+            "n": len(group),
+            "before": statistics.mean(
+                1 / place_of([i for i, _ in dense[q.id]], truth[q.id], n) for q in group
+            ),
+            "after": statistics.mean(
+                1 / place_of(reranked[q.id], truth[q.id], n) for q in group
+            ),
+        }
+
+    out = Path(".logs/results")
+    out.mkdir(parents=True, exist_ok=True)
+    name = f"rerank_{corpus}_{embedder.model}_{RERANKER.model}_w{window}.json"
+    (out / name.replace("/", "-")).write_text(
+        json.dumps(
+            {
+                "corpus": corpus,
+                "chunks": n,
+                "queries": len(queries),
+                "embedder": embedder.model,
+                "reranker": RERANKER.model,
+                "window": window,
+                "fusion": want_fusion,
+                "calls": pairs.calls,
+                "declined": declined,
+                "results": results,
+                "gate": {str(t): gated[t] for t in GATE_GRID},
+                "skipped_at": {str(t): skipped_at[t] for t in GATE_GRID},
+                "by_kind": per_kind,
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
     return 0
 
 

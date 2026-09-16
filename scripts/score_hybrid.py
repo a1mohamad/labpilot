@@ -499,17 +499,40 @@ def main() -> int:
     # The fourth and fifth hyperparameters. Held at the textbook guess unless
     # --sweep-bm25 says otherwise, because the 2026-09-07 run never varied them.
     grid = BM25_GRID if "--sweep-bm25" in sys.argv else ((K1, B),)
+    saved = {}
     for k1, b in grid:
         if len(grid) > 1:
             print(f"\n### BM25 k1={k1} b={b}")
         sparse_by_q = bm25(counts, terms, n, k1=k1, b=b)
-        report(
-            evaluate(chunks, queries, dense_by_q, sparse_by_q, matched, pg, n, sweep)
+        results = evaluate(
+            chunks, queries, dense_by_q, sparse_by_q, matched, pg, n, sweep
         )
+        report(results)
+        saved[f"k1={k1},b={b}"] = results
 
     print(
         f"\n  keyword matched, median: "
         f"{statistics.median(matched.values()):.0f} of {n} chunks"
+    )
+
+    # Machine-readable beside the printed table. A claim like "wRRF won on 9 of
+    # 13 corpora" cannot be made by reading thirteen tables, and thirteen is
+    # the whole point of this run.
+    out = Path(".logs/results")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"hybrid_{name}_{embedder.model}.json").write_text(
+        json.dumps(
+            {
+                "corpus": name,
+                "embedder": embedder.model,
+                "chunks": n,
+                "queries": len(queries),
+                "by_bm25": saved,
+                "kinds": {q.id: q.asks for q in queries},
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
     )
     return 0
 
