@@ -85,20 +85,26 @@ def run(name: str, model_key: str) -> None:
     offset = len(a_chunks)
     documents = [c.embed_text for c in merged_chunks]
 
-    a_vec = cached_vectors(a_name, "codestral-embed", "chunks", len(a_chunks))
-    b_vec = cached_vectors(b_name, "codestral-embed", "chunks", len(b_chunks))
     if a_name == b_name:
-        a_vec, b_vec = a_vec[: len(a_chunks)], a_vec[len(a_chunks) :]
+        # One corpus cut in half. The cache holds the WHOLE corpus, so ask for
+        # the whole length - the freshness guard compares against what the
+        # corpus really has, and half of it is not a stale cache.
+        whole = cached_vectors(
+            a_name, "codestral-embed", "chunks", len(a_chunks) + len(b_chunks)
+        )
+        a_vec, b_vec = whole[: len(a_chunks)], whole[len(a_chunks) :]
+    else:
+        a_vec = cached_vectors(a_name, "codestral-embed", "chunks", len(a_chunks))
+        b_vec = cached_vectors(b_name, "codestral-embed", "chunks", len(b_chunks))
 
+    # SIDE A ASKS, and both sides are searched for the SAME question - which is
+    # what a comparison does. So side B is ranked with side A's query vectors,
+    # never with its own queries: a query id that exists on one side and not
+    # the other is not a fixture problem, it is the wrong question being asked.
     a_q = cached_vectors(a_name, "codestral-embed", "queries", len(a_queries))
     dense_a = dense_orders(a_queries, a_q, a_vec)
-    if b_name == a_name:
-        dense_b = dense_orders(a_queries, a_q, b_vec)
-        queries = a_queries
-    else:
-        b_q = cached_vectors(b_name, "codestral-embed", "queries", len(b_queries))
-        dense_b = dense_orders(b_queries, b_q, b_vec)
-        queries = a_queries  # side A asks; side B is searched for the same thing
+    dense_b = dense_orders(a_queries, a_q, b_vec)
+    queries = a_queries
 
     import scripts.score_rerank as sr
 
