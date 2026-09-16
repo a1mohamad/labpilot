@@ -31,11 +31,11 @@ variable pointing at a checkout, exactly as `geo` and `requests` already did.
 
 from __future__ import annotations
 
-import fnmatch
 import json
 import os
+import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from labpilot.ingest import chunk_file
 
@@ -84,6 +84,14 @@ def _paths(root: Path, spec: dict) -> list[Path]:
     SORTED IS CORRECTNESS, not tidiness. Chunk ids are positional, so if the
     walk order shifts between machines the ground-truth line numbers still
     resolve but every cached vector lines up with the wrong chunk.
+
+    `full_match`, NOT fnmatch, and that was a real bug rather than a style
+    choice. fnmatch translates `**` to `.*`, so `**/*_test.go` requires a
+    slash and silently keeps a test file that sits at the top of the
+    repository. Measured on cobra: 408 chunks INCLUDING its tests, and the
+    drafter promptly wrote questions about them. `geo` was unaffected only
+    because every one of its files happens to live in a subdirectory - which
+    is exactly how a bug like this survives a first corpus.
     """
     found: set[Path] = set()
     for pattern in spec["include"]:
@@ -92,8 +100,8 @@ def _paths(root: Path, spec: dict) -> list[Path]:
     excluded = spec.get("exclude", ())
     kept = []
     for path in sorted(found):
-        rel = str(path.relative_to(root)).replace("\\", "/")
-        if any(fnmatch.fnmatch(rel, pattern) for pattern in excluded):
+        rel = PurePosixPath(str(path.relative_to(root)).replace("\\", "/"))
+        if any(rel.full_match(pattern) for pattern in excluded):
             continue
         kept.append(path)
     return kept
@@ -141,6 +149,36 @@ def queries_for(name: str) -> list[Query]:
 
 def load(name: str) -> tuple[list, list[Query]]:
     return chunks_for(name), queries_for(name)
+
+
+# Questions so broad that any chunk answers them. Short list on purpose: the
+# job is to catch a drafter idling, not to police English. "question" is on it
+# because a drafter really did emit that as a whole query.
+GENERIC = (
+    "what does this",
+    "what is this",
+    "how does this work",
+    "what is the purpose of this",
+    "describe the",
+    "explain the code",
+    "question",
+)
+
+# CamelCase or snake_case words of 4+ characters. A shared PLAIN word is what
+# `named` MEANS, so banning those would ban half the fixture by design; a
+# shared IDENTIFIER is the thing that turns retrieval into string matching.
+IDENT = re.compile(r"\b[a-z]+[A-Z][A-Za-z0-9]{2,}|\b[a-z]{2,}_[a-z_]{2,}\b")
+
+
+def leaked(answer: str, question: str) -> set[str]:
+    """Identifiers the question copied out of the text that answers it."""
+    words = set(re.findall(r"[a-z]{4,}", question.lower()))
+    return {i for i in set(IDENT.findall(answer)) if i.lower() in words}
+
+
+def generic(question: str) -> bool:
+    lowered = question.lower().strip()
+    return any(lowered.startswith(g) for g in GENERIC) or len(lowered.split()) < 4
 
 
 def _declared() -> dict[str, dict]:
