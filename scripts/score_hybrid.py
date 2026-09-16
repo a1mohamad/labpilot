@@ -41,6 +41,7 @@ from labpilot.embed import (
     GEMINI_EMBED_001,
     GEMINI_EMBED_2,
     MISTRAL_EMBED,
+    EmbeddingError,
     embed_batches,
 )
 from labpilot.ingest import chunk_file
@@ -204,8 +205,26 @@ def embedded(embedder, texts: list[str], *, task: str, tag: str) -> list:
         if spent + cost > budget * 0.85:
             time.sleep(max(0.0, 62 - (time.time() - window)))
             spent, window = 0, time.time()
-        for out in embed_batches(embedder, batch, task=task, size=len(batch)):
-            vectors.extend(out.vectors)
+        # Two transient failures, both of them the NETWORK rather than the
+        # quota, and both measured on this run: Mistral's
+        # `backend_out_of_capacity` (a 429 that means busy, not spent) and an
+        # SSL handshake that times out because `DEFAULT_TIMEOUT` allows 10
+        # seconds to CONNECT and this VPN link was carrying three jobs at once.
+        #
+        # Worth noting beyond the script: a 10-second connect timeout is tight
+        # for a user on a slow link, and an ingest that dies halfway is the
+        # failure `write_artifact`'s single transaction exists to prevent.
+        for wait in (5, 15, 40, 90, None):
+            try:
+                for out in embed_batches(embedder, batch, task=task, size=len(batch)):
+                    vectors.extend(out.vectors)
+                break
+            except EmbeddingError as exc:
+                transient = ("capacity" in str(exc)) or ("timed out" in str(exc))
+                if wait is None or not transient:
+                    raise
+                print(f"    transient ({str(exc)[:40]}), waiting {wait}s", flush=True)
+                time.sleep(wait)
         spent += cost
         print(f"    {len(vectors)}/{len(texts)}", flush=True)
 
