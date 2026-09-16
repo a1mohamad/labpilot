@@ -243,3 +243,80 @@ short of database time.
 **Revisit at ~20,000 chunks in one artifact**, where exact extrapolates past
 160 ms and the free tier's RAM cliff starts to matter. Nothing below that
 moves it, and this run covers everything below it.
+
+---
+
+## G8 — FUSION RAISES THE CEILING AND DAMAGES THE ORDER, and no setting is safe on all thirteen
+
+**63 wRRF settings x 13 corpora, measured 2026-09-16.** Free: no provider is
+called, the sweep is arithmetic over cached vectors and Postgres's own lexemes.
+
+### The headline, and it overturns both earlier readings
+
+```
+slice 5   "NOT ONE fusion setting improved recall@50 on any run"
+slice 8v1 "EVERY one of 30+ wRRF settings improved r@50"
+this run   4 of 13 corpora improve. 9 cannot: they are already at 1.000
+           or fusion does not move them.
+```
+
+Both earlier statements were true **of the corpora they were measured on**.
+Slice 5 had two saturated Python corpora and nothing to win; slice 8's first
+run had one unsaturated corpus and read a universal law off it.
+
+**Where fusion helps, it helps only where there is room:**
+
+| corpus | vector r@50 | best r@50 | gain |
+|---|---|---|---|
+| geo | 0.867 | 0.956 | **+0.089** |
+| gson | 0.923 | 1.000 | **+0.077** |
+| jq | 0.900 | 0.950 | **+0.050** |
+| papers | 0.950 | 1.000 | **+0.050** |
+| the other nine | 0.950-1.000 | unchanged | **+0.000** |
+
+### The mechanism, and this is the part worth keeping
+
+**Fusion buys `r@50` and pays for it in `MRR`.** Every one of the twelve
+best-by-`r@50` settings has a NEGATIVE mean MRR delta:
+
+```
+k=90 w=0.5    r@50 +0.0204   MRR -0.0573
+k=30 w=0.3    r@50 +0.0187   MRR -0.0053   <- the least damaging
+k=45 w=0.3    r@50 +0.0187   MRR -0.0166
+```
+
+and every one of the best-by-`MRR` settings gives up most of the `r@50` gain
+and still hurts MRR somewhere:
+
+```
+k=5  w=0.3    MRR +0.0112, but WORSE on 5 of 13 corpora, worst -0.006
+k=5  w=0.5    MRR +0.0092, worst -0.057
+```
+
+That is what a second, noisier channel fused BY RANK should do: it widens the
+net, and it lets a keyword hit outrank a better semantic one.
+
+### The rule this run can defend
+
+> **Not one of 63 settings is never-worse than vector on BOTH `r@50` and `MRR`
+> across thirteen corpora. Zero.**
+
+Slice 5 found "nine safe settings" on two corpora and shipped `k=5 w=0.15` as
+one of them. On thirteen corpora that property does not exist, and `k=5 w=0.15`
+is not even the best of the survivors.
+
+**If fusion is switched on, the setting is `k=30 w=0.3`**: the largest mean
+`r@50` gain that loses `r@50` on **0 of 13** corpora, at an MRR cost of
+-0.005, which is a twentieth of what the best-r@50 setting costs.
+
+### And it makes the next measurement sharp rather than vague
+
+CLAUDE.md asks whether fusion's gain "survives reranking" and slice 6 answered
+it once, with the reranker that makes retrieval worse. The mechanism above
+turns that into a real hypothesis:
+
+> Fusion damages ORDER and improves the CEILING. A reranker repairs order and
+> cannot improve the ceiling. **They should be complementary**, and the pairing
+> should beat either alone on a corpus with headroom.
+
+That is measurement B4, and it now has a prediction to be wrong about.

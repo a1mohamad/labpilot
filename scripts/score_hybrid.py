@@ -62,11 +62,18 @@ EMBEDDERS = {
     "cohere": COHERE_EMBED,
 }
 
-# Each provider publishes a per-minute token budget, and the embedder raises on
-# a 429 rather than retrying, so pacing is the caller's job.
+# What the provider will ACTUALLY take, not what it publishes. The embedder
+# raises on a 429 rather than retrying, so pacing is the caller's job - but
+# pacing to a published number that is not enforced costs wall clock and buys
+# nothing. Mistral publishes 50,000 tokens/minute for codestral and was
+# measured on 2026-09-14 sustaining 554,000 over 37 requests with zero
+# refusals; 300,000 keeps most of that speed with room for a bad minute.
+#
+# Google's 30,000 IS enforced exactly, and Cohere's 100,000 was found by
+# hitting it, so those two stay at their published values.
 TOKENS_PER_MINUTE = {
-    "codestral-embed": 50_000,
-    "mistral-embed": 50_000,
+    "codestral-embed": 300_000,
+    "mistral-embed": 300_000,
     "gemini-embedding-001": 30_000,
     "gemini-embedding-2": 30_000,
     "embed-v4.0": 100_000,  # MEASURED 2026-09-16 by hitting the trial 429
