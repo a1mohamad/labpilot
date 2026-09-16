@@ -296,18 +296,38 @@ k=5  w=0.5    MRR +0.0092, worst -0.057
 That is what a second, noisier channel fused BY RANK should do: it widens the
 net, and it lets a keyword hit outrank a better semantic one.
 
-### The rule this run can defend
+### The rule this run can defend - CORRECTED
 
-> **Not one of 63 settings is never-worse than vector on BOTH `r@50` and `MRR`
-> across thirteen corpora. Zero.**
+A first reading of this grid said "not one of 63 settings is never-worse on
+both metrics, zero". **That used a zero tolerance and it is misleading.** On a
+20-query corpus one query moving from rank 1 to rank 2 changes MRR by 0.025,
+so a loss of 0.006 is a fraction of a single query and is not a loss at all.
 
-Slice 5 found "nine safe settings" on two corpora and shipped `k=5 w=0.15` as
-one of them. On thirteen corpora that property does not exist, and `k=5 w=0.15`
-is not even the best of the survivors.
+With a tolerance that matches what the fixture can resolve:
 
-**If fusion is switched on, the setting is `k=30 w=0.3`**: the largest mean
-`r@50` gain that loses `r@50` on **0 of 13** corpora, at an MRR cost of
--0.005, which is a twentieth of what the best-r@50 setting costs.
+```
+never worse by more than 0.000   ->  0 settings
+never worse by more than 0.005   ->  4 settings
+never worse by more than 0.010   ->  7 settings
+```
+
+**So the shape slice 5 reported does survive, and the user's memory of it was
+right.** What changes is WHICH setting, and by how much:
+
+| | `k=5 w=0.15` (shipped) | **`k=5 w=0.3`** | `k=30 w=0.3` |
+|---|---|---|---|
+| mean `r@50` | +0.0115 | **+0.0136** | **+0.0187** |
+| worst `r@50` on 13 | 0.000 | **0.000** | 0.000 |
+| mean MRR | +0.0026 | **+0.0112** | -0.0053 |
+| worst MRR on 13 | -0.006 | **-0.006** | -0.025 |
+
+**If fusion is switched on, the setting is `k=5 w=0.3`.** It never loses
+recall on any of the thirteen, gains four times the MRR of the setting slice 5
+shipped, and its worst single loss is smaller than one query.
+
+`k=30 w=0.3` buys more ceiling (+0.0187) and pays for it in ordering
+(-0.0053 mean). It is the right choice ONLY if a reranker runs afterwards to
+repair the order - which is exactly what measurement B4 tests.
 
 ### And it makes the next measurement sharp rather than vague
 
