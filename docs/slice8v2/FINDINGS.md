@@ -432,3 +432,74 @@ claim, and the rerank budget is the tightest renewing one in the project.
 > **A threshold measured on one corpus is a property of that corpus.** Three
 > separate runs agreed the gate was worthless, and all three were looking at
 > corpora where reranking helped every query.
+
+---
+
+## G11 — THE CHUNKING KNOBS, measured for the first time
+
+CLAUDE.md calls chunking "the highest-leverage decision in RAG", pins
+`s = 500`, `o = 50` from a formula, and instructs: *"do not tune s by feeling.
+Change it, re-run, and look at whether the right chunk comes back."* Nobody
+had. This is that run, and it is only possible because ground truth is stored
+as LINE NUMBERS - re-chunking moves every boundary and every index, and the
+line that answers a question does not move.
+
+### Chunk size: 500 is right, and it was a guess until now
+
+Four corpora, five sizes, vector search only:
+
+| size | mean MRR | cobra | log | jq | papers |
+|---|---|---|---|---|---|
+| 250 | 0.507 | 0.502 | 0.385 | 0.539 | **0.600** |
+| 375 | 0.554 | 0.566 | 0.551 | 0.602 | 0.497 |
+| **500 (shipped)** | **0.621** | 0.634 | **0.662** | 0.607 | 0.581 |
+| 750 | 0.609 | **0.707** | 0.577 | 0.592 | 0.560 |
+| 1000 | 0.561 | 0.680 | 0.429 | **0.642** | 0.493 |
+
+**`s = 500` wins the pool**, and the curve has the shape the dilution argument
+predicts: small chunks lose context, large chunks bury the answer. The project
+chose it from `alpha = f/s` reasoning and it survives measurement.
+
+**But the best size is CORPUS-DEPENDENT and the spread is large** - cobra
+peaks at 750 (+0.073 over 500), jq at 1000, papers at 250. A per-corpus size
+is a real gain being left on the table, and it is the kind of thing an ingest
+could choose from the mean line length of a file.
+
+### Overlap: 50 is NOT optimal, and more is worse
+
+| overlap | mean MRR | cobra | log | jq |
+|---|---|---|---|---|
+| 0 | 0.623 | 0.631 | **0.675** | 0.563 |
+| **25** | **0.660** | 0.597 | 0.669 | **0.715** |
+| 50 (shipped) | 0.634 | **0.634** | 0.662 | 0.607 |
+| 100 | 0.603 | 0.585 | 0.589 | 0.635 |
+
+`o = 25` beats the shipped `o = 50` by +0.026, and **`o = 100` is the worst of
+the four**. More overlap is not safer: it manufactures near-duplicate chunks
+that compete with each other, so the right one is diluted rather than
+protected.
+
+**Recorded as a CANDIDATE, not a decision** - three corpora, and the per-corpus
+ordering disagrees. The useful half is the direction: the overlap formula in
+CLAUDE.md argues only that `o` must exceed the longest unsplittable fact, and
+it says nothing about a cost to raising it. There is one.
+
+### The free context header EARNS ITS PLACE
+
+Six corpora, the same chunks embedded with and without `[file - label - lines]`:
+
+| | mean MRR | cobra | log | jq | papers | notebooks | docs |
+|---|---|---|---|---|---|---|---|
+| **+header** | **0.646** | **0.634** | 0.662 | **0.607** | **0.581** | 0.528 | 0.864 |
+| bare | 0.624 | 0.569 | 0.665 | 0.598 | 0.483 | **0.562** | 0.866 |
+
+**+0.022 mean, and it costs nothing** - no LLM call, no extra token budget
+beyond the header itself. It is largest exactly where a chunk is least
+self-describing: `papers` (+0.098, a PDF page fragment) and `cobra` (+0.065, a
+recursive-split Go fragment with no function label).
+
+It is slightly NEGATIVE on `notebooks` (-0.034), where the header competes with
+a cell that already says what it is.
+
+This is "contextual retrieval" with no model in the loop, assumed useful since
+slice 3 and never once embedded without. It is useful.
