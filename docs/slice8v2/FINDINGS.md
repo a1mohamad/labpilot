@@ -170,3 +170,76 @@ It helps and it does not cure: a corpus whose pool is genuinely lopsided stays
 lopsided (`gson` has one `api` question because only one was drafted). The
 per-category claims in this run are therefore made on the POOLED count across
 twelve corpora, never on one corpus's five.
+
+---
+
+## G7 — EXACT SEARCH STANDS, and the crossover is ~700 rows, not ~1,000
+
+**Measured 2026-09-16 on the REAL Supabase instance, twelve artifacts, real
+embedded questions, every plan asserted with `EXPLAIN ANALYZE`.** The 2026-09-05
+decision named exactly one condition that could overturn it — TIME on real
+artifacts — and this is that measurement, on twelve sizes instead of three.
+
+| rows | exact ms | hnsw ef40 | speedup | recall@10 | plan |
+|---|---|---|---|---|---|
+| 18 | 0.25 | 0.23 | 1.1x | 1.000 | **index NOT used** |
+| 78 | 0.71 | 0.78 | 0.9x | 1.000 | **index NOT used** |
+| 82 | 0.73 | 0.81 | 0.9x | 1.000 | **index NOT used** |
+| 85 | 0.81 | 0.83 | 1.0x | 1.000 | **index NOT used** |
+| 146 | 1.31 | 1.40 | 0.9x | 1.000 | **index NOT used** |
+| 193 | 1.67 | 1.79 | 0.9x | 1.000 | **index NOT used** |
+| 335 | 2.83 | 3.07 | 0.9x | 1.000 | **index NOT used** |
+| 382 | 3.05 | 3.33 | 0.9x | 1.000 | **index NOT used** |
+| 404 | 3.31 | 3.56 | 0.9x | 1.000 | **index NOT used** |
+| 463 | 3.86 | 4.16 | 0.9x | 1.000 | **index NOT used** |
+| **693** | 5.54 | **0.93** | **6.0x** | **0.990** | **INDEX** |
+| **729** | 5.88 | **1.02** | **5.8x** | **0.990** | **INDEX** |
+| **750** | 5.98 | **0.99** | **6.0x** | **1.000** | **INDEX** |
+| **1,160** | 9.34 | **1.08** | **8.6x** | **0.870** | **INDEX** |
+| **1,387** | 12.25 | **1.25** | **9.8x** | **0.940** | **INDEX** |
+
+### Four things, and three of them are new
+
+**1. Exact search is LINEAR and tiny.** 8.8 microseconds per row, straight
+through fifteen sizes: `0.25 ms` at 18 rows, `12.25 ms` at 1,387. A
+10,000-chunk artifact extrapolates to about **88 ms**.
+
+**2. The crossover is ~700 rows.** The first run saw the index refused at 335
+and 729 and used at 1,387, and read that as "below ~1,000 rows Postgres
+refuses the index". With twelve sizes the line is visible and it is lower: the
+planner refuses at 463 and uses it at **693**. That is inside the range this
+project actually targets, which the old reading put outside it.
+
+**3. Recall does not degrade smoothly - it degrades WITH SIZE, and by a lot.**
+
+```
+693    0.990        1,160   0.870      <- 13% of the answers lost
+729    0.990        1,387   0.940
+750    1.000
+```
+
+The only setting the planner will choose is `ef_search = 40`, and that is
+where the loss is. **At `ef_search = 100` the planner stops using the index on
+every single artifact**, so "raise ef_search to buy the recall back" is not
+available: it buys the recall back by not using the index at all. The first
+run found this tension at one size and called it new; it holds at every size
+above the crossover.
+
+**4. The index is 43% of total storage** - 59 MB of 136 MB for ~5,400 rows -
+on a 500 MB free tier that must hold two artifacts per comparison.
+
+### The decision
+
+**Exact search ships, and the question is closed rather than deferred.**
+
+The trade at a real artifact size is: save about **11 ms** of an answer that
+takes **90-250 seconds**, and pay **6-13% of recall** for it. Retrieval is
+already 4-7% of the wall clock and the database is 0.01% of it. We are not
+short of database time.
+
+> **An index is a trade, never a saving: spend storage and recall, buy time.
+> If you are not short of time, you are paying for nothing.**
+
+**Revisit at ~20,000 chunks in one artifact**, where exact extrapolates past
+160 ms and the free tier's RAM cliff starts to matter. Nothing below that
+moves it, and this run covers everything below it.
