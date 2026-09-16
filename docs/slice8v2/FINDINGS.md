@@ -320,3 +320,95 @@ turns that into a real hypothesis:
 > should beat either alone on a corpus with headroom.
 
 That is measurement B4, and it now has a prediction to be wrong about.
+
+---
+
+## G9 — RERANKING HELPS, on 10 of 13 — and the three it HURTS have a pattern
+
+**`gemini-3.5-flash-lite`, window 50, 13 corpora, 286 queries.** `r@50` did
+not move on a single run, so the instrument is sound on all thirteen.
+
+| corpus | vector MRR | + rerank | delta |
+|---|---|---|---|
+| log | 0.662 | **0.960** | **+0.298** |
+| geo | 0.526 | 0.759 | +0.233 |
+| quora | 0.608 | 0.804 | +0.196 |
+| docx | 0.756 | 0.944 | +0.188 |
+| notebooks | 0.528 | 0.698 | +0.170 |
+| papers | 0.581 | 0.747 | +0.166 |
+| cobra | 0.634 | 0.794 | +0.161 |
+| requests | 0.646 | 0.791 | +0.145 |
+| jq | 0.607 | 0.736 | +0.129 |
+| websocket | 0.668 | 0.717 | +0.049 |
+| **zod** | 0.802 | 0.775 | **-0.027** |
+| **docs** | 0.864 | 0.816 | **-0.048** |
+| **gson** | 0.658 | 0.580 | **-0.078** |
+
+**Helped 10, hurt 3, mean +0.122.** The first run reported "+75% of headroom,
+not one negative category" from two corpora. The direction survives; the
+absolute claim does not.
+
+### The three losses are not random
+
+```
+correlation(baseline vector MRR, rerank gain) = -0.584
+correlation(corpus size,         rerank gain) = -0.512
+```
+
+**Every one of the seven corpora with vector MRR at or below 0.646 was
+helped - 7 of 7, by +0.129 to +0.233.** Two of the three losses are the two
+corpora where vector search was already best (docs 0.864, zod 0.802).
+
+That is slice 6's own mechanism, measured across thirteen corpora instead of
+asserted from one: *when the first stage is already right at #1, reranking has
+no upside and all the downside.* It cannot promote what is already top; it can
+only push it down.
+
+### The routing signal STILL does not reproduce, in a third form
+
+Pooled over every run, per question kind:
+
+```
+structure  +0.148    error      +0.128    api        +0.128
+constant   +0.114    behaviour  +0.109
+```
+
+**Every category has a positive mean**, and every category also has a negative
+case. Slice 6 measured `structure` at **-0.534** and built a routing rule on
+it; here `structure` has the HIGHEST mean of the five. The variance is across
+CORPORA, not across question kinds, which is the opposite of what was recorded.
+
+---
+
+## G10 — THE SKIP GATE IS WORTH HAVING, and `SKIP_MARGIN = None` is overturned
+
+`SKIP_MARGIN = None` has been "confirmed" three times - slice 6, then twice in
+slice 8's first run - each time on one or two corpora. On thirteen it is wrong.
+
+| tau | mean MRR | vs always rerank | worse on | rerank calls skipped |
+|---|---|---|---|---|
+| 0.000 (never rerank) | 0.657 | -0.122 | 10 of 13 | 286/286 |
+| 0.02 | 0.775 | -0.003 | 7 of 13 | 139/286 |
+| **0.03** | **0.790** | **+0.011** | 5 of 13 | **90/286 (31%)** |
+| **0.05** | 0.784 | **+0.005** | **2 of 13** | **52/286 (18%)** |
+| 0.10 | 0.779 | +0.001 | 0 of 13 | 13/286 |
+| *always rerank* | *0.779* | — | — | 0 |
+
+**The gate rescues the corpora reranking hurts.** On `zod`, always-rerank
+scores 0.775 and the gate at `tau = 0.02` scores **0.883** - better than
+reranking AND better than not reranking, because it reranks the queries where
+the top hit is uncertain and leaves the ones where it is not. On `docs` and
+`gson` the gate correctly chooses "never", recovering the whole loss.
+
+**`SKIP_MARGIN = 0.05` is the defensible setting**, by this project's own rule
+- judge a method by how many independent ways it was shown better, never by
+its best single number. `tau = 0.03` has the higher mean and loses on five
+corpora; `0.05` is positive on the mean and loses on **two**, while still
+skipping **18% of all rerank calls**.
+
+That saving is not cosmetic. Step 2's `verify` needs one rerank call per
+claim, and the rerank budget is the tightest renewing one in the project.
+
+> **A threshold measured on one corpus is a property of that corpus.** Three
+> separate runs agreed the gate was worthless, and all three were looking at
+> corpora where reranking helped every query.
