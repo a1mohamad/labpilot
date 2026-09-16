@@ -503,3 +503,66 @@ a cell that already says what it is.
 
 This is "contextual retrieval" with no model in the loop, assumed useful since
 slice 3 and never once embedded without. It is useful.
+
+---
+
+## G12 — THE BEST `k` AND `w` DEPEND ON CORPUS SIZE, and the reason is mechanical
+
+The previous session built `--ladder` for exactly this and never ran it: slice
+5 and slice 8's first pass both varied size **by accident**, because the
+corpora happened to be 82, 335 and 729 chunks. That confounds size with
+language and with domain.
+
+The ladder holds everything still and slices ONE corpus:
+
+**`geo`, sliced — same language, same domain, only size changes**
+
+| chunks | vector `r@50` | best wRRF | its `r@50` | vector MRR |
+|---|---|---|---|---|
+| 100 | 1.000 | `k=5 w=0.15` | 1.000 | 0.733 |
+| 200 | 1.000 | `k=5 w=0.1` | 1.000 | 0.613 |
+| 300 | 1.000 | `k=5 w=0.1` | 1.000 | 0.558 |
+| **400** | **0.929** | **`k=60 w=0.7`** | **1.000** | 0.539 |
+| **600** | **0.872** | **`k=60 w=0.7`** | **0.974** | 0.508 |
+
+**`jq`, sliced**
+
+| chunks | vector `r@50` | best wRRF | its `r@50` |
+|---|---|---|---|
+| 200 | 1.000 | `k=10 w=0.7` | 1.000 |
+| **300** | **0.917** | **`k=90 w=0.7`** | **1.000** |
+| **400** | **0.938** | **`k=90 w=0.7`** | **1.000** |
+| 600 | 0.947 | `k=5 w=0.05` | 0.947 |
+
+### The rule, and it is not a tuning curve - it is a change of failure mode
+
+```
+SMALL corpus   vector r@50 is already 1.000
+               -> keyword can only DISTURB the order
+               -> best setting is a SMALL weight, 0.05-0.15
+
+LARGE corpus   vector r@50 falls below 1.000 - answers are outside the window
+               -> keyword has something real to ADD
+               -> best setting is a LARGE k and a LARGE weight, k=60-90 w=0.7
+```
+
+At `k=60 w=0.7` on `geo` at 400 chunks, `r@50` goes **0.929 -> 1.000** and MRR
+goes **0.539 -> 0.429**. It buys the ceiling and pays in ordering, at a much
+higher exchange rate than the gentle settings do.
+
+**So the aggressive setting only makes sense if something repairs the order
+afterwards** - which is a reranker, and which is why this finding and the
+fusion-plus-reranking measurement have to be read together rather than
+separately.
+
+### What this corrects
+
+The pooled 13-corpus answer (`k=5 w=0.3`) is the best **single** setting for a
+system that does not know how big the corpus is. It is NOT the best setting
+for either end of the range, and on a 400-chunk corpus it leaves most of the
+available recall on the table.
+
+> **A hyperparameter swept across corpora of different sizes is measuring two
+> things at once.** Slice 5 swept `k` and `w` on corpora of 82 and 335 chunks
+> and concluded a small weight was "safe"; on a 400-chunk slice of the same
+> language, a small weight is simply weak.
