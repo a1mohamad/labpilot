@@ -229,6 +229,16 @@ GATE_GRID = (0.0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.10)
 
 # Slice 5's named candidate: a SMALL k with a SMALL keyword weight is the only
 # region that was never worse than vector alone on any run.
+# The fusion setting the rerank test uses. It was FIXED at slice 5's shipped
+# `k=5 w=0.15`, which is the most CAUTIOUS setting in the grid - the keyword
+# channel is barely switched on, so it can hardly change the candidate set and
+# "the gain does not survive reranking" was close to guaranteed.
+#
+# The 13-corpus grid says the two settings answer different questions:
+#   k=5  w=0.3   best MRR, never loses r@50     <- best WITHOUT a reranker
+#   k=30 w=0.3   best r@50, costs some ordering <- the CEILING a reranker gets
+# and a reranker repairs ordering, so the second is the one worth pairing.
+# --fusion-k and --fusion-w make that testable instead of assumed.
 FUSION_K, FUSION_WEIGHT = 5, 0.15
 
 
@@ -407,7 +417,12 @@ def main() -> int:
         )
         return 2
 
-    global RERANKER
+    global RERANKER, FUSION_K, FUSION_WEIGHT
+    for flag in sys.argv:
+        if flag.startswith("--fusion-k="):
+            FUSION_K = int(flag.split("=")[1])
+        if flag.startswith("--fusion-w="):
+            FUSION_WEIGHT = float(flag.split("=")[1])
     corpus, embedder = sys.argv[1], EMBEDDERS[sys.argv[2]]
     want_fusion = "--fusion" in sys.argv
     for name, candidate in RERANKERS.items():

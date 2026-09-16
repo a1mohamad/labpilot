@@ -122,7 +122,9 @@ def run(n: int | None, model_key: str) -> dict:
     took = time.time() - started
 
     found = find_citations(result.text)
-    resolved = [c for c in (resolve(c, chunks) for c in found) if c]
+    resolved = [
+        got for got in (resolve(cid, quote, chunks) for cid, quote in found) if got
+    ]
 
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%H-%M")

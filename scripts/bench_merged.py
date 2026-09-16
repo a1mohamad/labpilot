@@ -1,129 +1,175 @@
-"""Merged reranking against per-side, which is slice 8 job 5.
+"""Merged reranking against per-side reranking. Never measured.
 
-`_retrieved()` reranks each side on its own and never merges. Merged would
-halve the rerank cost and hand one call 100 documents - which Cohere bills as
-ONE search unit, so on that provider merged is literally half price. What it
-risks is COVERAGE: one side can take every slot, and a comparison with one
-side is not a comparison.
+    PYTHONPATH=. python scripts/bench_merged.py quora
+    PYTHONPATH=. python scripts/bench_merged.py quora cobra+log
 
-CLAUDE.md chose per-side on an argument - "a guarantee in the shape beats a
-guarantee in a downstream rule" - and explicitly recorded that it is the
-DEFAULT, not the answer. This measures it.
+CLAUDE.md decided PER SIDE in section 10c and said plainly why it was not
+evidence:
 
-    PYTHONPATH=. python scripts/bench_merged.py [n_queries]
+    "SLICE 8 OWES THIS MEASUREMENT: merged against per side, on the same
+     corpus. It is a real question and it is not settled by the argument
+     above - merged halves the rerank cost, and the rerank budget is the
+     tightest one in the project once verify needs a call per claim.
+     Per side is the DEFAULT, not the answer."
 
-THE SETUP IS A DELIBERATE FAKE PAIR. geo is side B and holds every answer;
-requests is side A and holds NONE of them. That is the worst case on purpose:
-if merged can lose the answer, a side whose chunks are all irrelevant is
-where it happens. A real pair would be kinder and would tell us less.
+The two differ in what they can lose:
 
-Two numbers come out:
+    per side   2 calls of SEARCH_LIMIT documents. Coverage is STRUCTURAL:
+               each side is guaranteed its own slots, whatever the scores say.
+    merged     1 call of 2 x SEARCH_LIMIT. Half the calls and half the
+               latency - and one side can take every slot.
 
-    survival   does the true chunk still reach the prompt?
-    balance    how many of the merged slots go to each side? A merged call
-               that hands 20 of 20 to one side has lost the comparison even
-               when it kept the answer.
+So the measurement is not "which scores higher overall". It is **how often
+does merged starve a side**, because that is the failure per-side exists to
+make impossible, and a mean over queries hides it completely.
+
+A comparison needs TWO artifacts. `quora` is the only fixture that ships as a
+pair; for the rest a pair is built by joining two corpora, which is a harsher
+test than the real case - two unrelated projects share no vocabulary, so the
+scores are as separable as they will ever be.
 """
 
 from __future__ import annotations
 
-import pickle
+import json
 import statistics
 import sys
-import time
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from labpilot.rerank import RerankError
+from labpilot.store.defaults import SEARCH_LIMIT
 from scripts.score_hybrid import CORPORA, targets
-from scripts.score_rerank import RERANKERS
+from scripts.score_rerank import (
+    RERANKERS,
+    PairScores,
+    cached_vectors,
+    dense_orders,
+)
 
-CACHE = Path(".cache/hybrid")
-MODEL = "codestral-embed"
-WINDOW = 50
-PER_SIDE_TOP_N = 10
-PACE = 4.5
-
-
-def dense_top(vectors, query_vector, limit: int) -> list[int]:
-    scored = [
-        (i, sum(a * b for a, b in zip(query_vector, v, strict=True)))
-        for i, v in enumerate(vectors)
-    ]
-    scored.sort(key=lambda kv: (-kv[1], kv[0]))
-    return [i for i, _ in scored[:limit]]
+RESULTS = Path(".logs/results")
+TOP_N = 10
 
 
-def main(n: int = 45) -> int:
-    load_dotenv(".env")
-    reranker = RERANKERS["flashlite"]
+def sides(name: str):
+    """Two sides, and the queries that belong to each.
 
-    b_chunks, queries = CORPORA["geo"]()
-    a_chunks, _ = CORPORA["requests"]()
-    b_vecs = pickle.loads((CACHE / f"geo_{MODEL}_chunks.pkl").read_bytes())
-    a_vecs = pickle.loads((CACHE / f"requests_{MODEL}_chunks.pkl").read_bytes())
-    q_vecs = pickle.loads((CACHE / f"geo_{MODEL}_queries.pkl").read_bytes())
+    `a+b` joins two corpora into one comparison. Chunk ids are renumbered so
+    that side B's positions continue after side A's, exactly as assign_ids
+    does in the real prompt - and the ground truth moves with them.
+    """
+    if "+" in name:
+        first, second = name.split("+")
+        a_chunks, a_queries = CORPORA[first]()
+        b_chunks, b_queries = CORPORA[second]()
+        return (a_chunks, a_queries), (b_chunks, b_queries)
 
-    queries, q_vecs = queries[:n], q_vecs[:n]
-    per_side_hits, merged_hits, merged_share, failures = 0, 0, [], 0
+    chunks, queries = CORPORA[name]()
+    half = len(chunks) // 2
+    return (chunks[:half], queries), (chunks[half:], queries)
 
-    for query, qv in zip(queries, q_vecs, strict=True):
-        want = targets(b_chunks, query)
-        b_top = dense_top(b_vecs, qv, WINDOW)
-        a_top = dense_top(a_vecs, qv, WINDOW)
 
-        # PER SIDE: side B is reranked alone, so its ten slots are its own.
-        try:
-            order = reranker.rank(
-                query.text, [b_chunks[i].embed_text for i in b_top]
-            ).order
-        except RerankError as exc:
-            print(f"  {query.id} per-side FAILED {str(exc)[:70]}")
-            failures += 1
-            continue
-        kept = [b_top[p] for p in order[:PER_SIDE_TOP_N]]
-        per_side_hits += bool(want & set(kept))
-        time.sleep(PACE)
+def order_for(pairs, query, candidates, documents):
+    pairs.fetch(query, sorted(candidates), documents)
+    return pairs.order(query.id, candidates)
 
-        # MERGED: both sides in ONE call, and twice the slots, so the total
-        # sent to the prompt is identical. Only the guarantee differs.
-        docs = [b_chunks[i].embed_text for i in b_top] + [
-            a_chunks[i].embed_text for i in a_top
-        ]
-        try:
-            order = reranker.rank(query.text, docs).order
-        except RerankError as exc:
-            print(f"  {query.id} merged FAILED {str(exc)[:70]}")
-            failures += 1
-            continue
-        top = order[: PER_SIDE_TOP_N * 2]
-        from_b = [b_top[p] for p in top if p < WINDOW]
-        merged_hits += bool(want & set(from_b))
-        merged_share.append(len(from_b) / max(1, len(top)))
-        time.sleep(PACE)
 
-        print(
-            f"  {query.id} per-side {'HIT ' if want & set(kept) else 'miss'}"
-            f"  merged {'HIT ' if want & set(from_b) else 'miss'}"
-            f"  B took {len(from_b)}/{len(top)}",
-            flush=True,
-        )
+def run(name: str, model_key: str) -> None:
+    (a_chunks, a_queries), (b_chunks, b_queries) = sides(name)
+    a_name, b_name = (name.split("+") + [name])[:2] if "+" in name else (name, name)
 
-    done = len(merged_share)
-    print(f"\n  {done} queries scored, {failures} failed")
-    print(f"  per-side  answer reached the prompt: {per_side_hits}/{done}")
-    print(f"  merged    answer reached the prompt: {merged_hits}/{done}")
-    if merged_share:
-        print(
-            f"  merged slot share for the side that HAS the answer: "
-            f"mean {statistics.mean(merged_share):.2f}, "
-            f"min {min(merged_share):.2f}, max {max(merged_share):.2f}"
-        )
-        starved = sum(1 for s in merged_share if s in (0.0, 1.0))
-        print(f"  calls where ONE side took every slot: {starved}/{done}")
-    return 0
+    reranker = RERANKERS[model_key]
+    rows = []
+
+    merged_chunks = list(a_chunks) + list(b_chunks)
+    offset = len(a_chunks)
+    documents = [c.embed_text for c in merged_chunks]
+
+    a_vec = cached_vectors(a_name, "codestral-embed", "chunks", len(a_chunks))
+    b_vec = cached_vectors(b_name, "codestral-embed", "chunks", len(b_chunks))
+    if a_name == b_name:
+        a_vec, b_vec = a_vec[: len(a_chunks)], a_vec[len(a_chunks) :]
+
+    a_q = cached_vectors(a_name, "codestral-embed", "queries", len(a_queries))
+    dense_a = dense_orders(a_queries, a_q, a_vec)
+    if b_name == a_name:
+        dense_b = dense_orders(a_queries, a_q, b_vec)
+        queries = a_queries
+    else:
+        b_q = cached_vectors(b_name, "codestral-embed", "queries", len(b_queries))
+        dense_b = dense_orders(b_queries, b_q, b_vec)
+        queries = a_queries  # side A asks; side B is searched for the same thing
+
+    import scripts.score_rerank as sr
+
+    sr.RERANKER = reranker
+    pairs = PairScores(f"merged_{name}", "")
+
+    starved = 0
+    per_side_hits, merged_hits = [], []
+    for query in queries:
+        top_a = [i for i, _ in dense_a[query.id][:SEARCH_LIMIT]]
+        top_b = [i for i, _ in dense_b[query.id][:SEARCH_LIMIT]]
+
+        # PER SIDE: each side reranked alone, then each keeps half the slots.
+        kept_a = order_for(pairs, query, top_a, [c.embed_text for c in a_chunks])
+        kept_b = order_for(pairs, query, top_b, [c.embed_text for c in b_chunks])
+        per_side = [("A", i) for i in kept_a[: TOP_N // 2]]
+        per_side += [("B", i) for i in kept_b[: TOP_N // 2]]
+
+        # MERGED: one call over both sides' candidates, top N wins outright.
+        pool = top_a + [i + offset for i in top_b]
+        kept = order_for(pairs, query, pool, documents)[:TOP_N]
+        merged = [("A", i) if i < offset else ("B", i - offset) for i in kept]
+
+        from_a = sum(1 for side, _ in merged if side == "A")
+        if from_a == 0 or from_a == len(merged):
+            starved += 1
+
+        want_a = targets(a_chunks, query)
+        per_side_hits.append(any(i in want_a for side, i in per_side if side == "A"))
+        merged_hits.append(any(i in want_a for side, i in merged if side == "A"))
+        rows.append({"query": query.id, "from_a": from_a, "of": len(merged)})
+
+    print(f"\n{name}: {len(queries)} queries, {len(a_chunks)}+{len(b_chunks)} chunks")
+    print(f"  rerank calls: per side 2 per query, merged 1 - {pairs.calls} spent here")
+    shares = [r["from_a"] / r["of"] for r in rows]
+    print(
+        f"  merged gave side A {statistics.mean(shares):.0%} of the slots "
+        f"(min {min(shares):.0%}, max {max(shares):.0%})"
+    )
+    print(f"  merged STARVED one side entirely on {starved} of {len(rows)} queries")
+    print(
+        f"  side A's answer in the kept set: per side "
+        f"{sum(per_side_hits) / len(per_side_hits):.3f}, "
+        f"merged {sum(merged_hits) / len(merged_hits):.3f}"
+    )
+
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    (RESULTS / f"merged_{name.replace('+', '_')}.json").write_text(
+        json.dumps(
+            {
+                "pair": name,
+                "queries": len(queries),
+                "starved": starved,
+                "mean_share_a": statistics.mean(shares),
+                "min_share_a": min(shares),
+                "per_side_hit": sum(per_side_hits) / len(per_side_hits),
+                "merged_hit": sum(merged_hits) / len(merged_hits),
+                "rows": rows,
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(int(sys.argv[1]) if len(sys.argv) > 1 else 45))
+    load_dotenv(".env")
+    if len(sys.argv) < 2:
+        raise SystemExit(f"usage: {sys.argv[0]} <corpus|a+b> [--model=flashlite]")
+    model = next(
+        (a.split("=")[1] for a in sys.argv if a.startswith("--model=")), "flashlite"
+    )
+    for target in [a for a in sys.argv[1:] if not a.startswith("--")]:
+        run(target, model)

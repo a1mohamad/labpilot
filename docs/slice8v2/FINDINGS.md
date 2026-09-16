@@ -566,3 +566,63 @@ available recall on the table.
 > things at once.** Slice 5 swept `k` and `w` on corpora of 82 and 335 chunks
 > and concluded a small weight was "safe"; on a 400-chunk slice of the same
 > language, a small weight is simply weak.
+
+---
+
+## G13 — HOW MANY CHUNKS TO SEND: more is better, and it flattens near 50
+
+The one question retrieval cannot answer, because `recall@N` only rises with
+N. CLAUDE.md states it as a product of two terms:
+
+$$
+P(\text{good report}) \approx
+\underbrace{P(\text{the answer is in the } N)}_{\text{rises with } N}
+\times
+\underbrace{P(\text{the model uses it})}_{\text{assumed to fall with } N}
+$$
+
+The right factor has **never been measured in this project**, and
+`VECTOR_TOP_N = 25` and `RERANK_TOP_N = 10` were chosen without it.
+
+**Five reports, `gemini-3.6-flash`, the lean `REPORT` template, the same
+question, `quora_siamese` - the only fixture with an answer key. Every run
+finished (`STOP`).**
+
+| sent | prompt tokens | seconds | findings | of the 5 that carry the story | citations |
+|---|---|---|---|---|---|
+| top-5 | 10/100 | 6,718 | 63.8 | **2/19** | 1/5 | 48/48 |
+| top-10 | 20/100 | 9,511 | 45.5 | 5/19 | 3/5 | 39/41 |
+| top-20 | 38/100 | 13,460 | 52.0 | 5/19 | 2/5 | 44/44 |
+| **top-50** | **68/100** | 21,152 | 69.4 | **11/19** | **4/5** | 69/69 |
+| **stuffed** | **100/100** | 24,275 | 54.9 | **11/19** | **4/5** | 50/51 |
+
+### There is NO dilution penalty in this range
+
+The assumed right-hand term does not appear. Sending 68 chunks scores exactly
+what sending 100 scores, and everything below 20 collapses. The curve rises
+and then flattens; it does not turn over.
+
+**So `VECTOR_TOP_N = 25` and `RERANK_TOP_N = 10` are very likely too small.**
+The 20-chunk run found 5 of 19 findings and 2 of the 5 that matter; the
+68-chunk run found 11 and 4.
+
+### How this was graded, and why the absolute number is not 13
+
+A **mechanical screen** of 19 markers, then read to confirm. CLAUDE.md's rule
+is that pattern matching is a screen and never a score, so the screen's
+`stuffed = 11/19` is not comparable with the hand-scored `13/19` baseline of
+2026-08-17 - a different grader counts differently.
+
+**The COMPARISON is valid**, because all five runs were graded by the same
+screen, and the one claim spot-checked by reading held up: the top-50 report
+really does name the flagship finding with a citation -
+`[B-27 "# Pool from the projected features (not original lstm_output)"]`.
+
+### Honest limits
+
+- **One fixture.** `quora_siamese` is the only corpus in this project with an
+  answer key, and it is machine-learning Python.
+- **One run per N**, at `temperature 0`. The top-10 vs top-20 inversion (3 vs
+  2 story findings) is within what one run can wobble.
+- **One model.** Section 11.9's separate question - whether a cheap tier can
+  write the report - is measured elsewhere and is not this.

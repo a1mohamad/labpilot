@@ -98,13 +98,18 @@ def warm(corpus: str, model: str) -> int:
         # this one names capacity, so it raises instead. The five-way rule
         # applies here as much as it does to generation: a 429 that resets in
         # seconds is a wait, not a dead pool.
+        #
+        # A read timeout is the same class and was measured the same day:
+        # DEFAULT_TIMEOUT allows 10 seconds to CONNECT, and this VPN link
+        # carrying three jobs at once did not always manage it.
         for wait in (5, 15, 40, 90, None):
             try:
                 for got in embed_batches(embedder, batch, size=len(batch)):
                     vectors.extend(got.vectors)
                 break
             except EmbeddingError as exc:
-                if wait is None or "capacity" not in str(exc):
+                transient = ("capacity" in str(exc)) or ("timed out" in str(exc))
+                if wait is None or not transient:
                     raise
                 print(f"  busy, waiting {wait}s", flush=True)
                 time.sleep(wait)
