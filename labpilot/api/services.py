@@ -77,6 +77,13 @@ EMBEDDING_MINUTES_BUDGET = 6.0
 # measurement, and only that can set it honestly.
 WARN_MINUTES = 2.0
 
+# Below this, a corpus goes to Google first - see _pick_embedder. Measured
+# 2026-09-17: Google retrieves best where vector search is already easy and
+# loses on the corpus with real headroom, and it counts one TEXT as one
+# request, so it can embed about 1,000 chunks a DAY. 500 leaves room for a
+# second artifact in the same comparison on the same day.
+SMALL_CORPUS_CHUNKS = 500
+
 # How many chunks survive the vector path when NO reranker ran.
 #
 # A SEPARATE number from RERANK_TOP_N on purpose, and the distinction was
@@ -202,10 +209,23 @@ def _pick_embedder(
     A model that cannot finish TODAY reports infinite time and is skipped,
     which is how Cloudflare's daily neuron budget removes BGE from a large
     corpus without needing a second mechanism.
+
+    AND A SMALL CORPUS GOES TO GOOGLE FIRST - measured 2026-09-17. Google
+    retrieves best on the corpora where vector search is already easy
+    (`quora` MRR 0.674 and `requests` 0.650 against codestral's 0.608 and
+    0.646) and loses on the one with real headroom (`geo` 0.493 against
+    0.526). Its budget points at exactly the same range: Google counts one
+    TEXT as one request, so it can embed about 1,000 chunks a DAY - enough
+    for a notebook, nowhere near a repository.
+
+    So the thing it is best at and the thing it can afford are the same
+    thing, and `SMALL_CORPUS_CHUNKS` is where they meet.
     """
     order = candidates
+    if chunks <= SMALL_CORPUS_CHUNKS:
+        order = sorted(candidates, key=lambda e: not e.model.startswith("gemini-"))
     if (
-        candidates[0].embedding_minutes(tokens=tokens, chunks=chunks)
+        order[0].embedding_minutes(tokens=tokens, chunks=chunks)
         > EMBEDDING_MINUTES_BUDGET
     ):
         order = by_speed(tokens=tokens, chunks=chunks, candidates=candidates)
