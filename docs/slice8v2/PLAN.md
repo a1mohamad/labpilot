@@ -1,5 +1,15 @@
 # SLICE 8, SECOND RUN — the plan, written before any number
 
+> ## ⚠ THIS IS THE PLAN FOR THE v2 RUN, WHICH IS FINISHED AND SUPERSEDED
+>
+> It is kept because it records what was decided BEFORE any number existed,
+> which is the only way to tell a prediction from a rationalisation.
+>
+> **The next run's plan is `docs/slice8v3/MISSION.md`** — 20 corpora with 10
+> Python, because this zoo is 3 of 13 and LabPilot is a Python and
+> machine-learning tool.
+
+
 The first run (2026-09-16, `docs/slice8/`) is **not trusted and is not
 inherited**. Two reasons, both the user's and both correct:
 
