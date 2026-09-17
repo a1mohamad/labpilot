@@ -14,6 +14,18 @@ Do not ask what to do — it is written here.
 > languages. The measurements do not reflect that, so they are being re-run on
 > a corpus zoo where PYTHON DOMINATES — 10 of 20 — instead of 3 of 13.**
 
+> **AND THE RUN ENDS BY RE-TAKING EVERY DECISION on the 20-corpus evidence —
+> see Step 4. Measuring is not the deliverable; the decision table is.**
+
+**Three rules that shape the whole run:**
+
+1. **Run the 7 NEW corpora only.** The aggregates glob `.logs/results/`, which
+   already holds the 13, so every table becomes a 20-corpus table with nothing
+   old re-run — §2.5.
+2. **Any subset must be at least HALF PYTHON**, because the zoo is — §2.6.
+3. **Finish with `docs/slice8v3/DECISIONS.md`**, every decision restated, each
+   row carrying its Python share — Step 4.
+
 ---
 
 ## 0.5 SET THE SESSION UP — this exact incantation, before anything else
@@ -176,6 +188,96 @@ PROSE               3 of 20   PDF, Word, Markdown       support, still measured
 
 ---
 
+## 2.5 THE REUSE RULE — run the 7 NEW corpora, never the 13 old ones
+
+**This is the most important operating rule of the run, and it is nearly free.**
+
+Every aggregate script globs `.logs/results/`:
+
+```python
+for path in sorted(RESULTS.glob("hybrid_*.json")):     # aggregate.py
+for path in sorted(RESULTS.glob("rerank_*.json")):
+```
+
+`.logs/results/` is **gitignored and lives on disk**, so it is shared by every
+branch and already holds all 13 corpora from v2. **Therefore:**
+
+> **Run each measurement on the 7 NEW corpora only. The aggregates pick up the
+> existing 13 automatically, and every table becomes a 20-corpus table with
+> nothing old re-run.**
+
+That is not a shortcut — it is the correct thing to do. The v2 numbers were
+produced by the same scripts, on the same embedder, at the same settings, and
+the instrument defect (G14) is already corrected in the files that survived.
+Re-running them would spend quota to reproduce numbers we already hold.
+
+### What to reuse, what to extend, what genuinely must be re-run
+
+| measurement | v2 state | v3 action |
+|---|---|---|
+| retrieval / fusion / wording / kind | 13 corpora, valid | **EXTEND** — `score_hybrid.py` on the 7 new, then `aggregate.py`. FREE after embedding |
+| reranking + the skip gate | 13 corpora, valid | **EXTEND** — `score_rerank.py` on the 7 new |
+| N to send / `VECTOR_TOP_N` | 13 corpora, valid | **EXTEND** — `score_answers.py` on the 7 new, then `regrade_answers.py` and `dilution.py` re-read everything |
+| tier reachability | all corpora, free | **EXTEND** — `tier_reach.py` reads the zoo directly |
+| **fusion threshold** | **3 corpora, 0% Python** | **EXTEND with Python** — the new corpora ARE the fix |
+| **`SEARCH_LIMIT` 30 vs 50** | **4 corpora, 0% Python** | **EXTEND with Python** |
+| **Cohere vs flash-lite** | **3 corpora, 0% Python** | **EXTEND with Python**, and Cohere is 1,000 calls a MONTH |
+| merged vs per-side | 3 pairs, 2 artificial | **ADD one Python+Python pair** |
+| embedder ranking | 3–8 corpora | **EXTEND** only if cheap; codestral primary is settled on capability |
+| exact vs HNSW | 12 artifacts, real instance | **REUSE AS-IS.** Nothing about the zoo changes a database benchmark |
+| chunking `s`, `o`, header | 4–6 corpora | **REUSE AS-IS** unless a number looks wrong on the new corpora |
+| `MIGRATION` order | 8 corpora | **REUSE AS-IS** — settled in G21 |
+
+**Nothing in the "REUSE AS-IS" rows is re-run.** If a v3 number contradicts one
+of them, that is a finding — investigate it, do not quietly overwrite it.
+
+### One real hazard of sharing the results directory
+
+`.logs/results/` is **not versioned**. Re-running an existing corpus
+**overwrites** its JSON. The v2 *conclusions* are safe in `docs/slice8v2/`, but
+the raw numbers are not.
+
+**So before the first write, snapshot them:**
+
+```bash
+cp -r .logs/results .logs/results_v2_snapshot
+```
+
+Then a v3 run can never destroy a v2 number, and the two can be compared
+directly.
+
+---
+
+## 2.6 THE SUBSET RULE — a subset must look like the zoo
+
+Some measurements cannot run on all 20: Cohere is 1,000 calls a month, and a
+45-query corpus at a fresh window is ~45 rerank calls. **Choosing a subset is
+allowed and expected.** How it is chosen is the thing v2 got wrong.
+
+> **Any subset must be AT LEAST HALF PYTHON, because the zoo is half Python and
+> LabPilot is a Python and machine-learning tool.**
+
+v2 chose its subsets by **headroom** — a defensible rule that produced three
+decisions with **zero** Python behind them, because the Python corpora were
+saturated and headroom excluded them automatically.
+
+**The v3 rule, in order:**
+
+1. **At least half the subset is Python or Jupyter.** Not negotiable.
+2. Within that, prefer corpora with **`r@50` headroom** — a saturated corpus
+   cannot show a gain.
+3. Within that, prefer a **spread of sizes** — the new zoo runs ~60 to ~13,000
+   chunks and a subset of three small ones measures nothing about a repository.
+4. **State the composition beside the number**: not *"measured on 4 corpora"*
+   but *"4 corpora, 2 Python, sizes 120 to 9,900"*.
+
+If rules 1 and 2 conflict — if no Python corpus has headroom for some
+measurement — **say so explicitly in the finding** rather than silently
+dropping rule 1. That sentence is itself a result: it means the target language
+cannot resolve that question, which is what this whole run exists to expose.
+
+---
+
 ## 3. WHAT TO DO, IN ORDER
 
 ### Step 1 — build the fixtures FIRST. Nothing else until this is done.
@@ -261,7 +363,11 @@ dominating: roughly `10,000 + 13,000 + 4,000 = 27,000` chunks at ~340 tokens =
 **Do NOT use Google for these**: it counts one TEXT as one request against
 1,000 a day, so 27,000 chunks is 27 days.
 
-### Step 2 — re-run every measurement on the 20-corpus zoo
+### Step 2 — EXTEND every measurement to the 20-corpus zoo
+
+**Run the 7 NEW corpora only — never the 13 old ones. See the reuse rule in
+2.5.** The aggregates glob `.logs/results/`, so each table becomes a 20-corpus
+table by itself.
 
 **All of these are FREE** (they re-read caches and saved replies), so run them
 first and read them before spending anything:
@@ -297,6 +403,69 @@ backing come first:
 | C6 | `--no-header` under reranking | ~20 calls |
 | D3 | ingest time vs `embedding_minutes()` | ~20 min |
 | F2 | generated vs hand-written queries | ~8 calls |
+
+### Step 4 — THE DECISION PASS. This is what the run is FOR, and it is not optional
+
+**Measuring is not the deliverable. The deliverable is every decision, re-taken
+on the 20-corpus evidence.** A session that finishes the runs and stops has not
+finished.
+
+Write **`docs/slice8v3/DECISIONS.md`**, and restate **every** decision — not
+only the ones that changed. A decision that survives unchanged is a result, and
+saying so is what makes the table trustworthy.
+
+**One row per decision, with these columns:**
+
+| column | what goes in it |
+|---|---|
+| decision | the shipped value |
+| v2 said | the previous verdict |
+| **v3 says** | **the verdict on 20 corpora** |
+| corpora | how many, **and how many Python** |
+| verdict | `CONFIRMED` · `CHANGED` · `OVERTURNED` · `STILL UNMEASURED` |
+| evidence | the number, judged against what the fixture can resolve |
+
+**The rows that must appear.** Anything missing from this list is a decision
+that quietly kept its v2 value without being re-examined:
+
+```
+N to send / VECTOR_TOP_N          RERANK_TOP_N (v2 never measured it)
+reranking ships, and which model  SKIP_MARGIN
+SEARCH_LIMIT                      the per-tier rerank window
+fusion: on or off, and the        fusion: which method
+  r@50 threshold
+merged vs per-side                routing by question kind
+embedder primary                  MIGRATION order
+exact vs HNSW                     chunk size s, overlap o, the header
+end-to-end time / WARN_MINUTES    the two production defects
+```
+
+**Three rules for the pass:**
+
+1. **A decision with no Python behind it must say so in its own row.** That was
+   the whole problem with v2 and it must be visible per decision, not only in a
+   summary.
+2. **Say which v2 conclusions SURVIVED.** If N=20 still holds on 20 corpora
+   with 10 Python, that is a stronger result than the v2 one and deserves to be
+   written as `CONFIRMED`, not left implicit.
+3. **A decision that cannot be taken is `STILL UNMEASURED`**, with what it would
+   cost. Do not let an unmeasured thing inherit a value by silence — that is how
+   `SKIP_MARGIN` and `RERANK_TOP_N` each carried an unexamined number for two
+   whole runs.
+
+**Then update, in this order:**
+
+```
+docs/slice8v3/DECISIONS.md   the decision table - write it FIRST
+docs/slice8v3/FINDINGS.md    the evidence behind any decision that moved
+docs/slice8v3/RESUME.md      the handoff, if anything is left open
+CLAUDE.md                    the Current Status block, with the corrections
+```
+
+**CLAUDE.md is the last step and it is part of the job.** It carries the v2
+warning block today; v3 must replace it, or the next reader acts on superseded
+numbers.
+
 
 ---
 
