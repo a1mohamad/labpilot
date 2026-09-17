@@ -1380,3 +1380,71 @@ disagreeing about one corpus.
 - `rerank-3` (non-lite) is **still unscored anywhere**, and Voyage cannot serve a
   50-document window on a card-free account at all — see **G3**.
 
+
+---
+
+## G21 — `gemini-embedding-2` LOSES ON OUR FIXTURE, and the `MIGRATION` order moves back
+
+**The one entry in `MIGRATION` ranked on somebody else's benchmark.** CLAUDE.md
+puts `gemini-embedding-2` above `gemini-embedding-001` on Google's published
+MTEB numbers — 69.9 against 68.32 — and says so plainly:
+
+> *"This is the ONLY entry in `MIGRATION` ordered on somebody else's benchmark
+> ... Slice 8 owes `embedding-2` a score, and if it loses there the order moves
+> back."*
+
+The v2 run scored it on **three** corpora, two of them saturated, and recorded
+the result as *"unresolved, not worst"*. That was the right call on three
+corpora. Five more settle it.
+
+### Against `codestral-embed`, 8 corpora
+
+| corpus | queries | codestral | embed-2 | delta | in queries |
+|---|---|---|---|---|---|
+| quora | 17 | 0.608 | **0.702** | +0.094 | +3.2q |
+| cobra | 20 | 0.634 | **0.645** | +0.012 | +0.5q |
+| notebooks | 20 | 0.528 | **0.535** | +0.007 | +0.3q |
+| docx | 12 | **0.756** | 0.704 | −0.053 | −1.3q |
+| requests | 45 | **0.646** | 0.559 | −0.087 | −7.8q |
+| log | 20 | **0.662** | 0.467 | −0.195 | −7.8q |
+| websocket | 15 | **0.668** | 0.364 | −0.304 | −9.1q |
+| **geo** | 45 | **0.526** | 0.341 | **−0.185** | **−16.7q** |
+
+**Wins 3 of 8, mean −0.089.** And the shape matters more than the count: the
+three wins are +0.3q, +0.5q and +3.2q — one query or less on two of them —
+while the five losses run to −16.7q.
+
+### Head to head against `gemini-embedding-001`, the model it was ranked above
+
+| corpus | queries | embed-001 | embed-2 | in queries |
+|---|---|---|---|---|
+| quora | 17 | 0.674 | **0.702** | +1.0q |
+| websocket | 15 | **0.530** | 0.364 | −5.0q |
+| requests | 45 | **0.650** | 0.559 | −8.2q |
+| geo | 45 | **0.493** | 0.341 | −13.7q |
+
+**Wins 1 of 4, mean −0.095**, and it loses on both 45-query fixtures — the two
+with the most resolution.
+
+### The decision
+
+**`gemini-embedding-001` goes back above `gemini-embedding-2` in `MIGRATION`.**
+Neither is the primary; `codestral-embed` keeps that on capability. This only
+corrects their order relative to each other.
+
+> **A vendor's benchmark ranked our models and our fixture disagrees.** MTEB is
+> a real measurement of a real thing — it is just not a measurement of
+> retrieving from a code repository with our chunking and our queries. That is
+> the whole argument for scoring models on the corpus you actually have, and it
+> is why this file flagged the entry as provisional the day it was written
+> rather than discovering it later.
+
+### Honest limits
+
+- **One embedder pair, our fixtures, our chunker.** This says `embedding-2` is
+  worse *for us*, not that it is a worse model.
+- **`quora` is the only corpus where it wins by more than one query**, and
+  `quora` is saturated at `r@50 = 1.000`.
+- `embedding-2` was **never the primary** and this changes no shipped path —
+  `MIGRATION` is a migration order, entered only when the model above it is
+  dead.
