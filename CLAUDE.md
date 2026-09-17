@@ -489,6 +489,61 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 **Phase: STEP 1 IS COMPLETE. ALL NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 —
 ARE DONE. STEP 2, THE AGENT, IS NEXT.**
+
+> ### ⚠ SLICE 8 WAS RE-RUN TWICE. READ `docs/slice8v2/` BEFORE ANY NUMBER BELOW
+>
+> **`docs/slice8/` is the FIRST run — three corpora, two of them already used.**
+> **`docs/slice8v2/` is THIRTEEN corpora, nine languages and formats, 286
+> queries, and it CORRECTS the first run in several places.** Start at
+> `docs/slice8v2/RESUME.md`, then `DECISIONS.md`, then `FINDINGS.md`.
+>
+> **The third session, 2026-09-17, began by finding the MEASUREMENT INSTRUMENT
+> BROKEN.** `PairScores` synthesised a score from a LISTWISE reranker's ORDER —
+> `len(order) − place` — and cached it per pair, so every call produced the same
+> numbers 50…1 and two calls for one query collided. **Five of thirteen rerank
+> corpora and all three merged benchmarks were void.** It does NOT reach
+> production: nothing in `labpilot/` outside `rerank/contracts.py` reads
+> `.scores`. See `docs/slice8v2/FINDINGS.md` **G14**.
+>
+> **What the third session settled, and what it overturned:**
+>
+> | | |
+> |---|---|
+> | **how many chunks to SEND** | **20**, and N is a **COUNT**, not a coverage share — cv 0.41 against ~1.0 over a 15× range of corpus sizes. This **vindicates `RERANK_TOP_N = 10` per side** (10 + 10 = 20) and makes **`VECTOR_TOP_N = 25` too large** |
+> | **the skip gate** | **`SKIP_MARGIN` stays `None`.** The v2 run's `0.05` is OVERTURNED: the best GLOBAL tau is worth **+2.4 queries out of 286**, and the best per-corpus tau is never the same twice |
+> | **merged vs per-side reranking** | **PER SIDE, confirmed.** Merged starves a side entirely on **43 of 57** queries — where the broken instrument had reported **0 of 20** |
+> | **fusion** | switch the keyword channel **ON below `r@50` ≈ 0.95 and OFF above** — every recall gain lands on the three corpora below it, and every corpus at or above is exactly +0.000. And the method is **SCORE FUSION**, not wRRF, whose entire MRR range sits inside one-query resolution |
+> | **the routing signal** | **DEAD.** Weighted over 286 queries every question kind is POSITIVE. `structure` — slice 6's −0.534, which became a design principle — is **+0.169**, and its worst case was **one query** scored −0.500 |
+> | **reranking** | still ships, restated against each fixture's RESOLUTION: **9 REAL gains, 1 REAL loss, 3 nothing measurable**. "Helped 10, hurt 3" overstated both sides |
+> | **chain 3's order** | **rests on ONE corpus.** On three more, Cohere beats flash-lite 2–1 and has never hurt a corpus, while flash-lite hurts on 3 of 13. Their means are +6.0q and +6.1q — indistinguishable. Flash-lite belongs first for **budget** (1,000/day against 1,000/month), not for quality, and **Cohere does not belong at tier 7** |
+> | **the splitter decides the rerank tier** | a language with no AST splitter gives chunks ~2× larger, so one rerank call is ~2× the tokens. At `SEARCH_LIMIT = 50` **Voyage serves 0 of 13 corpora and both Gemma tiers serve 4 of 13**; at a window of 30 Gemma serves **all 13** — 28,800 calls a day against Flash-Lite's 1,000. `scripts/tier_reach.py` |
+>
+> **THE ONE METHODOLOGICAL RULE THIS SESSION EARNED, because the same error
+> produced three different wrong conclusions:**
+>
+> > **Print the DENOMINATOR beside every ratio, and judge a delta against what
+> > the fixture can RESOLVE, not against zero.** One query is 0.042 MRR on the
+> > 12-query `docx` and 0.011 on the 45-query `geo`.
+>
+> ```
+> top-N      USED at N=5 over <3 answerable questions  ->  "the best N is 5"
+> reranking  an MRR delta on 13 queries beside one on 45  ->  "helped 10, hurt 3"
+> routing    a per-kind delta with ONE query in the kind  ->  structure = -0.534
+> ```
+>
+> **⚠ AND THE TWO PRODUCTION DEFECTS ARE STILL UNFIXED — one now breaks a
+> SHIPPED decision.** `MAX_BATCH_SIZE = 96` is a **Mistral** constant with a
+> global name, so a 96-text Google batch is ~32,800 tokens against a
+> 30,000/minute ceiling and is refused on the **first batch** — while
+> `embed_batches()` halves only on a refusal naming *tokens*, which Google's
+> does not. **Decision A8 shipped `SMALL_CORPUS_CHUNKS = 500`, routing every
+> small corpus to Google first, so the shipped routing cannot finish an
+> ingest.** And `embedding_minutes()` counts HTTP calls where Google counts
+> TEXTS, reporting ~118 minutes for a 10,000-chunk Google ingest against a
+> truth of **ten days**. The fix already exists — **in
+> `scripts/warm_embeddings.py`**, which batches by tokens and paces by texts,
+> so the instrument's private workaround hides the product's defect.
+
 **SLICE 8 WAS MEASURED 2026-09-16 and it overturned TWO of this file's own
 headlines. Read [SLICE 8 — MEASURED](#slice-8--measured-2026-09-16-step-1-is-complete),
 `docs/slice8/RESULTS.md` and `docs/slice8/FINDINGS.md`.**
