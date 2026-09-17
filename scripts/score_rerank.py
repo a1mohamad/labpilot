@@ -10,7 +10,9 @@ beside score_retrieval.py and score_hybrid.py.
 Embeddings come from score_hybrid's cache, so the embedder costs NOTHING here.
 Rerank scores are cached PER (query, chunk) PAIR rather than per call, which is
 what makes a re-run free: a cross-encoder scores one pair at a time, so the
-same pair needed by a different candidate set is already paid for.
+same pair needed by a different candidate set is already paid for. A LISTWISE
+reranker has no score to cache - it returns an order - so it is cached per
+candidate SET instead, and an unseen set is a fresh call rather than a guess.
 
 The instrument is Cloudflare's bge-reranker-base: ~3.52 neurons per 50-document
 call against 10,000 a DAY, which is the largest renewing budget we have. Cohere
@@ -25,6 +27,7 @@ dead. And the fixture may REJECT, never CONFIRM - the headroom at k=10 is about
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import os
 import pickle
@@ -278,64 +281,134 @@ def dense_orders(queries, query_vectors, chunk_vectors) -> dict[str, list]:
 
 
 class PairScores:
-    """Rerank scores, cached per (query, chunk) pair.
+    """Rerank results, cached so a re-run is free - in ONE of two shapes.
 
-    Per PAIR and not per call, because a cross-encoder is pointwise: it runs
-    one forward pass per (query, document) and the other documents in the
-    request do not change the answer. That is verified below rather than
-    assumed - if a provider normalised across the set, this cache would be
-    quietly wrong and every number after it would inherit the error.
+    POINTWISE (a real cross-encoder). Scores are cached per (query, chunk),
+    because the model runs one forward pass per pair and the other documents
+    in the request do not change the answer. `verify_pointwise` proves that
+    each run rather than assuming it.
+
+    LISTWISE (an LLM that is handed the whole set and sorts it). There is no
+    score at all - the model returns an ORDER, and a place is meaningful ONLY
+    inside the call that produced it. So the cache stores the order of an
+    EXACT candidate set, and a different set is a different call.
+
+    THIS CLASS USED TO GET THE SECOND CASE WRONG, and it is worth writing down
+    because the result looked publishable. A listwise order was turned into a
+    score `len(order) - place`, cached per pair, and fetched in batches of
+    SEARCH_LIMIT. Every call therefore produced the same numbers 50..1, so two
+    calls covering different candidate sets for one query collided: the union
+    held two documents scored 50.0, two scored 49.0, and the merged order was
+    an arithmetic artifact rather than anything the model said.
+
+    It was reachable three ways, all of them ordinary - a fusion run whose
+    top-50 differs from the dense top-50, a --window larger than SEARCH_LIMIT,
+    and a re-run at a new window adding a second call to an existing cache.
+    The old comment claimed the cache "is only ever asked for the order it
+    stored". Nothing enforced that, and five of thirteen corpora were void.
+
+    So the rule is now structural instead of remembered: a listwise entry is
+    keyed by the candidate set itself, an unseen set raises rather than being
+    approximated, and a listwise call is NEVER split.
     """
 
     def __init__(self, corpus: str, tag: str = "") -> None:
         CACHE.mkdir(parents=True, exist_ok=True)
         model = RERANKER.model.replace("/", "_")
-        self.path = CACHE / f"{corpus}_{model}{tag}.json"
-        self.scores: dict[str, float] = (
+        self.listwise = RERANKER.model in LISTWISE
+        suffix = ".orders.json" if self.listwise else ".json"
+        self.path = CACHE / f"{corpus}_{model}{tag}{suffix}"
+        stored = (
             json.loads(self.path.read_text(encoding="utf-8"))
             if self.path.exists()
             else {}
         )
+        self.scores: dict[str, float] = {} if self.listwise else stored
+        self.orders: dict[str, list[int]] = stored if self.listwise else {}
         self.calls = 0
 
     def key(self, query_id: str, chunk_index: int) -> str:
         return f"{query_id}:{chunk_index}"
 
+    def set_key(self, query_id: str, chunk_indexes: list[int]) -> str:
+        """A key that names the exact candidate set, not just the query.
+
+        The digest is over the sorted indexes, so the same set asked for in a
+        different order is one cache entry - and a set differing by a single
+        document is a different one, which is the whole point.
+        """
+        digest = hashlib.sha1(
+            ",".join(str(i) for i in sorted(chunk_indexes)).encode()
+        ).hexdigest()[:12]
+        return f"{query_id}#{len(chunk_indexes)}#{digest}"
+
+    def _rank(self, query, batch: list[int], documents: list[str]):
+        if wait := PACE.get(RERANKER.model, 0.0):
+            time.sleep(wait)
+        # Back off and retry on a 429 rather than guessing a pace that is
+        # always right. Voyage's card-free ceiling is token-based, so the
+        # sustainable rate depends on how big the documents happen to be -
+        # a fixed sleep is a guess, and this discovers the real rate.
+        for attempt in range(RETRY_LIMIT):
+            try:
+                return RERANKER.rank(query.text, [documents[i] for i in batch])
+            except RerankError as exc:
+                wait = retry_wait(str(exc))
+                if wait is None or attempt == RETRY_LIMIT - 1:
+                    raise
+                print(f"    retrying in {wait:.0f}s", flush=True)
+                time.sleep(wait)
+        raise RerankError("unreachable")
+
     def fetch(self, query, chunk_indexes: list[int], documents: list[str]) -> None:
+        if self.listwise:
+            self._fetch_order(query, chunk_indexes, documents)
+            return
+
         missing = [i for i in chunk_indexes if self.key(query.id, i) not in self.scores]
         if not missing:
             return
         for start in range(0, len(missing), SEARCH_LIMIT):
             batch = missing[start : start + SEARCH_LIMIT]
-            if wait := PACE.get(RERANKER.model, 0.0):
-                time.sleep(wait)
-            # Back off and retry on a 429 rather than guessing a pace that is
-            # always right. Voyage's card-free ceiling is token-based, so the
-            # sustainable rate depends on how big the documents happen to be -
-            # a fixed sleep is a guess, and this discovers the real rate.
-            for attempt in range(RETRY_LIMIT):
-                try:
-                    ranking = RERANKER.rank(query.text, [documents[i] for i in batch])
-                    break
-                except RerankError as exc:
-                    wait = retry_wait(str(exc))
-                    if wait is None or attempt == RETRY_LIMIT - 1:
-                        raise
-                    print(f"    retrying in {wait:.0f}s", flush=True)
-                    time.sleep(wait)
+            ranking = self._rank(query, batch, documents)
             self.calls += 1
-            # A listwise reranker returns an ORDER and no scores - it never
-            # scored anything, it sorted. Synthesising a score from the place
-            # keeps one cache shape for both kinds, and the only thing the
-            # cache is ever asked for is the order back again.
-            scored = ranking.scores or tuple(
-                float(len(ranking.order) - place) for place in range(len(ranking.order))
-            )
-            for place, score in zip(ranking.order, scored, strict=True):
+            for place, score in zip(ranking.order, ranking.scores, strict=True):
                 self.scores[self.key(query.id, batch[place])] = score
         self.path.write_text(json.dumps(self.scores), encoding="utf-8")
 
+    def _fetch_order(
+        self, query, chunk_indexes: list[int], documents: list[str]
+    ) -> None:
+        """One call over the WHOLE candidate set. Never split.
+
+        Splitting is what broke this before: two calls cannot be stitched into
+        one ranking, because neither knows about the other's documents. If a
+        tier cannot take the set, that is a real constraint on that tier and it
+        must be raised, not worked around by cutting the set in half.
+        """
+        candidates = sorted(chunk_indexes)
+        key = self.set_key(query.id, candidates)
+        if key in self.orders:
+            return
+        ranking = self._rank(query, candidates, documents)
+        self.calls += 1
+        ranked = [candidates[place] for place in ranking.order]
+        # A model that declines returns nothing; retrieval's own order stands,
+        # which is what skip() means one layer down.
+        self.orders[key] = ranked + [i for i in candidates if i not in set(ranked)]
+        self.path.write_text(json.dumps(self.orders), encoding="utf-8")
+
     def order(self, query_id: str, chunk_indexes: list[int]) -> list[int]:
+        if self.listwise:
+            key = self.set_key(query_id, chunk_indexes)
+            if key not in self.orders:
+                raise KeyError(
+                    f"no listwise ranking cached for {query_id} over "
+                    f"{len(chunk_indexes)} candidates. A listwise order is only "
+                    f"valid for the exact set it was produced from - call "
+                    f"fetch() with this set first."
+                )
+            return list(self.orders[key])
         return sorted(
             chunk_indexes,
             key=lambda i: (-self.scores[self.key(query_id, i)], i),
@@ -354,8 +427,8 @@ def verify_pointwise(query, documents: list[str], candidates: list[int]) -> None
         print(
             "  pointwise check: SKIPPED - a listwise reranker ranks documents "
             "against each other by design, so a place genuinely depends on the "
-            "batch. It is scored per call, and the per-pair cache is only ever "
-            "asked for the order it stored."
+            "set. It is cached per candidate SET, and an unseen set raises "
+            "instead of being stitched together from other calls."
         )
         return
 
@@ -488,8 +561,20 @@ def main() -> int:
 
     # --- pay for the rerank scores -----------------------------------------
     for q in queries:
-        needed = set(vector_candidates[q.id]) | set(fused_candidates.get(q.id, []))
-        pairs.fetch(q, sorted(needed), documents)
+        # ONE FETCH PER CANDIDATE SET, never one fetch over the union.
+        #
+        # A pointwise cache does not care - a pair's score is the same
+        # whichever set asked for it, so the union is simply cheaper. A
+        # LISTWISE ranking is only valid for the exact set it was produced
+        # from, so ranking the union and then reading the vector-only subset
+        # out of it is ranking 100 documents and calling it a ranking of 50.
+        #
+        # That is the shape that voided four corpora: every one of them was a
+        # --fusion run, where the fused top-50 differs from the dense top-50
+        # and the union crossed SEARCH_LIMIT.
+        for candidates in (vector_candidates[q.id], fused_candidates.get(q.id)):
+            if candidates:
+                pairs.fetch(q, sorted(candidates), documents)
     print(f"  rerank calls spent this run: {pairs.calls}")
     declined = getattr(RERANKER, "declined", 0)
     if declined:

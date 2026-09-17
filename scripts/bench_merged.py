@@ -117,14 +117,28 @@ def run(name: str, model_key: str) -> None:
         top_a = [i for i, _ in dense_a[query.id][:SEARCH_LIMIT]]
         top_b = [i for i, _ in dense_b[query.id][:SEARCH_LIMIT]]
 
-        # PER SIDE: each side reranked alone, then each keeps half the slots.
-        kept_a = order_for(pairs, query, top_a, [c.embed_text for c in a_chunks])
-        kept_b = order_for(pairs, query, top_b, [c.embed_text for c in b_chunks])
-        per_side = [("A", i) for i in kept_a[: TOP_N // 2]]
-        per_side += [("B", i) for i in kept_b[: TOP_N // 2]]
+        # EVERY call indexes into the MERGED document list, including the
+        # per-side ones. Side B's chunk 5 is document `5 + offset`, never
+        # document 5.
+        #
+        # THIS WAS A REAL BUG AND IT IS WHY THIS FILE IS BEING RE-RUN. Side A
+        # and side B both counted from zero, so their candidate sets shared a
+        # cache key space: side B's ranking was served from side A's entries,
+        # and the merged pool's side-A half was served from the per-side call.
+        # The merged call for side A therefore never happened, and with a
+        # listwise reranker each surviving call had synthesised its own 50..1,
+        # so the top ten came out as exactly five per side on all forty
+        # queries - an arithmetic identity wearing a measurement's clothes.
+        b_pool = [i + offset for i in top_b]
 
-        # MERGED: one call over both sides' candidates, top N wins outright.
-        pool = top_a + [i + offset for i in top_b]
+        # PER SIDE: each side reranked alone, then each keeps half the slots.
+        kept_a = order_for(pairs, query, top_a, documents)
+        kept_b = order_for(pairs, query, b_pool, documents)
+        per_side = [("A", i) for i in kept_a[: TOP_N // 2]]
+        per_side += [("B", i - offset) for i in kept_b[: TOP_N // 2]]
+
+        # MERGED: ONE call over both sides' candidates, top N wins outright.
+        pool = top_a + b_pool
         kept = order_for(pairs, query, pool, documents)[:TOP_N]
         merged = [("A", i) if i < offset else ("B", i - offset) for i in kept]
 
