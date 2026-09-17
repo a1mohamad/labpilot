@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+import statistics
 import sys
 from pathlib import Path
 
@@ -36,6 +37,84 @@ from scripts.score_hybrid import CORPORA, targets
 ANSWERS = Path("artifacts/slice8v2/answers")
 RESULTS = Path(".logs/results")
 NAME = re.compile(r"^(?P<corpus>.+)_n(?P<n>\d+)_(?P<model>.+)\.md$")
+
+
+ANSWERABLE_FLOOR = 8
+
+
+def per_corpus(rows: list[dict], model: str) -> None:
+    """Is the best N a COUNT, or a share of the corpus?
+
+    The question DECISIONS.md posed before the run: N=20 is 26% of an 78-chunk
+    artifact and 2% of a 1,160-chunk one, and those predict opposite things.
+
+        flat across corpus sizes  -> it is about the COUNT
+        tracks a percentage       -> it is about COVERAGE
+
+    Cells are hidden where fewer than ANSWERABLE_FLOOR questions could have
+    been answered from what was sent. THIS IS NOT COSMETIC. USED is a ratio,
+    and at N=5 the whole thirteen-corpus panel has under three answerable
+    questions per corpus - so eight corpora score a perfect 1.000 from two of
+    two, and a naive reading of the same table says the best N is 5. A
+    denominator that small measures the fixture, not the model.
+    """
+    by: dict[str, dict[int, dict]] = {}
+    for r in rows:
+        if r["model"] == model:
+            by.setdefault(r["corpus"], {})[r["n"]] = r
+    if not by:
+        return
+    sizes = sorted({n for d in by.values() for n in d})
+
+    print()
+    print(
+        f"{model} - PER CORPUS: USED, where at least {ANSWERABLE_FLOOR} "
+        f"questions were answerable"
+    )
+    head = "".join(f"{'N=' + str(n):<8}" for n in sizes)
+    print(f"  {'corpus':11}{'chunks':>7}  " + head)
+
+    counts: list[int] = []
+    shares: list[float] = []
+
+    def size_of(item):
+        return next(iter(item[1].values()))["chunks"]
+
+    for corpus, d in sorted(by.items(), key=size_of):
+        chunks = next(iter(d.values()))["chunks"]
+        cells, best, best_n = [], -1.0, None
+        for n in sizes:
+            r = d.get(n)
+            if not r:
+                cells.append(f"{'-':<8}")
+                continue
+            if r["answerable"] < ANSWERABLE_FLOOR:
+                cells.append(f"{'(' + str(r['answerable']) + ')':<8}")
+                continue
+            used = r["correct"] / r["answerable"]
+            cells.append(f"{used:<8.3f}")
+            if used > best:
+                best, best_n = used, n
+        tail = f"  best N={best_n}" if best_n else "  (never enough)"
+        print(f"  {corpus:11}{chunks:7}  " + "".join(cells) + tail)
+        if best_n:
+            counts.append(best_n)
+            shares.append(best_n / chunks)
+
+    if len(counts) < 2:
+        return
+    cv_count = statistics.stdev(counts) / statistics.mean(counts)
+    cv_share = statistics.stdev(shares) / statistics.mean(shares)
+    print()
+    print(
+        f"  best N as a COUNT: median {statistics.median(counts):g}, "
+        f"{min(counts)}-{max(counts)}, cv {cv_count:.2f}"
+    )
+    print(
+        f"  best N as a SHARE: {min(shares):.0%}-{max(shares):.0%}, cv {cv_share:.2f}"
+    )
+    verdict = "COUNT" if cv_count < cv_share else "COVERAGE"
+    print(f"  the smaller cv is the constant one -> N is about the {verdict}")
 
 
 def main(argv: list[str]) -> int:
@@ -175,6 +254,9 @@ def main(argv: list[str]) -> int:
             "  USED = correct / answerable: of the questions whose answer WAS "
             "in the prompt, how many the model got right"
         )
+
+    for model in models:
+        per_corpus(rows, model)
 
     RESULTS.mkdir(parents=True, exist_ok=True)
     (RESULTS / "answers_regraded.json").write_text(json.dumps(rows, indent=1))
