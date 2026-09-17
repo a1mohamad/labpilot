@@ -139,7 +139,7 @@ were migrated for free and verified against a recorded number
 
 | # | measurement | result |
 |---|---|---|
-| **F1** | how many chunks to SEND | ✅ **G15** — dilution is real, peaks at **N=20**, and N is a **COUNT** not a coverage share (cv 0.41 vs 1.03 over a 15× size range). `RERANK_TOP_N = 10` per side is vindicated; `VECTOR_TOP_N = 25` is too large |
+| **F1** | how many chunks to SEND | ✅ **G15** — dilution is real, peaks at **N=20**, and N is a **COUNT** not a coverage share (cv 0.41 vs 1.03 over a 15× size range). **CORRECTED**: the experiment picked its chunks by VECTOR SEARCH ALONE - `chosen()` uses `dense_orders` and no reranker touches it - so it measures the DEGRADED path directly: **`VECTOR_TOP_N` should be 10 per side, not 25**. `RERANK_TOP_N` is NOT measured by it. Reranked chunks are better ordered, so their optimum is at most 20 and may be lower - an argument, not a number |
 | **G4** | by query WORDING — the label nothing read | ✅ **G16** — paired over 13 corpora, BM25 loses on both groups and loses **half as much** on `named`. The premise is true in direction, false in magnitude |
 | **A5** | merged vs per side | ✅ **merged starves a side on 4 of 17 queries** (was reported as 0 of 17 by the broken instrument) for **identical** quality, 0.824 either way. Per side is correct, and now it has evidence |
 

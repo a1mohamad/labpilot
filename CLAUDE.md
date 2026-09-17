@@ -509,7 +509,7 @@ ARE DONE. STEP 2, THE AGENT, IS NEXT.**
 >
 > | | |
 > |---|---|
-> | **how many chunks to SEND** | **20**, and N is a **COUNT**, not a coverage share — cv 0.41 against ~1.0 over a 15× range of corpus sizes. This **vindicates `RERANK_TOP_N = 10` per side** (10 + 10 = 20) and makes **`VECTOR_TOP_N = 25` too large** |
+> | **how many chunks to SEND** | **20**, and N is a **COUNT**, not a coverage share — cv 0.41 against ~1.0 over a 15× range of corpus sizes. **CORRECTED**: the experiment picked its chunks by VECTOR SEARCH ALONE - `chosen()` uses `dense_orders` and no reranker touches it - so it measures the DEGRADED path directly: **`VECTOR_TOP_N` should be 10 per side, not 25**. `RERANK_TOP_N` is NOT measured by it. Reranked chunks are better ordered, so their optimum is at most 20 and may be lower - an argument, not a number |
 > | **the skip gate** | **`SKIP_MARGIN` stays `None`.** The v2 run's `0.05` is OVERTURNED: the best GLOBAL tau is worth **+2.4 queries out of 286**, and the best per-corpus tau is never the same twice |
 > | **merged vs per-side reranking** | **PER SIDE, confirmed.** Merged starves a side entirely on **43 of 57** queries — where the broken instrument had reported **0 of 20** |
 > | **fusion** | switch the keyword channel **ON below `r@50` ≈ 0.95 and OFF above** — every recall gain lands on the three corpora below it, and every corpus at or above is exactly +0.000. And the method is **SCORE FUSION**, not wRRF, whose entire MRR range sits inside one-query resolution |

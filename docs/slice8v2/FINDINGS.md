@@ -947,10 +947,26 @@ hidden and print their denominator instead, so the reader can see why.
 
 ### What this decides
 
-**`RERANK_TOP_N = 10` is vindicated and `VECTOR_TOP_N = 25` is too large.** The
-constants are **per side**, so 10 per side is 20 in the prompt — exactly the
-measured optimum — while 25 per side is 50, past the peak, where USED has
-fallen from 0.983 to 0.904.
+**`VECTOR_TOP_N` should be 10 per side, not 25.**
+
+**WHICH CONSTANT THIS MEASURES, and I got it wrong first.** `chosen()` picks
+its chunks with `dense_orders` and **no reranker touches them**. So the whole
+experiment is the VECTOR path — which is exactly what `VECTOR_TOP_N` governs:
+what we send when the gate skips or every rerank tier has failed.
+
+    VECTOR_TOP_N   sent when NO reranker ran   MEASURED here: 10 per side
+    RERANK_TOP_N   sent when one DID run       NOT measured here
+
+The constants are **per side**, so the measured 20 in the prompt is **10 per
+side**, and the shipped `VECTOR_TOP_N = 25` puts 50 vector-ranked chunks in
+front of the model — past the peak, where USED has fallen from 0.983 to 0.906.
+
+**`RERANK_TOP_N = 10` is CONSISTENT with this and is not proven by it.**
+Reranked chunks are better ordered, and slice 6 measured that a good reranker
+shifts the recall curve LEFT — reranked N=3 scored 0.882 where vector N=3
+scored 0.765. So the reranked optimum is at most 20 and may well be lower.
+That is an argument. Measuring it needs the same experiment run over
+RERANKED chunks, and it has not been done.
 
 This **corrects a correction**: `RESUME.md` recorded *"10 is too small"*, which
 came from G13's single fixture.
