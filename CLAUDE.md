@@ -510,7 +510,7 @@ ARE DONE. STEP 2, THE AGENT, IS NEXT.**
 >
 > **v3 rebuilds the zoo to 20 corpora with 10 PYTHON**, spanning one notebook
 > and a few scripts up to a **13,000-chunk library**, two of them from the
-> user's own `apps/` and `research-notebooks/`. Branch `slice8/python-zoo`, off
+> user's own `apps/` and `research-notebooks/`. Branch `slice8/measure-final`, off
 > `main`. **All v2 results are KEPT and stay valid for what they measured.**
 >
 > **`docs/slice8v3/MISSION.md` is the complete brief — a fresh session needs

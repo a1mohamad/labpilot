@@ -16,6 +16,79 @@ Do not ask what to do — it is written here.
 
 ---
 
+## 0.5 SET THE SESSION UP — this exact incantation, before anything else
+
+Nothing works without all four parts.
+
+```bash
+cd "C:/Users/98922/Documents/python_scripts/AI/apps/labpilot"
+set -a; source .env; set +a      # API keys
+source .corpora/env.sh           # WHERE each corpus lives (gitignored)
+# and every command needs BOTH of these:
+PYTHONPATH=. .venv/Scripts/python.exe ...
+```
+
+**`python` is NOT the right interpreter.** It resolves to a 3.10 without our
+dependencies. Always `.venv/Scripts/python.exe`.
+
+### Before ANY call to a model, probe the exit
+
+The user works through a VPN and Google refuses some exits. A refused exit
+looks exactly like a dead provider in the logs — a whole session was once spent
+writing "Google is blocked" into CLAUDE.md when Google was fine.
+
+Step 1, which exit are we on:
+
+```bash
+curl -s https://ipinfo.io/json
+```
+
+Step 2, the verdict. It must be a real `generateContent` — `GET /v1beta/models`
+returned 200 all through a real account restriction:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}' -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent" -H "x-goog-api-key: $GOOGLE_API_KEY" -H 'Content-Type: application/json' -d '{"contents":[{"parts":[{"text":"say ok"}]}],"generationConfig":{"maxOutputTokens":2048}}'
+```
+
+**200** = go · **400 `FAILED_PRECONDITION`** = the exit IP, switch server ·
+**403** = the account, a different exit will not help · **429** = quota.
+
+*2026-09-17: `80.240.20.89`, AS20473 The Constant Company (Vultr, Frankfurt) —
+200 on both keys. The ISP name is a HINT, never a verdict. Only the probe
+decides.*
+
+### The traps, and every one of them cost real time
+
+| trap | what happens | what to do |
+|---|---|---|
+| **a heredoc mangles backslashes** | an escape in a patch script lands as a literal control character — a word-boundary escape became **0x08 BACKSPACE**. ruff passes, the import passes, and the regex silently matches nothing | write the patch to a **file** with the Write tool and run that file; then audit for control bytes |
+| **flash-lite paces by REQUESTS, TOKENS bind** | a 50-document call on a 474-token corpus is ~24,700 tokens, and 250K TPM allows ~10 calls/min, not the 13/min the pace assumes | expect 70s backoffs on big-chunk corpora; one re-run slept ~23 minutes |
+| **double backgrounding** | `cmd &` inside a backgrounded tool call is killed when the outer shell exits | no `&`; let the tool background it |
+| **Gemma returns HTTP 500 on ~1 call in 3** | a hand-rolled retry loses whole runs | `LLMClient(chain=buckets(provider))` |
+| **flash-lite's 500/day is spent** | every call stalls 70s then fails | `export GOOGLE_API_KEY="$GOOGLE_API_KEY_2"` — quota is per project per model |
+| **`grep` in a pipeline buffers** | a background log shows nothing for ten minutes, then the process dies and the output is LOST | write the log UNFILTERED, filter when reading |
+| **counting processes by script name** | always 0 — `ps` shows the interpreter path, not the script | count `labpilot/.venv/Scripts/python` instead |
+| **`pkill` does not exist here** | a silent no-op, then two loops write to one log | list with `ps -W`, then `kill -9 <pid>` |
+| **pre-commit stashes unstaged files** | an unstaged edit was silently lost once | stage everything before committing, and check the file survived |
+| **the VPN link is the bottleneck** | three busy jobs cause SSL handshake timeouts | at most two jobs actively calling; jobs sitting in backoff are nearly free |
+
+---
+
+## 0.6 WHAT ELSE TO READ, and what NOT to read
+
+| | |
+|---|---|
+| **`CLAUDE.md`** | **loads automatically** as project instructions. Do not re-read it wholesale — it is 15,600 lines |
+| **this file** | the what, the why, the order. Read it fully |
+| `docs/slice8v2/FINDINGS.md` **G14, G15, G18, G19** | read these four before touching the instrument — they are why the caches have the shape they do |
+| `docs/slice8v2/DECISIONS.md` | the decisions being re-weighted, with the Python-backing table |
+| the scripts | **read each one when you first run it**, not up front. Their docstrings carry the reasoning |
+| `git log` | **not needed.** The commit messages are narrative, and every conclusion in them is also in the docs |
+
+> **Do not front-load.** Reading every script and the whole git history before
+> starting spends context on things most of which will never be touched. Read
+> this file, those four findings, and then each script as you reach it.
+
 ## 1. WHY. The v2 zoo does not match the product
 
 `docs/slice8v2/` measured **13 corpora**. Only **3** are Python or Jupyter:
@@ -221,7 +294,7 @@ pre-commit stashing unstaged files · at most two jobs actively calling.
 ## 6. BRANCH AND HYGIENE
 
 ```
-new branch     slice8/python-zoo   OFF slice8/measure-v2   <- NOT off main
+new branch     slice8/measure-final   OFF slice8/measure-v2   <- NOT off main
 keep           docs/slice8v2/ and .logs/results/ untouched
 write          docs/slice8v3/
 main           ONLY the user commits to main
@@ -229,7 +302,7 @@ main           ONLY the user commits to main
 
 ```bash
 git checkout slice8/measure-v2 && git pull
-git checkout -b slice8/python-zoo
+git checkout -b slice8/measure-final
 ```
 
 **OFF `slice8/measure-v2`, and this is not a preference.** `main` does not have
