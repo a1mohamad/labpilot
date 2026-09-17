@@ -201,8 +201,58 @@ G1, G3, G6:**
 4. **Label `asks` and `wording`** (`named` / `paraphrase`). Both are read by
    `aggregate.py --delta-by`.
 
-Register each in `scripts/corpora.py`, point `.corpora/env.sh` at the checkout,
-and record source + commit + licence in the fixture, as the existing 13 do.
+### The fixture mechanics — the two things that are not obvious
+
+**1. A corpus is DATA, not code.** It is a `corpus` block inside its own
+`queries.json`, and `scripts/corpora.py` reads it. Nothing is registered by
+editing a function:
+
+```json
+"corpus": {
+    "key": "pytest",                    what the scripts call it
+    "env": "LABPILOT_PYTEST_SRC",       the checkout, NEVER committed
+    "include": ["**/*.py"],             globs, relative to that root
+    "exclude": ["**/testing/**"],       globs, applied to the relative path
+    "source": "relpath"                 how `file` in a query is spelled
+}
+```
+
+Two fields carry traps, both documented at the top of `scripts/corpora.py`:
+
+- **`key` names the embedding cache.** Renaming it later silently orphans the
+  paid-for vectors. Choose the short name once.
+- **`source` cannot be guessed.** A query's `file` must match `Chunk.source`
+  exactly or its ground truth resolves to nothing — and the existing fixtures
+  legitimately disagree: `requests` spells it `adapters.py` (one flat
+  directory) while `geo` spells it `s2/cellid.go`. Decide it per fixture.
+
+Also note `fnmatch` does **not** implement `**` the way you expect — that bug
+made `cobra` 408 chunks including its own tests when it is really 193. See
+**G1**.
+
+**2. OUR OWN WALKER REFUSES A BIG REPOSITORY.**
+
+```
+MAX_FILE_BYTES    5,000,000     labpilot/sources/defaults.py
+MAX_TOTAL_BYTES  20,000,000     <- this one bites
+```
+
+**Django was already refused this way** — it is recorded in CLAUDE.md under the
+index decision. So check the size before drafting twenty queries against a repo
+that cannot be ingested:
+
+```bash
+du -sm <checkout>          # must be under 20 MB of INCLUDED files
+```
+
+For reference, measured on 2026-09-05: FastAPI is 24,364 chunks and **14.7 MB**
+of text, so the named candidates fit — `pytest` ~10 MB, `pydantic` ~13 MB,
+`dask` ~12 MB. Anything larger needs a narrower `include`, and narrowing it is
+a fixture decision to record, not a silent trim.
+
+**Pin the commit.** `git clone --depth 1` then record repo, commit, licence in
+the `queries.json`, exactly as the existing 13 do.
+
 
 **Budget the embedding before starting.** 7 new corpora, the two large ones
 dominating: roughly `10,000 + 13,000 + 4,000 = 27,000` chunks at ~340 tokens =
