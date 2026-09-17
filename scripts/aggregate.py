@@ -223,6 +223,66 @@ def grouped(runs: dict[str, dict], metric: str, bm25: str, by: str) -> None:
         )
 
 
+def deltas_by(runs: dict[str, dict], bm25: str, by: str) -> None:
+    """Each ranker's gain over vector, pooled by a property of the QUERY.
+
+    THE QUESTION THIS EXISTS FOR. The case for a keyword channel in this
+    project is one sentence: "vectors are good at meaning, keywords are good
+    at names, and code is mostly names." Every fixture labels each query
+    `named` (it shares a word with the code) or `paraphrase` (it deliberately
+    does not), and nothing had ever read the label.
+
+    If the claim holds, BM25's gain over vector must be clearly larger on
+    `named` than on `paraphrase`. Pooling the ABSOLUTE score by wording cannot
+    show that - an easy corpus lifts both groups - so this pools the
+    DIFFERENCE, per query, which is paired and therefore far more sensitive.
+    """
+    pools: dict[tuple[str, str], list[float]] = defaultdict(list)
+
+    for data in runs.values():
+        scores = data["by_bm25"][bm25]
+        labels = data.get("wording" if by == "wording" else "kinds", {})
+        base = scores.get(BASELINE, {}).get("places")
+        if not base or not labels:
+            continue
+        for ranker, got in scores.items():
+            if ranker == BASELINE or "places" not in got:
+                continue
+            for query_id, place in got["places"].items():
+                if query_id not in base:
+                    continue
+                key = labels.get(query_id, "?")
+                pools[(ranker, key)].append(1 / place - 1 / base[query_id])
+
+    groups = sorted({k for _, k in pools})
+    print()
+    print(f"gain over vector alone (MRR), pooled by {by} - {len(runs)} corpora")
+    print(f"  {'ranker':22} " + " ".join(f"{g:>18}" for g in groups))
+    for ranker in sorted({r for r, _ in pools}):
+        cells = []
+        for g in groups:
+            vals = pools.get((ranker, g), [])
+            cells.append(
+                f"{statistics.mean(vals):+8.3f} n={len(vals):<3}" if vals else " " * 18
+            )
+        print(f"  {ranker:22} " + " ".join(f"{c:>18}" for c in cells))
+    print(
+        "  (positive means the ranker beat vector on that group; the "
+        "comparison is PAIRED, query by query)"
+    )
+    if by == "wording" and {"named", "paraphrase"} <= set(groups):
+        named = pools.get(("bm25", "named"), [])
+        para = pools.get(("bm25", "paraphrase"), [])
+        if named and para:
+            print()
+            print(
+                f"  THE HYBRID-SEARCH PREMISE: bm25 over vector is "
+                f"{statistics.mean(named):+.3f} on named and "
+                f"{statistics.mean(para):+.3f} on paraphrase - "
+                f"a gap of {statistics.mean(named) - statistics.mean(para):+.3f}"
+            )
+
+
 def main(argv: list[str]) -> int:
     metric = next((a.split("=")[1] for a in argv if a.startswith("--metric=")), "MRR")
     embedder = next(
@@ -240,6 +300,11 @@ def main(argv: list[str]) -> int:
 
     bm25 = next(iter(next(iter(runs.values()))["by_bm25"]))
     print(f"{len(runs)} corpora, embedder {embedder}, BM25 {bm25}")
+
+    delta_by = next((a.split("=")[1] for a in argv if a.startswith("--delta-by=")), "")
+    if delta_by:
+        deltas_by(runs, bm25, delta_by)
+        return 0
 
     by = next((a.split("=")[1] for a in argv if a.startswith("--by=")), "")
     if by:
