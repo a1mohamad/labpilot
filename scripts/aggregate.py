@@ -114,7 +114,7 @@ def reranking(metric: str) -> None:
 
     print(
         f"\n{'reranker':24} {'corpus':11} {'win':>4} {'chunks':>7} "
-        f"{'before':>7} {'after':>7} {'delta':>7}  check"
+        f"{'before':>7} {'after':>7} {'delta':>7} {'in q':>7} {'verdict':8}  check"
     )
     by_model: dict[str, list[float]] = defaultdict(list)
     for run in sorted(runs, key=lambda r: (r["reranker"], r["chunks"])):
@@ -126,10 +126,27 @@ def reranking(metric: str) -> None:
         )
         check = "ok" if moved < 1e-9 else f"BROKEN r@50 moved {moved:+.3f}"
         by_model[run["reranker"]].append(after - before)
+
+        # AGAINST WHAT THIS FIXTURE CAN RESOLVE, not against zero.
+        #
+        # One query moving from first place to second changes MRR by
+        # 0.5/queries. On the 13-query gson that is 0.038; on the 45-query geo
+        # it is 0.011. So the same -0.03 is one query on one corpus and three
+        # on another, and a table printing "hurt" for both compares a
+        # measurement with a wobble. RESUME.md states the rule; nothing
+        # applied it.
+        resolution = 0.5 / run["queries"]
+        queries = (after - before) / resolution
+        if abs(queries) > 2:
+            verdict = "REAL"
+        elif abs(queries) < 1:
+            verdict = "noise"
+        else:
+            verdict = "marginal"
         print(
             f"{run['reranker']:24} {run['corpus']:11} {run['window']:4} "
             f"{run['chunks']:7} {before:7.3f} {after:7.3f} {after - before:+7.3f}"
-            f"  {check}"
+            f" {queries:+6.1f}q {verdict:8}  {check}"
         )
 
     print(
@@ -143,6 +160,10 @@ def reranking(metric: str) -> None:
             f"{model:24} {len(deltas):8} {helped:7} {hurt:6} "
             f"{min(deltas):+7.3f} {sum(deltas) / len(deltas):+7.3f}"
         )
+    print(
+        "  'helped' and 'hurt' count against ZERO; the per-run verdict column "
+        "counts against what each fixture can resolve, which is the honest one"
+    )
 
     # The routing claim. Slice 6 built one on a single model's failure; it is
     # only evidence if the sign is the same model after model, corpus after
