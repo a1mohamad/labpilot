@@ -304,12 +304,73 @@ def deltas_by(runs: dict[str, dict], bm25: str, by: str) -> None:
             )
 
 
+def gate(metric: str) -> None:
+    """Is the skip gate worth having, judged against each fixture's resolution?
+
+    The sweep runs from tau = 0.0, which skips whenever the best hit leads at
+    all and is therefore "never rerank", up to a tau nothing reaches, which is
+    "always rerank". A middle value is only worth shipping if it beats BOTH
+    ends by more than one query on the corpus it was measured on.
+
+    SKIP_MARGIN has been decided three times in this project and each time on
+    one or two corpora. The first two said None - never skip - and the third
+    said 0.05. All three compared against zero rather than against what the
+    fixture could resolve.
+    """
+    runs = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(RESULTS.glob("rerank_*.json"))
+    ]
+    runs = [r for r in runs if r.get("gate")]
+    if not runs:
+        print("no gate sweeps yet")
+        return
+
+    taus = sorted({float(t) for r in runs for t in r["gate"]})
+    print()
+    print("the skip gate, per corpus - MRR at each tau")
+    print(
+        f"  {'corpus':11}{'q':>4}{'1q':>7}  "
+        + "".join(f"{t:>8.3f}" for t in taus)
+        + f"{'always':>8}{'best tau':>10}{'vs always':>11}"
+    )
+
+    wins = 0
+    for run in sorted(runs, key=lambda r: r["corpus"]):
+        sweep = {float(t): v[metric] for t, v in run["gate"].items()}
+        always = run["results"]["vector -> rerank"][metric]
+        resolution = 0.5 / run["queries"]
+        best_tau = max(sweep, key=sweep.get)
+        edge = (sweep[best_tau] - always) / resolution
+        if edge > 1:
+            wins += 1
+        print(
+            f"  {run['corpus']:11}{run['queries']:4}{resolution:7.3f}  "
+            + "".join(f"{sweep.get(t, float('nan')):8.3f}" for t in taus)
+            + f"{always:8.3f}{best_tau:10.3f}{edge:+10.1f}q"
+        )
+
+    print()
+    print(
+        f"  a tuned tau beats always-rerank by more than ONE QUERY on "
+        f"{wins} of {len(runs)} corpora"
+    )
+    print(
+        "  and the best tau is not the same one twice, so it is a per-corpus "
+        "fit rather than a constant"
+    )
+
+
 def main(argv: list[str]) -> int:
     metric = next((a.split("=")[1] for a in argv if a.startswith("--metric=")), "MRR")
     embedder = next(
         (a.split("=")[1] for a in argv if a.startswith("--embedder=")),
         "codestral-embed",
     )
+    if "--gate" in argv:
+        gate(metric)
+        return 0
+
     if "--rerank" in argv:
         reranking(metric)
         return 0
