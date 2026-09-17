@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import re
 import statistics
 import sys
@@ -50,6 +51,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
+from labpilot.llm.defaults import SAFETY_MARGIN_RATIO
 from labpilot.llm.registry import (
     GEMINI_3_5_FLASH_LITE,
     GEMMA_4_26B,
@@ -125,7 +127,20 @@ extracts do not cover it.
 {questions}"""
 
 ANSWER = re.compile(r"^\s*Q(\d+)\s*:\s*(.+)$", re.M)
-CITATION = re.compile(r"\[([AB]-\d+)\s+\"([^\"]+)\"\]")
+
+# ANY reference to a chunk id counts, wherever the quote sits.
+#
+# THE FIRST VERSION REQUIRED THE QUOTE INSIDE THE BRACKETS - [B-12 "line"] -
+# and the model sometimes writes [B-12] "line" instead. That scored a reply
+# with sixteen perfectly good citations as ZERO cited, and the row read like a
+# model collapsing at N=100 rather than like a regex missing a space.
+#
+# It is the mistake this project already made once, when gemma was recorded as
+# "unable to follow the format" and the real fault was reading the front of its
+# reply. Grading is allowed to be strict about SUBSTANCE and must never be
+# strict about punctuation it did not need: grade() only ever reads the id, so
+# the quote's position cannot change any verdict.
+CITATION = re.compile(r"\[([AB]-\d+)")
 
 
 def chosen(chunks, queries, corpus: str, n: int) -> list[int]:
@@ -208,7 +223,7 @@ def grade(reply: str, chunks, queries, sent: list[int]) -> dict:
         # The chunk it cited, by our own id scheme, must be one that really
         # holds the answer line - and it must also be one we actually SENT,
         # or the model invented an id.
-        got = {int(cid.split("-")[1]) for cid, _ in marks}
+        got = {int(cid.split("-")[1]) for cid in marks}
         if got & want and got <= set(sent):
             correct += 1
 
@@ -243,12 +258,20 @@ def run(corpus: str, sizes: list[int], model_key: str) -> list[dict]:
             INSTRUCTION.format(context=context, questions=numbered)
         )
         share = len(keep) / len(chunks)
-        fits = "yes" if tokens < GEMMA_INPUT_LIMIT else "NO"
+
+        # THE MARGIN IS PART OF THE LIMIT. `_check_fits` refuses on
+        # `estimate * 1.10`, not on the estimate, so a bare comparison against
+        # 16,000 says "fits" and the provider then refuses locally - which the
+        # first run recorded as a score of ZERO instead of as a refusal. A
+        # pre-check that does not use the same arithmetic as the real check is
+        # not a pre-check.
+        padded = math.ceil(tokens * (1 + SAFETY_MARGIN_RATIO))
+        fits = "yes" if padded <= GEMMA_INPUT_LIMIT else "NO"
 
         # A tier that cannot take the prompt cannot answer, and that is a
         # RESULT rather than an error: it is the cost of sending more chunks,
         # paid in which models are still available.
-        if tokens > provider.max_input_tokens:
+        if provider.max_input_tokens is not None and padded > provider.max_input_tokens:
             print(
                 f"  {n:4} {share:7.0%} {tokens:8} {fits:>7} "
                 f"REFUSED - over {provider.max_input_tokens} input tokens",
@@ -263,6 +286,7 @@ def run(corpus: str, sizes: list[int], model_key: str) -> list[dict]:
                     "share": share,
                     "tokens": tokens,
                     "fits_gemma": False,
+                    "padded": padded,
                     "model": provider.model,
                     "refused": True,
                     "asked": len(queries),
@@ -290,7 +314,8 @@ def run(corpus: str, sizes: list[int], model_key: str) -> list[dict]:
                 "sent": len(keep),
                 "share": share,
                 "tokens": tokens,
-                "fits_gemma": tokens < GEMMA_INPUT_LIMIT,
+                "fits_gemma": padded <= GEMMA_INPUT_LIMIT,
+                "padded": padded,
                 "model": provider.model,
                 **got,
             }
