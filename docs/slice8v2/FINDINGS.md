@@ -626,3 +626,283 @@ really does name the flagship finding with a citation -
   2 story findings) is within what one run can wobble.
 - **One model.** Section 11.9's separate question - whether a cheap tier can
   write the report - is measured elsewhere and is not this.
+
+---
+
+## G14 — THE INSTRUMENT WAS BROKEN FOR LISTWISE RERANKERS, and it voided five corpora
+
+**Found 2026-09-17, before any new measurement was trusted.** It is the same
+class of defect as slice 4's identical-vectors bug: the numbers were confident,
+well-formatted and produced by code that had a guard against exactly this.
+
+### The mechanism
+
+A cross-encoder returns a **score** per document. An LLM reranker returns an
+**order** and no scores at all. `PairScores` papered over the difference by
+synthesising a score from the place:
+
+```
+scored = ranking.scores or tuple(len(order) - place for place in range(len(order)))
+```
+
+So **every call produced the same numbers**: a 50-document call scored its
+documents 50, 49, 48 … 1, and so did the next one. The cache was keyed
+`query:chunk` with no record of which call a score came from, and `fetch()`
+split anything larger than `SEARCH_LIMIT` into batches. Two calls covering
+different candidate sets for one query therefore collided — the union held two
+documents scored 50.0, two scored 49.0 — and the "merged" order was arithmetic
+rather than anything the model had said.
+
+### It was reachable three ordinary ways, and all three happened
+
+| route | what makes the sets differ |
+|---|---|
+| `--fusion` | the fused top-50 is not the dense top-50, so the union crosses 50 |
+| `--window=100` | the candidate set is larger than one call |
+| a re-run | a second window adds a second call to an existing cache |
+
+### The audit
+
+Every cache file, checking whether one query's synthesised scores repeat:
+
+| listwise cache | queries recoverable as ONE call |
+|---|---|
+| cobra, docs, docx, log, notebooks, requests, websocket, zod | **all — clean** |
+| **geo, gson, jq, papers** | **0 — every one a `--fusion` run** |
+| **quora** | **0 — also run at window 30 in slice 6** |
+| **all three `merged_*`** | **0** |
+
+The pattern is exact: **the four corpora run with `--fusion` are four of the
+five void ones**, and the fifth is the one corpus that had been scored twice at
+different windows. No non-fusion, single-window corpus is affected.
+
+### The guard named the hazard and then assumed it away
+
+`verify_pointwise` skips a listwise reranker, correctly, and explains why — and
+then says:
+
+> *"It is scored per call, and the per-pair cache is only ever asked for the
+> order it stored."*
+
+**Nothing enforced that.** The sentence is a description of how the cache was
+expected to be used, written beside code that made the other use trivially
+easy. This is the third time in this project a rule has lived in prose and been
+broken by ordinary work.
+
+### `bench_merged` had a second bug in the same family
+
+Per-side A and per-side B both indexed their candidates from zero, so the two
+sides **shared a cache key space**. Side B's ranking was served from side A's
+entries, and the merged pool's side-A half was served from the per-side call —
+so **the merged call for side A never happened at all**. With both surviving
+calls synthesising their own 50…1, the top ten came out as exactly five per
+side on **all forty queries**, across two unrelated corpus pairs.
+
+That is not an unlikely result. It is an identity:
+
+```
+side A candidates scored 50..1   in its own call
+side B candidates scored 50..1   in its own call
+top 10 of the union              = 50,50,49,49,48,48,47,47,46,46
+                                 = five from each side, always
+```
+
+The recorded finding — *"merged gave side A 50% of the slots, min 50%, max
+50%, starved a side on 0 of 20"* — was this identity wearing a measurement's
+clothes.
+
+### The fix is structural, not remembered
+
+A listwise entry is now keyed by the **candidate set itself**, an unseen set
+**raises** instead of being stitched together, and a listwise call is **never
+split**. Fetch is per candidate set rather than over the union: a pointwise
+cache does not care, and a listwise one cannot survive it.
+
+Every call in `bench_merged` now indexes into the merged document list, so no
+two candidate sets can share a key.
+
+### What survived, and what had to be paid for again
+
+The 13 clean listwise caches were **migrated** rather than re-run: their scores
+are exactly `n…1` with no duplicates, so they came from one call and the order
+is exactly recoverable. **211 rankings kept, 0 calls spent.** Verified by
+re-scoring `cobra` end to end — **MRR 0.634 → 0.794, reproducing the recorded
+number to three decimals with `calls: 0`.**
+
+The 5 void corpora were re-run.
+
+> **A guard that skips a case must say what protects that case instead.**
+> `verify_pointwise` proves the pointwise cache is sound on every run. Nothing
+> proved anything about the listwise one, and the comment that stood in for a
+> proof was wrong.
+
+---
+
+## G15 — HOW MANY CHUNKS TO SEND: dilution is REAL, it peaks at 20, and N is a COUNT
+
+**This supersedes G13 entirely.** G13 ran on `quora_siamese` alone — 100 chunks,
+so "send 68" meant sending 68% of the whole corpus — and concluded *"there is
+no dilution penalty in this range"*. The user rejected that fixture and was
+right. This is **13 whole corpora, 78 to 1,160 chunks, 286 questions**, graded
+mechanically against each fixture's own ground truth.
+
+### Both terms of the product are now measured
+
+CLAUDE.md states the question as a product and calls the right-hand term
+unmeasurable from retrieval:
+
+$$
+P(\text{good report}) \approx
+\underbrace{P(\text{the answer is in the } N)}_{\text{rises with } N}
+\times
+\underbrace{P(\text{the model uses it})}_{\text{never measured}}
+$$
+
+The fixtures carry ground truth, so the split is free. A question is
+**answerable** when a chunk holding its answer is in the set we sent; **USED**
+is `correct / answerable` — of the questions whose answer really was in the
+prompt, how many the model got right.
+
+**Balanced panel — the 10 corpora that answered at every N**, so the only thing
+changing across a row is N:
+
+| N | mean share | mean tokens | answerable | **USED** | correct/asked | fits gemma |
+|---|---|---|---|---|---|---|
+| 5 | 1% | 2,505 | 27 | 0.889 | 0.099 | 10 of 10 |
+| 10 | 3% | 4,382 | 55 | 0.964 | 0.219 | 10 of 10 |
+| **20** | 5% | 8,170 | 117 | **0.983** | 0.475 | **10 of 10** |
+| 30 | 8% | 12,333 | 143 | 0.881 | 0.521 | 7 of 10 |
+| 50 | 14% | 20,099 | 166 | 0.904 | 0.620 | 2 of 10 |
+| 100 | 27% | 40,121 | 201 | **0.851** | 0.707 | **0 of 10** |
+
+**DILUTION IS REAL AND IT PEAKS AT 20.** The model uses **98.3%** of the
+evidence it is handed at N=20 and **85.1%** at N=100 — a loss of thirteen
+points. `correct/asked` keeps climbing anyway, because retrieval adds answers
+faster than the model loses the ability to use them.
+
+> **A run that measured only the total would have concluded "more is always
+> better" and missed the cost entirely.** That is what G13 did, on one fixture
+> where the two terms could not be separated at all.
+
+### The panel has to be balanced, and that is not a detail
+
+Only a corpus of 100+ chunks can be asked for N=100, so an unbalanced N=100 row
+is computed over systematically **larger** corpora than the N=5 row. It
+confounds *"more chunks help"* with *"big corpora are harder"*, and those
+predict opposite things.
+
+### Is N a count, or a share of the corpus?
+
+The question DECISIONS.md posed before the run, with both answers named in
+advance:
+
+```
+flat across corpus sizes  ->  it is about the COUNT
+tracks a percentage       ->  it is about COVERAGE, and 50 is far too few
+                              on a repository
+```
+
+Per corpus, over a **15× range** of sizes:
+
+| | median | range | **cv** |
+|---|---|---|---|
+| best N as a **COUNT** | **20** | 10–50 | **0.41** |
+| best N as a **SHARE** | — | 2%–37% | 1.03 |
+
+**The count is two and a half times the more stable description, and it is 20
+on nine of thirteen corpora. N is about the COUNT.**
+
+### The denominator floor is load-bearing
+
+`USED` is a ratio, and at N=5 the whole panel holds **under three answerable
+questions per corpus**. Without a floor, eight corpora score a perfect 1.000
+from two of two and the same table reads *"the best N is 5"* — a measurement of
+the fixture, not of the model. Cells below eight answerable questions are
+hidden and print their denominator instead, so the reader can see why.
+
+### What this decides
+
+**`RERANK_TOP_N = 10` is vindicated and `VECTOR_TOP_N = 25` is too large.** The
+constants are **per side**, so 10 per side is 20 in the prompt — exactly the
+measured optimum — while 25 per side is 50, past the peak, where USED has
+fallen from 0.983 to 0.904.
+
+This **corrects a correction**: `RESUME.md` recorded *"10 is too small"*, which
+came from G13's single fixture.
+
+**Three independent lines land on 20:** the pooled USED peak, the per-corpus
+median, and the token cost — 20 chunks is 8,170 tokens, the largest N that
+still fits Gemma's 14,400-calls-a-day tier on **every** corpus measured. At
+N=50 only 2 of 10 fit; at N=100, none.
+
+> **The real trade is not quality against dilution. It is quality against how
+> many models can still serve the prompt.**
+
+### Honest limits
+
+- **One model** wrote every answer (`gemini-3.5-flash-lite`). A stronger model
+  may dilute later; a weaker one sooner.
+- **`correct/asked` still rises at N=100.** If the product's objective is total
+  questions answered rather than efficient use of evidence, the answer is
+  different — and that is a product decision, not a measurement.
+- **One run per cell**, at `temperature 0`.
+
+---
+
+## G16 — THE HYBRID-SEARCH PREMISE IS TRUE IN DIRECTION AND FALSE IN MAGNITUDE
+
+Every fixture labels each query `named` — it shares a word with the code — or
+`paraphrase`, which deliberately avoids it. **Nothing had ever read the label**,
+though the entire case for a keyword channel in this project is one sentence
+built on it:
+
+> *"Vectors are good at meaning. Keywords are good at names. Code is mostly
+> names."*
+
+### Pooling the absolute score cannot test it
+
+```
+vector alone, by wording       named 0.670   paraphrase 0.654   n = 171
+```
+
+A gap of 0.016, which says nothing about BM25 — an easy corpus lifts both
+groups. So the comparison must be **paired**, per query, on the *difference*.
+
+### Paired, 13 corpora
+
+```
+gain over vector alone (MRR)          named        paraphrase
+  bm25                               -0.093          -0.176
+  ts_rank                            -0.161          -0.205
+  wRRF k=5 w=0.15                    +0.003          +0.003
+  score a=0.85                       +0.012          +0.016
+```
+
+**BM25 loses on both groups — and it loses half as much on `named`.** Gap
+**+0.082**. The mechanism is real: keyword search really is relatively better
+when the query names the identifier. It is simply never good enough to win, on
+either group, on any of thirteen corpora.
+
+### The routing signal does not reproduce either
+
+Slice 5 recorded *"keyword WINS on `constant` questions"* — 0.423 against
+vector's 0.354 — from **one corpus**. Paired over thirteen:
+
+```
+bm25 over vector, by question kind
+  claim      -0.048      constant   -0.089      behaviour  -0.145
+  structure  -0.167      error      -0.171      api        -0.214
+```
+
+`constant` is indeed where BM25 is **least bad**, so the direction survives.
+**The win does not.**
+
+### The method nobody kept
+
+`score a=0.85` — min-max score fusion — is positive on **five of seven**
+question kinds and beats `wRRF` on both wording groups. Slice 5 discarded it
+for having *"no mechanism"* and named `wRRF` the candidate instead.
+
+> **Judge a method by how many independent ways it was shown better.** That
+> rule retired score fusion on one corpus. On thirteen it is the best fusion
+> method measured, and the rule now argues the other way.
