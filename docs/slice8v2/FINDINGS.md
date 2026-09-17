@@ -711,6 +711,24 @@ The recorded finding — *"merged gave side A 50% of the slots, min 50%, max
 50%, starved a side on 0 of 20"* — was this identity wearing a measurement's
 clothes.
 
+### Does this reach what we SHIP? No — and that was checked, not assumed
+
+The first question a reader should ask. Measured by grepping the package:
+
+```
+.scores read anywhere in labpilot/ outside rerank/contracts.py   ->  nothing
+```
+
+`api/services.py` uses `ranking.order` and `ranking.model`; the shipped
+`rerank()` makes **one call per tier** over the documents it was handed, keeps
+no cache, and never synthesises a score. So the defect lives entirely in
+`scripts/`, and the production path was never capable of it.
+
+That is not luck. The synthesis existed only because a *cache* needed a
+sortable number per pair, and production has no cache. **The bug was created by
+the measurement's own optimisation** — which is the thing to watch for, because
+a script written to make a run repeatable is exactly where nobody looks.
+
 ### The fix is structural, not remembered
 
 A listwise entry is now keyed by the **candidate set itself**, an unseen set
