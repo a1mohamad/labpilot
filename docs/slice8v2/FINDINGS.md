@@ -793,14 +793,78 @@ changing across a row is N:
 | 50 | 14% | 20,099 | 166 | 0.904 | 0.620 | 2 of 10 |
 | 100 | 27% | 40,121 | 201 | **0.851** | 0.707 | **0 of 10** |
 
-**DILUTION IS REAL AND IT PEAKS AT 20.** The model uses **98.3%** of the
-evidence it is handed at N=20 and **85.1%** at N=100 — a loss of thirteen
-points. `correct/asked` keeps climbing anyway, because retrieval adds answers
+**DILUTION IS REAL AND IT PEAKS AT 20** — but this pooled figure OVERSTATES
+it, and the correction is immediately below. The model uses **98.3%** of the
+evidence it is handed at N=20 and **85.1%** at N=100; on a fixed question set
+the fall is to 90.6%, and it is a step rather than a slope. `correct/asked` keeps climbing anyway, because retrieval adds answers
 faster than the model loses the ability to use them.
 
 > **A run that measured only the total would have concluded "more is always
 > better" and missed the cost entirely.** That is what G13 did, on one fixture
 > where the two terms could not be separated at all.
+
+### CORRECTION — the size of the dilution effect was overstated, and the shape was wrong
+
+*Written the same session, after testing a confound in my own claim.*
+
+The table above says USED falls 0.983 → 0.851 and calls that dilution. **It is
+confounded.** A question only *becomes* answerable at N=100 when its answer
+chunk was ranked 51st to 100th by retrieval — which is to say, the questions
+that enter the pool late are **the hard ones**. So a falling ratio may be
+measuring the changing difficulty mix rather than the length of the prompt, and
+the pooled number cannot tell those apart.
+
+**Hold the questions still.** `scripts/dilution.py` restricts to the questions
+whose answer was in the prompt at **every** N, and compares them **pairwise** —
+question by question, because the same question under two prompt lengths is a
+paired observation and averaging throws the power away.
+
+```
+                    N=20    N=30    N=50    N=100
+unrestricted USED   0.983   0.881   0.904   0.851      -13 points
+FIXED SET, n=117    0.983   0.915   0.932   0.906       -8 points
+```
+
+**Most of the apparent collapse was the difficulty mix.** The real effect is
+about eight points, not thirteen.
+
+### And it is a STEP at 20, not a slope
+
+Two-sided sign test over the questions that changed:
+
+| pair | right→wrong | wrong→right | net | p |
+|---|---|---|---|---|
+| N=20 → N=30 | 9 | 1 | −8 | **0.021** |
+| N=20 → N=50 | 7 | 1 | −6 | 0.070 |
+| **N=20 → N=100** | **10** | **1** | **−9** | **0.012** |
+| N=30 → N=50 | 5 | 7 | +2 | 0.774 |
+| N=30 → N=100 | 9 | 8 | −1 | **1.000** |
+| N=50 → N=100 | 6 | 3 | −3 | 0.508 |
+
+Leaving N=20 costs questions, and the direction is lopsided — ten lost against
+one gained. **Past 30, nothing moves at all.** So the curve is a step down after
+20 followed by a plateau, not the progressive decay the first table suggested
+and not the smooth turn the theory predicts.
+
+### What this does and does not change
+
+**Unchanged:** N=20 is the optimum, and it is still the largest N that fits
+Gemma on every corpus. The count-versus-coverage answer is unaffected, because
+it compares where peaks sit and not how deep the valley is.
+
+**Changed:** the *reason* to stop at 20. It is not that the model progressively
+drowns — it does not. It is that leaving 20 costs about eight questions in a
+hundred and buys nothing back, while the token cost triples and every cheap
+tier disappears.
+
+**Still not established:** that dilution exists at all beyond N=30. The
+N=30→N=100 comparison is 9 against 8, which is as close to nothing as a
+measurement gets.
+
+> **A ratio whose denominator changes with the treatment is not a measurement
+> of the treatment.** I wrote "dilution is real and costs thirteen points"
+> from a pooled ratio, and the pooled ratio could not have told me otherwise.
+> The fixed set was free, sitting in the same saved replies.
 
 ### The panel has to be balanced, and that is not a detail
 
