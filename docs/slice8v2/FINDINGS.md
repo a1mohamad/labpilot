@@ -988,3 +988,90 @@ for having *"no mechanism"* and named `wRRF` the candidate instead.
 > **Judge a method by how many independent ways it was shown better.** That
 > rule retired score fusion on one corpus. On thirteen it is the best fusion
 > method measured, and the rule now argues the other way.
+
+---
+
+## G17 — FUSION HELPS ONLY BELOW `r@50` ≈ 0.95, and the method should be SCORE FUSION
+
+Slice 5 decided the keyword channel with this sentence:
+
+> *"NOT ONE fusion setting improved `recall@50` on any run."*
+
+It was measured on `quora` and `requests`. `quora` is at `r@50 = 1.000` and
+`requests` at 0.978. **There was no room.** The sentence is true and it is a
+statement about two saturated corpora, not about fusion.
+
+### Split every corpus by whether it has headroom
+
+Seven of thirteen sit at `r@50 = 1.000` and cannot show a recall gain by
+construction.
+
+| | SATURATED (7) | HEADROOM (6) |
+|---|---|---|
+| **`r@50`** wRRF k=5 w=0.15 | +0.000, 0 of 7 | **+0.025, 3 of 6** |
+| **`r@50`** score a=0.85 | +0.000, 0 of 7 | **+0.032, 3 of 6** |
+| **`r@50`** ADAPTIVE k=10 | +0.000, 0 of 7 | +0.029, 3 of 6 |
+| **`r@50`** bm25 alone | −0.135 | −0.132 |
+| **MRR** score a=0.85 | **+0.028, 5 of 7** | **+0.029, 3 of 6** |
+| **MRR** wRRF k=5 w=0.15 | +0.002, 2 of 7 | +0.004, 4 of 6 |
+
+**Two different effects, and slice 5 could see neither.**
+
+Fusion's **recall** gain is real and it is confined to corpora with room.
+Fusion's **ordering** gain is independent of saturation — score fusion is
++0.028 and +0.029 in the two groups, essentially the same number.
+
+### Per corpus, sorted by how much room there is
+
+```
+corpus      r@50 vec     wRRF    score     MRR vec    wRRF    score
+geo            0.867   +0.022   +0.067       0.526  +0.005   -0.004
+jq             0.900   +0.050   +0.050       0.607  -0.006   -0.029
+gson           0.923   +0.077   +0.077       0.658  +0.005   +0.105
+cobra          0.950   +0.000   +0.000       0.634  -0.003   +0.054
+papers         0.950   +0.000   +0.000       0.581  +0.004   +0.062
+requests       0.978   +0.000   +0.000       0.646  +0.016   -0.015
+docs .. zod    1.000   +0.000   +0.000         ...
+```
+
+**The threshold is visible and sharp.** Every recall gain lands on the three
+corpora below `r@50 = 0.95`, and every corpus at or above it is **exactly
++0.000**. So:
+
+> **Switch the keyword channel on when vector `r@50` is below about 0.95, and
+> leave it off above.** Below that line it adds 0.02–0.08 of recall; above it,
+> it adds nothing at all and can only cost ordering.
+
+**Neither candidate ever LOSES `r@50`, on any of thirteen corpora.** That is
+worth stating plainly, because slice 5's headline reads as though fusion were
+dangerous. It is not; it was merely useless on the two corpora it was tried on.
+
+### The method should be score fusion, not wRRF
+
+| | worst `r@50` | worst MRR | best MRR | MRR wins |
+|---|---|---|---|---|
+| wRRF k=5 w=0.15 | +0.000 | −0.006 | +0.016 | 6 of 13 |
+| **score a=0.85** | **+0.000** | −0.029 | **+0.111** | **9 of 13** |
+
+**wRRF's entire MRR range lies inside one-query resolution.** On a 20-query
+corpus one query moving one place is 0.025 MRR, so a method whose best case is
++0.016 and worst is −0.006 has not been shown to do anything.
+
+Score fusion gains on nine of thirteen, wins the largest recall gain on the
+corpus with the most headroom (`geo` +0.067 against wRRF's +0.022), and its
+worst case is −0.029 — about one query.
+
+**Slice 5 discarded score fusion for having "no mechanism" and named wRRF the
+candidate.** On thirteen corpora the evidence points the other way, and the
+project's own rule — *judge a method by how many independent ways it was shown
+better* — now argues for the method it retired.
+
+### Honest limits
+
+- **One embedder.** Every number is `codestral-embed`; a different embedder
+  changes the dense ranking and therefore what is left for keywords to add.
+- **`a = 0.85` was never swept.** It is the value carried forward from slice 5's
+  original sweep, and it is the one setting of score fusion measured here.
+- **`r@50 ≈ 0.95` is read off thirteen points**, three of them below the line.
+  It is a threshold with a mechanism behind it, not a calibrated constant.
+
