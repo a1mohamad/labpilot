@@ -300,9 +300,12 @@ write          docs/slice8v3/
 main           ONLY the user commits to main
 ```
 
+**The branch ALREADY EXISTS and is pushed** — created 2026-09-17 off
+`slice8/measure-v2` at `6c0e35d`. Just check it out:
+
 ```bash
-git checkout slice8/measure-v2 && git pull
-git checkout -b slice8/measure-final
+git checkout slice8/measure-final
+git status          # expect: clean, up to date with origin
 ```
 
 **OFF `slice8/measure-v2`, and this is not a preference.** `main` does not have
