@@ -211,6 +211,46 @@ produced by the same scripts, on the same embedder, at the same settings, and
 the instrument defect (G14) is already corrected in the files that survived.
 Re-running them would spend quota to reproduce numbers we already hold.
 
+### CHECK BEFORE YOU RUN. Every time, mechanically
+
+**If a result file exists, that measurement is DONE. Do not run it again.**
+
+```bash
+ls .logs/results/ | sort            # what already exists
+```
+
+The names say exactly what has been measured:
+
+```
+hybrid_<corpus>_<embedder>.json                 retrieval + fusion
+rerank_<corpus>_<embedder>_<model>_w<N>.json    reranking at window N
+answers_<model>.json                            the top-N run
+merged_<a>_<b>.json                             merged vs per side
+```
+
+So before any command, ask: **is there already a file for this corpus, this
+embedder, this model and this window?** If yes, skip it — the number is in
+`.logs/results/` and the aggregates will pick it up.
+
+### When a re-run is free, and when it is not
+
+This is worth knowing, because the danger is not always cost:
+
+| case | cost | real risk |
+|---|---|---|
+| same corpus, **same settings** | **0 calls** — every pair or ranking is cached | **it OVERWRITES the result JSON** |
+| same corpus, **new window or new model** | full price — a different candidate set is a fresh call | — |
+| a new corpus | full price | — |
+
+> **Re-running an existing corpus at the same settings usually costs nothing
+> and still destroys something: the v2 JSON is replaced by a v3 one.** That is
+> why the snapshot below is taken before the first write, and it is the only
+> reason re-running old corpora is actively harmful rather than merely wasteful.
+
+`cobra` was re-scored this way during the v2 session and reported `calls: 0`
+while reproducing its recorded 0.634 → 0.794 exactly — which is how the cache
+migration was verified. Useful as a **deliberate check**, never as a habit.
+
 ### What to reuse, what to extend, what genuinely must be re-run
 
 | measurement | v2 state | v3 action |
