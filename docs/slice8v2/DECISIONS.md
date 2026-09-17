@@ -21,6 +21,7 @@ and the exact commands for everything still owed. Then this file, then
 | A4 | **`s = 500` chunk size is vindicated** | best of five sizes pooled over 4 corpora; the curve has the shape the dilution argument predicts |
 | A5 | **The free context header stays** | +0.022 mean MRR over 6 corpora, largest where a chunk is least self-describing (papers +0.098, cobra +0.065) |
 | A6 | **`codestral-embed` stays primary** — on CAPABILITY, not recall | on the corpora all five reached the top three are within **0.012**. Google embeds 1,000 texts/day; Cohere is 1,000 calls/month. codestral is the only strong model that can ingest a repository |
+| A8 | **A small corpus goes to Google first** - SHIPPED, `SMALL_CORPUS_CHUNKS = 500` | Google retrieves best where vector search is already easy (quora 0.674, requests 0.650 against codestral's 0.608 and 0.646) and loses where there is real headroom (geo 0.493 against 0.526). Its quota points at the same range - ~1,000 chunks a day. A REORDERING, never a restriction: a spent bucket falls through to codestral. 752 tests pass |
 | A7 | **Google counts TEXTS, not calls** — batching does not help | `729+335 = 1,064` texts → `limit: 1000`; 3 calls x 40 texts in 6s → `limit: 100`. Three calls cannot exceed 100; 120 texts can |
 
 ---
@@ -63,7 +64,7 @@ unknown size     k=5 w=0.3   never loses r@50 on any of 13, four times the
 | **D1** | **top-N, properly** — `scripts/score_answers.py` is BUILT; the run was cut off by a network collapse and its partial output must NOT be read as a result | my answer was measured on one 100-chunk fixture and does not stand | ~65 calls |
 | D2 | **`SEARCH_LIMIT` window sweep** | still rests on ONE corpus (geo) from the first run | ~20 min |
 | D3 | **`gemini-embedding-2` on 5 more corpora** | its rank is unresolved; the SECOND Google key has an unused 1,000/day | 884 texts |
-| D4 | **Google-first routing for small corpora** | Google is best on easy corpora AND its quota fits exactly that range: `<=500 chunks -> google`, `>500 -> codestral`. One `if` in `by_speed()` | free to try |
+| ~~D4~~ | ~~Google-first routing for small corpora~~ | **DONE and SHIPPED** - `SMALL_CORPUS_CHUNKS = 500` in `api/services.py`, three tests pin it. Verify it on real corpora via RESUME 4.3 | done |
 | D5 | **merged vs per-side, two unrelated corpora** | quora gave 50% slots and identical scores; the harsh case never finished | ~50 calls |
 | D6 | **Cohere and `rerank-3` as rerankers** | Cohere is the chain PRIMARY and is scored on one corpus | ~80 calls |
 | D7 | **end-to-end time** | `WARN_MINUTES = 2.0` is still a guess | ~10 min |
