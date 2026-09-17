@@ -749,6 +749,49 @@ number to three decimals with `calls: 0`.**
 
 The 5 void corpora were re-run.
 
+### What the contamination actually cost — measured after the re-run
+
+The five void corpora, void number against corrected:
+
+| corpus | void run | corrected | moved | in queries |
+|---|---|---|---|---|
+| quora | 0.804 | **0.848** | +0.044 | +1.5q |
+| jq | 0.736 | **0.762** | +0.026 | +1.0q |
+| geo | 0.759 | **0.749** | −0.010 | −0.9q |
+| gson | 0.580 | **0.554** | −0.026 | −0.7q |
+| papers | 0.747 | **0.708** | −0.039 | −1.6q |
+
+**Mean absolute move 0.029, and the direction is mixed** — so the contamination
+was *noise*, not a bias. The per-corpus rerank headline survives it unchanged:
+still nine real gains, one real loss, three nothing.
+
+**And the merged benchmark was destroyed by the same defect.** 0 of 20 starved
+became 43 of 57.
+
+### Why one measurement shrugged it off and the other was fiction
+
+The size of the error depends on **how much the two candidate sets overlap**.
+
+```
+per-corpus rerank   dense top-50 and fused top-50 - heavily overlapping.
+                    The synthesised ties fall between documents the two calls
+                    largely agree about, so the order is perturbed.
+
+bench_merged        side A's 50 and side B's 50 - DISJOINT.
+                    Every tie is between a document from one side and a
+                    document from the other, so the ties decide EVERYTHING,
+                    and the result is exactly five per side by construction.
+```
+
+> **The same broken cache was a rounding error in one experiment and a total
+> fabrication in another.** So "the numbers still look reasonable" is not
+> evidence that a cache is sound — it is evidence that this particular
+> experiment was insensitive to the way it was broken.
+
+That is also the argument against leaving it alone once found. The per-corpus
+runs would have been fine; the merged benchmark, the window-100 row and every
+future experiment with disjoint candidate sets would not.
+
 > **A guard that skips a case must say what protects that case instead.**
 > `verify_pointwise` proves the pointwise cache is sound on every run. Nothing
 > proved anything about the listwise one, and the comment that stood in for a

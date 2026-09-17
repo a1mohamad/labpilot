@@ -136,3 +136,66 @@ The dilution penalty everyone assumes **is not there** between 20 and 100:
 - **Queries are drafted and machine-validated**, not hand-written. The two
   hand-written fixtures are in the set and behave like the rest, which is
   reassuring and is not proof.
+
+---
+
+# SESSION 3 — 2026-09-17: the instrument, and what changed when it was fixed
+
+Exit `80.240.20.89`, **AS20473 The Constant Company** (Vultr, Frankfurt), both
+Google keys **200**.
+
+**The evidence is `FINDINGS.md` G14–G19; the decisions are `DECISIONS.md`
+section "THIRD SESSION"; the coverage is `MEASUREMENTS.md`.** This is the
+summary.
+
+## What happened first, and it set the shape of the session
+
+Before running anything new, the rerank cache was audited. `PairScores`
+synthesised a score from a **listwise** reranker's ORDER — `len(order) − place`
+— and cached it per pair, so every call produced the same numbers 50…1 and two
+calls for one query collided. **Five of thirteen rerank corpora and all three
+merged benchmarks were void.**
+
+The pattern was exact: four of the five void corpora were the four `--fusion`
+runs (a fused top-50 differs from the dense top-50, so the union crossed the
+batch size), and the fifth was the one corpus that had been scored twice at
+different windows.
+
+**13 clean caches migrated for free** — 211 rankings kept, verified by
+re-scoring `cobra` to the recorded 0.634 → 0.794 with `calls: 0` — and the 5
+void corpora were re-run.
+
+## The headline numbers
+
+| | |
+|---|---|
+| **N to send** | **20 chunks**, and N is a **COUNT**, not a share of the corpus |
+| **reranking** | 9 REAL gains, 1 REAL loss, 3 nothing — judged against each fixture's resolution |
+| **the skip gate** | **stays OFF.** The best global tau is worth **+2.4 queries out of 286** |
+| **merged reranking** | **rejected** — starves a side on **43 of 57** queries |
+| **fusion** | on below `r@50` ≈ 0.95, off above, and the method is **score fusion** |
+| **routing by question kind** | **no signal.** Every kind is positive; slice 6's −0.534 was one query |
+| **embedders** | reproduced — top three within **0.012** on the corpora all five reached |
+
+## Three things I got wrong and corrected in the same session
+
+| claim | correction |
+|---|---|
+| "dilution costs 13 points by N=100" | confounded by question difficulty. Held still: **8 points, and a STEP at 20**, not a slope |
+| "fusion rescues the corpora where reranking hurts" | one case, **two counter-cases** |
+| "the best N is 5 on eight corpora" | a denominator of **two** |
+
+All three are the same error — a ratio over a denominator small enough that the
+fixture decides the value — and none of them is visible in the number.
+
+## The instruments this session added, all free to re-run
+
+```
+scripts/regrade_answers.py   re-score saved replies; balanced panel; per corpus
+scripts/dilution.py          fixed question set + paired sign test
+scripts/tier_reach.py        which rerank tiers can serve which corpora
+scripts/aggregate.py         --delta-by  paired gains by query label
+                             --gate      the skip gate in QUERY units
+                             --rerank    now prints a resolution verdict
+```
+
