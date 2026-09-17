@@ -109,3 +109,72 @@ every earlier run had only three corpora and could not group by anything.
   its claim stays reproducible.
 - **The two Gemma tiers as GENERATORS.** They are measured as rerankers here;
   whether they can write a report is a separate question with its own budget.
+
+---
+
+## THIRD SESSION, 2026-09-17 — what moved
+
+Exit `80.240.20.89`, **AS20473 The Constant Company** (Vultr, Frankfurt);
+Google answered **200** on both keys.
+
+### The instrument was found broken before anything new was trusted
+
+`PairScores` synthesised a score from a listwise reranker's ORDER and cached it
+per pair, so two calls for one query collided. See **G14**. Five of thirteen
+rerank corpora and all three merged benchmarks were void; the 13 clean caches
+were migrated for free and verified against a recorded number
+(`cobra` 0.634 → 0.794, `calls: 0`).
+
+**Rows that had to be re-measured because of it:**
+
+| # | was | now |
+|---|---|---|
+| A2 | reranking helps 10 of 13, mean +0.122 | re-run on the 5 void corpora |
+| A3 | `SKIP_MARGIN = 0.05` | inherits A2's corpora |
+| A5 | merged never starves a side, 0 of 20 | **overturned — see below** |
+| A6/A8 | the window sweep's `w=100` row | void, being re-run |
+| B4 | fusion under reranking | inherits A2's corpora |
+
+### Rows that CLOSED this session
+
+| # | measurement | result |
+|---|---|---|
+| **F1** | how many chunks to SEND | ✅ **G15** — dilution is real, peaks at **N=20**, and N is a **COUNT** not a coverage share (cv 0.41 vs 1.03 over a 15× size range). `RERANK_TOP_N = 10` per side is vindicated; `VECTOR_TOP_N = 25` is too large |
+| **G4** | by query WORDING — the label nothing read | ✅ **G16** — paired over 13 corpora, BM25 loses on both groups and loses **half as much** on `named`. The premise is true in direction, false in magnitude |
+| **A5** | merged vs per side | ✅ **merged starves a side on 4 of 17 queries** (was reported as 0 of 17 by the broken instrument) for **identical** quality, 0.824 either way. Per side is correct, and now it has evidence |
+
+### Still open at the end of this session
+
+| # | measurement | why it is not done |
+|---|---|---|
+| A4 | end-to-end TIME | not run — `WARN_MINUTES = 2.0` is still a guess |
+| A6/A8 | `SEARCH_LIMIT` window sweep | re-running; the first run's answer is void |
+| C3 | `rerank-3` (non-lite) | never scored anywhere |
+| C4 | **Cohere**, the chain PRIMARY | scored on one corpus |
+| C5 | a NEWER local reranker | needs a model download; `ms-marco-MiniLM` is 2021 and already measured harmful |
+| C6 | the chunk header under reranking (`--no-header`) | died on quota in the second session |
+| D1 | `gemini-embedding-2` | 3 corpora, 2 saturated — unresolved, not "worst" |
+| D3 | ingest TIME per embedder against `embedding_minutes()` | — |
+| F2 | generated queries vs hand-written | the domain-lock fix, unmeasured |
+| F4 | model blind spots are disjoint | — |
+
+### Two production defects, still unfixed, and one of them breaks a SHIPPED decision
+
+- **`MAX_BATCH_SIZE = 96` is a Mistral constant with a global name.** It is
+  `floor(50,000 / 510)` from codestral's per-minute tokens, and it is used in
+  three places as though it were universal. At the measured mean of 341.6
+  tokens per chunk, 96 Google texts is ~32,800 tokens against a 30,000/minute
+  ceiling — refused on the **first batch**. The halving fallback in
+  `embed_batches()` matches on the word *token*, and Google's refusal does not
+  contain it, so it **raises instead of halving**.
+
+  This is not theoretical any more: decision **A8 shipped** `SMALL_CORPUS_CHUNKS
+  = 500`, which sends every small corpus to Google first.
+
+- **`embedding_minutes()` counts HTTP calls where Google counts TEXTS**, and
+  models no daily request budget at all. It reports ~118 minutes for a
+  10,000-chunk Google ingest; the truth is **ten days**.
+
+  The design both need: `max_batch_size` and the unit of account move onto the
+  embedder (`Rate` / `Spec`) instead of living in a module-level constant, and
+  `Rate` gains a daily **request** budget beside its daily token budget.
