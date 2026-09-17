@@ -1075,3 +1075,79 @@ better* — now argues for the method it retired.
 - **`r@50 ≈ 0.95` is read off thirteen points**, three of them below the line.
   It is a threshold with a mechanism behind it, not a calibrated constant.
 
+
+---
+
+## G18 — THE ROUTING SIGNAL IS DEAD, and the same denominator error produced it three times
+
+### Judge a delta against what the fixture can resolve, not against zero
+
+`RESUME.md` states the rule and nothing had applied it:
+
+> *a tolerance must match what the fixture can resolve — on 20 queries, one
+> query moving one place is 0.025 MRR*
+
+The fixtures run from 12 to 45 queries, so one query is **0.042 MRR on `docx`
+and 0.011 on `geo`**. A table printing "helped 10, hurt 3" against zero is
+comparing a measurement with a wobble.
+
+Each rerank delta divided by its own fixture's resolution:
+
+| | corpora | range |
+|---|---|---|
+| **REAL gain** | **9** | +5.1 to +20.9 queries |
+| **REAL loss** | **1** | `gson`, −2.7 queries |
+| **nothing measurable** | **3** | `docs` −1.8q, `zod` −1.1q, `websocket` +1.5q |
+
+> **"Helped 10, hurt 3" overstates both sides.** Two of the three losses are one
+> or two queries and are not evidence of harm; `websocket`'s "gain" is not
+> evidence of help either. Reranking helps decisively on nine corpora, hurts
+> decisively on one, and does nothing measurable on three.
+
+### And the routing signal does not survive the same lens
+
+Slice 6 built a routing signal on `structure = −0.534`, from one model on one
+corpus. Weighted by how many queries each corpus actually contributes to each
+kind, over 286 queries:
+
+| kind | queries | weighted gain | worst single corpus |
+|---|---|---|---|
+| claim | 10 | **+0.303** | — |
+| error | 32 | **+0.228** | gson −0.259 (n=2) |
+| **structure** | 46 | **+0.169** | **websocket −0.500 (n=1)** |
+| checklist | 7 | +0.151 | — |
+| constant | 59 | +0.108 | zod −0.104 (n=8) |
+| behaviour | 86 | +0.107 | gson −0.104 (n=8) |
+| api | 46 | +0.102 | docs −0.208 (n=8) |
+
+**Every kind is positive.** `structure` — the one the routing signal was built
+on — is third best.
+
+And the worst `structure` case is **one query**, on `websocket`, scored
+−0.500. That is exactly how a −0.534 is manufactured: a kind with a single
+query in it has a resolution of 1.0, so the only values it can take are 0,
+±0.5 and ±1.0.
+
+> **There is no routing signal in the rerank data.** Reranking helps every
+> question kind measured. Slice 6's finding was one model on one corpus, and
+> its magnitude came from per-kind denominators of one and two.
+
+### The same error, three times in one session
+
+This is the through-line worth keeping, because each instance looked completely
+different:
+
+| where | the ratio | what it produced |
+|---|---|---|
+| **top-N** | `USED` at N=5 — under 3 answerable questions per corpus | eight corpora scoring a perfect 1.000 from two of two, and a table reading *"the best N is 5"* |
+| **reranking** | MRR delta on a 13-query corpus | `gson −0.104` filed beside `requests +0.145` as though both were "one corpus" |
+| **routing** | per-kind delta with one query in the kind | `structure −0.534`, which became a design principle |
+
+All three are the same mistake: **a ratio over a denominator small enough that
+the fixture, not the effect, decides the value.** None of them is visible in the
+number itself — only in the count beside it.
+
+> **Print the denominator next to every ratio.** Each of these was found by
+> asking "how many questions is that?", and none of them was visible by reading
+> the value.
+
