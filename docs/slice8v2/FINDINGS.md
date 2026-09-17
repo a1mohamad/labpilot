@@ -1246,3 +1246,78 @@ three pairs cannot see one of the two artifacts on most queries.
   direction.
 - **One reranker**, `gemini-3.5-flash-lite`.
 
+
+---
+
+## G20 — CHAIN 3's ORDER RESTS ON ONE CORPUS, and Cohere is not tier 7
+
+Slice 6 scored `rerank-v4.0-fast` at **0.669** against `gemini-3.5-flash-lite`'s
+**0.799**, on `quora`, at a 30-document window. CLAUDE.md's chain 3 table then
+put flash-lite at **tier 1** and Cohere — **the chain primary until then** — at
+**tier 7**, below four Gemini and Gemma tiers.
+
+That is one corpus, and `quora` is the saturated 82-chunk fixture this file has
+warned about since slice 5.
+
+### Three more corpora, same window, same embedder
+
+**53 calls, about 5% of Cohere's 1,000 a MONTH, and the bill was stated before
+it was spent.**
+
+| corpus | format | vector | **Cohere** | **flash-lite** | winner |
+|---|---|---|---|---|---|
+| `jq` | C | 0.607 | 0.681 **+3.0q** | **0.762 +6.2q** | flash-lite |
+| `papers` | PDF prose | 0.581 | **0.877 +11.8q** | 0.708 +5.1q | **Cohere** |
+| `gson` | Java | 0.658 | **0.777 +3.1q** | 0.554 **−2.7q** | **Cohere** |
+
+**Head to head: Cohere 2, flash-lite 1.**
+
+```
+                corpora   mean gain   negative on
+  cohere            3       +6.0q     0 - none
+  flash-lite       13       +6.1q     3 - docs, gson, zod
+```
+
+### The two are indistinguishable on quality, so the order should rest on BUDGET
+
+Their means are **+6.0q and +6.1q**. On the three corpora both reranked, the
+head-to-head is 2–1 with one corpus swinging each way by 3 to 7 queries. Three
+corpora cannot separate them, and the single-corpus number that ordered the
+chain (0.799 against 0.669) does not reproduce.
+
+**So flash-lite belongs at the front — but for the reason CLAUDE.md does not
+give.** It is not that it ranks better. It is that flash-lite is **1,000 calls
+a day across two keys** and Cohere is **1,000 a month**: a factor of thirty, and
+the only axis on which the two are far apart.
+
+**And Cohere does not belong at tier 7.** It is the only reranker measured here
+that has never hurt a corpus, and it rescues `gson` — the one corpus where
+flash-lite decisively hurts — by **5.8 queries**. A tier that repairs the
+primary's worst case is a fallback worth reaching early, not seventh.
+
+### `gson` is the case that matters
+
+```
+gson   vector 0.658  ->  flash-lite 0.554  (-2.7q)
+                     ->  cohere     0.777  (+3.1q)
+```
+
+A swing of **5.8 queries on a 13-query fixture** between two rerankers, on the
+same candidates. This is slice 6's lesson arriving again: *"does reranking
+help" is not a question about reranking, it is a question about one model* —
+except that now it is not a bad model against a good one, but two good ones
+disagreeing about one corpus.
+
+### Honest limits
+
+- **Three corpora for Cohere against thirteen for flash-lite.** The means are
+  not measured over the same set, and only the three shared ones are a fair
+  comparison.
+- **Slice 6's `quora` numbers are NOT comparable** with these: a 30-document
+  window and a tuned Gemini configuration against a 50-document window here.
+  They are quoted only to show what the chain order was built on.
+- **Cohere's budget is the reason not to measure it further.** 53 calls is 5% of
+  a month; the full thirteen would be 28%.
+- `rerank-3` (non-lite) is **still unscored anywhere**, and Voyage cannot serve a
+  50-document window on a card-free account at all — see **G3**.
+

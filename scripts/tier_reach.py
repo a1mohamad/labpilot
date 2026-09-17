@@ -110,15 +110,32 @@ def main(argv: list[str]) -> int:
 
     starved = [name for name, _, _, _, serves in rows if len(serves) <= 3]
     print()
-    print(
-        f"  {len(starved)} of {len(rows)} corpora are down to the three "
-        f"large-context tiers at window {window}:"
-    )
-    print(f"    {', '.join(starved)}")
-    print(
-        "  and of those three, one is 1,000 calls a MONTH - so the working "
-        "budget is the two Flash-Lite keys, 1,000 calls a day."
-    )
+    if starved:
+        print(
+            f"  {len(starved)} of {len(rows)} corpora are down to the three "
+            f"large-context tiers at window {window}:"
+        )
+        print(f"    {', '.join(starved)}")
+        print(
+            "  and of those three, one is 1,000 calls a MONTH - so the working "
+            "budget is the two Flash-Lite keys, 1,000 calls a day."
+        )
+    else:
+        cheap = sum(
+            1
+            for tier, limit, _ in TIERS
+            if tier.startswith("gemma")
+            and all(call <= limit for _, _, _, call, _ in rows)
+        )
+        print(
+            f"  every corpus reaches more than three tiers at window {window}"
+            + (
+                f", including {cheap} Gemma tier(s) - 14,400 calls a day each,"
+                " against Flash-Lite's 500"
+                if cheap
+                else ""
+            )
+        )
     return 0
 
 
