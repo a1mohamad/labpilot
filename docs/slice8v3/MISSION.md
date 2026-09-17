@@ -221,11 +221,31 @@ pre-commit stashing unstaged files · at most two jobs actively calling.
 ## 6. BRANCH AND HYGIENE
 
 ```
-new branch     slice8/python-zoo      off main, NOT off slice8/measure-v2
+new branch     slice8/python-zoo   OFF slice8/measure-v2   <- NOT off main
 keep           docs/slice8v2/ and .logs/results/ untouched
 write          docs/slice8v3/
 main           ONLY the user commits to main
 ```
+
+```bash
+git checkout slice8/measure-v2 && git pull
+git checkout -b slice8/python-zoo
+```
+
+**OFF `slice8/measure-v2`, and this is not a preference.** `main` does not have
+a single measurement script — `aggregate.py`, `score_hybrid.py`,
+`score_rerank.py`, `score_answers.py`, `regrade_answers.py`, `dilution.py`,
+`tier_reach.py`, `bench_merged.py`, `corpora.py`, `draft_queries.py`,
+`validate_fixture.py`, `warm_embeddings.py` and the rest are all v2-only, 51
+commits ahead.
+
+> **Branching off `main` would lose the entire instrument — including the
+> listwise cache fix (G14).** The run would then re-contaminate every listwise
+> reranker measurement in exactly the way that voided five corpora, and the
+> numbers would look fine.
+
+Merging `slice8/measure-v2` into `main` first is the user's call and is not
+required — branching off it works and keeps `main` untouched.
 
 **Commit one piece at a time and push each** — one commit per module or finding,
 suite green at each step. Run `pytest tests/unit tests/api -q` and both ruff
