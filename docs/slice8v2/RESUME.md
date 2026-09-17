@@ -161,6 +161,16 @@ models no daily request budget at all. It reports ~118 minutes for a
 the embedder (`Spec` / `Rate`) instead of a module-level constant, and `Rate`
 gains a daily **request** budget beside its daily token budget.
 
+**And the fix already exists — in the wrong layer.** `scripts/warm_embeddings.py`
+batches by TOKENS against a per-request budget and paces by TEXTS per minute,
+with comments citing findings F1 and F4 by name. So the knowledge is in the
+repository; it is just in the measurement script rather than in `embed/`, which
+is why every measurement run succeeds and the shipped ingest path would not.
+
+> **A workaround in the instrument hides a defect in the product.** The script
+> is the only caller that exercises Google at scale, so its private fix makes
+> the bug invisible exactly where it would otherwise have been caught.
+
 ---
 
 ## 7. Reading the numbers
