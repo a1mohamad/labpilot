@@ -132,3 +132,100 @@ raw numbers .logs/results/*.json
 
 Say: *"read `docs/slice8v2/` and continue slice 8 v2 on branch
 `slice8/measure-v2`."*
+
+---
+
+# THIRD SESSION — 2026-09-17
+
+Exit `80.240.20.89`, **AS20473 The Constant Company** (Vultr, Frankfurt).
+Google answered **200 on both keys**; the probe decided it, not the ISP name.
+
+**Read `FINDINGS.md` G14–G19 for the evidence.** This section is the decisions
+only.
+
+---
+
+## 0. THE INSTRUMENT WAS BROKEN, and it was found before anything new was trusted
+
+`PairScores` synthesised a score from a **listwise** reranker's ORDER and cached
+it per pair. Every call therefore produced the same numbers 50…1, so two calls
+covering different candidate sets for one query collided and the merged order
+was arithmetic rather than anything the model said. **Five of thirteen rerank
+corpora and all three merged benchmarks were void.** See **G14**.
+
+**It does not reach production.** Nothing in `labpilot/` outside
+`rerank/contracts.py` reads `.scores`; the shipped `rerank()` makes one call per
+tier, keeps no cache, and never synthesises. The bug was created by the
+*measurement's own optimisation*.
+
+**What it cost:** the 13 clean caches migrated for free (211 rankings kept,
+verified against a recorded number — `cobra` 0.634 → 0.794 with `calls: 0`), and
+the 5 void corpora were re-run.
+
+---
+
+## A. DECIDED, with the run behind it
+
+| # | decision | evidence |
+|---|---|---|
+| A1 | **Exact search ships.** Revisit at ~20,000 chunks in one artifact | unchanged — 12 artifacts, real instance, crossover ~700 rows |
+| A2 | **Reranking ships**, `gemini-3.5-flash-lite` | **restated against each fixture's RESOLUTION**: **9 REAL gains** (+5.1 to +20.9 queries), **1 REAL loss** (`gson`, −2.7q), **3 nothing measurable** (`docs` −1.8q, `zod` −1.1q, `websocket` +1.5q). "Helped 10, hurt 3" overstated both sides |
+| **A3** | **`SKIP_MARGIN` stays `None`** — **0.05 is OVERTURNED** | a global gate is worth **+2.4 queries out of 286** at its best setting (0.03) and **+1.5** at 0.05, while costing 2.4 on one corpus. The per-corpus best tau is 0.000/0.020/0.030/0.050/0.100 — never the same twice, so it is a fit, not a constant. Slice 6's answer is reinstated for the opposite reason: not because reranking is harmful, but because a working reranker leaves a gate nothing to save |
+| A4 | **`s = 500` chunk size** | unchanged |
+| A5 | **The free context header stays** | unchanged |
+| A6 | **`codestral-embed` stays primary** — on CAPABILITY | **reproduced**: on the 3 corpora all five embedders reached, the top three are within **0.012** (codestral 0.594, cohere 0.598, gemini-001 0.606) |
+| A7 | **Google counts TEXTS, not calls** | unchanged |
+| A8 | **A small corpus goes to Google first** — SHIPPED | ⚠ **blocked in practice** by the `MAX_BATCH_SIZE` defect below |
+| **A9** | **PER-SIDE reranking, confirmed** — merged is rejected | **43 of 57 queries starved a side.** `quora` 4/17, `papers+notebooks` 19/20, `cobra+log` 20/20. Merged halves the rerank calls and cannot see one of the two artifacts on most queries. The broken instrument had reported 0 of 20 |
+| **A10** | **N = 20 chunks in the prompt** | best N on 9 of 13 corpora; as a **COUNT** cv 0.41 against 0.99–1.03 as a **share**, over a 15× range of corpus sizes. So N is a count, not a coverage fraction. This **vindicates `RERANK_TOP_N = 10` per side** (10 + 10 = 20) and makes **`VECTOR_TOP_N = 25` too large** |
+| **A11** | **Fusion switches on below `r@50` ≈ 0.95, and the method is SCORE FUSION** | every recall gain lands on the three corpora below 0.95; every corpus at or above it is exactly **+0.000**. `score a=0.85` gains on 9 of 13 and takes the largest recall gain (`geo` +0.067 vs wRRF's +0.022); wRRF's entire MRR range (−0.006 to +0.016) is inside one-query resolution |
+| **A12** | **There is NO routing signal in the rerank data** | weighted by query count over 286 queries, **every** question kind is positive (+0.102 to +0.303). `structure` — slice 6's −0.534 — is **+0.169**, third best. Its worst case is **one query** scored −0.500 |
+
+---
+
+## B. CORRECTED — claims made THIS session that did not survive
+
+| what I said | what is true |
+|---|---|
+| "dilution is real and costs 13 points by N=100" | **Confounded.** The questions that only become answerable at N=100 are the ones retrieval ranked 51st–100th, i.e. the hard ones. On a **fixed** question set the fall is 8 points, and paired it is a **STEP at 20** (N=20→100 p=0.012) followed by a plateau (N=30→100 p=1.000) |
+| "fusion rescues the corpora where reranking hurts" | **One case, two counter-cases.** Fusion+rerank wins on `gson` (0.697) and loses to vector+rerank on `geo` (−0.037) and `papers` (−0.049). B4 reproduces slice 6: **fusion's recall gain does not survive reranking** |
+| "the best N is 5 on eight corpora" | **The denominator.** At N=5 the whole panel holds under three answerable questions per corpus, so a 1.000 is two of two. With a floor of eight, the best N is **20** on nine of thirteen |
+
+---
+
+## C. THE SAME ERROR, THREE TIMES — print the denominator beside every ratio
+
+| where | the ratio | what it produced |
+|---|---|---|
+| top-N | `USED` over <3 answerable questions | "the best N is 5" |
+| reranking | an MRR delta on 13 queries beside one on 45 | "helped 10, hurt 3" |
+| routing | a per-kind delta with **one** query in the kind | `structure = −0.534`, which became a design principle |
+
+None is visible in the value. All three were found by asking *how many
+questions is that?*
+
+---
+
+## D. TWO PRODUCTION DEFECTS — still unfixed, and ONE BREAKS A SHIPPED DECISION
+
+Not implemented here: this is a learning project and production code is the
+user's to write. The design is recorded so it is a decision, not a rediscovery.
+
+**1. `MAX_BATCH_SIZE = 96` is a MISTRAL constant with a global name.** It is
+`floor(50,000 / 510)` from codestral's per-minute tokens and is used in three
+places as if universal. At the measured mean of 341.6 tokens per chunk, 96
+Google texts is ~32,800 tokens against a 30,000/minute ceiling — refused on the
+**first batch**. `embed_batches()` halves only on a refusal containing the word
+*token*, and Google's does not, so it **raises instead of halving**.
+
+**A8 shipped `SMALL_CORPUS_CHUNKS = 500`, routing every small corpus to Google
+first.** So the shipped routing cannot complete an ingest.
+
+**2. `embedding_minutes()` counts HTTP calls where Google counts TEXTS**, and
+models no daily request budget at all. It reports ~118 minutes for a
+10,000-chunk Google ingest; the truth is **ten days**.
+
+**The design both need:** `max_batch_size` and the unit of account move onto the
+embedder (`Spec` / `Rate`) instead of a module-level constant, and `Rate` gains
+a daily **request** budget beside its daily token budget.
+
