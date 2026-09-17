@@ -1151,3 +1151,98 @@ number itself — only in the count beside it.
 > asking "how many questions is that?", and none of them was visible by reading
 > the value.
 
+
+---
+
+## G19 — MERGED RERANKING STARVES A SIDE, and the broken instrument said it never did
+
+CLAUDE.md section 10c chose per-side reranking on an argument and said plainly
+that it was not evidence:
+
+> *"Per side is the DEFAULT, not the answer. SLICE 8 OWES THIS MEASUREMENT."*
+
+The measurement exists now. It also had to be taken **twice**, because the
+first attempt was void — see **G14**.
+
+### What the broken instrument reported
+
+```
+merged gave side A 50% of the slots (min 50%, max 50%)
+merged STARVED one side entirely on 0 of 20 queries
+```
+
+Exactly five slots per side, on all forty queries, across two unrelated corpus
+pairs. That is not an unlikely result, it is an **identity**: per-side A and
+per-side B shared a cache key space, so the merged call for side A never
+happened, and each surviving listwise call had synthesised its own 50…1. The
+top ten of the union was then `50,50,49,49,48,48,47,47,46,46` — five from each
+side, always, by arithmetic.
+
+### What the corrected instrument reports
+
+Each of the three calls now indexes into the merged document list, so no two
+candidate sets can share a key, and the merged call is one ranking over 100
+documents. Verified in the cache: **19 rankings of 100 beside 38 of 50.**
+
+| pair | how related the two sides are | side A's share | **starved a side** | side A's answer kept |
+|---|---|---|---|---|
+| `quora` | **one project, split in half** | 55% (10–100%) | **4 of 17** | per-side 0.824 = merged 0.824 |
+| `papers+notebooks` | both prose-ish, both ML-adjacent | 99% (80–100%) | **19 of 20** | per-side **0.900** > merged 0.800 |
+| `cobra+log` | unrelated — Go CLI, Rust logging | **100% (min 100%)** | **20 of 20** | per-side 0.900 < merged 0.950 |
+
+**43 of 57 queries starved a side entirely.**
+
+### The mechanism, and it is not about vocabulary
+
+The obvious explanation is that two unrelated projects share no words. That is
+not sufficient, because `papers+notebooks` are both prose about machine
+learning and still starve on **19 of 20**.
+
+The real reason is simpler and it applies to every comparison:
+
+> **The question comes from side A.** So side A's chunks are semantically
+> closer to it, a single ranking over both sides sorts side A above side B
+> almost everywhere, and side B only competes when it is literally the same
+> project — which is why `quora`, one corpus cut in half, is the only pair
+> where merged gives side B a real share.
+
+Per-side reranking does not fix this by ranking better. It fixes it
+**structurally**: each side gets its own call and its own slots, so no score
+can take them away. That is the project's own rule — *put a rule where it
+cannot be broken, not where it can be checked* — and it is the reason the
+default was right before there was evidence for it.
+
+### The trap in the quality column
+
+On `cobra+log`, merged scores **better** for side A: 0.950 against 0.900.
+**Of course it does — it took every slot.** A "which scores higher" reading
+picks merged precisely because it starved the other side.
+
+This is why the design fixed the question in advance as *"how often does merged
+starve a side"* rather than *"which is better"*. And on `papers+notebooks`
+merged is worse on **both** counts — 0.800 against 0.900 — so it starves side B
+and loses side A's answer as well.
+
+> **Decide what a measurement means before running it.** The metric that looks
+> like the obvious one here rewards the failure the whole design exists to
+> prevent.
+
+### What it costs, and what it buys
+
+Merged is **one rerank call instead of two**, and the rerank budget is the
+tightest in the project once `verify` needs a call per claim. That is a real
+saving and it is not enough: half the calls, for a comparison that on three of
+three pairs cannot see one of the two artifacts on most queries.
+
+### Honest limits
+
+- **Two of the three pairs are artificial.** `quora` is the only fixture that
+  ships as a pair; the others are two corpora joined, which the design calls a
+  harsher test than the real case. LabPilot's real pair — a paper and its own
+  reimplementation — sits between `quora` and `papers+notebooks`, and both of
+  those starve.
+- **`per_side_hit` measures side A only**, because the ground truth for side A's
+  questions exists only in side A. The starvation count covers the other
+  direction.
+- **One reranker**, `gemini-3.5-flash-lite`.
+
