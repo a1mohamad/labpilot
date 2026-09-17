@@ -1109,14 +1109,14 @@ dangerous. It is not; it was merely useless on the two corpora it was tried on.
 
 | | worst `r@50` | worst MRR | best MRR | MRR wins |
 |---|---|---|---|---|
-| wRRF k=5 w=0.15 | +0.000 | −0.006 | +0.016 | 6 of 13 |
-| **score a=0.85** | **+0.000** | −0.029 | **+0.111** | **9 of 13** |
+| wRRF k=5 w=0.15 | +0.000 | −0.006 | +0.016 | 6 of 13 (4 losses, 3 exact ties) |
+| **score a=0.85** | **+0.000** | −0.029 | **+0.111** | **8 of 13** |
 
 **wRRF's entire MRR range lies inside one-query resolution.** On a 20-query
 corpus one query moving one place is 0.025 MRR, so a method whose best case is
 +0.016 and worst is −0.006 has not been shown to do anything.
 
-Score fusion gains on nine of thirteen, wins the largest recall gain on the
+Score fusion gains on eight of thirteen, wins the largest recall gain on the
 corpus with the most headroom (`geo` +0.067 against wRRF's +0.022), and its
 worst case is −0.029 — about one query.
 
