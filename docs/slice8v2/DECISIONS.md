@@ -4,7 +4,10 @@
 decided, what was overturned, what is still open, and what to run next.
 
 Branch `slice8/measure-v2`, pushed. `main` untouched.
-Read order: this file → `RESULTS.md` → `FINDINGS.md` → `MEASUREMENTS.md`.
+
+**Read `RESUME.md` FIRST** - it carries the environment incantation, the traps,
+and the exact commands for everything still owed. Then this file, then
+`RESULTS.md`, `FINDINGS.md`, `MEASUREMENTS.md`.
 
 ---
 
@@ -57,7 +60,7 @@ unknown size     k=5 w=0.3   never loses r@50 on any of 13, four times the
 
 | # | open question | why it matters | cost |
 |---|---|---|---|
-| **D1** | **top-N, properly** — the experiment being built now | my answer was measured on one 100-chunk fixture and does not stand | ~65 calls |
+| **D1** | **top-N, properly** — `scripts/score_answers.py` is BUILT; the run was cut off by a network collapse and its partial output must NOT be read as a result | my answer was measured on one 100-chunk fixture and does not stand | ~65 calls |
 | D2 | **`SEARCH_LIMIT` window sweep** | still rests on ONE corpus (geo) from the first run | ~20 min |
 | D3 | **`gemini-embedding-2` on 5 more corpora** | its rank is unresolved; the SECOND Google key has an unused 1,000/day | 884 texts |
 | D4 | **Google-first routing for small corpora** | Google is best on easy corpora AND its quota fits exactly that range: `<=500 chunks -> google`, `>500 -> codestral`. One `if` in `by_speed()` | free to try |

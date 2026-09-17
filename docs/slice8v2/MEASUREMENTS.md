@@ -22,10 +22,10 @@ that owes it.
 | A2 | **reranker ranking** - chain 3's order | slice 8's job grew | 5 | ✅ |
 | A3 | **exact vs HNSW** on real artifacts, real instance, plan asserted | slice 8's job grew #3 | 9 | ✅ |
 | A4 | **end-to-end TIME** - embed, search, rerank, generate | slice 8's job grew #4 | 10 | |
-| A5 | **merged vs per-side** reranking | slice 8's job grew #5 | 7 | … |
-| A6 | **`SEARCH_LIMIT` and `VECTOR_TOP_N` swept JOINTLY** | slice 8's job grew #6 | 5c + 8 | ✅ |
-| A7 | **where the cut goes** - before or after the reranker | slice 8's job grew #7 | 5c | ✅ |
-| A8 | **per-tier rerank window vs a global one** | section 14.3 | 5d | ✅ |
+| A5 | **merged vs per-side** reranking | slice 8's job grew #5 | 7 | ◐ quora done (50% slots, identical); two-corpus case interrupted — RESUME 4.4 |
+| A6 | **`SEARCH_LIMIT` and `VECTOR_TOP_N` swept JOINTLY** | slice 8's job grew #6 | 5c + 8 | ◐ the WINDOW is still one corpus — see RESUME 4.2 |
+| A7 | **where the cut goes** - before or after the reranker | slice 8's job grew #7 | 5c | ◐ inherits A6's gap |
+| A8 | **per-tier rerank window vs a global one** | section 14.3 | 5d | … every corpus ran at window 50 |
 | A9 | **does the report need the strongest tier** | section 11.9 | 8b | ✅ |
 
 ## B. Fusion - slice 5's named candidate
@@ -54,7 +54,7 @@ that owes it.
 
 | # | measurement | asked in | phase | state |
 |---|---|---|---|---|
-| D1 | **`gemini-embedding-2`** scored on OUR fixture, not MTEB | registry note | 6 | ◐ |
+| D1 | **`gemini-embedding-2`** scored on OUR fixture, not MTEB | registry note | 6 | ◐ only 3 corpora, 2 saturated — UNRESOLVED, not 'worst'. RESUME 4.3 |
 | D2 | **BGE's three owed numbers**: speed, strength, real tokenizer ratio | section 6 | 6b | ✅ |
 | D3 | **ingest TIME per embedder**, against `embedding_minutes()` | section 9, open debt | 6c | |
 | D4 | **Google's real quota** - texts or calls | F4 | 6c | ✅ |
@@ -75,7 +75,7 @@ that owes it.
 
 | # | measurement | asked in | phase | state |
 |---|---|---|---|---|
-| F1 | **how many chunks to SEND** - the generation half | slice 6 measurement 2 | 8 | ✅ |
+| F1 | **how many chunks to SEND** - the generation half | slice 6 measurement 2 | 8 | ◐ first answer REJECTED (one 100-chunk fixture); rebuilt as score_answers.py, run INTERRUPTED — RESUME 4.1 |
 | F2 | **generated queries vs hand-written** - the domain-lock fix | the fixed checklist is domain-locked | 13 | **NEW** |
 | F3 | **`estimate_tokens` accuracy** against providers' own counts | token budget | 6c | **NEW** | ✅ |
 | F4 | **model blind spots are disjoint** - vary the model, not the seed | multi-pass | 8b | |
