@@ -140,7 +140,7 @@ ANSWER = re.compile(r"^\s*Q(\d+)\s*:\s*(.+)$", re.M)
 # reply. Grading is allowed to be strict about SUBSTANCE and must never be
 # strict about punctuation it did not need: grade() only ever reads the id, so
 # the quote's position cannot change any verdict.
-CITATION = re.compile(r"\[([AB]-\d+)")
+CITATION = re.compile(r"\[([AB]-\d+)")
 
 
 def chosen(chunks, queries, corpus: str, n: int) -> list[int]:
