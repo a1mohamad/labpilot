@@ -1,5 +1,18 @@
 # SLICE 8 v2 — every decision taken, and every one corrected
 
+> ## ⚠ THIS RUN IS SUPERSEDED — READ `docs/slice8v3/MISSION.md` FIRST
+>
+> Everything here is **valid for what it measured** and is kept on purpose.
+> But the zoo is **3 Python corpora of 13 (23%)**, and LabPilot is a Python and
+> machine-learning tool. **Three decisions here have ZERO Python behind them** —
+> the fusion threshold, `SEARCH_LIMIT`, and chain 3 / Cohere.
+>
+> **The next run rebuilds the zoo to 20 corpora with 10 Python** (short scripts
+> to a 13,000-chunk library) and re-weights every conclusion. The complete brief
+> is `docs/slice8v3/MISSION.md` — a fresh session needs nothing else.
+
+
+
 **The resume document.** If the session ends, start here: this is what was
 decided, what was overturned, what is still open, and what to run next.
 
@@ -229,3 +242,44 @@ models no daily request budget at all. It reports ~118 minutes for a
 embedder (`Spec` / `Rate`) instead of a module-level constant, and `Rate` gains
 a daily **request** budget beside its daily token budget.
 
+
+---
+
+## PYTHON BACKING — how much of each decision rests on the TARGET language
+
+*Added 2026-09-17 at the user's direction, and it is why `docs/slice8v3/` exists.*
+
+LabPilot is a **Python and machine-learning** tool that also supports other
+languages. This zoo is **3 Python or Jupyter corpora of 13 — 23%**, and the
+skew is self-reinforcing: Python and notebooks are the only inputs with a real
+splitter (AST, cells), so their chunks are half the size, retrieval is easier,
+and **two of the three are SATURATED at `r@50` = 1.000**. A saturated corpus
+cannot show a gain — so every measurement that had to pick a subset picked it
+by headroom, and headroom excluded Python automatically.
+
+| decision | corpora | Python | which |
+|---|---|---|---|
+| N = 20 (`VECTOR_TOP_N`) | 13 | 3 — 23% | quora, requests, notebooks |
+| reranking ships | 13 | 3 — 23% | quora, requests, notebooks |
+| `SKIP_MARGIN = None` | 13 | 3 — 23% | quora, requests, notebooks |
+| no routing signal | 13 | 3 — 23% | quora, requests, notebooks |
+| fusion: score beats wRRF | 13 | 3 — 23% | quora, requests, notebooks |
+| **fusion THRESHOLD `r@50` < 0.95** | 3 | **0 — 0%** | **NONE — Go, C, Java only** |
+| **`SEARCH_LIMIT` = 50** | 4 | **0 — 0%** | **NONE — Go, C, Java, PDF only** |
+| **chain 3 / Cohere** | 3 | **0 — 0%** | **NONE — C, Java, PDF only** |
+| embedder: codestral primary | 3 | 2 — 66% | quora, requests |
+| `MIGRATION`: 001 above 2 | 4 | 2 — 50% | quora, requests |
+| merged reranking rejected | 5 | 2 — 40% | quora, notebooks |
+
+**Read the three 0% rows as decisions about OTHER LANGUAGES.** They are not
+wrong; they are answers to a question asked of Go, C, Java and PDF. Whether
+they hold for a Python repository is unmeasured.
+
+**And no corpus here is the size the product targets.** The largest is `zod` at
+1,160 chunks. Every run printed *"at a real 10,000-chunk artifact the window
+would be 0.5%"* — and no corpus in this zoo is that artifact, so the production
+ratio has never been measured at all.
+
+> **A zoo is a claim about what you are building.** Thirteen corpora with three
+> Python ones says the tool is a general code-search system. LabPilot is not —
+> and until the zoo says so, the numbers describe a different product.

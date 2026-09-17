@@ -1,5 +1,18 @@
 # RESUME HERE — slice 8, second run
 
+> ## ⚠ THIS RUN IS SUPERSEDED — READ `docs/slice8v3/MISSION.md` FIRST
+>
+> Everything here is **valid for what it measured** and is kept on purpose.
+> But the zoo is **3 Python corpora of 13 (23%)**, and LabPilot is a Python and
+> machine-learning tool. **Three decisions here have ZERO Python behind them** —
+> the fusion threshold, `SEARCH_LIMIT`, and chain 3 / Cohere.
+>
+> **The next run rebuilds the zoo to 20 corpora with 10 Python** (short scripts
+> to a 13,000-chunk library) and re-weights every conclusion. The complete brief
+> is `docs/slice8v3/MISSION.md` — a fresh session needs nothing else.
+
+
+
 Everything a fresh session needs. Read this file first, then `DECISIONS.md`
 (what is settled and what was corrected), then `MEASUREMENTS.md` (the coverage
 checklist) and `FINDINGS.md` (the evidence, G0–G20).

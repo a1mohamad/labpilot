@@ -1,5 +1,18 @@
 # Every measurement this project has asked for, and where it is covered
 
+> ## ⚠ THIS RUN IS SUPERSEDED — READ `docs/slice8v3/MISSION.md` FIRST
+>
+> Everything here is **valid for what it measured** and is kept on purpose.
+> But the zoo is **3 Python corpora of 13 (23%)**, and LabPilot is a Python and
+> machine-learning tool. **Three decisions here have ZERO Python behind them** —
+> the fusion threshold, `SEARCH_LIMIT`, and chain 3 / Cohere.
+>
+> **The next run rebuilds the zoo to 20 corpora with 10 Python** (short scripts
+> to a 13,000-chunk library) and re-weights every conclusion. The complete brief
+> is `docs/slice8v3/MISSION.md` — a fresh session needs nothing else.
+
+
+
 CLAUDE.md names its open questions in about fifteen different places, written
 down over eight slices. Slice 8's first run answered nine of them and the rest
 were never collected into one list, so "did we measure everything" could not be

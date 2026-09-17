@@ -1,0 +1,260 @@
+# SLICE 8 v3 — THE MISSION. Read this file and start working.
+
+**A fresh session needs nothing but this file.** It says why the run exists,
+what to build, what to measure, in what order, and what must NOT be repeated.
+Do not ask what to do — it is written here.
+
+**Decided by the user on 2026-09-17, at the end of the v2 session.**
+
+---
+
+## 0. THE ONE SENTENCE
+
+> **LabPilot is a Python and machine-learning tool that also supports other
+> languages. The measurements do not reflect that, so they are being re-run on
+> a corpus zoo where PYTHON DOMINATES — 10 of 20 — instead of 3 of 13.**
+
+---
+
+## 1. WHY. The v2 zoo does not match the product
+
+`docs/slice8v2/` measured **13 corpora**. Only **3** are Python or Jupyter:
+
+```
+PYTHON / JUPYTER   quora 82 · requests 335 · notebooks 382        3 of 13  (23%)
+OTHER CODE         Go x3 · Rust · C · Java · TypeScript           7
+PROSE              PDF · Word · Markdown                          3
+```
+
+**And the skew is worse than 23%, because it is self-reinforcing.** Python and
+notebooks are the only inputs with a real splitter — AST and cells — so their
+chunks are about half the size, retrieval is easier, and **two of the three sit
+at `r@50` = 1.000, saturated.** A saturated corpus cannot show a gain. So every
+measurement that had to pick a subset picked it by headroom, and **headroom
+excluded Python automatically.**
+
+### Measured: how much Python actually backs each v2 decision
+
+| decision | corpora | Python | which |
+|---|---|---|---|
+| N = 20 (`VECTOR_TOP_N`) | 13 | 3 — 23% | quora, requests, notebooks |
+| reranking ships | 13 | 3 — 23% | quora, requests, notebooks |
+| `SKIP_MARGIN = None` | 13 | 3 — 23% | quora, requests, notebooks |
+| no routing signal | 13 | 3 — 23% | quora, requests, notebooks |
+| fusion: score beats wRRF | 13 | 3 — 23% | quora, requests, notebooks |
+| **fusion THRESHOLD `r@50` < 0.95** | 3 | **0 — 0%** | **NONE** |
+| **`SEARCH_LIMIT` = 50** | 4 | **0 — 0%** | **NONE** |
+| **chain 3 / Cohere** | 3 | **0 — 0%** | **NONE** |
+| embedder: codestral primary | 3 | 2 — 66% | quora, requests |
+| `MIGRATION`: 001 above 2 | 4 | 2 — 50% | quora, requests |
+| merged reranking rejected | 5 | 2 — 40% | quora, notebooks |
+
+**Three decisions have ZERO Python behind them**, and they are the three that
+needed a subset because they cost quota.
+
+---
+
+## 2. THE NEW ZOO — 20 corpora, 10 Python
+
+**Keep all 13 existing corpora.** Add **7 Python**, spanning short to long, so
+the Python side alone covers the whole size range the product will meet.
+
+### The 7 to add
+
+| # | corpus | source | ~chunks | why this one |
+|---|---|---|---|---|
+| P1 | **one notebook** | `research-notebooks/Titanic/` or `SMS Spam/` | ~80–150 | the smallest real unit a user uploads |
+| P2 | **a small script app** | `apps/Disaster Twitts/` — 27 files, 2,338 lines | ~60–80 | scripts, not a library |
+| P3 | **a mid script app** | `apps/sms-spam/` — 59 files, 3,483 lines | ~90–120 | the user's own, FastAPI-shaped |
+| P4 | **a large app** | `apps/Lung Disease Detection/` — 137 files, 23,280 lines | ~550–700 | a real multi-module application |
+| P5 | **a mid library** | web: `pallets/click` or `pallets/flask` | ~1,500–3,000 | a packaged library, not an app |
+| P6 | **a LONG library** | web: `pytest-dev/pytest` — **9,929 chunks measured** | ~10,000 | the user's "+7k chunks" case |
+| P7 | **a VERY long library** | web: `pydantic/pydantic` — **13,153** — or `dask/dask` — **11,527** | ~11,000–13,000 | the production ratio, see below |
+
+*P6 and P7 chunk counts are not estimates — they were measured on 2026-09-05
+and are recorded in CLAUDE.md under the index decision.*
+
+**Two must come from the user's own work** (P2/P3/P4 above satisfy this; one
+notebook from `research-notebooks/` satisfies P1). The user named both folders:
+
+```
+C:\Users\98922\Documents\python_scripts\AI\apps
+C:\Users\98922\Documents\python_scripts\AI\research-notebooks
+```
+
+### Why P6 and P7 matter more than their size suggests
+
+Every v2 run printed a line like *"the top-50 window is 7% of this corpus — at
+a real 10,000-chunk artifact it would be 0.5%"*. **No corpus in the v2 zoo is
+that artifact.** The largest is `zod` at 1,160.
+
+At 10,000 chunks the top-50 window is **0.5%** — the real production ratio — and
+`r@50` will fall a long way below the saturation ceiling. **P6 and P7 are the
+first corpora that can measure retrieval at the size LabPilot actually targets**,
+and they are Python.
+
+### The resulting zoo
+
+```
+PYTHON / JUPYTER   10 of 20   ~60 -> ~13,000 chunks     THE TARGET, DOMINANT
+OTHER CODE          7 of 20   Go x3, Rust, C, Java, TS  support, still measured
+PROSE               3 of 20   PDF, Word, Markdown       support, still measured
+```
+
+---
+
+## 3. WHAT TO DO, IN ORDER
+
+### Step 1 — build the fixtures FIRST. Nothing else until this is done.
+
+For each of the 7: fetch or point at the source, chunk it, **draft ~20 queries
+with a ground-truth file and line**, and validate.
+
+```bash
+PYTHONPATH=. .venv/Scripts/python.exe scripts/draft_queries.py <corpus>
+PYTHONPATH=. .venv/Scripts/python.exe scripts/validate_fixture.py --all
+```
+
+**Four fixture rules, all learned the hard way — see `docs/slice8v2/FINDINGS.md`
+G1, G3, G6:**
+
+1. **INTERLEAVE the categories.** A fixture grouped by `asks` cannot be
+   truncated — the first k queries become a category study wearing a corpus
+   study's clothes. `geo` is the model to copy.
+2. **A query must NEVER contain the identifier it is looking for**, or the run
+   measures string matching.
+3. **Every query needs a `file` field.** A repository has many files and line
+   186 is in most of them.
+4. **Label `asks` and `wording`** (`named` / `paraphrase`). Both are read by
+   `aggregate.py --delta-by`.
+
+Register each in `scripts/corpora.py`, point `.corpora/env.sh` at the checkout,
+and record source + commit + licence in the fixture, as the existing 13 do.
+
+**Budget the embedding before starting.** 7 new corpora, the two large ones
+dominating: roughly `10,000 + 13,000 + 4,000 = 27,000` chunks at ~340 tokens =
+**~9M tokens**. On `codestral-embed` at a measured 554k tokens/minute that is
+**~17 minutes** — but it is ~280 requests, so check the request ceiling too.
+**Do NOT use Google for these**: it counts one TEXT as one request against
+1,000 a day, so 27,000 chunks is 27 days.
+
+### Step 2 — re-run every measurement on the 20-corpus zoo
+
+**All of these are FREE** (they re-read caches and saved replies), so run them
+first and read them before spending anything:
+
+```bash
+PYTHONPATH=. .venv/Scripts/python.exe scripts/score_hybrid.py <corpus> codestral
+PYTHONPATH=. .venv/Scripts/python.exe scripts/aggregate.py --metric=MRR
+PYTHONPATH=. .venv/Scripts/python.exe scripts/aggregate.py --delta-by=wording
+PYTHONPATH=. .venv/Scripts/python.exe scripts/aggregate.py --by=format
+PYTHONPATH=. .venv/Scripts/python.exe scripts/tier_reach.py --window=30
+```
+
+Then the ones that cost quota, **in this order** — the three with zero Python
+backing come first:
+
+| order | measurement | script | why first |
+|---|---|---|---|
+| **1** | **fusion threshold** | `score_hybrid.py`, `sweep_fusion.py` | 0% Python today, and P6/P7 finally give real headroom |
+| **2** | **`SEARCH_LIMIT` 30 vs 50** | `score_rerank.py --window=30` | 0% Python today |
+| **3** | **Cohere vs flash-lite** | `score_rerank.py --cohere` | 0% Python today; **1,000 calls a MONTH — state the bill before spending** |
+| 4 | reranking + gate | `score_rerank.py` | 23% → must become ~50% |
+| 5 | N to send | `score_answers.py`, `regrade_answers.py`, `dilution.py` | 23% → ~50% |
+| 6 | merged vs per-side | `bench_merged.py` | add a Python+Python pair |
+
+### Step 3 — the measurements v2 never ran at all
+
+| # | measurement | cost |
+|---|---|---|
+| **A4** | **end-to-end TIME** — `WARN_MINUTES = 2.0` is still a guess | ~10 min |
+| **new** | **`RERANK_TOP_N`** — v2 measured only the VECTOR path | ~78 calls |
+| C3 | `rerank-3` (non-lite) — never scored anywhere | ~40 calls |
+| C5 | a NEWER local reranker — the only tier that BATCHES | a download |
+| C6 | `--no-header` under reranking | ~20 calls |
+| D3 | ingest time vs `embedding_minutes()` | ~20 min |
+| F2 | generated vs hand-written queries | ~8 calls |
+
+---
+
+## 4. WHAT MUST NOT BE REPEATED
+
+**All v2 results are kept and are still valid for what they measured.** They are
+in `docs/slice8v2/` — `RESULTS.md`, `FINDINGS.md` (G0–G21), `DECISIONS.md`,
+`MEASUREMENTS.md`, plus `.logs/results/` and the caches. **Do not delete them.**
+The v3 job is to re-weight them toward Python, not to discard them.
+
+### Read these before touching the instrument
+
+| | |
+|---|---|
+| **G14** | the rerank cache was broken for LISTWISE rerankers. A listwise entry is keyed by the **candidate set** in `*.orders.json`; an unseen set **raises**; a listwise call is **never split**. `.cache/rerank/void/` holds 8 quarantined caches — **do not restore them** |
+| **G18** | **print the DENOMINATOR beside every ratio.** One error produced three different wrong conclusions in one session |
+| **G15** | grading the citation on punctuation cost an entire column; raw replies are saved so a re-grade costs nothing |
+| **G19** | `bench_merged` indexed both sides from zero and they shared a key space |
+
+### The traps
+
+They are in `docs/slice8v2/RESUME.md` §3 and they are all real:
+a heredoc turning `\b` into a **0x08 backspace** that ruff accepts · flash-lite
+pacing by requests when TOKENS bind · double backgrounding · Gemma's HTTP 500 ·
+pre-commit stashing unstaged files · at most two jobs actively calling.
+
+---
+
+## 5. THE STANDING RULES FOR THIS RUN
+
+1. **Judge a method by how many independent ways it was shown better**, never by
+   its best single number.
+2. **Report headroom beside every metric.** A saturated corpus cannot show a
+   gain — that is the whole reason this run exists.
+3. **Name the corpus AND the embedder** beside every number.
+4. **Print the denominator, and judge a delta against what the fixture can
+   resolve** — one query is `0.5 / queries` of MRR.
+5. **NEW, and it is this run's reason to exist: state the PYTHON SHARE beside
+   every conclusion.** *"Measured on 4 corpora"* is not enough any more; it must
+   say *"4 corpora, 2 of them Python"*. A decision with zero Python behind it is
+   a decision about other languages, and it must say so.
+
+---
+
+## 6. BRANCH AND HYGIENE
+
+```
+new branch     slice8/python-zoo      off main, NOT off slice8/measure-v2
+keep           docs/slice8v2/ and .logs/results/ untouched
+write          docs/slice8v3/
+main           ONLY the user commits to main
+```
+
+**Commit one piece at a time and push each** — one commit per module or finding,
+suite green at each step. Run `pytest tests/unit tests/api -q` and both ruff
+commands before every commit.
+
+**Check the exit ISP before any call to a model.** `docs/slice8v2/RESUME.md` §1
+has the two commands.
+
+---
+
+## 7. THE TWO PRODUCTION DEFECTS — still unfixed, and one breaks a SHIPPED decision
+
+Deliberately not implemented: production code is the user's to write in this
+project. The design is recorded so it is a decision, not a rediscovery.
+
+**1. `MAX_BATCH_SIZE = 96` is a MISTRAL constant with a global name.** 96 Google
+texts is ~32,800 tokens against a 30,000/minute ceiling — refused on the **first
+batch** — and `embed_batches()` halves only on a refusal naming *tokens*, which
+Google's does not. **Decision A8 shipped `SMALL_CORPUS_CHUNKS = 500`, routing
+every small corpus to Google first, so the shipped routing cannot finish an
+ingest.**
+
+**2. `embedding_minutes()` counts HTTP calls where Google counts TEXTS**, and
+models no daily request budget. It reports ~118 minutes for a 10,000-chunk
+Google ingest; the truth is **ten days**.
+
+**The fix already exists in the WRONG LAYER** — `scripts/warm_embeddings.py`
+batches by tokens and paces by texts, citing findings F1 and F4 by name. So the
+instrument's private workaround hides the product's defect.
+
+**This matters more in v3 than it did in v2**, because P6 and P7 are 10,000+
+chunk Python repositories — exactly the case that breaks.

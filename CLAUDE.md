@@ -490,6 +490,32 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: STEP 1 IS COMPLETE. ALL NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 —
 ARE DONE. STEP 2, THE AGENT, IS NEXT.**
 
+> ### ⚠⚠ SLICE 8 IS BEING RUN A THIRD TIME — READ `docs/slice8v3/MISSION.md` FIRST
+>
+> **THE ZOO DOES NOT MATCH THE PRODUCT.** LabPilot is a **Python and
+> machine-learning** tool that also supports other languages. The v2 zoo is
+> **3 Python or Jupyter corpora of 13 — 23%** — and **three decisions have ZERO
+> Python behind them**: the fusion threshold, `SEARCH_LIMIT`, and chain 3 /
+> Cohere. They are answers about Go, C, Java and PDF.
+>
+> **The skew is self-reinforcing.** Python and notebooks are the only inputs
+> with a real splitter (AST, cells), so their chunks are half the size,
+> retrieval is easier, and **two of the three are SATURATED at `r@50` = 1.000**.
+> A saturated corpus cannot show a gain, so every quota-limited measurement
+> picked its subset by headroom — and headroom excluded Python automatically.
+>
+> **And no corpus is the size the product targets.** The largest is `zod` at
+> 1,160 chunks, while every run printed *"at a real 10,000-chunk artifact the
+> window would be 0.5%"*. That artifact does not exist in the zoo.
+>
+> **v3 rebuilds the zoo to 20 corpora with 10 PYTHON**, spanning one notebook
+> and a few scripts up to a **13,000-chunk library**, two of them from the
+> user's own `apps/` and `research-notebooks/`. Branch `slice8/python-zoo`, off
+> `main`. **All v2 results are KEPT and stay valid for what they measured.**
+>
+> **`docs/slice8v3/MISSION.md` is the complete brief — a fresh session needs
+> nothing else.**
+
 > ### ⚠ SLICE 8 WAS RE-RUN TWICE. READ `docs/slice8v2/` BEFORE ANY NUMBER BELOW
 >
 > **`docs/slice8/` is the FIRST run — three corpora, two of them already used.**

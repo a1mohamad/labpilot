@@ -1,5 +1,18 @@
 # SLICE 8, SECOND RUN — the measurement, and what it decides
 
+> ## ⚠ THIS RUN IS SUPERSEDED — READ `docs/slice8v3/MISSION.md` FIRST
+>
+> Everything here is **valid for what it measured** and is kept on purpose.
+> But the zoo is **3 Python corpora of 13 (23%)**, and LabPilot is a Python and
+> machine-learning tool. **Three decisions here have ZERO Python behind them** —
+> the fusion threshold, `SEARCH_LIMIT`, and chain 3 / Cohere.
+>
+> **The next run rebuilds the zoo to 20 corpora with 10 Python** (short scripts
+> to a 13,000-chunk library) and re-weights every conclusion. The complete brief
+> is `docs/slice8v3/MISSION.md` — a fresh session needs nothing else.
+
+
+
 Run 2026-09-16/17. Exit `80.240.20.89`, **AS20473 The Constant Company**
 (Vultr, Frankfurt); `gemini-3.5-flash-lite:generateContent` answered **200**,
 so the probe decided it and the ISP name did not.
