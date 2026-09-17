@@ -4,6 +4,7 @@ import pytest
 
 from labpilot.api.errors import EmbeddingUnavailable
 from labpilot.api.services import (
+    SMALL_CORPUS_CHUNKS,
     _artifact_id,
     _pick_embedder,
     _records,
@@ -132,11 +133,39 @@ def test_no_usable_model_is_a_failure_not_a_silent_pick():
         _pick_embedder(tokens=5_000_000, chunks=15_000, candidates=(bge,))
 
 
-def test_a_small_corpus_keeps_the_strength_order():
-    """Below the budget, quality decides - MIGRATION[0] is the best model."""
+def test_a_small_corpus_goes_to_google():
+    """Below SMALL_CORPUS_CHUNKS, Google leads - measured 2026-09-17.
+
+    This test USED to assert MIGRATION[0], the strength order. That changed on
+    evidence: Google retrieves best exactly where vector search is already
+    easy (quora 0.674, requests 0.650 against codestral's 0.608 and 0.646) and
+    loses where there is real headroom (geo 0.493 against 0.526). Its quota
+    points at the same range - one TEXT is one request, so ~1,000 chunks a day.
+    """
     picked, _ = _pick_embedder(tokens=20_000, chunks=60)
 
+    assert picked.model.startswith("gemini-")
+
+
+def test_a_large_corpus_still_takes_the_strength_order():
+    """Above the line the rule must not fire - Google cannot ingest a repo."""
+    picked, _ = _pick_embedder(tokens=200_000, chunks=SMALL_CORPUS_CHUNKS + 1)
+
     assert picked is MIGRATION[0]
+
+
+def test_google_first_is_a_REORDERING_and_never_a_restriction():
+    """A spent Google bucket must fall through, not dead-end.
+
+    The rule moves a model's PLACE and drops nothing, which is the property
+    that makes MIGRATION a walk rather than a pool - CLAUDE.md's own reason
+    for one list sorted two ways instead of two lists.
+    """
+    codestral = next(e for e in MIGRATION if e.model == "codestral-embed")
+
+    picked, _ = _pick_embedder(tokens=20_000, chunks=60, candidates=(codestral,))
+
+    assert picked is codestral
 
 
 # --- _source_id: a whole repository, hashed from what was really READ --------
