@@ -490,31 +490,56 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: STEP 1 IS COMPLETE. ALL NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 —
 ARE DONE. STEP 2, THE AGENT, IS NEXT.**
 
-> ### ⚠⚠ SLICE 8 IS BEING RUN A THIRD TIME — READ `docs/slice8v3/MISSION.md` FIRST
+> ### ⚠⚠ SLICE 8 v3 IS ALMOST DONE — READ `docs/slice8v3/DECISIONS.md` FIRST
 >
-> **THE ZOO DOES NOT MATCH THE PRODUCT.** LabPilot is a **Python and
-> machine-learning** tool that also supports other languages. The v2 zoo is
-> **3 Python or Jupyter corpora of 13 — 23%** — and **three decisions have ZERO
-> Python behind them**: the fusion threshold, `SEARCH_LIMIT`, and chain 3 /
-> Cohere. They are answers about Go, C, Java and PDF.
+> **THE ZOO WAS REBUILT: 20 corpora, 10 PYTHON (50%), 423 queries**, against
+> v2's 3 of 13. LabPilot is a Python and machine-learning tool, and three v2
+> decisions had **zero** Python behind them. Branch `slice8/measure-final`.
 >
-> **The skew is self-reinforcing.** Python and notebooks are the only inputs
-> with a real splitter (AST, cells), so their chunks are half the size,
-> retrieval is easier, and **two of the three are SATURATED at `r@50` = 1.000**.
-> A saturated corpus cannot show a gain, so every quota-limited measurement
-> picked its subset by headroom — and headroom excluded Python automatically.
+> **`docs/slice8v3/DECISIONS.md` is the deliverable and it is current — 29
+> decisions, TEN of them now in `labpilot/` rather than in a document.**
+> `RESUME.md` is the working log, `FINDINGS.md` (H0–H19) the evidence.
 >
-> **And no corpus is the size the product targets.** The largest is `zod` at
-> 1,160 chunks, while every run printed *"at a real 10,000-chunk artifact the
-> window would be 0.5%"*. That artifact does not exist in the zoo.
+> **WHAT SHIPPED TO THE CODE, each one mutation-verified:**
 >
-> **v3 rebuilds the zoo to 20 corpora with 10 PYTHON**, spanning one notebook
-> and a few scripts up to a **13,000-chunk library**, two of them from the
-> user's own `apps/` and `research-notebooks/`. Branch `slice8/measure-final`, off
-> `main`. **All v2 results are KEPT and stay valid for what they measured.**
+> ```
+> VECTOR_TOP_N      25 -> 15    (and the 30 shipped first was a UNIT ERROR)
+> RERANK_WINDOW     new, 20     the reranker reads 20 of the 50, not all 50
+> MIGRATION         BGE 2 -> last; mistral -> second-last; 001 above 2
+> the embedder gate + a per-TEXT daily budget - Google can no longer start an
+>                     ingest it cannot finish
+> SMALL_CORPUS_CHUNKS  DELETED
+> SKIP_DIRECTORIES  +22 names, including .ipynb_checkpoints
+> ingest            duplicate chunks dropped, NEWEST copy wins
+> rerank chain      + the SECOND Google account: 29,800 -> 59,600 calls a day
+> the LLM chain     A 500 IS NOW RETRIED - 3s, then 10s
+> ```
 >
-> **`docs/slice8v3/MISSION.md` is the complete brief — a fresh session needs
-> nothing else.**
+> **THE FIVE-WAY RULE IS NOW SIX-WAY.** *"400 / 500 / empty / timeout → next
+> tier, retrying cannot change it"* is FALSE for Gemma and it is measured:
+> **gemma-4-31b answers 500 on two calls of three and 200 on the third.** That
+> rule was discarding the largest quota in the project over a fault that clears
+> in three seconds.
+>
+> **RETRIEVAL IS FREE, and it reframes the whole slice.** The first end-to-end
+> measurement: a searched answer is **50.5s**, of which embed + search + rerank
+> is **13.9s**. Every knob this run tuned lives inside those fourteen seconds.
+> They decide what the model SEES; they do not move the clock. So every decision
+> here is a QUALITY decision, and any argued on latency was argued on a false
+> premise. **`WARN_MINUTES = 2.0` is measured to be wrong in both directions and
+> is NOT yet fixed.**
+>
+> **FOUR DEFECTS FOUND BY MEASURING, none on anyone's list:** thinking burn
+> scored as a result (`papers` "answered 0 of 20" was the model running out of
+> output tokens mid-sentence, and `ask()` discarded `finish_reason`); the rerank
+> chain missing its second Google account; a 500 never retried; and
+> `VECTOR_TOP_N` declared TWICE in one module, the second shadowing the first.
+>
+> **STILL OPEN:** the reranker MODEL comparison (running), the STUFF path (never
+> exercised - the obvious fixture needs 28,246 tokens against a 26,000 budget),
+> `WARN_MINUTES`, and content-kind filtering (parked for a final pass).
+>
+> **All v2 results are KEPT and stay valid for what they measured.**
 
 > ### ⚠ SLICE 8 WAS RE-RUN TWICE. READ `docs/slice8v2/` BEFORE ANY NUMBER BELOW
 >
