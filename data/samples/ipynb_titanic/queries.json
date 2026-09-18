@@ -1,0 +1,253 @@
+{
+  "corpus": {
+    "key": "titanic",
+    "env": "LABPILOT_TITANIC_SRC",
+    "include": [
+      "titanic_analysisV2.ipynb"
+    ],
+    "exclude": [],
+    "source": "name",
+    "language": "Python + Markdown",
+    "splitter": "notebook-cell",
+    "domain": "Titanic survival prediction, tabular ML",
+    "repo": "the user's own research notebook, local",
+    "commit": "n/a",
+    "licence": "personal material, never committed",
+    "note": "The source is NOT committed: it is the user's own personal material, and the provenance rule keeps it out of the repository. Point the env var at the folder before scoring.",
+    "chunks_at_this_commit": 118,
+    "include_note": "ONE notebook, deliberately: the smallest real unit a user uploads. titanic_analysisV2.ipynb is chosen over the other two because it carries stored run outputs, and this project has already learned once that the numbers live in the outputs and not in the cell source.",
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": [
+    {
+      "id": "TI01",
+      "query": "how many people are in the training set",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        130
+      ],
+      "anchor": "RangeIndex: 891 entries, 0 to 890"
+    },
+    {
+      "id": "TI02",
+      "query": "what needs to happen to the inputs before they go into the network",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        1017
+      ],
+      "anchor": "We need to select the final set of features that will be fed into our neural network and then scale them."
+    },
+    {
+      "id": "TI03",
+      "query": "what happens when there is a mismatch in the number of predictions and missing values",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        714
+      ],
+      "anchor": "print(\"⚠️ Warning: Length mismatch in age imputation. Skipping filling step.\")",
+      "repaired": "The drafter degenerated into a repetition loop and emitted 2069 characters of \"the-the-the\". Recovered from the coherent tail of that string; file and expects are untouched."
+    },
+    {
+      "id": "TI04",
+      "query": "which dataframes are used for filling in missing age values",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        754
+      ],
+      "anchor": "It's time to Imputation for $Age$ , we use last dataframe `df_train_raw2` and `age_features` for train dataset and `df_test_raw2` for test dataset."
+    },
+    {
+      "id": "TI05",
+      "query": "what is the step size for the optimizer",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        1362
+      ],
+      "anchor": "25/25 - 0s - 5ms/step - accuracy: 0.8384 - loss: 0.4547 - val_accuracy: 0.8182 - val_loss: 0.4633 - learning_rate: 0.0010"
+    },
+    {
+      "id": "TI06",
+      "query": "how is the model's ability to generalize be assessed",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        1132
+      ],
+      "anchor": "To ensure robust evaluation, we apply `K-Fold` Cross-Validation."
+    },
+    {
+      "id": "TI07",
+      "query": "what are the main steps in the machine learning process",
+      "asks": "structure",
+      "wording": "named",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        10
+      ],
+      "anchor": "This notebook will follow a structured machine learning workflow:"
+    },
+    {
+      "id": "TI08",
+      "query": "what is the size of the correlation plot",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        591
+      ],
+      "anchor": "plt.figure(figsize= (10, 10))"
+    },
+    {
+      "id": "TI09",
+      "query": "how is the wealth indicator calculated",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        510
+      ],
+      "anchor": "df['cabin_wealth'] = df['has_cabin'] * np.log1p(df['Fare'])"
+    },
+    {
+      "id": "TI10",
+      "query": "how is the social rank score calculated",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        928
+      ],
+      "anchor": "df['social_status'] = ("
+    },
+    {
+      "id": "TI11",
+      "query": "how many total features are there after processing",
+      "asks": "constant",
+      "wording": "named",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        958
+      ],
+      "anchor": "Number of features: 50"
+    },
+    {
+      "id": "TI12",
+      "query": "how are passengers grouped by age range to visualize survival rates",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        374
+      ],
+      "anchor": "dftrain['AgeGroup'] = pd.cut(dftrain['Age'], bins=[0, 10, 20, 30, 40, 50, 60, 80], labels=['0-10', '11-20', '21-30', '31-40', '41-50', '51-60', '61+'])"
+    },
+    {
+      "id": "TI13",
+      "query": "which categorical variables are being converted to numbers",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        423
+      ],
+      "anchor": "cat_feat = ['Sex', 'Embarked']"
+    },
+    {
+      "id": "TI14",
+      "query": "what is the range of predicted ages",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        610
+      ],
+      "anchor": "Predictions are clipped between 0 and 80 for realism."
+    },
+    {
+      "id": "TI15",
+      "query": "what are the steps taken during each cross validation split",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        1156
+      ],
+      "anchor": "- Create `train` and `validation` datasets."
+    },
+    {
+      "id": "TI16",
+      "query": "what is used as a fallback for missing cabin information",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        828
+      ],
+      "anchor": "train_decks = df_train_raw['Cabin'].str.extract(r'^([A-Za-z])', expand=False).fillna('Unknown')"
+    },
+    {
+      "id": "TI17",
+      "query": "how is the relationship between years lived and staying alive analyzed",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        370
+      ],
+      "anchor": "To better analyze the relationship between age and survival, we can group ages into bins and calculate the survival rate for each group."
+    },
+    {
+      "id": "TI18",
+      "query": "how many folds are there in the cross validation",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        1300
+      ],
+      "anchor": "----- Fold 2/9 -----"
+    },
+    {
+      "id": "TI19",
+      "query": "how are the passenger titles grouped into broader categories",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        315
+      ],
+      "anchor": "dftrain['title'] = dftrain['title'].map(title_mapping).fillna('Rare')"
+    },
+    {
+      "id": "TI20",
+      "query": "what colors are used to distinguish between those who lived and those who died",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "titanic_analysisV2.ipynb",
+      "expects": [
+        395
+      ],
+      "anchor": "sns.kdeplot(dftrain[dftrain['Survived'] == 1]['Age'], label='Survived', shade=True, color='green')"
+    }
+  ]
+}
