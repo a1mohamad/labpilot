@@ -1223,6 +1223,34 @@ job - it is the only layer that knows which capability is running.
 
 ---
 
+## PARKED — CONTENT-KIND FILTERING, to be re-tested at the END of the run
+
+The user's call, 2026-09-19: *"kinda optional... worth to check after every
+other thing is completed."* Agreed, and parked here so it is not lost.
+
+H18 rejected the HARD rule (always exclude tests). Three softer variants are
+worth one pass each, on **more corpora than the four measured so far**:
+
+| # | variant | what is already known |
+|---|---|---|
+| 1 | exclude tests only when tests are a MINORITY of the corpus | pooled **+0.033**, no corpus harmed — but the threshold was fitted to **4 corpora**, which is the trap this project has fallen into before |
+| 2 | exclude tests for personal projects, keep them for libraries | the same rule as 1, named by intent rather than by ratio. Needs a way to TELL them apart that is not the ratio |
+| 3 | **remove DOCS only, keep tests** — the simplest | smsspam +0.019, disaster +0.035, click **+0.111**, pytest +0.005 → **pooled ≈ +0.043**, and **1 query of 80 lost** on click |
+
+**Variant 3 is the best-behaved and the least clever**, which is usually the
+right combination. Its one flaw is the one that matters: a lost query means the
+tool says *"not found"* about something in the repository.
+
+**So test variant 3 in its DEMOTE form as well** — weight doc chunks below 1.0
+rather than removing them. Nothing can be lost by construction, and the
+measurement then only has to choose the weight.
+
+**The bar for shipping any of them: ~10 corpora, not 4.** All three are free to
+test - every vector is cached and filtering only removes rows -
+`scripts/score_content_kinds.py` is the instrument.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
