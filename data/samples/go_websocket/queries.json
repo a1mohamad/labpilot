@@ -1,0 +1,198 @@
+{
+  "corpus": {
+    "key": "websocket",
+    "env": "LABPILOT_WEBSOCKET_SRC",
+    "include": [
+      "**/*.go"
+    ],
+    "exclude": [
+      "**/*_test.go",
+      "examples/**"
+    ],
+    "source": "relpath",
+    "language": "Go",
+    "splitter": "recursive",
+    "domain": "WebSocket protocol",
+    "repo": "https://github.com/gorilla/websocket",
+    "commit": "e064f32",
+    "licence": "BSD-3-Clause",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 78,
+    "queries_planned": 15,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "WE01",
+      "query": "how many bytes are kept back from the stream",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "compression.go",
+      "expects": [
+        65
+      ],
+      "anchor": "p [4]byte"
+    },
+    {
+      "id": "WE02",
+      "query": "how does the connection handle write deadlines",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "prepared.go",
+      "expects": [
+        102
+      ],
+      "anchor": "func (pc *prepareConn) SetWriteDeadline(t time.Time) error { return nil }"
+    },
+    {
+      "id": "WE03",
+      "query": "what happens if the incoming message is empty",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "json.go",
+      "expects": [
+        57
+      ],
+      "anchor": "err = io.ErrUnexpectedEOF"
+    },
+    {
+      "id": "WE04",
+      "query": "how are credentials passed to the proxy",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "proxy.go",
+      "expects": [
+        63
+      ],
+      "anchor": "credential := base64.StdEncoding.EncodeToString([]byte(proxyUser + \":\" + proxyPassword))"
+    },
+    {
+      "id": "WE05",
+      "query": "what characters are considered part of a token",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "util.go",
+      "expects": [
+        132
+      ],
+      "anchor": "if !isTokenOctet[s[i]] {"
+    },
+    {
+      "id": "WE06",
+      "query": "what is the default size for the read and write buffers",
+      "asks": "constant",
+      "wording": "named",
+      "file": "doc.go",
+      "expects": [
+        169
+      ],
+      "anchor": "The HTTP server buffers have a size of 4096 at the time of this writing."
+    },
+    {
+      "id": "WE07",
+      "query": "what happens to the message if it is too long for a control frame",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "conn.go",
+      "expects": [
+        992
+      ],
+      "anchor": "data = data[:maxControlFramePayloadSize]"
+    },
+    {
+      "id": "WE08",
+      "query": "what happens if the server response doesn't have the correct upgrade headers",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "client.go",
+      "expects": [
+        370
+      ],
+      "anchor": "return nil, resp, ErrBadHandshake"
+    },
+    {
+      "id": "WE09",
+      "query": "what is the required http method for the upgrade process",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "server.go",
+      "expects": [
+        136
+      ],
+      "anchor": "if r.Method != http.MethodGet {"
+    },
+    {
+      "id": "WE10",
+      "query": "what happens to the connection if the response status is not ok",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "proxy.go",
+      "expects": [
+        99
+      ],
+      "anchor": "_ = conn.Close()"
+    },
+    {
+      "id": "WE11",
+      "query": "what happens if the initial connection attempt fails",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "client.go",
+      "expects": [
+        171
+      ],
+      "anchor": "If the WebSocket handshake fails, ErrBadHandshake is returned along with a"
+    },
+    {
+      "id": "WE12",
+      "query": "what is the minimum size for the read buffer",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "conn.go",
+      "expects": [
+        291
+      ],
+      "anchor": "readBufferSize = maxControlFramePayloadSize"
+    },
+    {
+      "id": "WE13",
+      "query": "how does the system prevent the caller from changing the original data",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "prepared.go",
+      "expects": [
+        58
+      ],
+      "anchor": "pm.data = frameData[len(frameData)-len(data):]"
+    },
+    {
+      "id": "WE14",
+      "query": "how long should the security key be after decoding",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "util.go",
+      "expects": [
+        297
+      ],
+      "anchor": "return err == nil && len(decoded) == 16"
+    },
+    {
+      "id": "WE15",
+      "query": "how are websocket extensions parsed from the headers",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "util.go",
+      "expects": [
+        228
+      ],
+      "anchor": "func parseExtensions(header http.Header) []map[string]string {"
+    }
+  ]
+}
