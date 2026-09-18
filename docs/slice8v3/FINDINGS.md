@@ -569,6 +569,87 @@ fixture's resolution per G18.
 
 ---
 
+## H11 — THE RE-OPTIMISATION PASS: searching, not validating
+
+**Written after the user caught a real methodological failure.** Everything in
+H1–H10 tested **v2's chosen values** on the new corpora. It never searched for
+better ones. The user's objection: a zoo that went from 3 Python of 13 to 10 of
+20, and from a 1,160-chunk ceiling to 9,846, may have moved the *optimum* and
+not merely the score.
+
+They were right. What I had actually run was `score_hybrid.py <corpus>
+codestral` with **no flags**, which pins every knob at v2's winner:
+
+```
+wRRF k      5        (available: 5, 10, 20, 30, 60)
+wRRF w      0.15     (available: 0.05 .. 1.0, eight values)
+score alpha 0.85     (available: 0.7, 0.85, 0.95)
+BM25 k1, b  1.2,0.75 (a whole grid, never swept on ANY corpus, ever)
+window      30, 50   (a nine-point ladder exists)
+embedder    codestral only
+```
+
+### Result 1 — FUSION: `score a=0.85` wins a 51-way search
+
+20 corpora, 10 Python, every setting scored on all of them:
+
+| setting | mean MRR | worst | win/loss |
+|---|---|---|---|
+| **score a=0.85** ← shipped | **+0.0289** | −0.029 | 14 / 5 |
+| score a=0.95 | +0.0133 | −0.029 | 11 / 6 |
+| wRRF k=5 w=0.3 | +0.0132 | −0.014 | 10 / 7 |
+| *wRRF k=5 w=0.15* ← v2's other candidate | *+0.0044* | −0.008 | **ranks #11** |
+
+**`CONFIRMED`, and for the first time earned rather than inherited.** One real
+correction inside it: `wRRF k=5 w=0.15` was never the best wRRF — `k=5 w=0.3`
+is three times better. Immaterial, since all wRRF loses to score fusion, but it
+shows the sweep was doing work.
+
+### Result 2 — BM25 `k1`/`b`: the knobs barely matter
+
+Never swept on any corpus in this project's history. 20 corpora, 10 Python:
+
+```
+k1=1.2 b=0.75   fusion MRR +0.0256   <- shipped, best
+k1=0.9 b=0.75              +0.0249
+k1=1.2 b=0.30              +0.0229
+k1=1.2 b=0.00              +0.0227
+k1=2.0 b=0.75              +0.0222
+k1=1.6 b=0.75              +0.0219
+```
+
+**All six settings span 0.0037 MRR** — far below any fixture's resolution
+(one query is 0.022 to 0.083). So the honest verdict is *"indistinguishable,
+and the textbook default is not beaten"*, **not** *"the default is best"*.
+`CONFIRMED`, weakly, and the weakness is the finding.
+
+### Result 3 — EMBEDDER: codestral beats mistral 19 of 20
+
+| | mean MRR | mean r@50 |
+|---|---|---|
+| **codestral-embed** | **0.634** | **0.967** |
+| mistral-embed | 0.514 | 0.934 |
+| Python only (n=10) | **0.592** vs 0.466 | |
+
+And the margin is **widest on the largest corpus**: `pydantic` +0.239,
+`click` +0.147, `pytest` +0.101. `CONFIRMED` on the full new zoo.
+
+**Scope limit, and it is a hard one rather than a choice.** Google's embedder
+counts **one text as one request** against 1,000/day — v2's production defect
+#2 — so embedding 19,088 new chunks there is **19 days**. Cohere is 198 calls
+of a 1,000-a-MONTH tier shared with reranking. Both can therefore only be
+measured on the small Python corpora, and that scope is stated on the decision
+row rather than left to look fuller than it is.
+
+### The rule this pass earned
+
+> **Re-testing a chosen value is not measuring it.** A config inherited from a
+> different corpus population is an assumption wearing a number's clothes, and
+> the only way to tell the two apart is to search the space again on the
+> population you actually have.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
