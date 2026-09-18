@@ -1,0 +1,228 @@
+{
+  "corpus": {
+    "key": "lung",
+    "env": "LABPILOT_LUNG_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/tests/**",
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/.ipynb_checkpoints/**",
+      "**/.pytest_cache/**",
+      "**/.pytest-tmp/**",
+      "**/migrations/**",
+      "**/mlflow/artifacts/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "lung disease detection, MLOps + Kafka + FastAPI",
+    "repo": "the user's own application, local",
+    "commit": "n/a",
+    "licence": "personal material, never committed",
+    "note": "The source is NOT committed: it is the user's own personal material, and the provenance rule keeps it out of the repository. Point the env var at the folder before scoring.",
+    "chunks_at_this_commit": 628,
+    "include_note": "**/*.py, excluding tests. A real multi-module application: deployment/mlops, deployment/app, deployment/kafka_pipeline, research. ALSO excludes **/mlflow/artifacts/**. Measured 2026-09-18: those 12 files are MLflow RUN ARTIFACTS - the same utils.py copied under a different run hash each time - and they were 330 of 958 chunks (34%), one chunk repeated 16 times. A query anchored to one copy is unanswerable by fair retrieval, because the other 15 identical chunks are equally good answers and score as wrong. 4 of the first 20 drafted queries landed in them. Same class as the fnmatch bug in G1: the include swept in material that is not the authored application.",
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": [
+    {
+      "id": "LU01",
+      "query": "what is the log level for tensorflow",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "deployment/main.py",
+      "expects": [
+        16
+      ],
+      "anchor": "tf.get_logger().setLevel(\"ERROR\")"
+    },
+    {
+      "id": "LU02",
+      "query": "what happens when a code cell expression is too dynamic to evaluate",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "deployment/mlops/core/backfill/params.py",
+      "expects": [
+        89
+      ],
+      "anchor": "Evaluated literal-like value, or ``None`` when the expression is too dynamic to evaluate safely."
+    },
+    {
+      "id": "LU03",
+      "query": "what happens if the required library for converting models is missing",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "deployment/scripts/onnx/export_models.py",
+      "expects": [
+        67
+      ],
+      "anchor": "raise SystemExit(\"tf2onnx is not installed. Install deployment/requirements.txt first.\") from exc"
+    },
+    {
+      "id": "LU04",
+      "query": "what tools are available for handling tfrecords",
+      "asks": "api",
+      "wording": "named",
+      "file": "deployment/mlops/core/data/__init__.py",
+      "expects": [
+        10
+      ],
+      "anchor": "from mlops.core.data.tfrecord_ops import ("
+    },
+    {
+      "id": "LU05",
+      "query": "what does the prediction event payload contain",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "deployment/kafka_pipeline/event_builder.py",
+      "expects": [
+        30
+      ],
+      "anchor": "\"event_type\": \"prediction.completed\","
+    },
+    {
+      "id": "LU06",
+      "query": "what is the threshold for binarizing the predictions",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "deployment/mlops/core/evaluation/metrics.py",
+      "expects": [
+        154
+      ],
+      "anchor": "pred_bin = tf.cast(probs >= 0.5, tf.float32)"
+    },
+    {
+      "id": "LU07",
+      "query": "what happens when the broker is in a recoverable startup state",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "deployment/kafka_pipeline/consumers/common.py",
+      "expects": [
+        65
+      ],
+      "anchor": "Decoded event dictionary, or ``None`` when there is no message or the broker is in a recoverable startup state."
+    },
+    {
+      "id": "LU08",
+      "query": "what is used to calculate the overlap between two masks",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "deployment/mlops/core/models/compile.py",
+      "expects": [
+        9
+      ],
+      "anchor": "from app.utils.metrics import dice_coefficient"
+    },
+    {
+      "id": "LU09",
+      "query": "what is the purpose of the shared utility modules",
+      "asks": "structure",
+      "wording": "named",
+      "file": "deployment/app/utils/__init__.py",
+      "expects": [
+        1
+      ],
+      "anchor": "\"\"\"Shared utility modules for model loading, errors, metrics, and visualization.\"\"\""
+    },
+    {
+      "id": "LU10",
+      "query": "where are the monitoring results saved",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "deployment/kafka_pipeline/consumers/consumer_monitoring.py",
+      "expects": [
+        12
+      ],
+      "anchor": "OUT = Path(\"runtime/monitoring_metrics.jsonl\")"
+    },
+    {
+      "id": "LU11",
+      "query": "what tags are added to the tracking run for monthly evaluations",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "deployment/mlops/jobs/monthly_log_results.py",
+      "expects": [
+        77
+      ],
+      "anchor": "\"run_type\": \"monthly_evaluation\","
+    },
+    {
+      "id": "LU12",
+      "query": "what do the model helpers abstract",
+      "asks": "structure",
+      "wording": "named",
+      "file": "deployment/mlops/core/models/__init__.py",
+      "expects": [
+        3
+      ],
+      "anchor": "# Model helpers abstract local/registry loading and task-specific compile\n# settings for both evaluation and retraining jobs."
+    },
+    {
+      "id": "LU13",
+      "query": "what is the range of the vertical axis for the probability chart",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "deployment/app/utils/visualization.py",
+      "expects": [
+        57
+      ],
+      "anchor": "ax.set_ylim(0.0, 1.0)"
+    },
+    {
+      "id": "LU14",
+      "query": "how is the final performance metric calculated",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "research/multiclass-diseases/optuna/utils.py",
+      "expects": [
+        339
+      ],
+      "anchor": "score = f1 - gap_penalty - loss_penalty"
+    },
+    {
+      "id": "LU15",
+      "query": "what files are expected in the model folder",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "deployment/app/predictor/diseases.py",
+      "expects": [
+        30
+      ],
+      "anchor": "model_dir: Directory containing ``metadata.yaml`` and the Keras"
+    },
+    {
+      "id": "LU16",
+      "query": "how does the system handle gpu memory allocation",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "research/multiclass-diseases/utils.py",
+      "expects": [
+        84
+      ],
+      "anchor": "tf.config.experimental.set_memory_growth(gpu, True)"
+    },
+    {
+      "id": "LU17",
+      "query": "how can i get the detailed results from the ensemble of models",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "deployment/app/services/inference.py",
+      "expects": [
+        35
+      ],
+      "anchor": "return_all: Include per-model binary ensemble details when true."
+    }
+  ]
+}
