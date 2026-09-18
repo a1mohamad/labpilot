@@ -1,7 +1,8 @@
 # SLICE 8 v3 — RESUME. Read this, then `FINDINGS.md`.
 
-**A fresh session needs this file plus `docs/slice8v3/FINDINGS.md`.**
-`MISSION.md` is the original brief and is now PARTLY SUPERSEDED — see §6.
+**READ THIS FILE ONLY.** It is self-sufficient. `FINDINGS.md` has the
+long-form evidence (H0–H11) and is optional detail; `MISSION.md` is the
+original brief and is now PARTLY SUPERSEDED by §1 and §6.
 
 Branch **`slice8/measure-final`**, off `slice8/measure-v2`. Suite **752 passed,
 4 skipped**, ruff clean. **Never commit to `main`.**
@@ -108,6 +109,40 @@ preferred the weaker model. 001 now sits above 2. Measured: 001 beats 2 on
 **3 of the 4** corpora where both ran. The guarding test
 `test_the_measured_google_embedder_outranks_the_one_google_prefers` was
 rewritten and **mutation-verified** (reverting the tuple fires it alone).
+
+**`labpilot/embed/base.py` + `contracts.py` — THE EMBEDDER GATE WAS BLIND
+TO GOOGLE.** `embedding_minutes()` returns `inf` for a model that cannot finish
+today and `_pick_embedder` skips those. That worked for BGE (a token budget) and
+NOT for Google, whose limit is neither tokens nor calls: **one TEXT is one
+request**, so a 96-text batch spends 96 of the day's 1,000.
+
+```
+BEFORE  20,000 chunks -> Gemini reports 163 min   (truth: 20 DAYS)
+AFTER    2,000 chunks -> CANNOT TODAY, drops out of the walk
+         1,000 chunks -> still runs
+```
+
+Hit twice on 2026-09-18 while running into it: a `gemini-embedding-2` warm died
+with a 429 on its SECOND corpus, and `001` exhausted after 943 chunks. This was
+v2's production defect #2. `Rate` gains `daily_text_budget`; both Google models
+set it to 1,000.
+
+**Cohere checked and deliberately NOT given one** — it bills per CALL at up to
+96 texts, so its 1,000 a month is a caller's budget question, not a per-ingest
+refusal. Its `tokens_per_minute` was corrected 640,000 → 100,000 (the measured
+trial cap; 640,000 was a burst that never met a limit).
+
+**`MIGRATION` REORDERED on measured strength**, 2026-09-18:
+
+```
+BEFORE  codestral, BGE, mistral, google-001, cohere, google-2
+AFTER   codestral, BGE, google-001, cohere, google-2, mistral
+```
+
+mistral-embed sat THIRD and loses to every embedder it has been compared with —
+1 win of 7 vs google-001, 3 of 13 vs cohere, 4 of 11 vs google-2. It stays in
+the list only because it is the only model that can ingest 10,000 chunks
+quickly; a walk must not dead-end. Both changes mutation-verified.
 
 Also added: `scripts/zoo.py` (Python share + `--difficulty`),
 `scripts/query_difficulty.py` (per-fixture query difficulty),
@@ -229,7 +264,7 @@ a slice 8 decision.
 | C | chunk **overlap** `o` and **header** on Python | re-embed per variant | v2 has non-Python only |
 | D | chunk size on **pytest** | re-embed | crashed at 5,760/9,839 on a Mistral 503 |
 | E | **reranker model** comparison on new Python | flash-lite + gemma + voyage | v2 ranked 9 configs on the old zoo. NOTE: `tier_reach` now shows Gemma serves 10/10 Python corpora at w50 (v2 said 4 of 13), so chain 3's BUDGET reasoning was wrong even if its order is right |
-| F | BGE embedder | never run **anywhere** | |
+| F | **BGE embedder** | never run **ANYWHERE**, in v2 or v3 | **SEE BELOW — this is the biggest hole** |
 | G | all-suffix corpus check | re-embed 1 corpus | see below |
 
 ### B is the most important, and the shipped value is probably wrong
@@ -243,6 +278,36 @@ v2's top-N evidence (`answers_flashlite.json`) is **13 corpora, 3 Python**,
 none above 1,160 chunks — and v2 flagged its own run as measuring the
 **degraded** path only (`chosen()` uses `dense_orders`; no reranker touches
 it), which is why it can speak to `VECTOR_TOP_N` and not `RERANK_TOP_N`.
+
+### F — BGE SITS AT POSITION 2 AND HAS NEVER BEEN SCORED
+
+**`@cf/baai/bge-base-en-v1.5` is second in `MIGRATION` and no corpus has ever
+been embedded with it — not in v2, not in v3.** It is there on a PLATFORM
+argument: codestral and mistral-embed share one API key, so a Mistral outage
+would otherwise take the top two. That is a robustness argument sitting in a
+tuple whose own comment calls it "the strength order".
+
+**So if codestral fails, the fallback is an unmeasured model.**
+
+Two things make it awkward rather than simply undone:
+- its `max_input_tokens` is **512**, and its real tokenizer runs 1.12–1.45x our
+  `chars/3` estimate, so some chunks may be silently truncated. v3 measured the
+  ratio but never the recall.
+- `daily_token_budget = 684,000` (10,000 Cloudflare neurons), so it reports
+  CANNOT TODAY above ~2,900 chunks — it can only be measured on the small and
+  mid corpora anyway.
+
+**Cost to close it: cheap.** Warm + score the small/mid Python corpora
+(`smsspam` 89, `disaster` 108, `titanic` 118, `lung` 628, and `click` 1585 if
+the budget allows) — neurons only, no generation quota:
+
+```bash
+bash <scratch>/warm_model.sh <log> "@cf/baai/bge-base-en-v1.5" smsspam disaster titanic lung
+PYTHONPATH=. .venv/Scripts/python.exe -u scripts/score_hybrid.py smsspam bge
+```
+
+If it scores badly, position 2 is wrong and the platform argument needs a
+different model behind it.
 
 ### G — the one place the corpora do NOT match real usage
 
