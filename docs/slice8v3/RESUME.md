@@ -265,20 +265,36 @@ a slice 8 decision.
 | D | chunk size on **pytest** | re-embed | crashed at 5,760/9,839 on a Mistral 503 |
 | E | **reranker model** comparison on new Python | flash-lite + gemma + voyage | v2 ranked 9 configs on the old zoo. NOTE: `tier_reach` now shows Gemma serves 10/10 Python corpora at w50 (v2 said 4 of 13), so chain 3's BUDGET reasoning was wrong even if its order is right |
 | F | ~~BGE embedder~~ | **DONE** — loses 4 of 4, mean −0.149. Position 2 in MIGRATION is now known to be wrong | |
-| H | **TOP-N, take two** | flash-lite, running | take one was VOID — see §5 |
+| H | ~~TOP-N, take two~~ | **DONE** — 18 corpora, 8 Python, ONE model. `VECTOR_TOP_N = 25` confirmed, N=10 eliminated, `RERANK_TOP_N` untouched | |
 | G | all-suffix corpus check | re-embed 1 corpus | see below |
 
-### B is the most important, and the shipped value is probably wrong
+### B — HALF DONE, and v2's advice on it was wrong
 
 ```
-VECTOR_TOP_N = 25   shipped   <- v2 said "should be 10, not 25" and NEVER SHIPPED IT
-RERANK_TOP_N = 10   shipped   <- never measured, by anyone
+VECTOR_TOP_N = 25   CONFIRMED on 18 corpora   <- v2's unshipped "should be 10" is OVERTURNED
+RERANK_TOP_N = 10   STILL UNMEASURED, by anyone
 ```
 
-v2's top-N evidence (`answers_flashlite.json`) is **13 corpora, 3 Python**,
-none above 1,160 chunks — and v2 flagged its own run as measuring the
-**degraded** path only (`chosen()` uses `dense_orders`; no reranker touches
-it), which is why it can speak to `VECTOR_TOP_N` and not `RERANK_TOP_N`.
+Only `VECTOR_TOP_N` is settled, because the experiment picks its chunks by
+**vector search alone** — `chosen()` reads `dense_orders` and no reranker
+touches it. See FINDINGS **H16**.
+
+**N=10 is eliminated outright**: 0.235 against N=20's 0.393 and N=30's 0.453 on
+the clean 15, and it wins on **zero** corpora of 18.
+
+**And the two halves of the zoo disagree, which is the whole point of v3.** On
+v2's 13 nothing turns over — coverage AND precision keep rising to N=100
+(precision 0.482 -> 0.643). On the 5 new Python corpora precision falls
+monotonically, 0.591 -> 0.526 -> 0.487, and `correct/asked` turns over at N=20.
+**Dilution is real exactly where the product lives**, and absent on the
+population v2 measured.
+
+> **Three cells of v2's own data were DAMAGED and it took looking to find
+> them**: `answered > 0` with `cited == 0`, so `correct` was forced to 0 —
+> `papers` N=30, `zod` N=30, `geo` N=10. Two of three on N=30, the same
+> unevenly-spread damage that voided take one. Dropping those corpora moves
+> N=30 from level with N=20 to clearly ahead. `scripts/combine_topn.py` flags
+> them on every run.
 
 ### F — BGE SITS AT POSITION 2 AND HAS NEVER BEEN SCORED
 
@@ -385,13 +401,16 @@ adds 4 Python corpora.
 | **Python buffers stdout to a file** | use `-u`, or a background log shows nothing for ten minutes |
 | **a listwise rerank cache is keyed by CANDIDATE SET** (G14) | a new window or `--fusion` is a **fresh call at full price**, never a cache hit |
 | **3 jobs over the VPN** | SSL EOF. Two actively calling is the limit; it killed a sweep today |
+| **`score_answers.py` OVERWRITES `answers_<model>.json`** | it saves once, at the END, over the whole file. Running 5 corpora would have destroyed v2's 13-corpus run. Back it up before every invocation |
+| **`answered > 0` with `cited == 0`** | a GRADING failure wearing a result's clothes: `correct` is 0 by construction. Three cells of v2's top-N data, two of them on one N |
 
 ---
 
 ## 10. THE DELIVERABLE
 
-**`docs/slice8v3/DECISIONS.md` is not written yet, and it is the point of the
-run.** One row per decision, restating **every** decision — not only the ones
+**`docs/slice8v3/DECISIONS.md` IS WRITTEN — 21 rows, every decision re-taken,
+not only the ones that moved.** Read it first; this file is the working log
+behind it. One row per decision, restating **every** decision — not only the ones
 that moved — with columns:
 
 ```
