@@ -1267,7 +1267,7 @@ INGEST, once per artifact
   A_paper.md    18 chunks     5.0s
   B_train.py    82 chunks    21.5s        ~26s for 100 chunks
 
-STUFF  (paper + one file)          SEARCH (paper + a 729-chunk Go repo)
+SEARCH (paper + one file)          SEARCH (paper + a 729-chunk Go repo)
   embed question    1.30s  0.4%      embed question    3.80s   7.5%
   search            0.99s  0.3%      search            1.58s   3.1%
   rerank            7.98s  2.5%      rerank            8.52s  16.9%
@@ -1282,12 +1282,12 @@ chain never reached the Google tiers that were spent that day.
 ### RETRIEVAL IS FREE, and that reframes this entire slice
 
 ```
-embed + search + rerank   =  10.3s of 50.5   on the search path
-                          =  10.3s of 318.8  on the stuffed path
+embed + search + rerank   =  13.9s of 50.5    the Go repo
+                          =  10.3s of 318.8   the Python pair
 ```
 
 **Everything slice 8 measured - fusion, the window, both top-N constants, the
-embedder, the chunker - lives inside those ten seconds.** They decide what the
+embedder, the chunker - lives inside those ten to fourteen seconds.** They decide what the
 model SEES. They do not measure on the clock at all.
 
 > So the whole run's decisions are QUALITY decisions, and any of them argued on
@@ -1296,25 +1296,72 @@ model SEES. They do not measure on the clock at all.
 > `RERANK_TOP_N` partly for speed. Both conclusions survive on other grounds -
 > reach and token budget - but the speed argument is worth nothing.
 
-### THE CHEAP PATH WAS SIX TIMES SLOWER THAN THE EXPENSIVE ONE
+### THE "STUFF" ROW NEVER STUFFED, and the headline built on it is RETRACTED
 
-`STUFF` exists because a corpus that FITS needs no embedding, no search and no
-reranking. It is the simple case. It took **318.8s against 50.5s**.
+A first version of this finding said *"the cheap path was six times slower than
+the expensive one"*. **Both rows had SEARCHED.** The benchmark's label was
+wrong, the numbers were published under it, and the user asking *"why did stuff
+get too long?"* is what exposed it.
 
-Same model, same question, same machine. A 20-chunk prompt of paper-plus-code
-made GLM-5.3 think for five minutes; a 20-chunk prompt of Go code took 37
-seconds.
+`A_paper.md` + `B_train.py` needs **28,246 tokens against a `PROMPT_BUDGET` of
+26,000**, so `_fits()` refuses and `ask()` searches:
 
-**So prompt SIZE does not predict generation time. Prompt CONTENT does.** The
-two paths differ by what is in them, not by how much.
+```
+A_paper.md   18 chunks   12,895 chars   ~ 4,353 tokens
+B_train.py   82 chunks   56,911 chars   ~19,217 tokens
+evidence 23,570 + fixed 676 + outline 4,000 = 28,246   >  26,000
+```
+
+**And the tell was in the output the whole time.** Both rows printed
+`chunks sent 20 of 20` and a **non-zero `search` span** - a stuffed answer sends
+every chunk and never calls `search` at all. I read the label instead of the
+numbers underneath it.
+
+`bench_end_to_end.py` now prints `PATH TAKEN` from the evidence rather than from
+the label, so a row can never again claim a path it did not take.
+
+### WHAT THE TWO ROWS ACTUALLY COMPARE
+
+Same path, same 20 chunks, same question, same model, same machine:
+
+```
+paper + one Python file     generate   308.53s
+paper + a 729-chunk Go repo generate    36.64s
+```
+
+**The prompt was the same SIZE. Only its CONTENT differed** - and generation
+took eight times longer.
+
+The plausible reading, and it is a reading rather than a measurement: the first
+pair is a real comparison, a paper and the code that implements it, so the model
+has genuine work to do. The second pairs an ML paper with a computational
+geometry library, where there is no correspondence to explain - and this project
+already has a name for that case, the **correspondence gate**, whose whole
+purpose is to stop early when two artifacts do not match.
+
+So the 36.64s may be fast because the answer was shallow. **A fast answer to a
+mismatched pair is not evidence that the pipeline is fast.**
+
+> **Generation time is driven by how much thinking the CONTENT demands, not by
+> how many chunks are in the prompt.** Every latency estimate in this project
+> scales by prompt size, and prompt size is not what varied here.
+
+### AND THE STUFF PATH IS STILL UNMEASURED
+
+It is the one shape the product has for a small artifact - no embed, no search,
+no rerank - and no run has ever exercised it. Measuring it needs a pair that
+genuinely fits under 26,000 tokens; the obvious fixture does not.
 
 ### `WARN_MINUTES = 2.0` IS WRONG IN BOTH DIRECTIONS
 
 ```
-a SEARCH answer   50.5s    well under the warning
-a STUFF answer   318.8s    well over - and nothing warns, because the warning
-                           is on the EMBED estimate and stuffing does not embed
+one searched answer    50.5s   well under the warning
+another, same path    318.8s   well over, and nothing warns
 ```
+
+Both SEARCHED, so the warning had its embed estimate to work from in both
+cases - and it still said nothing useful, because what varied was generation
+and the warning does not model generation at all.
 
 `Ingested.minutes` estimates **embedding only**, and the one path that has no
 embedding is the one that took five minutes. The user is warned about the stage

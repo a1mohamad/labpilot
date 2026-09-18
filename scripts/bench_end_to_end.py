@@ -77,8 +77,19 @@ def main() -> int:
         b_id, b_secs, b_chunks = ingest(conn, SAMPLES / "B_train.py", "B")
         print(f"  B_train.py   {b_chunks:>5} chunks  {b_secs:>7.1f}s")
 
+        # THE FIRST LABEL WAS A LIE, and the numbers were published under it.
+        #
+        # `A_paper.md` + `B_train.py` needs 28,246 tokens against a
+        # PROMPT_BUDGET of 26,000, so `_fits()` refuses and ask() SEARCHES. The
+        # stuff path was never exercised, and the run's headline - "the cheap
+        # path was six times slower than the expensive one" - was comparing two
+        # SEARCH runs against each other.
+        #
+        # The tell was in the output the whole time: both rows printed
+        # "chunks sent 20 of 20" and a non-zero `search` span. A stuffed answer
+        # sends every chunk and never calls search.
         for label, pair in (
-            ("STUFF  (paper + one file)", (a_id, b_id)),
+            ("SEARCH (paper + one file)", (a_id, b_id)),
             ("SEARCH (paper + 729-chunk Go repo)", (a_id, "B-bench-geo")),
         ):
             timer = Timed()
@@ -102,8 +113,13 @@ def main() -> int:
                     setattr(services, name, fn)
 
             stages = dict(timer.spans)
+            # WHICH PATH ACTUALLY RAN, printed rather than assumed. `search` is
+            # skipped entirely when both artifacts fit, so a zero here is the
+            # only honest evidence that a "stuff" row really stuffed.
+            path = "STUFFED" if stages.get("search", 0.0) == 0.0 else "SEARCHED"
             generate = total - sum(stages.values())
             print(f"\n{label}")
+            print(f"  PATH TAKEN      {path}")
             print(f"  served by       {out.result.model} (tier {out.result.tier})")
             print(f"  chunks sent     {len(out.selected)} of {len(out.chunks)}")
             for name in ("_embed_question", "search", "_best", "_prompt"):
