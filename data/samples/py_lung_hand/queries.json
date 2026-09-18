@@ -1,0 +1,241 @@
+{
+  "corpus": {
+    "key": "lunghand",
+    "env": "LABPILOT_LUNG_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/tests/**",
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/.ipynb_checkpoints/**",
+      "**/.pytest_cache/**",
+      "**/.pytest-tmp/**",
+      "**/migrations/**",
+      "**/mlflow/artifacts/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "lung disease detection, MLOps + Kafka + FastAPI",
+    "licence": "personal material, never committed",
+    "repo": "the user's own application, local",
+    "commit": "n/a",
+    "chunks_at_this_commit": 628,
+    "drafted_by": "HAND-WRITTEN, no model",
+    "paired_with": "lung",
+    "note": "The SAME corpus as `lung`, file for file. It exists only so that hand-written queries can be compared with LLM-drafted ones while everything else is held still. Its chunk vectors are a copy of lung's, which is exact because the file set is identical. NEVER compare it with a different corpus: its difficulty is not calibrated to the drafted zoo.",
+    "include_note": "Identical to the `lung` fixture. Do not change one without the other or the pairing breaks."
+  },
+  "fields": {
+    "id": "stable id",
+    "query": "the question, written BEFORE its answer was located",
+    "file": "the file holding the answer",
+    "expects": "line numbers that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named or paraphrase"
+  },
+  "queries": [
+    {
+      "id": "LH01",
+      "query": "what files must be present in the model directory for it to load",
+      "file": "deployment/app/predictor/diseases.py",
+      "expects": [
+        26
+      ],
+      "asks": "constant",
+      "wording": "named"
+    },
+    {
+      "id": "LH02",
+      "query": "can a prediction be requested by giving a link instead of a file",
+      "file": "deployment/app/preprocessing/image.py",
+      "expects": [
+        170
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "LH03",
+      "query": "what happens when the image source cannot be opened",
+      "file": "deployment/app/preprocessing/image.py",
+      "expects": [
+        117
+      ],
+      "asks": "error",
+      "wording": "named"
+    },
+    {
+      "id": "LH04",
+      "query": "how is an uploaded chest image turned into something the model can read",
+      "file": "deployment/app/preprocessing/image.py",
+      "expects": [
+        15
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "LH05",
+      "query": "how are the preprocessing steps assembled from configuration",
+      "file": "deployment/app/preprocessing/pipeline.py",
+      "expects": [
+        18
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "LH06",
+      "query": "what is the default random seed used for reproducibility",
+      "file": "research/multiclass-diseases/utils.py",
+      "expects": [
+        24
+      ],
+      "asks": "constant",
+      "wording": "named"
+    },
+    {
+      "id": "LH07",
+      "query": "what scaling is applied to pixel values before the network sees them",
+      "file": "deployment/app/preprocessing/model_preprocessing.py",
+      "expects": [
+        10
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "LH08",
+      "query": "what happens when a record falls outside the batch window",
+      "file": "deployment/mlops/core/ingestion/manifest.py",
+      "expects": [
+        144
+      ],
+      "asks": "error",
+      "wording": "named"
+    },
+    {
+      "id": "LH09",
+      "query": "how is the lung region cut out of the full image before classifying",
+      "file": "deployment/app/preprocessing/roi.py",
+      "expects": [
+        9
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "LH10",
+      "query": "where is the classifier that decides which disease is present",
+      "file": "deployment/app/predictor/diseases.py",
+      "expects": [
+        17
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "LH11",
+      "query": "how is a numeric class index turned back into a disease name",
+      "file": "deployment/app/predictor/diseases.py",
+      "expects": [
+        70
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "LH12",
+      "query": "what does the prediction return for each disease",
+      "file": "deployment/app/predictor/diseases.py",
+      "expects": [
+        110
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "LH13",
+      "query": "where are the result images written after a prediction",
+      "file": "deployment/app/services/outputs.py",
+      "expects": [
+        16
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "LH14",
+      "query": "how is a single channel mask turned into three channels",
+      "file": "deployment/app/preprocessing/mask.py",
+      "expects": [
+        7
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "LH15",
+      "query": "how is the mask applied to the image",
+      "file": "deployment/app/preprocessing/transforms.py",
+      "expects": [
+        39
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "LH16",
+      "query": "what shape does a logged prediction record take",
+      "file": "deployment/app/schemas/logs.py",
+      "expects": [
+        60
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "LH17",
+      "query": "how does the service choose between an uploaded file and a link",
+      "file": "deployment/app/services/input.py",
+      "expects": [
+        14
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "LH18",
+      "query": "how are the produced images uploaded to remote storage",
+      "file": "deployment/app/services/outputs.py",
+      "expects": [
+        126
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "LH19",
+      "query": "what is returned when the service is asked whether it is healthy",
+      "file": "deployment/app/schemas/health.py",
+      "expects": [
+        9
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "LH20",
+      "query": "how is the model actually run on a prepared image",
+      "file": "deployment/app/services/inference.py",
+      "expects": [
+        13
+      ],
+      "asks": "api",
+      "wording": "named"
+    }
+  ]
+}

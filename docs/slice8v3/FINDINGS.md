@@ -90,7 +90,14 @@ chunk's semantics by construction. It never filters on whether retrieval
 succeeds (that rule is enforced), but the *generation* process still favours
 findable questions. `geo` missing 6 of 45 shows the bias is not total, and all
 20 fixtures were built the same way so the comparison between them is fair —
-but an absolute `r@50` of 1.000 should not be read as "retrieval never misses".
+but an absolute `r@50` of 1.000 should not be read as "retrieval never
+misses".
+
+**H8 later MEASURED this bias and found it smaller than feared.** The zoo's
+query-answer word overlap is 0.460 on average, and at matched overlap a
+hand-written fixture scores the same as a drafted one. So H1 stands as a
+statement about questions asked at that overlap; what is unknown is the
+overlap real users ask at.
 
 ---
 
@@ -377,109 +384,98 @@ for a per-tier rule to arbitrate.
 
 ---
 
-## H8 — THE DRAFTED FIXTURES ARE FAR TOO EASY, and it moved a DESIGN DECISION, not just a number
+## H8 — QUERY DIFFICULTY IS MEASURABLE, and it explains the drafted-vs-hand gap ENTIRELY
 
-**This is the most important finding of the run, and it kills H1 and the causal
-claim in H6.** It exists because the user refused H1 and asked whether the
-queries were simply too easy.
+**This finding was written once, wrongly, and then overturned by its own
+control.** Both the error and the correction came from the user pushing: first
+*"maybe your queries are too easy"*, then *"maybe now you made them too
+strict"*. Both were right.
 
-### The experiment
+### The instrument this was missing
 
-`pydantic` keeps its 20 Gemma-drafted queries. A second fixture,
-`pydantichand`, was added over the **byte-identical corpus** — verified by
-hashing all 9,846 chunks' `embed_text`, so the vector cache is a copy rather
-than a re-embed. Same chunks, same embedder, same reranker, same window.
-**The only variable is who wrote the questions.**
+`scripts/query_difficulty.py` measures, per fixture, the share of a query's
+content words that also appear in the chunk answering it. Identifiers are split
+first (`GenerateJsonSchema` → generate / json / schema), because without that a
+question about a json schema scored 0.00 against the class that builds one.
 
-The 20 hand-written questions were written **question-first**: each was written
-from what a pydantic user would want to know, then its answer was located with
-`grep`. No model was involved. The drafter works the opposite way — it is shown
-a chunk and writes a question *about that chunk*, so the question inherits the
-chunk's wording and is findable by construction.
+**The drafted zoo, measured:**
 
-### The result
+```
+mean overlap 0.460   sd 0.105   range 0.244 (jq) to 0.672 (docs)
+```
 
-| | r@1 | r@10 | r@50 | MRR |
-|---|---|---|---|---|
-| Gemma-drafted | 0.400 | 0.800 | **1.000** (20/20) | **0.530** |
-| **hand-written** | **0.100** | **0.400** | **0.450** (9/20) | **0.189** |
+The zoo's difficulty was never a known quantity before. It is now.
 
-**MRR is 2.8× lower and `r@50` falls from 20 of 20 to 9 of 20.**
+### The experiment, and the control that decided it
 
-A first attempt scored even lower — MRR 0.101, `r@50` 0.750 — because it
-over-paraphrased, writing *"the portable description of the data"* rather than
-*"json schema"*. That was **my error**: the project's rule bans a shared
-**identifier**, not a shared plain word. The numbers above are the corrected,
-fair version using ordinary domain vocabulary, and `leaked()` flags none of
-them. Both phrasings score far below the drafted set, so the conclusion does
-not rest on either wording.
+Three hand-written fixtures were built over **byte-identical corpora** —
+verified by hashing every chunk's `embed_text`, so the vectors are copied, not
+re-embedded. Each question was written **question-first** from what a user of
+that project would want to know, then its answer located with `grep`. No model
+was involved.
 
-### H1 IS DEAD
-
-H1 claimed *"size does not create `r@50` headroom"*, resting on pydantic
-missing 0 of 20 at a 0.5% window. With realistic questions it misses **11 of
-20**. Retrieval at 10,000 chunks is much worse than the drafted fixtures
-showed, and the mission's original premise for building P6/P7 was right after
-all — it simply could not be seen through a drafted fixture.
-
-### H6's CAUSAL CLAIM IS OVERTURNED
-
-H6 found reranking's benefit collapsing as corpora grow, and read that as a
-property of size. On the same 9,846-chunk corpus, changing only the questions:
-
-| queries | vector MRR | + rerank | delta |
+| pair | overlap | MRR | |
 |---|---|---|---|
-| Gemma-drafted | 0.530 | 0.532 | **+0.002 (+0.0 queries)** |
-| **hand-written** | 0.189 | **0.320** | **+0.131 (+2.6 queries, +69%)** |
+| pydantic drafted | 0.460 | 0.530 | |
+| pydantic **hand** | **0.309** | **0.189** | overlap −0.151 → MRR −0.341 |
+| pytest drafted | 0.422 | 0.446 | |
+| pytest **hand** | **0.350** | **0.129** | overlap −0.072 → MRR −0.317 |
+| **lung drafted** | **0.490** | **0.587** | |
+| **lung hand** | **0.480** | **0.610** | **overlap −0.010 → MRR +0.023** |
 
-**Reranking does nothing on easy queries and helps substantially on realistic
-ones — on the identical corpus.** The mechanism is obvious once seen: if vector
-search already put the answer at rank 1, there is nothing to reorder. The
-drafted queries were easy enough that the answer was usually already at the
-top, so the reranker had no work to do.
+**`lunghand` is the control, and it is the whole finding.** Its overlap happened
+to land within 0.010 of its drafted twin — difficulty matched — and at matched
+difficulty the hand-written queries score **the same or slightly better**.
 
-So *"reranking's benefit collapses with corpus size"* is better stated as
-**"reranking's benefit collapses when the query is easy"**, and large drafted
-corpora happened to produce easy queries. The v2 and v3 conclusion that
-**reranking ships** is unaffected and if anything strengthened: it helps most
-exactly where it is most needed.
+> **So the drafted-vs-hand gap is DIFFICULTY, not provenance.** Who wrote the
+> question adds nothing once vocabulary overlap is held still. My first two
+> hand-written sets simply used fewer of the answer's words.
 
-### H7 IS WEAKENED, NOT OVERTURNED — and the denominator saved me twice
+### What this RETRACTS
 
-On the hand-written fixture the two windows give +2.6 queries (w50) against
-+1.7 (w30), which reads like a reversal of H7. It is not:
+An earlier version of this section claimed *"H1 is dead"*, *"H6's causal claim
+is overturned"* and *"H7 is weakened"*, all on the pydantic hand fixture before
+a difficulty control existed. **All three retractions are withdrawn.** H1, H6
+and H7 stand as measured, as statements about the drafted zoo at overlap ≈ 0.46.
 
-- the gap is **0.9 queries on a 20-query fixture** — below what it can resolve,
-  and below the 1.5-query bar used everywhere else in this document;
-- `r@30` and `r@50` are **both 0.450**, so a 30-window loses nothing in reach
-  here. My first explanation — *"w30 cannot reach answers ranked 31–50"* — was
-  wrong, and checking the recall curve is what caught it.
+### What survives, and it is more useful than the claim it replaces
 
-**So on realistic queries the two windows are indistinguishable.** H7's w30
-advantage stands only on drafted fixtures, which this finding shows are the
-wrong instrument for it. `RERANK_WINDOW = 30` should therefore be recorded as
-**not settled**, not as a decision change.
+Across all 22 fixtures:
 
-### What this means for every other number in v2 and v3
+$$
+r\big(\text{query–answer word overlap},\ \text{MRR}\big) = +0.492,
+\qquad
+r\big(\text{overlap},\ r@50\big) = +0.420
+$$
 
-> **A fixture that is uniformly too easy does not merely inflate the absolute
-> numbers. It can flip the DIRECTION of a design decision** — here, "reranking
-> does nothing at production scale" and "window 30 beats window 50". Both are
-> artifacts.
+Moderate, not deterministic — `jq` has the lowest overlap in the zoo (0.244) and
+a middling MRR of 0.607, so corpus size and domain matter too. Within a **pair**
+on one corpus, though, overlap tracked MRR almost exactly, which is why the
+control worked.
 
-Relative comparisons where all methods see the identical queries — H3's fusion
-ranking, H4's bm25-vs-vector split — are the least affected, because an easy
-query is easy for every ranker. Anything that depends on *how much room there
-is to improve* is affected, and that includes every rerank conclusion in v2.
+**The open question this leaves, which nothing here settles:** real users ask
+at *some* overlap, and we do not know what it is. The drafted zoo sits at 0.460
+and that is now a **documented assumption** rather than a hidden one. If real
+questions turn out to sit near 0.30, every absolute number in v2 and v3 is
+optimistic — and the pydantic and pytest hand fixtures show what that world
+looks like (MRR 0.189 and 0.129).
 
-### Limits, stated plainly
+### Rules this produced, and they bind the rest of the run
 
-- **n = 1.** One corpus has a realistic fixture. The other 19 do not.
-- 20 hand-written queries, so one query is 0.050 MRR.
-- They are mine, and I am not a pydantic user; a real user's questions might
-  differ again in either direction.
-- **17 of the zoo's 20 fixtures are Gemma-drafted**, so this caveat applies to
-  nearly the whole zoo, including all 7 corpora added in v3.
+1. **A hand fixture is compared ONLY with its own drafted twin on the same
+   corpus.** Never across corpora — its difficulty is not calibrated to the zoo,
+   and comparing them would confuse provenance with language.
+2. **Cross-corpus work uses the 20 uniformly-drafted fixtures**, which is what
+   makes H2, H3, H4, H6 and H7 legitimate.
+3. **Report a fixture's overlap beside its score**, the same way this project
+   already reports the denominator beside a ratio.
+
+### Limits
+
+- Three pairs, one of them difficulty-matched. The control is **n = 1**.
+- 20 queries each, so one query is 0.050 MRR.
+- The hand questions are mine. A real pytest or pydantic user would write
+  different ones, at an unknown overlap.
 
 ---
 

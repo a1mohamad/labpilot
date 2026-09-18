@@ -1,0 +1,234 @@
+{
+  "corpus": {
+    "key": "pytesthand",
+    "env": "LABPILOT_PYTEST_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/.git/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "test framework",
+    "licence": "MIT",
+    "repo": "https://github.com/pytest-dev/pytest",
+    "commit": "6a0de9b",
+    "chunks_at_this_commit": 6714,
+    "drafted_by": "HAND-WRITTEN, no model",
+    "paired_with": "pytest",
+    "note": "The SAME corpus as `pytest`, file for file. It exists only so that hand-written queries can be compared with LLM-drafted ones while everything else is held still. Its chunk vectors are a copy of pytest's, which is exact because the file set is identical. NEVER compare it with a different corpus: its difficulty is not calibrated to the drafted zoo.",
+    "include_note": "Identical to the `pytest` fixture. Do not change one without the other or the pairing breaks."
+  },
+  "fields": {
+    "id": "stable id",
+    "query": "the question, written BEFORE its answer was located",
+    "file": "the file holding the answer",
+    "expects": "line numbers that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named or paraphrase"
+  },
+  "queries": [
+    {
+      "id": "TH01",
+      "query": "what exit codes can a test run finish with",
+      "file": "src/_pytest/config/__init__.py",
+      "expects": [
+        106
+      ],
+      "asks": "constant",
+      "wording": "named"
+    },
+    {
+      "id": "TH02",
+      "query": "how does pytest make a plain assert statement show the values that made it fail",
+      "file": "src/_pytest/assertion/rewrite.py",
+      "expects": [
+        636
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "TH03",
+      "query": "what happens when a fixture is requested that does not exist",
+      "file": "src/_pytest/fixtures.py",
+      "expects": [
+        561
+      ],
+      "asks": "error",
+      "wording": "named"
+    },
+    {
+      "id": "TH04",
+      "query": "how do i declare a reusable piece of setup that tests can request",
+      "file": "src/_pytest/fixtures.py",
+      "expects": [
+        1506
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "TH05",
+      "query": "what does a fixture's scope control",
+      "file": "src/_pytest/fixtures.py",
+      "expects": [
+        561
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "TH06",
+      "query": "which setting controls how much of the assertion output is shown",
+      "file": "src/_pytest/config/__init__.py",
+      "expects": [
+        106
+      ],
+      "asks": "constant",
+      "wording": "named"
+    },
+    {
+      "id": "TH07",
+      "query": "how do i skip a test when an optional dependency is not installed",
+      "file": "src/_pytest/outcomes.py",
+      "expects": [
+        198
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "TH08",
+      "query": "what is raised to stop a test and mark it as not run",
+      "file": "src/_pytest/outcomes.py",
+      "expects": [
+        198
+      ],
+      "asks": "error",
+      "wording": "named"
+    },
+    {
+      "id": "TH09",
+      "query": "how do i run the same test with several different inputs",
+      "file": "src/_pytest/python.py",
+      "expects": [
+        1307
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "TH10",
+      "query": "where is the temporary directory factory that hands out those paths",
+      "file": "src/_pytest/tmpdir.py",
+      "expects": [
+        45
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "TH11",
+      "query": "how do i compare floating point numbers without exact equality",
+      "file": "src/_pytest/approx.py",
+      "expects": [
+        774
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "TH12",
+      "query": "how do i assert that a block of code raises an exception",
+      "file": "src/_pytest/raises.py",
+      "expects": [
+        74
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "TH13",
+      "query": "where is the base class that every collected item inherits from",
+      "file": "src/_pytest/nodes.py",
+      "expects": [
+        121
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "TH14",
+      "query": "how are tests reordered so previously failing ones run first",
+      "file": "src/_pytest/cacheprovider.py",
+      "expects": [
+        379
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "TH15",
+      "query": "how do i temporarily change an attribute or environment variable and have it restored",
+      "file": "src/_pytest/monkeypatch.py",
+      "expects": [
+        128
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "TH16",
+      "query": "what holds the result and timing of a single test phase",
+      "file": "src/_pytest/runner.py",
+      "expects": [
+        293
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "TH17",
+      "query": "how do i get a temporary directory for a single test",
+      "file": "src/_pytest/tmpdir.py",
+      "expects": [
+        286
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "TH18",
+      "query": "how do i capture text written to stdout during a test",
+      "file": "src/_pytest/capture.py",
+      "expects": [
+        1013
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "TH19",
+      "query": "how do i check that a warning was issued",
+      "file": "src/_pytest/recwarn.py",
+      "expects": [
+        93
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "TH20",
+      "query": "how does a plugin add its own command line options",
+      "file": "src/_pytest/assertion/__init__.py",
+      "expects": [
+        29
+      ],
+      "asks": "api",
+      "wording": "named"
+    }
+  ]
+}
