@@ -24,6 +24,7 @@ from labpilot.llm import (
     GEMMA_4_31B,
     GeminiProvider,
 )
+from labpilot.llm.registry import GOOGLE_KEYS
 from labpilot.rerank import (
     LLM_RERANK_ORDER,
     RERANK_CHAIN,
@@ -47,6 +48,10 @@ from labpilot.rerank import (
 #                    IDENTICAL 109-token answer.
 #   a JSON schema    gemma went 45.5s -> 14.4s, and the reply stopped being
 #                    prose wrapped around an answer.
+# The SECOND Google account. Google bills per project per model, so this is
+# a whole extra allowance of every model, not a spare key.
+SECOND_KEY = GOOGLE_KEYS[1]
+
 RANKING_CONFIG = {
     "thinking": None,
     "generation_config": {
@@ -83,12 +88,41 @@ def _listwise(provider: GeminiProvider) -> LLMReranker:
     )
 
 
+def _both_accounts(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
+    """The tier, then THE SAME MODEL ON THE SECOND ACCOUNT.
+
+    ADDED 2026-09-19, and it was a real hole. Google bills per PROJECT per
+    MODEL, so a second account is a second full allowance of every model - the
+    generator chain has used both keys since 2026-09-11 and this one never did.
+    All four LLM rerank tiers sat on GOOGLE_API_KEY alone, so the rerank path
+    had HALF the budget it could have.
+
+    It was found by running into it: measuring RERANK_TOP_N, the chain refused
+    with `GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit: 500` while
+    the identical model answered 200 on the other key.
+
+    ADJACENT on purpose, exactly as in the generator chain. A spent pool is
+    skipped for free, so the strongest thing still available after flash-lite
+    runs out is flash-lite on the other account - not a weaker model.
+    """
+    twin = dataclasses.replace(
+        provider,
+        name=f"{provider.name} (key 2)",
+        api_key_env=SECOND_KEY,
+        quota_pool=f"{SECOND_KEY}:{provider.model}",
+    )
+    return (_listwise(provider), _listwise(twin))
+
+
 # The four LLM tiers BEAT every purpose-built cross-encoder measured, so they
 # lead. RERANK_CHAIN follows, and its last tier (bge-reranker-base, 0.520) is
 # below vector alone at 0.608 - kept only because one saturated corpus is thin
 # evidence and its budget cannot run out. Slice 8 decides whether to delete it.
 CHAIN: tuple[Reranker, ...] = (
-    tuple(_listwise(PROVIDERS[model]) for model in LLM_RERANK_ORDER) + RERANK_CHAIN
+    tuple(
+        tier for model in LLM_RERANK_ORDER for tier in _both_accounts(PROVIDERS[model])
+    )
+    + RERANK_CHAIN
 )
 
 
