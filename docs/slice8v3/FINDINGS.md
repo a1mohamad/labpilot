@@ -1260,6 +1260,6 @@ test - every vector is cached and filtering only removes rows -
 | Cohere vs flash-lite with Python | 0% Python in v2; 1,000 calls a MONTH |
 | the fusion `r@50` threshold | H1 complicates it: almost nothing has `r@50` headroom now |
 | `RERANK_TOP_N` | never measured by anyone. H16 settles `VECTOR_TOP_N` and cannot speak to this one: its chunks are picked by vector search alone |
-| merged vs per-side with a Python+Python pair | |
+| ~~merged vs per-side~~ | **CLOSED.** v2 measured it: merged starves a side entirely on 43 of 57 queries. Dropped from the queue 2026-09-19 |
 | ~~the all-suffix corpus~~ | **DONE - H17.** Every corpus is worse on the real walk, and `lung` is REFUSED outright |
 | end-to-end time / `WARN_MINUTES` | still a guess |

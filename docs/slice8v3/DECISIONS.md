@@ -54,7 +54,7 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 | 14 | **chunk size `s`** | 500 | **500** | 7 (3) | **CONFIRMED** |
 | 15 | **chunk overlap `o`** | 50 | **50** — nothing measurable moves it | 3 (3) | **CONFIRMED, and shown not to matter** |
 | 16 | **the chunk header** | keep | **keep — +0.063 MRR, the largest chunking effect** | 3 (3) | **CONFIRMED** |
-| 17 | **merged vs per-side rerank** | per side | per side | 0 | **STILL UNMEASURED** |
+| 17 | **merged vs per-side rerank** | per side | **per side** — merged starves a side on **43 of 57** queries | v2 | **CONFIRMED** |
 | 18 | **`VECTOR_TOP_N`** | 25, and "should be 10" | **30** — best on 18 corpora and on both language pools | 18 (8) | **CHANGED — IN CODE; v2's "10" OVERTURNED** |
 | 18b | **`RERANK_TOP_N`** | 10 | 10 | 0 | **STILL UNMEASURED** |
 | 19 | **exact vs HNSW** | exact | exact | — | **reused on purpose** |
@@ -301,14 +301,47 @@ larger than anything either tunable parameter moved.
 
 ---
 
-## 17. MERGED VS PER-SIDE RERANKING — STILL UNMEASURED
+## 17. MERGED VS PER-SIDE RERANKING — CONFIRMED, and it was mislabelled here
 
-Per side stays the default, **on the structural argument and not on
-evidence**: merged makes coverage depend on the selector behaving, per side
-makes losing a side impossible. Recorded as unmeasured rather than confirmed,
-because nothing in v2 or v3 has run it.
+An earlier version of this document filed this as **STILL UNMEASURED**. That was
+wrong, and the user caught it: **v2 measured it, and the result is not close.**
 
----
+```
+merged starves a side ENTIRELY on 43 of 57 queries
+```
+
+One rerank call over both artifacts lets the stronger side take every slot, so
+the comparison is made against one artifact and a citation-free guess about the
+other. For a tool whose whole job is comparing two things, that is not a quality
+loss - it is the product not working.
+
+**The v2 number is also a correction of a correction**, which is why it is worth
+trusting: the broken `PairScores` instrument had reported **0 of 20**, and
+fixing it turned "merged is fine" into "merged fails three quarters of the
+time".
+
+### Three more reasons, none of which needed a new run
+
+1. **Per side makes coverage STRUCTURAL.** Merged makes it depend on the
+   selector behaving. This project's own rule: *put a rule where it cannot be
+   broken, not where it can be checked.*
+2. **Merged is the one shape that loses Voyage.** Per side hands it
+   `RERANK_WINDOW` documents; merged hands it double, which slice 6 measured as
+   refused outright on a card-free account.
+3. **The saving it buys is gone.** Merged halves the rerank CALL count - and the
+   2026-09-19 fix that gave the rerank chain its second Google account doubled
+   that budget anyway, from 29,800 calls a day to 59,600.
+
+### What the literature says, and what it does NOT say
+
+Searching it returns work on merging multiple **retrievers** - dense plus
+sparse, several rankers over one corpus - and that consistently favours merging.
+**It is a different question.** LabPilot's sides are two different
+ARTIFACTS being compared, not two views of one corpus, and no result found
+addresses starving one of them. Recorded as *not evidence either way* rather
+than quoted as support.
+
+**PER SIDE ships. This decision is closed.**
 
 ## 18. `VECTOR_TOP_N` AND `RERANK_TOP_N`
 
