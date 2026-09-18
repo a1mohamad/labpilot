@@ -47,7 +47,7 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 | 7 | **the embedder gate** | tokens and calls | **+ a per-TEXT daily budget** | — | **CHANGED — in code** |
 | 8 | **`SMALL_CORPUS_CHUNKS`** | 500 | **DELETED** | 6 (4) | **CHANGED — in code** |
 | 9 | **`SEARCH_LIMIT`** | 50, never swept | **50**, and now swept | 20 (10) | **CONFIRMED** |
-| 10 | **`RERANK_WINDOW`** | 50 (per tier) | **20** | 5 (5) | **CHANGED — recommended** |
+| 10 | **`RERANK_WINDOW`** | 50 (per tier) | **20** | 5 (5) | **CHANGED — IN CODE** |
 | 11 | **reranking ships** | yes | yes — 9 real gains, **0 real losses** | 16 (10) | **CONFIRMED** |
 | 12 | **the skip gate** | `SKIP_MARGIN = None` | `None` | 16 (10) | **CONFIRMED** |
 | 13 | **routing by question kind** | dead | **dead** — every kind positive | 16 (10) | **CONFIRMED** |
@@ -58,7 +58,7 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 | 18 | **`VECTOR_TOP_N`** | 25, and "should be 10" | **30** — best on 18 corpora and on both language pools | 18 (8) | **CHANGED — IN CODE; v2's "10" OVERTURNED** |
 | 18b | **`RERANK_TOP_N`** | 10 | 10 | 0 | **STILL UNMEASURED** |
 | 19 | **exact vs HNSW** | exact | exact | — | **reused on purpose** |
-| 20 | **BGE at `MIGRATION` position 2** | untouchable, platform argument | **the worst embedder we have** | 4 (4) | **OVERTURNED** |
+| 20 | **BGE at `MIGRATION` position 2** | untouchable, platform argument | **moved to LAST** — the worst embedder we have | 4 (4) | **OVERTURNED — IN CODE** |
 | 21 | **dual-embedder fusion** | never considered | **REJECTED** | 8–12 | **new, and negative** |
 
 ---
@@ -557,8 +557,12 @@ redeeming detail, and it is the same shape as row 14: on `lung` its `r@50` is
 `gemini-embedding-001` is on a third platform and scores 0.602, so it satisfies
 the platform argument and the strength argument at once.
 
-**NOT changed in code** — this is a recommendation, and it is the one open
-decision this document leaves on the table deliberately.
+**CHANGED IN CODE 2026-09-18** — BGE moves from position 2 to LAST. The
+robustness argument is not abandoned, it is satisfied by a better model:
+`gemini-embedding-001` is on a third platform AND scores 0.602, which is what
+that argument actually asked for. BGE also cannot ingest a large corpus at all
+(684,000 neurons a day stops it at ~2,900 chunks), which is a second reason it
+belongs behind `mistral-embed` rather than in front of it.
 
 ### Three bugs had made it unmeasurable, and that is why "never scored" survived two runs
 

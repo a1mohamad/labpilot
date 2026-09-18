@@ -139,6 +139,28 @@ MISTRAL_EMBED = MistralEmbedder(
     **_spec("mistral-embed"),
 )
 
+# SCORED AT LAST, 2026-09-18 - the first time in this project's history, and
+# it comes LAST on the strength of it. Against codestral on four Python corpora:
+#
+#     corpus     chunks   codestral   BGE     delta
+#     smsspam        89       0.653   0.519   -0.134
+#     disaster      108       0.753   0.633   -0.120
+#     titanic       118       0.594   0.452   -0.143
+#     lung          628       0.587   0.388   -0.200
+#
+# Loses 4 of 4, mean -0.149 MRR, about 3 queries per corpus. That is worse than
+# mistral-embed, which was demoted to the back for losing by far less.
+#
+# One redeeming detail, and it is a shape this run met three times: on `lung`
+# its r@50 is 0.941 against codestral's 0.882. It FINDS more and ORDERS far
+# worse - the same trade as Cohere, and as a larger chunk size.
+#
+# It had never been scored because three bugs made it unmeasurable, not because
+# nobody tried: score_hybrid's EMBEDDERS dict did not contain it, and the model
+# id "@cf/baai/bge-base-en-v1.5" has SLASHES, so both the chunk-cache path and
+# the result path became directories and raised. The embedding SUCCEEDED - 89
+# of 89 vectors, 17,807 tokens spent - and the result was thrown away.
+#
 # BGE truncates at 512 tokens and says nothing about it, so the limit is
 # declared in SPECS and refused locally instead of arriving as a weaker vector.
 #
@@ -264,24 +286,34 @@ COHERE_EMBED = CohereEmbedder(
 # `daily_text_budget`, which is where a hard limit belongs; an ordering is for
 # strength.
 #
-# Two structural overrides remain, and both are deliberate:
-#   - BGE sits second because it is the only early entry on a DIFFERENT
-#     platform. codestral and mistral-embed share one API key, so a Mistral
-#     outage would otherwise take the top two. It is also the one model in this
-#     list NOBODY HAS EVER SCORED - on any corpus, in v2 or v3 - so position 2
-#     is a robustness argument, not a recall one.
-#   - mistral-embed stays IN the list despite being last on quality, because it
-#     is the only model that can ingest 10,000 chunks quickly: google cannot
-#     today at all, and cohere is 21 minutes. A walk must not dead-end.
+# BGE MOVED FROM SECOND TO LAST, 2026-09-18. It sat at position 2 on a
+# ROBUSTNESS argument - codestral and mistral-embed share one API key, so a
+# Mistral outage would otherwise take the top two - inside a tuple whose own
+# comment calls it the strength order, and it was the one model here NOBODY HAD
+# EVER SCORED. Scored, it loses 4 of 4 at a mean -0.149 MRR: the fallback from
+# our primary was the weakest model we have.
+#
+# The robustness argument is not abandoned, it is satisfied by a better model.
+# gemini-embedding-001 is on a THIRD platform and scores 0.602, so position 2
+# is now strong AND independent of Mistral, which is what the argument actually
+# asked for. `test_the_two_best_embedders_do_not_share_a_platform` still holds.
+#
+# One structural override remains, and it is deliberate:
+#   - mistral-embed stays IN the list despite being second-last on quality,
+#     because it is the only model that can ingest 10,000 chunks quickly:
+#     google cannot today at all, and cohere is 21 minutes. A walk must not
+#     dead-end. BGE cannot either - 684,000 neurons a day stops it at ~2,900
+#     chunks - which is a second reason it belongs behind mistral rather than
+#     in front of it.
 MIGRATION = (
     CODESTRAL_EMBED,
-    BGE_BASE,
     GEMINI_EMBED_001,
     GEMINI_EMBED_001_KEY2,
     COHERE_EMBED,
     GEMINI_EMBED_2,
     GEMINI_EMBED_2_KEY2,
     MISTRAL_EMBED,
+    BGE_BASE,
 )
 
 

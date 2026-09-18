@@ -168,3 +168,34 @@ def test_the_migration_is_ordered_by_measured_strength():
     assert order.index("codestral-embed") < order.index("mistral-embed")
     assert order.index("gemini-embedding-001") < order.index("mistral-embed")
     assert order.index("embed-v4.0") < order.index("mistral-embed")
+
+
+def test_the_unmeasured_platform_pick_does_not_outrank_measured_models():
+    """BGE sat SECOND for a whole project without ever being scored.
+
+    It was there on a ROBUSTNESS argument - codestral and mistral-embed share
+    one API key, so a Mistral outage would otherwise take the top two - inside
+    a tuple whose own comment calls it the strength order. Scored at last on
+    2026-09-18 it loses 4 of 4 Python corpora at a mean -0.149 MRR, worse than
+    mistral-embed, which had already been demoted for losing by far less. So
+    the fallback from our primary was the weakest model we have.
+
+    The robustness argument is satisfied by a better model instead:
+    gemini-embedding-001 is on a third platform AND scores 0.602, which
+    `test_the_two_best_embedders_do_not_share_a_platform` keeps honest.
+
+    This test exists so a future edit cannot quietly promote an unscored model
+    above scored ones again - the failure that let this sit for two runs.
+    """
+    order = [e.model for e in MIGRATION]
+    bge = "@cf/baai/bge-base-en-v1.5"
+
+    for beaten in ("codestral-embed", "gemini-embedding-001", "embed-v4.0"):
+        assert order.index(beaten) < order.index(bge), (
+            f"{beaten} is measured stronger than BGE and must come first"
+        )
+    assert order.index("mistral-embed") < order.index(bge), (
+        "BGE loses by more than mistral-embed does, and unlike mistral-embed it "
+        "cannot ingest a large corpus at all - 684,000 neurons a day stops it "
+        "at ~2,900 chunks"
+    )
