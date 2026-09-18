@@ -1003,19 +1003,29 @@ content.
 So the same queries were scored against the corpus **the product itself would
 store** - the real walk, the real loaders, the real refusals.
 
-| corpus | what it is | chunks | MRR | delta |
-|---|---|---|---|---|
-| **pytest** | a library, code only | 6,714 → 10,064 | 0.446 → 0.442 | **−0.004** |
-| disaster | personal ML app | 108 → 497 | 0.753 → 0.682 | −0.071 |
-| click | a library | 1,585 → 1,997 | 0.577 → 0.477 | −0.100 |
-| smsspam | personal ML app | 89 → 389 | 0.653 → 0.538 | −0.115 |
-| **titanic** | **3 versions of ONE notebook** | 118 → 345 | 0.594 → 0.205 | **−0.389** |
-| lung | — | **REFUSED** | — | — |
+**Re-run 2026-09-19 after the ingest gates shipped**, so the `real` column is
+what the product stores today - junk directories skipped, duplicate chunks
+dropped with the newest copy winning:
+
+| corpus | what it is | chunks | MRR | delta | duplicates dropped |
+|---|---|---|---|---|---|
+| **pytest** | a library, code only | 6,714 → 10,039 | 0.446 → 0.443 | **−0.003** | 25 |
+| disaster | personal ML app | 108 → 496 | 0.753 → 0.683 | −0.070 | 1 |
+| click | a library | 1,585 → 1,995 | 0.577 → 0.477 | −0.100 | 2 |
+| smsspam | personal ML app | 89 → 389 | 0.653 → 0.538 | −0.115 | 0 |
+| **titanic** | **3 versions of ONE notebook** | 118 → 278 | 0.594 → 0.305 | **−0.289** | **67** |
+| lung | — | **REFUSED** | — | — | — |
 
 ```
-pooled, 5 scored corpora        MRR 0.605 -> 0.469   -0.136
-without titanic                 MRR 0.607 -> 0.535   -0.073
+pooled, 5 scored corpora        MRR 0.605 -> 0.489   -0.116
+without titanic                 MRR 0.607 -> 0.535   -0.072
+before the gates shipped                             -0.136
 ```
+
+**The gates buy +0.020 pooled, and all of it is on one corpus.** That is the
+right shape rather than a disappointing one: `click` had 2 duplicate chunks and
+`pytest` 25, so a clean library has almost nothing to drop. The notebook folder
+had 67, and recovered a third of its gap.
 
 **`pytest` gained 3,350 chunks and lost 0.004.** So "more content is worse" is
 not the finding, and a first draft of this section that said *"every corpus is
@@ -1064,9 +1074,10 @@ And every query moves the same way - rank 1-2 becomes rank 3-6, the signature of
 > every time; it found it in a file the answer key does not name, so a correct
 > hit was recorded as a miss.
 
-Removing Jupyter's checkpoint alone moved it only 0.185 -> 0.205, which is why
-"duplicates" was not a complete answer either: the checkpoint is one copy of
-four.
+Removing Jupyter's checkpoint alone moved it only 0.185 -> 0.205, and dropping
+every EXACT duplicate chunk took it to 0.305. **The last 0.289 is
+near-duplicates**: the three versions differ by small edits, so a hash cannot
+see them. MinHash or SimHash would, and is not built.
 
 ### The real risk behind the artifact, and it is worse than a number
 
