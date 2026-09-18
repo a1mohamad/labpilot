@@ -12,9 +12,11 @@ from labpilot.llm.defaults import (
     DEFAULT_MAX_RETRIES_PER_TIER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TOTAL_BUDGET,
+    HTTP_INTERNAL_ERROR,
     HTTP_TOO_MANY_REQUESTS,
     RATE_LIMIT_WINDOW,
     RETRYABLE_STATUSES,
+    SERVER_ERROR_DELAYS,
 )
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 from labpilot.llm.registry import CHAIN
@@ -34,6 +36,14 @@ class Provider(Protocol):
 
 
 def delay_for(error: LLMError, attempt: int, *, base: float) -> float:
+    # A 500 is the server FAILING, not throttling, so it carries no
+    # Retry-After and no reset time - there is nothing to read and the wait has
+    # to be chosen. 3s then 10s, because the generic 1s/2s backoff asks a
+    # struggling endpoint the same question twice in three seconds.
+    if error.status == HTTP_INTERNAL_ERROR:
+        index = min(attempt, len(SERVER_ERROR_DELAYS) - 1)
+        return SERVER_ERROR_DELAYS[index]
+
     if error.retry_after is not None:
         return error.retry_after
     if error.reset_at is not None:
@@ -129,9 +139,15 @@ class LLMClient:
                 if delay > self.max_delay or time.monotonic() + delay >= deadline:
                     raise
 
+                reason = (
+                    "server error"
+                    if exc.status == HTTP_INTERNAL_ERROR
+                    else "rate limited"
+                )
                 logger.warning(
-                    "tier %d rate limited, waiting %.1fs before retry %d",
+                    "tier %d %s, waiting %.1fs before retry %d",
                     provider.tier,
+                    reason,
                     delay,
                     attempt + 1,
                 )

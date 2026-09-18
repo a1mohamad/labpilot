@@ -1390,10 +1390,12 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
   `.env.example`, and every provider declares its token limits.
 - Suite: **73 unit tests passing, 7 smoke tests, ruff clean.**
 
-### How the chain decides — the five-way rule
+### How the chain decides — the SIX-way rule
 
-*Was three ways. Two more were added 2026-08-16, each after a real failure that
-the three-way rule handled wrongly.*
+*Was three ways, then five on 2026-08-16. **A sixth was added 2026-09-19: a 500
+is RETRIED.** Each one arrived after a real failure the previous rule handled
+wrongly, and this one was costing the largest quota in the project — 57,600
+Gemma calls a day — over a fault that clears by itself in three seconds.*
 
 | The failure | Response | Why |
 |---|---|---|
@@ -1401,7 +1403,8 @@ the three-way rule handled wrongly.*
 | 429, resets **tomorrow** | **skip every tier on that pool** | the *account* is spent, not the model |
 | **429, `limit` header is `0`** | **fail this tier alone, pool untouched** | not busy — **not entitled**. It will never reset |
 | **503** | wait, **retry the same tier** | the server said *"try again later"*, and it works |
-| 400 / 500 / empty / timeout | **next tier** | retrying cannot change it |
+| **500** | wait 3s, **retry the same tier**, then 10s | **CORRECTED 2026-09-19** — the server is failing, not refusing, and it recovers. Measured: gemma-4-31b answers 500 on **two calls of three** and 200 on the third |
+| 400 / empty / timeout | **next tier** | retrying cannot change it |
 
 **Why the `limit: 0` case had to exist.** GLM-5.2 (then tier 2) began answering
 `429` with `x-ratelimit-limit-tokens-minute: 0`. Read the *limit*, not the
