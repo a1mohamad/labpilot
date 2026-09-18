@@ -1,0 +1,255 @@
+{
+  "corpus": {
+    "key": "pydantic",
+    "env": "LABPILOT_PYDANTIC_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/.git/**",
+      "tests/mypy/outputs/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "data validation and settings management",
+    "licence": "MIT",
+    "repo": "https://github.com/pydantic/pydantic",
+    "commit": "915896d",
+    "note": "Line numbers are valid only for this commit. Clone with --depth 1 and check out this sha before scoring. The source is NOT committed: it is third-party code, and the provenance rule keeps it out of the repository.",
+    "chunks_at_this_commit": 9846,
+    "include_note": "**/*.py INCLUDING the test suite. Source-only would be 2,452 (pytest) and 2,652 (pydantic) chunks, far short of the ~10,000 this corpus exists to provide. Including every readable suffix would reach 9,653 / 13,377 but ~25-30% of those chunks are RST and Markdown, which would make a corpus counted as Python mostly not Python. `**/*.py` with tests is both 100% Python and at the target scale, and it is what our own walker would really store from this repository. ALSO excludes tests/mypy/outputs/**. Those are machine-written COPIES of tests/mypy/modules/ re-checked under each mypy config, so the same chunk appears up to 10 times - 694 of 10,470 chunks (6.6%) were duplicates. The modules/ originals are kept; only the generated copies are dropped.",
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": [
+    {
+      "id": "PY01",
+      "query": "which python version is the devtools example test skipped for",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "tests/test_docs.py",
+      "expects": [
+        212
+      ],
+      "anchor": "@pytest.mark.skipif(sys.version_info >= (3, 13), reason='python-devtools does not yet support python 3.13')"
+    },
+    {
+      "id": "PY02",
+      "query": "how does the system handle the json schema for a model with a root value",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "tests/test_parse.py",
+      "expects": [
+        96
+      ],
+      "anchor": "return root"
+    },
+    {
+      "id": "PY03",
+      "query": "which exceptions are caught during the validation process",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "pydantic/v1/fields.py",
+      "expects": [
+        1155
+      ],
+      "anchor": "except (ValueError, TypeError, AssertionError) as exc:"
+    },
+    {
+      "id": "PY04",
+      "query": "what is the purpose of the context argument in the validation start callback",
+      "asks": "api",
+      "wording": "named",
+      "file": "pydantic/plugin/__init__.py",
+      "expects": [
+        133
+      ],
+      "anchor": "context: The context to use for validation, this is passed to functional validators."
+    },
+    {
+      "id": "PY05",
+      "query": "how are models used in multiple places handled in the cleaned schema",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "tests/test_internal.py",
+      "expects": [
+        142
+      ],
+      "anchor": "definitions=[IsPartialDict(type='model', cls=M1)],  # This was used in multiple places"
+    },
+    {
+      "id": "PY06",
+      "query": "can a read only dictionary be nested inside another read only dictionary",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "tests/types/test_frozendict.py",
+      "expects": [
+        101
+      ],
+      "anchor": "ta = TypeAdapter(frozendict[str, frozendict[str, int]])"
+    },
+    {
+      "id": "PY07",
+      "query": "what error is thrown when a serializer has the wrong number of arguments",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "tests/test_decorators.py",
+      "expects": [
+        110
+      ],
+      "anchor": "with pytest.raises(PydanticUserError, check=lambda e: e.code == 'field-serializer-signature'):"
+    },
+    {
+      "id": "PY08",
+      "query": "how do i define a custom function to generate aliases",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "tests/mypy/modules/plugin_fail.py",
+      "expects": [
+        186
+      ],
+      "anchor": "model_config = ConfigDict(alias_generator=lambda x: x + '_')"
+    },
+    {
+      "id": "PY09",
+      "query": "which comparison operators are implemented for the custom test type",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "tests/test_types.py",
+      "expects": [
+        1937
+      ],
+      "anchor": "def __le__(self, o: object) -> bool:"
+    },
+    {
+      "id": "PY10",
+      "query": "how is a color represented as a string in rgb format",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "tests/test_color.py",
+      "expects": [
+        143
+      ],
+      "anchor": "assert Color('bad').as_rgb() == 'rgb(187, 170, 221)'"
+    },
+    {
+      "id": "PY11",
+      "query": "what happens when you try to get the default value from a factory that requires arguments",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "tests/test_fields.py",
+      "expects": [
+        462
+      ],
+      "anchor": "with pytest.raises(ValueError):"
+    },
+    {
+      "id": "PY12",
+      "query": "what is used to exclude things from the namespace",
+      "asks": "structure",
+      "wording": "named",
+      "file": "pydantic/v1/main.py",
+      "expects": [
+        268
+      ],
+      "anchor": "exclude_from_namespace = fields | private_attributes.keys() | {'__slots__'}"
+    },
+    {
+      "id": "PY13",
+      "query": "what is the expected output when converting a list of integers to json",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "pydantic-core/tests/benchmarks/test_serialization_micro.py",
+      "expects": [
+        111
+      ],
+      "anchor": "assert serializer.to_json(list(range(5))) == b'[0,1,2,3,4]'"
+    },
+    {
+      "id": "PY14",
+      "query": "what happens when an email address is invalid during testing",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "pydantic/v1/_hypothesis_plugin.py",
+      "expects": [
+        65
+      ],
+      "anchor": "return False"
+    },
+    {
+      "id": "PY15",
+      "query": "what can be used to create different types of aliases",
+      "asks": "structure",
+      "wording": "named",
+      "file": "pydantic/aliases.py",
+      "expects": [
+        92
+      ],
+      "anchor": "A data class used by `alias_generator` as a convenience to create various aliases."
+    },
+    {
+      "id": "PY16",
+      "query": "how does the system handle type hints when running on python 3.14",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "pydantic/_internal/_typing_extra.py",
+      "expects": [
+        224
+      ],
+      "anchor": "return annotationlib.get_annotations(obj, format=annotationlib.Format.FORWARDREF)"
+    },
+    {
+      "id": "PY17",
+      "query": "what error is thrown if a model is already concrete and not a generic",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "pydantic/v1/generics.py",
+      "expects": [
+        98
+      ],
+      "anchor": "raise TypeError('Cannot parameterize a concrete instantiation of a generic model')"
+    },
+    {
+      "id": "PY18",
+      "query": "how are sets and frozensets converted to json",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "pydantic/deprecated/json.py",
+      "expects": [
+        64
+      ],
+      "anchor": "frozenset: list,"
+    },
+    {
+      "id": "PY19",
+      "query": "what happens when a generator has too many items",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "pydantic-core/tests/validators/test_generator.py",
+      "expects": [
+        120
+      ],
+      "anchor": "'type': 'too_long',"
+    },
+    {
+      "id": "PY20",
+      "query": "does the validator be reused when it is unpickled",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "pydantic-core/tests/validators/test_pickling.py",
+      "expects": [
+        74
+      ],
+      "anchor": "assert 'Prebuilt' not in str(reconstructed)"
+    }
+  ]
+}
