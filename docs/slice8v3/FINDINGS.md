@@ -729,17 +729,27 @@ storage read, more fusion arithmetic, and a longer list for the window to cut.
 Three sweeps, all free over cached vectors, all searched on the new zoo rather
 than re-tested at v2's chosen values.
 
-**Size** - the 7 corpora that completed every setting:
+**Size** - re-run 2026-09-19 on **TWELVE corpora, 8 of them Python**, against
+the first pass's 7 with 3 Python. It includes `pytest`, the run that died at
+5,760 of 9,839 chunks on a Mistral 503 the first time it was attempted:
 
-| setting | MRR | r@10 | r@50 |
-|---|---|---|---|
-| s=250 o=50 | 0.5358 | 0.8092 | 0.9618 |
-| s=375 o=50 | 0.5655 | 0.8378 | 0.9546 |
-| **s=500 o=50** | **0.6144** | 0.8450 | 0.9546 |
-| s=750 o=50 | 0.6001 | **0.8521** | 0.9773 |
-| s=1000 o=50 | 0.5820 | 0.8378 | **0.9845** |
+| setting | MRR | r@10 | r@50 | Python only, MRR |
+|---|---|---|---|---|
+| s=250 o=50 | 0.5352 | 0.8128 | 0.9675 | 0.5495 |
+| s=375 o=50 | 0.5715 | 0.8272 | 0.9633 | 0.5803 |
+| **s=500 o=50** | **0.6057** | **0.8540** | 0.9633 | **0.5982** |
+| s=750 o=50 | 0.5929 | 0.8480 | 0.9766 | 0.5848 |
+| s=1000 o=50 | 0.5841 | 0.8295 | **0.9826** | 0.5957 |
 
-**`s=500` is confirmed, and it was searched rather than assumed.** But read the
+**`s=500` wins MRR and `r@10` on both scopes**, and the shape is unchanged from
+the 7-corpus pass.
+
+`pytest` alone mildly prefers 750 (0.4631 against 500's 0.4463), but everything
+from 375 to 1000 sits inside 0.017 there - **a third of one query** on a
+20-query fixture - while `s=250` is clearly worse at 0.3804. So it is one more
+corpus agreeing that only the SMALL end is a real mistake.
+
+**`s=500` is confirmed on 12 corpora, and it was searched rather than assumed.** But read the
 last column before quoting the first: **MRR peaks at 500 while `r@50` keeps
 climbing to 1000.** Bigger chunks FIND more and ORDER worse.
 
