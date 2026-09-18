@@ -45,10 +45,19 @@ def test_the_llm_tiers_lead_the_chain_in_the_order_rerank_measured():
     this layer ever reordered them it would silently overrule a measurement
     with a preference.
     """
-    assert [tier.model for tier in CHAIN[: len(LLM_RERANK_ORDER)]] == list(
-        LLM_RERANK_ORDER
-    )
-    assert CHAIN[len(LLM_RERANK_ORDER) :] == RERANK_CHAIN
+    llm = CHAIN[: len(CHAIN) - len(RERANK_CHAIN)]
+
+    # EVERY tier appears TWICE from 2026-09-19 - once per Google account - so
+    # the order is over DISTINCT models, and the twin must sit next to its
+    # original rather than at the end. A spent pool is skipped for free, so the
+    # strongest thing left after flash-lite runs out is flash-lite on the other
+    # key, not a weaker model.
+    distinct = list(dict.fromkeys(tier.model for tier in llm))
+    assert distinct == list(LLM_RERANK_ORDER)
+    for first, second in zip(llm[::2], llm[1::2], strict=True):
+        assert first.model == second.model, "a twin must be ADJACENT to its original"
+
+    assert CHAIN[len(CHAIN) - len(RERANK_CHAIN) :] == RERANK_CHAIN
 
 
 def test_every_llm_tier_is_tuned_for_ranking_and_not_for_generation(recorded):
@@ -146,3 +155,32 @@ def test_a_tuned_tier_keeps_the_name_and_model_of_the_one_it_came_from():
 
     assert (tuned.name, tuned.model) == (shipped.name, shipped.model)
     assert dataclasses.replace(shipped, **RANKING_CONFIG).model == shipped.model
+
+
+def test_every_google_rerank_tier_has_its_second_account():
+    """Google bills per PROJECT per model, so a second key is a second allowance.
+
+    The GENERATOR chain has used both keys since 2026-09-11. This one never
+    did: all four LLM tiers sat on GOOGLE_API_KEY alone, so the rerank path had
+    HALF the budget available to it - 29,800 calls a day where 59,600 were
+    there for the taking.
+
+    Found by running into it on 2026-09-19 while measuring RERANK_TOP_N. The
+    chain refused with `GenerateRequestsPerDayPerProjectPerModel-FreeTier,
+    limit: 500` while the identical model answered 200 on the other key, and
+    the measurement fell through to a weaker tier for no reason.
+
+    The same rule `test_every_google_embedder_has_a_second_account_behind_it`
+    holds one package over.
+    """
+    llm = [tier for tier in CHAIN if tier.model in LLM_RERANK_ORDER]
+    assert llm, "the LLM rerank tiers must lead the chain"
+
+    for tier in llm:
+        if "(key 2)" in tier.name:
+            continue
+        twin = f"{tier.name} (key 2)"
+        assert any(other.name == twin for other in llm), (
+            f"{tier.name} has no second-account twin, so half of Google's "
+            "rerank budget is unreachable"
+        )

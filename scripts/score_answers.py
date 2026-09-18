@@ -81,14 +81,21 @@ MODELS = {"flashlite": GEMINI_3_5_FLASH_LITE, "gemma31": GEMMA_4_31B}
 # calls of 3, gemma26 answers and returns the IDENTITY order on a 3-document
 # probe, voyage3 / voyage3lite / cohere / bge all ALIVE.
 RERANKERS = {
-    "flashlite": RERANK_CHAIN[0],
-    "flashlite31": RERANK_CHAIN[1],
-    "gemma26": RERANK_CHAIN[2],
-    "gemma31": RERANK_CHAIN[3],
-    "voyage3": RERANK_CHAIN[4],
-    "voyage3lite": RERANK_CHAIN[5],
-    "cohere": RERANK_CHAIN[6],
-    "bge": RERANK_CHAIN[7],
+    name: next(t for t in RERANK_CHAIN if getattr(t, "name", "") == label)
+    for name, label in (
+        ("flashlite", "Gemini 3.5 Flash-Lite"),
+        ("flashlite2", "Gemini 3.5 Flash-Lite (key 2)"),
+        ("flashlite31", "Gemini 3.1 Flash-Lite"),
+        ("flashlite312", "Gemini 3.1 Flash-Lite (key 2)"),
+        ("gemma26", "Gemma 4 26B A4B"),
+        ("gemma262", "Gemma 4 26B A4B (key 2)"),
+        ("gemma31", "Gemma 4 31B"),
+        ("gemma312", "Gemma 4 31B (key 2)"),
+        ("voyage3", "Voyage Rerank 3"),
+        ("voyage3lite", "Voyage Rerank 3 Lite"),
+        ("cohere", "Cohere Rerank v4 Fast"),
+        ("bge", "BGE Reranker Base"),
+    )
 }
 
 # The second Google account is a second QUOTA, not a spare key - Google bills
