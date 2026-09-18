@@ -55,7 +55,7 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 | 15 | **chunk overlap `o`** | 50 | **50** — nothing measurable moves it | 3 (3) | **CONFIRMED, and shown not to matter** |
 | 16 | **the chunk header** | keep | **keep — +0.063 MRR, the largest chunking effect** | 3 (3) | **CONFIRMED** |
 | 17 | **merged vs per-side rerank** | per side | per side | 0 | **STILL UNMEASURED** |
-| 18 | **`VECTOR_TOP_N`** | 25, and "should be 10" | **25** — N=10 is the worst value everywhere | 18 (8) | **CONFIRMED; v2's own advice OVERTURNED** |
+| 18 | **`VECTOR_TOP_N`** | 25, and "should be 10" | **30** — best on 18 corpora and on both language pools | 18 (8) | **CHANGED — recommended; v2's "10" OVERTURNED** |
 | 18b | **`RERANK_TOP_N`** | 10 | 10 | 0 | **STILL UNMEASURED** |
 | 19 | **exact vs HNSW** | exact | exact | — | **reused on purpose** |
 | 20 | **BGE at `MIGRATION` position 2** | untouchable, platform argument | **the worst embedder we have** | 4 (4) | **OVERTURNED** |
@@ -428,6 +428,68 @@ run added turn over at N=20 with precision falling monotonically (0.591 → 0.52
 > context to send, and neither is wrong.** A conclusion drawn from 3 Python
 > corpora of 13 was a conclusion about Go, C, Java, TypeScript and prose.
 
+### THE CHOICE: `VECTOR_TOP_N = 30`
+
+Judged per corpus, in **queries**, against the 1.5-query resolution bar rather
+than against zero:
+
+| corpus | chunks | N=20 | N=30 | delta | verdict |
+|---|---|---|---|---|---|
+| websocket | 78 | 10 | 10 | +0 | tie |
+| **quora** | 82 | 3 | 14 | **+11** | **N=30** |
+| docx | 85 | 8 | 9 | +1 | tie |
+| smsspam | 89 | 10 | 9 | −1 | tie |
+| log | 146 | 11 | 11 | +0 | tie |
+| cobra | 193 | 10 | 10 | +0 | tie |
+| **requests** | 335 | 14 | 19 | **+5** | **N=30** |
+| notebooks | 382 | 8 | 9 | +1 | tie |
+| papers | 404 | 10 | 10 | +0 | tie |
+| **docs** | 463 | 14 | 16 | **+2** | **N=30** |
+| **lung** | 628 | 7 | 10 | **+3** | **N=30** |
+| **jq** | 693 | 9 | 12 | **+3** | **N=30** |
+| **geo** | 729 | 16 | 22 | **+6** | **N=30** |
+| gson | 750 | 9 | 9 | +0 | tie |
+| zod | 1,160 | 14 | 8 | **−6** | N=20 — *but see below* |
+| click | 1,585 | 9 | 8 | −1 | tie |
+| pytest | 6,714 | 6 | 5 | −1 | tie |
+| **pydantic** | 9,846 | 9 | 5 | **−4** | **N=20** |
+
+**N=30 wins 6 corpora above the bar, N=20 wins 2, and 10 are ties.**
+
+**And one of those two is unreliable.** `zod` N=30 is the cell that was re-run
+live today and came back **14 instead of 8** — with 14 it is a tie. So the solid
+case for N=20 is **one corpus: `pydantic`, the largest in the zoo**.
+
+```
+10 -> 20   huge, everywhere.   N=10 wins ZERO corpora of 18
+20 -> 30   +6 / −2 / 10 ties   net positive   <- the choice
+30 -> 50   +4 / −1 /  8 ties   net positive but mostly ties,
+                               and NO Python corpus above 1,160 chunks was tested
+```
+
+**Why 30 and not higher.** Above 30 the gains thin out to mostly ties, and every
+corpus that carries N=50 and N=100 belongs to v2's 13 — **3 Python of 13**, the
+exact skew this run exists to remove. Raising the number past the point our own
+Python evidence stops would be inheriting a conclusion about Go, C and prose.
+
+**Why 30 and not 20.** The shipped 25 was never measured at all; 20 and 30 were.
+30 is better on the pooled share, the per-corpus mean, head-to-head wins, and on
+*both* language pools separately.
+
+**The honest cost.** `pydantic` at 9,846 chunks loses 4 queries of 20 going from
+20 to 30, and it is the closest corpus in the zoo to what the product targets.
+So this choice is made knowing it is slightly wrong for the largest repositories
+and clearly right for everything else.
+
+**Budget check.** `VECTOR_TOP_N` is per side, so 30 is 60 chunks ≈ 14,200 tokens
+at the measured 236 tokens/chunk, plus ~2,000 of instructions, against
+`PROMPT_BUDGET = 26,000`. It fits with room.
+
+**THE NEXT MEASUREMENT THIS NAMES:** N=50 and N=100 **on the Python corpora**,
+~200 generation calls. If Python keeps improving past 30 the way v2's 13 do, 30
+is still too low; if it turns over, 30 is the ceiling and `pydantic` was the
+early warning.
+
 ### What this decides, and what it does not
 
 **This experiment picks its chunks by VECTOR SEARCH ALONE** — `chosen()` reads
@@ -435,10 +497,9 @@ run added turn over at N=20 with precision falling monotonically (0.591 → 0.52
 and says nothing directly about `RERANK_TOP_N`.
 
 ```
-VECTOR_TOP_N = 25   CONFIRMED - it sits at the knee, between the 20 the large
-                    Python corpora want and the 30+ everything else does. v2's
-                    own unshipped "should be 10" is OVERTURNED: 10 is the worst
-                    of the three values on every slice and wins nothing.
+VECTOR_TOP_N = 25 -> 30   the shipped 25 was never measured; 20 and 30 were,
+                          and 30 wins. v2's own unshipped "should be 10" is
+                          OVERTURNED: 10 wins ZERO corpora of 18.
 RERANK_TOP_N = 10   STILL UNMEASURED, by anyone.
 ```
 
