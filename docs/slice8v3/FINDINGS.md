@@ -479,6 +479,96 @@ looks like (MRR 0.189 and 0.129).
 
 ---
 
+## H9 — RERANKING'S VALUE SCALES WITH QUERY DIFFICULTY, and the matched control is exact
+
+The rerank delta on each paired fixture, same corpus and vectors either side:
+
+| fixture | overlap | vector | + rerank | gain |
+|---|---|---|---|---|
+| **lung** drafted | 0.490 | 0.587 | 0.584 | **−0.1 q** |
+| **lung HAND** | **0.480** | 0.610 | 0.606 | **−0.1 q** |
+| pytest drafted | 0.422 | 0.446 | 0.527 | +1.6 q |
+| **pytest HAND** | **0.350** | 0.129 | **0.441** | **+6.2 q** |
+| pydantic drafted | 0.460 | 0.530 | 0.532 | +0.0 q |
+| **pydantic HAND** | **0.309** | 0.189 | **0.320** | **+2.6 q** |
+
+**At matched difficulty the rerank gain is identical to three decimals**
+(−0.004 both ways on `lung`). H8's control therefore holds on a second,
+independent metric, which closes the provenance question: who wrote the
+question changes nothing once difficulty is held still.
+
+And the other two rows give the law:
+
+> **The harder the question, the more reranking is worth.** `pytesthand` at
+> overlap 0.350 goes 0.129 → 0.441, a 3.4× improvement and **+6.2 queries —
+> the largest rerank gain measured anywhere in this project.**
+
+The mechanism is the obvious one: an easy query already has its answer at rank
+1, so there is nothing to reorder. Reranking is paid for exactly when retrieval
+is struggling.
+
+**The consequence for the product, and it is the useful part:** if real user
+questions are harder than the drafted zoo's 0.46 overlap, **reranking is worth
+MORE than any number in v2 or v3 suggests, not less.** That strengthens the
+decision that reranking ships.
+
+### It also rescues H6 from a confound
+
+H6 found rerank gain falling with corpus size. Difficulty could have caused
+that, so it was tested rather than assumed — partial correlation over the 15
+drafted corpora with a w50 run:
+
+```
+r(size, rerank gain)            = -0.445     H6 as reported
+r(size, overlap)                = -0.217
+r(overlap, rerank gain)         = +0.192
+PARTIAL r(size, gain | overlap) = -0.421     difficulty held still
+```
+
+**H6 barely moves.** And large corpora have slightly *harder* queries, so the
+confound worked against H6 rather than creating it. Both effects are real and
+independent: gain falls with size, and gain rises with difficulty.
+
+---
+
+## H10 — THE ZOO IS NOT UNIFORM IN DIFFICULTY, and that is reported rather than fixed
+
+Measured over the 19 drafted fixtures:
+
+```
+overlap   min 0.244 (jq)   max 0.672 (docs)   2.8x spread
+          mean 0.460       sd 0.105
+```
+
+**This is inherited from v2, not introduced by v3.** It was never visible
+before because nothing measured it.
+
+**Why it does not invalidate the method comparisons.** Every cross-corpus
+finding here is a **delta within one corpus** — method A against method B on
+the same queries — so a corpus being easy or hard cancels. H9's partial
+correlation demonstrates this on the finding most exposed to it.
+
+**Where it does bite: ABSOLUTE numbers.** *"pydantic `r@50` = 1.000"* means
+*"at overlap 0.46"*, not *"in general"*. Such a number must never be read
+across corpora.
+
+**The decision taken (the user's call): control for it and report it, rather
+than re-draft ~400 queries to a target.** Re-drafting would mean drafting,
+measuring, discarding and redrafting — and discarding queries by a
+retrieval-adjacent metric is close to the one thing this project forbids,
+building a fixture that agrees with our own embedder.
+
+So `scripts/zoo.py --difficulty` prints the overlap range of any subset, and
+**every row of `DECISIONS.md` carries the difficulty its evidence was measured
+at**, beside its Python share.
+
+A second non-uniformity, already handled: **query counts run 12 to 45**, so one
+query is 0.083 MRR on `docx` and 0.022 on `geo`. That is resolution, not
+difficulty, and every delta in this document is already judged against its own
+fixture's resolution per G18.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |

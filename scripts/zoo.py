@@ -21,6 +21,7 @@ from __future__ import annotations
 import sys
 
 # The product is a PYTHON and machine-learning tool. A notebook is Python.
+DIFF = False
 PYTHON_LANGUAGES = {"Python", "Python + Markdown"}
 
 
@@ -42,7 +43,29 @@ def share(names: list[str], info: dict[str, dict] | None = None) -> tuple[int, i
     return sum(1 for n in names if is_python(n, info)), len(names)
 
 
-def describe(names: list[str]) -> str:
+def overlaps() -> dict[str, float]:
+    """Each fixture's query-answer word overlap, its measured DIFFICULTY.
+
+    Reported beside every decision because the zoo is NOT uniform: it spans
+    0.244 (jq) to 0.672 (docs), a 2.8x range inherited from v2. That does not
+    corrupt a method comparison, which is a delta within one corpus, but it
+    does mean an ABSOLUTE score only holds at the difficulty it was measured
+    at - so a decision has to say which.
+    """
+    from scripts.query_difficulty import measure
+
+    out: dict[str, float] = {}
+    for name in facets():
+        try:
+            got = measure(name)
+        except Exception:  # noqa: BLE001 - a corpus whose checkout is absent
+            continue
+        if got:
+            out[name] = got[0]
+    return out
+
+
+def describe(names: list[str], with_difficulty: bool = False) -> str:
     """The one sentence rule 5 asks for beside every conclusion."""
     info = facets()
     known = [n for n in names if n in info]
@@ -53,7 +76,13 @@ def describe(names: list[str]) -> str:
         (info[n].get("chunks", 0) for n in known if info[n].get("chunks")),
     )
     span = f", sizes {sizes[0]} to {sizes[-1]}" if sizes else ""
-    return f"{total} corpora, {python} Python ({python / total:.0%}){span}"
+    hard = ""
+    if with_difficulty:
+        ov = overlaps()
+        got = sorted(ov[n] for n in known if n in ov)
+        if got:
+            hard = f", overlap {got[0]:.2f}-{got[-1]:.2f}"
+    return f"{total} corpora, {python} Python ({python / total:.0%}){span}{hard}"
 
 
 def main(argv: list[str]) -> int:
@@ -65,8 +94,10 @@ def main(argv: list[str]) -> int:
     # 193, websocket 167 against 78 - so a size column built from metadata
     # would have printed a denominator that was twice the truth. Metadata goes
     # stale silently; a measurement cannot.
+    global DIFF
+    DIFF = "--difficulty" in argv
     measure = "--measure" in argv
-    argv = [a for a in argv if a != "--measure"]
+    argv = [a for a in argv if not a.startswith("--")]
 
     info = facets()
     for name in info:
@@ -102,7 +133,7 @@ def main(argv: list[str]) -> int:
 
     python, total = share(names, info)
     print()
-    print(f"  {describe(names)}")
+    print(f"  {describe(names, with_difficulty=DIFF)}")
     if total and python / total < 0.5:
         print(
             "  ! UNDER HALF PYTHON - the zoo is half Python and the product is "
