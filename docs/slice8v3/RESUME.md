@@ -279,22 +279,43 @@ Only `VECTOR_TOP_N` is settled, because the experiment picks its chunks by
 **vector search alone** — `chosen()` reads `dense_orders` and no reranker
 touches it. See FINDINGS **H16**.
 
-**N=10 is eliminated outright**: 0.235 against N=20's 0.393 and N=30's 0.453 on
-the clean 15, and it wins on **zero** corpora of 18.
+**18 corpora, 8 Python, 383 questions, flash-lite, zero damaged cells:**
 
-**And the two halves of the zoo disagree, which is the whole point of v3.** On
-v2's 13 nothing turns over — coverage AND precision keep rising to N=100
-(precision 0.482 -> 0.643). On the 5 new Python corpora precision falls
-monotonically, 0.591 -> 0.526 -> 0.487, and `correct/asked` turns over at N=20.
-**Dilution is real exactly where the product lives**, and absent on the
-population v2 measured.
+```
+correct / asked   N=10 0.222   N=20 0.386   N=30 0.465
+corpora won       N=10 0       N=20 6       N=30 9      tied 3
+```
 
-> **Three cells of v2's own data were DAMAGED and it took looking to find
-> them**: `answered > 0` with `cited == 0`, so `correct` was forced to 0 —
-> `papers` N=30, `zod` N=30, `geo` N=10. Two of three on N=30, the same
-> unevenly-spread damage that voided take one. Dropping those corpora moves
-> N=30 from level with N=20 to clearly ahead. `scripts/combine_topn.py` flags
-> them on every run.
+**N=10 is eliminated outright** and wins on zero corpora of 18. On v2's 13,
+which carry N=50 and N=100, coverage flattens after 30 and **precision peaks at
+30** (0.616, then 0.592 and 0.584) — the first time this project has *measured*
+a dilution penalty rather than assuming one.
+
+**Python gets less out of extra context**, which is the finding v3 exists for:
+
+| | N=10 | N=20 | N=30 | precision @30 |
+|---|---|---|---|---|
+| 8 Python | 0.190 | 0.318 | **0.391** | 0.479 |
+| 10 non-Python | 0.250 | 0.446 | **0.529** | **0.679** |
+| the 5 NEW Python corpora | 0.268 | **0.423** | 0.381 | 0.487 |
+| above 5,000 chunks (2) | 0.275 | **0.375** | 0.250 | — |
+
+Non-Python answers ~35% more questions correctly at every N. The five new
+Python corpora turn over at N=20 and their precision falls monotonically.
+
+> **THREE CELLS OF v2's OWN DATA WERE DAMAGED** — `answered > 0` with
+> `cited == 0`, so `correct` was forced to 0: `papers` N=30, `zod` N=30, `geo`
+> N=10. Two of three on N=30, the same unevenly-spread damage that voided take
+> one. **All three were re-run and all three cite normally** (10/14, 14/16,
+> 6/8), and the repair moved N=30 from level with N=20 to clearly ahead.
+> `.logs/results/answers_flashlite_original.json` keeps the unrepaired file;
+> `scripts/combine_topn.py` flags the pattern on every run.
+
+**13 of the 18 corpora are v2's cached flash-lite run from 2026-09-17**, re-used
+rather than re-measured — same model, same script, same fixtures. Only the three
+cells that looked wrong were re-run. A full re-run of the 13 is ~780 calls
+against a 500/day key; `GOOGLE_API_KEY` was already 429 by the end of this
+session and `GOOGLE_API_KEY_2` carried the rest.
 
 ### F — BGE SITS AT POSITION 2 AND HAS NEVER BEEN SCORED
 

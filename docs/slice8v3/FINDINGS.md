@@ -823,14 +823,13 @@ so the order stays a decision somebody took on evidence.
 
 ---
 
-## H16 - TOP-N, 18 CORPORA AND ONE MODEL - and the two halves disagree
+## H16 - TOP-N, 18 CORPORA AND ONE MODEL - and Python gets less out of context
 
-### The measurement, and the three damaged cells inside v2's half of it
+### First, three damaged cells — and they were found by looking, not by the totals looking wrong
 
-Before any number: a cell with `answered > 0` and `cited == 0` is a **grading**
-failure, not a result — the model replied and not one citation resolved, so
-`correct` is 0 by construction. **v2's own data has three of them, and two sit
-on N=30**:
+A cell with `answered > 0` and `cited == 0` is a **grading** failure, not a
+result: the model replied and not one citation resolved, so `correct` is 0 by
+construction. **v2's own data had three, and two sat on N=30:**
 
 ```
 papers  N=30   answered 16   cited 0   -> correct forced to 0
@@ -838,74 +837,83 @@ zod     N=30   answered 11   cited 0   -> correct forced to 0
 geo     N=10   answered  8   cited 0   -> correct forced to 0
 ```
 
-Their neighbours at N=20 and N=50 cite normally, so these are not corpora the
-model cannot answer. **This is the same defect that voided take one** — an
-unevenly-spread damaged numerator — sitting in the data we were about to trust
-*instead* of the gemma run. It was found by looking for it, not by the totals
-looking wrong.
+That is the same shape that voided take one — an unevenly-spread damaged
+numerator — sitting in the data we were about to trust *instead* of the gemma
+run.
 
-So every figure is given twice.
+**All three were re-run on the same model, and all three cite normally:**
 
-| | N=10 | N=20 | N=30 |
-|---|---|---|---|
-| **18 corpora, damaged cells left in** | 0.206 | 0.386 | 0.402 |
-| **15 corpora, every damaged corpus dropped** | **0.235** | **0.393** | **0.453** |
+| cell | before | after |
+|---|---|---|
+| papers N=30 | 0 correct, 0 cited | **10 correct, 14 cited** |
+| zod N=30 | 0 correct, 0 cited | **14 correct, 16 cited** |
+| geo N=10 | 0 correct, 0 cited | **6 correct, 8 cited** |
 
-Dropping them moves N=30 from *level with N=20* to *clearly ahead*, which is
-the whole reason the check exists.
+`scripts/combine_topn.py` flags the pattern on every run and the original file
+is kept beside the repaired one, because a repaired measurement has to stay
+auditable. **Every number below is post-repair, on 18 corpora with zero
+damaged cells.**
 
-### On the clean 15 — 8 Python, 298 questions — MORE IS BETTER, up to 30
+> **The repair changed the answer.** Before it, N=20 and N=30 were level
+> (0.386 against 0.402). After it, N=30 is clearly ahead (0.386 against
+> **0.465**) — because two of the three zeros were sitting on N=30.
+
+### The result — 18 corpora, 8 Python, 383 questions, one model
 
 ```
-correct / asked      N=10 0.235   N=20 0.393   N=30 0.453
-per-corpus mean      N=10 0.261   N=20 0.425   N=30 0.483
-corpora won          N=10 0       N=20 6       N=30 7      tied 2
+correct / asked      N=10 0.222   N=20 0.386   N=30 0.465
+per-corpus mean      N=10 0.250   N=20 0.417   N=30 0.493
+corpora won          N=10 0       N=20 6       N=30 9      tied 3
 ```
 
-**N=10 is eliminated outright** — it loses on every slice, every metric, and
-wins on zero corpora of 18.
+**N=10 is eliminated outright** — it loses on every slice and wins on **zero**
+corpora of 18. **N=30 beats N=20** on the pooled share, on the per-corpus mean,
+and on head-to-head wins.
 
-### And v2's 13 keep improving all the way to N=100
+### v2's 13 carry N=50 and N=100, and the curve FLATTENS after 30
 
-The same data carries N=50 and N=100, which the new run did not. Damaged cells
-dropped, and **precision printed beside coverage**, because a bigger context
-makes the model decline less as well as answer better and the two must not be
-read as one number:
+Coverage and **precision** printed separately, because a bigger context makes
+the model decline less as well as answer better, and the two must not be read
+as one number:
 
 | N | correct/asked | answered/asked | **correct/answered** |
 |---|---|---|---|
-| 5 | 0.097 | 0.137 | 0.710 |
-| 10 | 0.220 | 0.456 | 0.482 |
+| 5 | 0.077 | 0.157 | 0.489 |
+| 10 | 0.206 | 0.413 | 0.500 |
 | 20 | 0.374 | 0.710 | 0.527 |
-| 30 | 0.476 | 0.809 | 0.588 |
+| **30** | **0.493** | 0.801 | **0.616** |
 | 50 | 0.507 | 0.857 | 0.592 |
-| **100** | **0.577** | **0.896** | **0.643** |
+| 100 | 0.529 | 0.905 | 0.584 |
 
-**Nothing turns over.** Precision *rises* with context rather than falling, so
-on this population there is no measurable dilution penalty up to 100 chunks —
-which is the opposite of what "lost in the middle" predicts and what slice 6
-assumed when it eliminated N ∈ {20, 50} on theory.
+**Coverage keeps creeping up and precision peaks at 30**, then falls. So the
+plateau starts around 30: everything above buys ~0.04 more coverage and costs
+accuracy on what it does answer. **That is the dilution penalty, and this is
+the first time this project has measured it rather than assumed it** — slice 6
+eliminated N ∈ {20, 50} from theory alone, on a metric (`recall@N`) that is
+monotone and therefore cannot have an optimum at all.
 
-### The 8 Python corpora say something different, and that is the point of v3
+### PYTHON GETS LESS OUT OF EXTRA CONTEXT, and that is what v3 exists to show
 
-| slice | N=10 | N=20 | N=30 |
-|---|---|---|---|
-| PYTHON, 8 corpora | 0.190 | 0.318 | **0.391** |
-| other, 7 corpora | 0.303 | 0.504 | **0.546** |
-| the 5 NEW Python corpora alone, precision | 0.591 | 0.526 | **0.487** |
-| above 5,000 chunks, 2 corpora | 0.275 | **0.375** | 0.250 |
+| slice | N=10 | N=20 | N=30 | precision at 30 |
+|---|---|---|---|---|
+| **8 Python corpora** | 0.190 | 0.318 | **0.391** | 0.479 |
+| **10 non-Python** | 0.250 | 0.446 | **0.529** | **0.679** |
+| the 5 NEW Python corpora | **0.268** | **0.423** | 0.381 | 0.487 |
+| above 5,000 chunks (2 corpora) | 0.275 | **0.375** | 0.250 | — |
 
-On the five new Python corpora **precision falls monotonically** — 0.591,
-0.526, 0.487 — and `correct/asked` turns over at N=20 (0.423 against 0.381).
-The two corpora above 5,000 chunks do the same.
+Read the last two rows against the first. Pooled over 8 Python corpora N=30
+still wins — but **the five corpora this run added turn over at N=20**, their
+precision falls monotonically (0.591 → 0.526 → 0.487), and the two corpora
+above 5,000 chunks fall hardest (0.375 → 0.250).
 
-**So the dilution penalty is real and it is where the product lives**: large
-Python repositories. It is absent on the population v2 measured.
+At every N, **non-Python answers ~35% more questions correctly and is ~0.20
+more precise at N=30.** The gap is not the models' fault and it is not noise;
+it is what the mission predicted when it said three Python corpora of thirteen
+was a zoo that did not match the product.
 
-> **The 13-corpus answer and the 8-Python answer disagree, and neither is
-> wrong.** That is exactly the skew this whole run exists to expose: a
-> conclusion drawn from 3 Python corpora of 13 was a conclusion about Go, C,
-> Java and prose.
+> **v2's population and the Python population disagree about how much context
+> to send, and neither is wrong.** A conclusion drawn from 3 Python corpora of
+> 13 was a conclusion about Go, C, Java, TypeScript and prose.
 
 ### What this decides, and what it does not
 
@@ -914,29 +922,30 @@ Python repositories. It is absent on the population v2 measured.
 and says nothing directly about `RERANK_TOP_N`.
 
 ```
-VECTOR_TOP_N = 25   shipped   CONFIRMED - v2's own "should be 10" is OVERTURNED
-RERANK_TOP_N = 10   shipped   STILL UNMEASURED, by anyone
+VECTOR_TOP_N = 25   CONFIRMED - it sits at the knee, between the 20 that the
+                    large Python corpora want and the 30 that everything else
+                    does. v2's own unshipped "should be 10" is OVERTURNED:
+                    10 is the worst of the three values on every slice.
+RERANK_TOP_N = 10   STILL UNMEASURED, by anyone.
 ```
-
-**v2 recommended dropping `VECTOR_TOP_N` to 10 and never shipped it. Good — it
-is the worst of the three values on every slice of 18 corpora.** 25 sits
-between the two values the evidence supports (20 on large Python, 30+ on
-everything else) and is confirmed as a reasonable compromise rather than
-re-derived as optimal.
 
 **`RERANK_TOP_N` is untouched.** Reranked chunks are better ordered, so their
 optimum is at most this one and may be lower — an argument, not a number.
 
 ### Limits
 
-- **One model.** Everything above is `gemini-3.5-flash-lite`.
-- **The two halves have different N coverage** — 5..100 on v2's 13, 10..30 on
-  the new 5 — so the N=50/100 rows are 13 corpora with 3 Python, not 18.
+- **One model**, `gemini-3.5-flash-lite`, throughout.
+- **N coverage is uneven.** 5..100 on v2's 13 corpora, 10..30 on the new 5, so
+  the N=50 and N=100 rows are 13 corpora with 3 Python — the old skew, in the
+  one place this run could not remove it.
+- **13 of the 18 corpora are v2's cached run** (2026-09-17), re-used rather
+  than re-measured. Same model, same script, same fixtures; the three cells
+  that looked wrong were re-run and the rest were not.
 - **The Python turn-over rests on 5 corpora and 97 questions**, and is driven
-  by `pydantic` (9 -> 5) against `lung` (7 -> 10). The direction is consistent
-  with the size buckets; the size of it is not settled.
-- `correct` depends on a citation resolving, so the whole metric inherits
-  whatever made three cells report zero.
+  by `pydantic` (9 → 5) against `lung` (7 → 10). The direction agrees with the
+  size buckets; its size is not settled.
+- `correct` depends on a citation resolving, so the metric inherits whatever
+  produced the three zeros in the first place.
 
 ---
 
