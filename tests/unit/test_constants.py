@@ -49,3 +49,32 @@ def test_no_module_level_constant_is_declared_twice():
     assert not duplicated, (
         f"a second declaration silently shadows the first: {duplicated}"
     )
+
+
+def test_the_three_top_n_numbers_keep_their_order():
+    """`RERANK_TOP_N <= VECTOR_TOP_N <= SEARCH_LIMIT`, and it is arithmetic.
+
+    You cannot send more than you kept, and you cannot keep more than you
+    retrieved. CLAUDE.md has stated this since 2026-09-14 as the ONE rule among
+    the three - every actual value is a knob slice 8 may move - and nothing
+    enforced it. All three live in different packages, so no single module can.
+
+    Break it and the failure is silent: a cut to 30 out of a window of 20
+    returns 20 and simply stops being a cut. A `RERANK_TOP_N` above
+    `VECTOR_TOP_N` is worse still - it would make the DEGRADED path narrower
+    than the good one, which is backwards.
+
+    Added 2026-09-18, when slice 8 v3 moved `VECTOR_TOP_N` 25 -> 30.
+    """
+    from labpilot.api.services import VECTOR_TOP_N
+    from labpilot.rerank.defaults import RERANK_TOP_N
+    from labpilot.store.defaults import SEARCH_LIMIT
+
+    assert RERANK_TOP_N <= VECTOR_TOP_N, (
+        f"the degraded path would send {VECTOR_TOP_N} and the reranked one "
+        f"{RERANK_TOP_N} - the fallback cannot be the wider of the two"
+    )
+    assert VECTOR_TOP_N <= SEARCH_LIMIT, (
+        f"search returns {SEARCH_LIMIT} per side and the cut keeps "
+        f"{VECTOR_TOP_N} - a cut larger than the window is not a cut"
+    )

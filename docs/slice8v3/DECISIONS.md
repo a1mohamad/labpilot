@@ -55,7 +55,7 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 | 15 | **chunk overlap `o`** | 50 | **50** — nothing measurable moves it | 3 (3) | **CONFIRMED, and shown not to matter** |
 | 16 | **the chunk header** | keep | **keep — +0.063 MRR, the largest chunking effect** | 3 (3) | **CONFIRMED** |
 | 17 | **merged vs per-side rerank** | per side | per side | 0 | **STILL UNMEASURED** |
-| 18 | **`VECTOR_TOP_N`** | 25, and "should be 10" | **30** — best on 18 corpora and on both language pools | 18 (8) | **CHANGED — recommended; v2's "10" OVERTURNED** |
+| 18 | **`VECTOR_TOP_N`** | 25, and "should be 10" | **30** — best on 18 corpora and on both language pools | 18 (8) | **CHANGED — IN CODE; v2's "10" OVERTURNED** |
 | 18b | **`RERANK_TOP_N`** | 10 | 10 | 0 | **STILL UNMEASURED** |
 | 19 | **exact vs HNSW** | exact | exact | — | **reused on purpose** |
 | 20 | **BGE at `MIGRATION` position 2** | untouchable, platform argument | **the worst embedder we have** | 4 (4) | **OVERTURNED** |
