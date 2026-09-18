@@ -1,0 +1,260 @@
+{
+  "corpus": {
+    "key": "smsspam",
+    "env": "LABPILOT_SMSSPAM_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/tests/**",
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/.ipynb_checkpoints/**",
+      "**/.pytest_cache/**",
+      "**/.pytest_tmp/**",
+      "**/migrations/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "SMS spam classifier, FastAPI service",
+    "repo": "the user's own application, local",
+    "commit": "n/a",
+    "licence": "personal material, never committed",
+    "note": "The source is NOT committed: it is the user's own personal material, and the provenance rule keeps it out of the repository. Point the env var at the folder before scoring.",
+    "chunks_at_this_commit": 89,
+    "include_note": "**/*.py, excluding tests and generated migrations. A FastAPI-shaped service: app/, scripts/, frontend/.",
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": [
+    {
+      "id": "SM01",
+      "query": "how many items in the vocabulary list is the sequence length metadata is set to",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "app/ml/preprocessing.py",
+      "expects": [
+        27
+      ],
+      "anchor": "self.sequence_length: int = vocabs_artifact[\"output_sequence_length\"]"
+    },
+    {
+      "id": "SM02",
+      "query": "what happens to the database connection if an operation fails",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "app/db/session.py",
+      "expects": [
+        60
+      ],
+      "anchor": "session.rollback()"
+    },
+    {
+      "id": "SM03",
+      "query": "how are external runtime failures handled during classification",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "app/ml/predictor.py",
+      "expects": [
+        63
+      ],
+      "anchor": "raise PredictionError(\"ONNX inference failed\") from exc"
+    },
+    {
+      "id": "SM04",
+      "query": "what does the request tracking middleware take as an argument",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "app/middleware/request_id.py",
+      "expects": [
+        11
+      ],
+      "anchor": "def __init__(self, app: ASGIApp) -> None:"
+    },
+    {
+      "id": "SM05",
+      "query": "what does the service need to be initialized",
+      "asks": "structure",
+      "wording": "named",
+      "file": "app/services/prediction_service.py",
+      "expects": [
+        21
+      ],
+      "anchor": "message_cipher: MessageCipher,"
+    },
+    {
+      "id": "SM06",
+      "query": "what is the version of the service",
+      "asks": "constant",
+      "wording": "named",
+      "file": "app/api/routes.py",
+      "expects": [
+        25
+      ],
+      "anchor": "\"version\": \"1.0.0\","
+    },
+    {
+      "id": "SM07",
+      "query": "which clock is used to record when a prediction was made",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "app/db/models/prediction.py",
+      "expects": [
+        85
+      ],
+      "anchor": "# Use PostgreSQL's clock instead of the application server's clock."
+    },
+    {
+      "id": "SM08",
+      "query": "what happens when the request body is too big",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "app/middleware/request_body_limit.py",
+      "expects": [
+        66
+      ],
+      "anchor": "await self._send_too_large(scope, send)"
+    },
+    {
+      "id": "SM09",
+      "query": "which files are checked during the startup validation",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "app/core/startup.py",
+      "expects": [
+        17
+      ],
+      "anchor": "AppConfig.LABEL_MAPPING_PATH,"
+    },
+    {
+      "id": "SM10",
+      "query": "what status code is returned for unhandled exceptions",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "app/api/error_handlers.py",
+      "expects": [
+        158
+      ],
+      "anchor": "status_code=500,"
+    },
+    {
+      "id": "SM11",
+      "query": "how are short messages handled during tokenization",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "app/ml/preprocessing.py",
+      "expects": [
+        65
+      ],
+      "anchor": "ids += [0] * (self.sequence_length - len(ids))"
+    },
+    {
+      "id": "SM12",
+      "query": "what happens if the requested record is not found",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "scripts/decrypt_prediction.py",
+      "expects": [
+        29
+      ],
+      "anchor": "raise LookupError(\n            f\"Prediction {prediction_id} does not exist.\"\n        )"
+    },
+    {
+      "id": "SM13",
+      "query": "what database tools are used for the data models",
+      "asks": "structure",
+      "wording": "named",
+      "file": "app/db/models/prediction.py",
+      "expects": [
+        4
+      ],
+      "anchor": "from sqlalchemy import ("
+    },
+    {
+      "id": "SM14",
+      "query": "how long does the system wait for the database connection",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "app/core/config.py",
+      "expects": [
+        67
+      ],
+      "anchor": "os.getenv(\"DB_CONNECT_TIMEOUT_SECONDS\", \"3\")"
+    },
+    {
+      "id": "SM15",
+      "query": "what header is added to the response to track the request",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "app/middleware/request_id.py",
+      "expects": [
+        50
+      ],
+      "anchor": "(b\"x-request-id\", request_id.encode(\"ascii\"))"
+    },
+    {
+      "id": "SM16",
+      "query": "what happens if the request size limit is set to zero or less",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "app/middleware/request_body_limit.py",
+      "expects": [
+        23
+      ],
+      "anchor": "raise ValueError(\"max_body_bytes must be positive.\")"
+    },
+    {
+      "id": "SM17",
+      "query": "what is the numerical tolerance for comparing model outputs",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "scripts/validate_keras_onnx_parity.py",
+      "expects": [
+        29
+      ],
+      "anchor": "RTOL: float = 1e-4"
+    },
+    {
+      "id": "SM18",
+      "query": "what is done to the database connections when the app shuts down",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "app/main.py",
+      "expects": [
+        51
+      ],
+      "anchor": "database.dispose()"
+    },
+    {
+      "id": "SM19",
+      "query": "what text is used to prime the prediction engine",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "app/core/startup.py",
+      "expects": [
+        44
+      ],
+      "anchor": "predictor.predict(\"Model warmup message\")"
+    },
+    {
+      "id": "SM20",
+      "query": "what does the text cleaning step do to the input",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "app/ml/preprocessing.py",
+      "expects": [
+        41
+      ],
+      "anchor": "Lowercased text with punctuation removed."
+    }
+  ]
+}
