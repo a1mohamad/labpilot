@@ -114,6 +114,23 @@ SKIP_DIRECTORIES = frozenset(
         ".eggs",
         ".idea",
         ".vscode",
+        # MEASURED 2026-09-18, and it is the one entry here aimed at THIS
+        # product's own users. Jupyter writes `.ipynb_checkpoints/<name>-
+        # checkpoint.ipynb` beside every notebook it saves - a stale near-copy,
+        # not a build artifact, so no other skip rule catches it.
+        #
+        # On the user's own `titanic` repository a real walk stored 463 chunks
+        # of which 181 - 39.1% - were DUPLICATE TEXT, almost all of it the
+        # checkpoint and two earlier versions of one notebook. Retrieval then
+        # has to choose between several copies of the same answer, and the
+        # comparison prompt can be handed the STALE one.
+        #
+        # This project already knows the shape: `lung` was 34.8% duplicate
+        # chunks from mlflow artifact copies and `pydantic` 6.6% from mypy
+        # outputs, and both had to be excluded by hand for the measurement.
+        # Jupyter's is the case a notebook-first product cannot ask users to
+        # exclude by hand.
+        ".ipynb_checkpoints",
     }
 )
 

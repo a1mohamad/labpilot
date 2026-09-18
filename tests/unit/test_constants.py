@@ -86,3 +86,20 @@ def test_the_three_top_n_numbers_keep_their_order():
         f"search returns {SEARCH_LIMIT} per side and the reranker is handed "
         f"{RERANK_WINDOW} - a window wider than the search is not a window"
     )
+
+
+def test_a_notebook_checkpoint_directory_is_never_walked():
+    """Jupyter writes a stale near-copy of every notebook it saves.
+
+    `.ipynb_checkpoints/<name>-checkpoint.ipynb` is not a build artifact, so no
+    other skip rule catches it - and LabPilot is a notebook-first tool, so this
+    is the duplicate its own users will have.
+
+    MEASURED on the user's `titanic` repository: a real walk stored 463 chunks
+    of which 181 (39.1%) were duplicate TEXT, almost all of it the checkpoint
+    and two earlier versions of one notebook. Retrieval then picks between
+    copies of one answer and the prompt can be handed the STALE one.
+    """
+    from labpilot.sources.defaults import SKIP_DIRECTORIES
+
+    assert ".ipynb_checkpoints" in SKIP_DIRECTORIES
