@@ -77,12 +77,33 @@ EMBEDDING_MINUTES_BUDGET = 6.0
 # measurement, and only that can set it honestly.
 WARN_MINUTES = 2.0
 
-# Below this, a corpus goes to Google first - see _pick_embedder. Measured
-# 2026-09-17: Google retrieves best where vector search is already easy and
-# loses on the corpus with real headroom, and it counts one TEXT as one
-# request, so it can embed about 1,000 chunks a DAY. 500 leaves room for a
-# second artifact in the same comparison on the same day.
-SMALL_CORPUS_CHUNKS = 500
+# SMALL_CORPUS_CHUNKS WAS HERE AND IS DELETED - 2026-09-18.
+#
+# It routed any corpus under 500 chunks to Google first, on the v2 finding that
+# "Google retrieves best where vector search is already easy". That rested on
+# THREE corpora. Re-measured on six, against `gemini-embedding-001` (the model
+# that matters after the MIGRATION fix in embed/registry.py):
+#
+#     corpus      chunks  codestral  gemini-001
+#     websocket       78    0.668      0.530     codestral +0.138
+#     quora           82    0.608      0.674     google    +0.066
+#     disaster       108    0.753      0.760     google    +0.006
+#     titanic        118    0.594      0.537     codestral +0.057
+#     requests       335    0.646      0.650     google    +0.004
+#     lung           628    0.587      0.569     codestral +0.019
+#
+# THREE WINS EACH, and net codestral ahead by 0.023 MRR - about half a query on
+# a 20-query fixture, which is BELOW what these fixtures can resolve. So the
+# rule bought no measurable quality, while costing:
+#
+#   19x slower than codestral at every size (4.1 min against 0.21 at 500)
+#   it tripped its own WARN_MINUTES = 2.0, so the router chose an embedder the
+#     UI then had to apologise for
+#   1,000 TEXTS a day, exhausted by a single 943-chunk run while measuring this
+#
+# A rule that exists to buy quality, and buys none, is deleted rather than
+# retuned. MIGRATION's own order now decides, and codestral leads it on
+# measured recall - 19 of 20 corpora against mistral-embed.
 
 # How many chunks survive the vector path when NO reranker ran.
 #
@@ -210,20 +231,12 @@ def _pick_embedder(
     which is how Cloudflare's daily neuron budget removes BGE from a large
     corpus without needing a second mechanism.
 
-    AND A SMALL CORPUS GOES TO GOOGLE FIRST - measured 2026-09-17. Google
-    retrieves best on the corpora where vector search is already easy
-    (`quora` MRR 0.674 and `requests` 0.650 against codestral's 0.608 and
-    0.646) and loses on the one with real headroom (`geo` 0.493 against
-    0.526). Its budget points at exactly the same range: Google counts one
-    TEXT as one request, so it can embed about 1,000 chunks a DAY - enough
-    for a notebook, nowhere near a repository.
-
-    So the thing it is best at and the thing it can afford are the same
-    thing, and `SMALL_CORPUS_CHUNKS` is where they meet.
+    THERE IS NO LONGER A SPECIAL CASE FOR SMALL CORPORA. One used to send
+    anything under 500 chunks to Google first; it was re-measured on six
+    corpora in slice 8 v3, found to buy no resolvable quality, and deleted -
+    the numbers are above the constants at the top of this file.
     """
     order = candidates
-    if chunks <= SMALL_CORPUS_CHUNKS:
-        order = sorted(candidates, key=lambda e: not e.model.startswith("gemini-"))
     if (
         order[0].embedding_minutes(tokens=tokens, chunks=chunks)
         > EMBEDDING_MINUTES_BUDGET
