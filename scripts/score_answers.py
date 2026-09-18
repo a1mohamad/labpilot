@@ -443,6 +443,19 @@ def run(
                 "fits_gemma": padded <= GEMMA_INPUT_LIMIT,
                 "padded": padded,
                 "model": provider.model,
+                "rerank": rerank_key,
+                # HOW MANY QUESTIONS WERE NOT ACTUALLY RERANKED. A declined
+                # query falls back to the dense order and scores exactly like
+                # vector alone, so it is invisible in the score and would
+                # quietly drag a rerank row toward its own baseline.
+                #
+                # This key was added on 2026-09-19 and landed ONLY in the
+                # REFUSED row builder below, because the anchor I matched -
+                # `"share": share,` - appears in both and the first one won.
+                # Every row of the first non-Python run therefore lacked it.
+                # The project's own rule, broken by me: assert the anchor is
+                # UNIQUE before trusting an edit.
+                "rerank_declined": rerank_declined,
                 **got,
             }
         )
