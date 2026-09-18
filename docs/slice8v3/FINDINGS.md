@@ -981,6 +981,148 @@ optimum is at most this one and may be lower — an argument, not a number.
 
 ---
 
+## H17 - THE CORPUS WE MEASURE IS NOT THE ONE THE PRODUCT BUILDS
+
+Every corpus in the zoo is **one language** - `**/*.py`, `**/*.go`. That was the
+right choice for comparing embedders, windows and fusion, because it holds the
+material constant while one knob moves. It is **not what a user gets**:
+`POST /artifacts` walks a repository with `sources.walk()`, which reads 58
+suffixes and skips by directory, size, secret suffix and machine-written
+content.
+
+So the same queries were scored against the corpus **the product itself would
+store** - the real walk, the real loaders, the real refusals.
+
+| corpus | what it is | chunks | MRR | delta |
+|---|---|---|---|---|
+| **pytest** | a library, code only | 6,714 → 10,064 | 0.446 → 0.442 | **−0.004** |
+| disaster | personal ML app | 108 → 497 | 0.753 → 0.682 | −0.071 |
+| click | a library | 1,585 → 1,997 | 0.577 → 0.477 | −0.100 |
+| smsspam | personal ML app | 89 → 389 | 0.653 → 0.538 | −0.115 |
+| **titanic** | **3 versions of ONE notebook** | 118 → 345 | 0.594 → 0.205 | **−0.389** |
+| lung | — | **REFUSED** | — | — |
+
+```
+pooled, 5 scored corpora        MRR 0.605 -> 0.469   -0.136
+without titanic                 MRR 0.607 -> 0.535   -0.073
+```
+
+**`pytest` gained 3,350 chunks and lost 0.004.** So "more content is worse" is
+not the finding, and a first draft of this section that said *"every corpus is
+worse, not one is better"* was **wrong and is retracted**. On a real library the
+fixture is accurate.
+
+### `titanic` IS NOT A NOTEBOOK FINDING, and that is the correction that matters
+
+Notebooks are this product's main use case, so a −0.389 on the one notebook
+corpus needed explaining rather than averaging. Three corpora were built from
+the same repository:
+
+| | chunks | MRR | r@10 |
+|---|---|---|---|
+| the fixture: one notebook | 118 | **0.594** | 0.950 |
+| **the SAME notebook, via the real walk** | 118 | **0.594** | 0.950 |
+| the whole real folder | 345 | 0.205 | 0.750 |
+
+**Take the same notebook out of the real walk and the score is identical to the
+fixture.** Notebook content, cell splitting, markdown prose and stored outputs
+cost exactly nothing.
+
+The folder holds **three versions of one notebook**, plus Jupyter's auto-save:
+
+```
+titanic_analysis.ipynb        126 chunks   an older version
+titanic_analysisV2.ipynb      118 chunks   <- the answer key names THIS one
+titanic_V2.ipynb               94 chunks   another version
+.ipynb_checkpoints/...        118 chunks   auto-saved copy (now skipped)
+```
+
+Counting what outranks the correct chunk, across all 20 queries - **75
+competitor slots**:
+
+```
+39   titanic_analysis.ipynb     a DIFFERENT VERSION of the same notebook
+21   titanic_analysisV2.ipynb   the right file, a different chunk
+13   titanic_V2.ipynb           another version
+ 2   README.md                  the only genuinely different content
+```
+
+And every query moves the same way - rank 1-2 becomes rank 3-6, the signature of
+*two more copies of the answer sitting above it*.
+
+> **Retrieval did not fail. The SCORE did.** The model found the right content
+> every time; it found it in a file the answer key does not name, so a correct
+> hit was recorded as a miss.
+
+Removing Jupyter's checkpoint alone moved it only 0.185 -> 0.205, which is why
+"duplicates" was not a complete answer either: the checkpoint is one copy of
+four.
+
+### The real risk behind the artifact, and it is worse than a number
+
+> With three versions in one folder, LabPilot can retrieve the **old** notebook
+> and compare the paper against code the user replaced months ago - confidently,
+> with a citation.
+
+For a tool whose entire job is explaining **why two things diverge**, comparing
+against a stale version is the worst failure it has. The `.ipynb_checkpoints`
+skip shipped today fixes Jupyter's auto-save and **does not fix this**:
+`titanic_analysis.ipynb` and `titanic_V2.ipynb` are real files a user may want.
+
+Two candidate designs, neither built:
+
+1. **Prefer the newest** when two chunks are near-identical, breaking the tie on
+   modification time.
+2. **Say it out loud** - *"3 near-copies of this notebook were found; I used
+   `titanic_analysisV2.ipynb`"* - which is this project's existing rule that a
+   degraded answer must never be silent.
+
+### THE PRODUCT REFUSES ONE OF THE USER'S OWN REPOSITORIES
+
+`lung` has no row because it cannot have one:
+
+```
+sources.walk -> SourceTooLarge: lung holds more than 20,000,000 bytes
+                of readable text
+```
+
+**`MAX_TOTAL_BYTES` is 20 MB and this repository is over it.** LabPilot refuses
+the whole ingest, while our fixture has been scoring 628 chunks of it all run.
+A product decision, not a measurement one, and recorded rather than fixed: the
+limit exists for the 512 MB memory budget, and moving it is a Step 3 question
+about where ingest runs.
+
+**A refusal must never be pooled as a 0.000.** The first version of this script
+did exactly that and dragged the pooled delta from −0.136 to −0.216 - a product
+refusal masquerading as a bad score.
+
+### What it does NOT overturn
+
+**No comparison in this run changes.** Every knob - fusion, the embedder, the
+window, chunk size, the header - was measured with the SAME material on both
+sides, so a relative result survives a shift that moves both.
+
+What moves is the **absolute** level, and honestly stated it is smaller than it
+first looked: **about −0.07 MRR on personal projects, ~0 on a library**, plus one
+corpus whose number was an artifact and one repository that cannot be ingested.
+
+### Limits
+
+- **5 corpora scored, one refused**, all Python.
+- `smsspam` is the clean case and even there **51%** of what outranks the answer
+  comes from files the fixture already had - so part of the shift is re-ordering
+  rather than new competition.
+- Ground truth survives because it is stored as **file + line**, and it was
+  checked: 0 queries lost their target, 0 gained one, no basename clashes. A
+  fixture keyed by chunk index could not have been re-scored at all.
+- `scripts/score_real_ingest.py` repeats it. A widened `include` glob was tried
+  first and is wrong twice over - globs know nothing about `SKIP_DIRECTORIES`
+  (`disaster` came out at **400,497** chunks, almost all `node_modules`), and
+  `corpora.chunks_for` lets `LooksGenerated` escape where the product counts it
+  as a skip, so one minified file aborted a whole corpus.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
@@ -991,5 +1133,5 @@ optimum is at most this one and may be lower — an argument, not a number.
 | the fusion `r@50` threshold | H1 complicates it: almost nothing has `r@50` headroom now |
 | `RERANK_TOP_N` | never measured by anyone. H16 settles `VECTOR_TOP_N` and cannot speak to this one: its chunks are picked by vector search alone |
 | merged vs per-side with a Python+Python pair | |
-| the all-suffix corpus | every corpus is `.py` only; `pydantic` would be 13,377 chunks rather than 9,846 with mixed formats |
+| ~~the all-suffix corpus~~ | **DONE - H17.** Every corpus is worse on the real walk, and `lung` is REFUSED outright |
 | end-to-end time / `WARN_MINUTES` | still a guess |

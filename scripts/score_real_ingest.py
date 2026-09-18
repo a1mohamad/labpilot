@@ -120,6 +120,15 @@ def run(names: list[str], *, count_only: bool, model: str) -> None:
             f"({(len(wide) / len(narrow) - 1) * 100:+.0f}%), "
             f"{len(queries)} queries"
         )
+        refusal = next((v for k, v in skipped.items() if k.startswith("REFUSED")), None)
+        if refusal:
+            # NOT a gap in the table. The product REFUSES this repository, and
+            # scoring it as 0.000 would pool a refusal in with a measurement.
+            print(f"  THE PRODUCT REFUSES THIS REPOSITORY: {refusal}")
+            print(f"  our fixture scores {len(narrow)} chunks of it quite happily")
+            rows.append({"corpus": name, "narrow": len(narrow), "refused": refusal})
+            continue
+
         print(head)
         if skipped:
             print(f"  the product would SKIP: {skipped}")
@@ -183,12 +192,21 @@ def run(names: list[str], *, count_only: bool, model: str) -> None:
             }
         )
 
-    if not count_only and rows:
-        print("\npooled, every corpus weighted once")
+    # A REFUSED repository has no score, and pooling it as 0.000 mixes a
+    # product refusal into a measurement - which is what the first version of
+    # this script did, dragging the pooled delta from -0.14 to -0.22.
+    scored = [r for r in rows if "real_MRR" in r]
+    if not count_only and scored:
+        refused = len(rows) - len(scored)
+        print("")
+        print(
+            f"pooled, every SCORED corpus weighted once "
+            f"({len(scored)} scored, {refused} refused)"
+        )
         for label in ("MRR", "r@10", "r@50"):
-            n = statistics.mean(r[f"narrow_{label}"] for r in rows)
-            w = statistics.mean(r[f"real_{label}"] for r in rows)
-            print(f"  {label:6} narrow {n:.4f}   REAL {w:.4f}   {w - n:+.4f}")
+            n = statistics.mean(r[f"narrow_{label}"] for r in scored)
+            w = statistics.mean(r[f"real_{label}"] for r in scored)
+            print(f"  {label:6} fixture {n:.4f}   REAL {w:.4f}   {w - n:+.4f}")
 
     RESULTS.mkdir(parents=True, exist_ok=True)
     name = "real_ingest_counts" if count_only else "real_ingest"
