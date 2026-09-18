@@ -42,6 +42,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
+import pickle
 import re
 import statistics
 import sys
@@ -50,6 +51,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from labpilot.api.reranking import CHAIN as RERANK_CHAIN
+from labpilot.api.services import RERANK_WINDOW
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.llm.defaults import SAFETY_MARGIN_RATIO
 from labpilot.llm.registry import (
@@ -62,9 +65,31 @@ from scripts.score_hybrid import CORPORA, targets
 from scripts.score_rerank import cached_vectors, dense_orders
 
 RESULTS = Path(".logs/results")
+# The listwise cache is keyed by the candidate SET (G14), so one window
+# serves every value of N and a re-run of the sweep is free.
+CACHE = Path(".cache/topn")
 OUT = Path("artifacts/slice8v2/answers")
 
 MODELS = {"flashlite": GEMINI_3_5_FLASH_LITE, "gemma31": GEMMA_4_31B}
+
+# EVERY rerank tier the chain holds, keyed by a short name, IN CHAIN ORDER.
+# The user's rule for this run: use whatever is alive, in the order we have -
+# and keep ONE model across every corpus inside a single comparison, because
+# mixing them is exactly what voided the first top-N attempt.
+#
+# Probed 2026-09-19: flashlite ALIVE but 429s on RPM, gemma31 HTTP 500 on ~2
+# calls of 3, gemma26 answers and returns the IDENTITY order on a 3-document
+# probe, voyage3 / voyage3lite / cohere / bge all ALIVE.
+RERANKERS = {
+    "flashlite": RERANK_CHAIN[0],
+    "flashlite31": RERANK_CHAIN[1],
+    "gemma26": RERANK_CHAIN[2],
+    "gemma31": RERANK_CHAIN[3],
+    "voyage3": RERANK_CHAIN[4],
+    "voyage3lite": RERANK_CHAIN[5],
+    "cohere": RERANK_CHAIN[6],
+    "bge": RERANK_CHAIN[7],
+}
 
 # The second Google account is a second QUOTA, not a spare key - Google bills
 # per project per model.
@@ -143,7 +168,80 @@ ANSWER = re.compile(r"^\s*Q(\d+)\s*:\s*(.+)$", re.M)
 CITATION = re.compile(r"\[([AB]-\d+)")
 
 
-def chosen(chunks, queries, corpus: str, n: int) -> list[int]:
+def vector_orders(chunks, queries, corpus: str) -> dict:
+    """Cosine order per question - the baseline both paths start from."""
+    chunk_vectors = cached_vectors(corpus, "codestral-embed", "chunks", len(chunks))
+    query_vectors = cached_vectors(corpus, "codestral-embed", "queries", len(queries))
+    return dense_orders(queries, query_vectors, chunk_vectors)
+
+
+def reranked(
+    chunks, queries, corpus: str, dense: dict, tier, window: int, pace: float
+) -> tuple[dict, int]:
+    """`dense`, with each question's top `window` re-ordered by a reranker.
+
+    THE POINT OF THE WHOLE RUN. Everything below `dense` is untouched, so the
+    only difference between a rerank row and a vector row is the ORDER of the
+    candidates - which is exactly what RERANK_TOP_N is a number about.
+
+    Cached per (corpus, model, window) because a listwise call is keyed by the
+    candidate SET: the same window serves every value of N, so the sweep costs
+    ONE call per question, not one per question per N.
+
+    A tier that declines leaves the dense order in place, which is what `skip`
+    means everywhere else in this project - and it is COUNTED, because a
+    decline scores exactly like vector alone and is otherwise invisible.
+    """
+    CACHE.mkdir(parents=True, exist_ok=True)
+    tag = CACHE / f"topn_{corpus}_{tier.model.replace('/', '_')}_w{window}.pkl"
+    if tag.exists():
+        cached, was_declined = pickle.loads(tag.read_bytes())
+        if set(cached) == {q.id for q in queries}:
+            print(f"    cached, {was_declined} had declined")
+            return {q.id: cached[q.id] for q in queries}, was_declined
+
+    out, declined = {}, 0
+    for i, query in enumerate(queries, 1):
+        if i > 1 and pace:
+            time.sleep(pace)
+        candidates = [position for position, _ in dense[query.id][:window]]
+        if not candidates:
+            out[query.id] = dense[query.id]
+            continue
+
+        documents = [chunks[position].embed_text for position in candidates]
+        ranking = None
+        for attempt in range(5):
+            try:
+                ranking = tier.rank(query.text, documents, top_n=None)
+                break
+            except Exception as exc:
+                print(
+                    f"      {query.id} try {attempt + 1}: {str(exc)[:50]}", flush=True
+                )
+                time.sleep(5 + 10 * attempt)
+
+        if ranking is None or not ranking.order:
+            declined += 1
+            out[query.id] = dense[query.id]
+            continue
+
+        # POSITIONS index the list we PASSED. `candidates[pos]` is the corpus
+        # position; `pos` alone would name a different chunk entirely.
+        head = [
+            (candidates[pos], 0.0) for pos in ranking.order if pos < len(candidates)
+        ]
+        out[query.id] = head + list(dense[query.id][window:])
+        print(f"      {i}/{len(queries)}", end="\r", flush=True)
+
+    print(f"    reranked {len(queries)} queries, {declined} declined      ")
+    tag.write_bytes(pickle.dumps((out, declined)))
+    return out, declined
+
+
+def chosen(
+    chunks, queries, corpus: str, n: int, orders: dict | None = None
+) -> list[int]:
     """The `n` chunks a multi-question report would actually be sent.
 
     `n` is the TOTAL number of chunks in the prompt, not a per-query top-k -
@@ -154,9 +252,7 @@ def chosen(chunks, queries, corpus: str, n: int) -> list[int]:
     score" would let one easy question own the whole prompt, which is the same
     starvation per-side reranking exists to prevent one layer down.
     """
-    chunk_vectors = cached_vectors(corpus, "codestral-embed", "chunks", len(chunks))
-    query_vectors = cached_vectors(corpus, "codestral-embed", "queries", len(queries))
-    dense = dense_orders(queries, query_vectors, chunk_vectors)
+    dense = orders if orders is not None else vector_orders(chunks, queries, corpus)
 
     keep: list[int] = []
     seen: set[int] = set()
@@ -236,7 +332,14 @@ def grade(reply: str, chunks, queries, sent: list[int]) -> dict:
     }
 
 
-def run(corpus: str, sizes: list[int], model_key: str) -> list[dict]:
+def run(
+    corpus: str,
+    sizes: list[int],
+    model_key: str,
+    rerank_key: str = "",
+    window: int = RERANK_WINDOW,
+    pace: float = 0.0,
+) -> list[dict]:
     chunks, queries = CORPORA[corpus]()
     provider = MODELS[model_key]
     client = LLMClient(chain=buckets(provider))
@@ -248,10 +351,19 @@ def run(corpus: str, sizes: list[int], model_key: str) -> list[dict]:
         f"{'answered':>9} {'cited':>6} {'CORRECT':>8}"
     )
 
+    orders = vector_orders(chunks, queries, corpus)
+    rerank_declined = 0
+    if rerank_key:
+        tier = RERANKERS[rerank_key]
+        print(f"  reranking with {tier.name}, window {window}")
+        orders, rerank_declined = reranked(
+            chunks, queries, corpus, orders, tier, window, pace
+        )
+
     for n in sizes:
         if n > len(chunks):
             continue
-        keep = chosen(chunks, queries, corpus, n)
+        keep = chosen(chunks, queries, corpus, n, orders)
         context = render(chunks, keep)
         numbered = chr(10).join(f"Q{i + 1}: {q.text}" for i, q in enumerate(queries))
         tokens = estimate_tokens(
@@ -284,6 +396,13 @@ def run(corpus: str, sizes: list[int], model_key: str) -> list[dict]:
                     "n": n,
                     "sent": len(keep),
                     "share": share,
+                    "rerank": rerank_key,
+                    # HOW MANY QUESTIONS WERE NOT ACTUALLY RERANKED. A declined query
+                    # falls back to the dense order and scores exactly like vector
+                    # alone, so it is invisible in the score and would quietly drag a
+                    # rerank row toward its own baseline. The smoke run declined 6 of
+                    # 20 on Voyage's 3-RPM limit before pacing was added.
+                    "rerank_declined": rerank_declined,
                     "tokens": tokens,
                     "fits_gemma": False,
                     "padded": padded,
@@ -336,6 +455,17 @@ def main(argv: list[str]) -> int:
         ).split(",")
     ]
     model = next((a.split("=")[1] for a in argv if a.startswith("--model=")), "gemma31")
+    rerank = next((a.split("=")[1] for a in argv if a.startswith("--rerank=")), "")
+    # SECONDS BETWEEN RERANK CALLS. Not politeness - a rate-limited tier
+    # that exhausts its retries DECLINES, and a declined query silently
+    # scores like vector alone. Voyage is 3 RPM (21s), flash-lite 15 (4.2s).
+    pace = float(next((a.split("=")[1] for a in argv if a.startswith("--pace=")), 0.0))
+    window = int(
+        next(
+            (a.split("=")[1] for a in argv if a.startswith("--window=")),
+            RERANK_WINDOW,
+        )
+    )
     names = (
         sorted(CORPORA)
         if "--all" in argv
@@ -348,12 +478,19 @@ def main(argv: list[str]) -> int:
     rows: list[dict] = []
     for name in names:
         try:
-            rows.extend(run(name, sizes, model))
+            rows.extend(run(name, sizes, model, rerank, window, pace))
         except SystemExit as exc:
             print(f"  {name}: skipped - {exc}")
 
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (RESULTS / f"answers_{model}.json").write_text(json.dumps(rows, indent=1))
+    # A RERANK run writes its own file. It is a different measurement from the
+    # vector one and the point is to COMPARE them, so overwriting would destroy
+    # the baseline - which is exactly how v2's 13-corpus run was nearly lost.
+    suffix = f"_rerank_{rerank}_w{window}" if rerank else ""
+    out = RESULTS / f"answers_{model}{suffix}.json"
+    out.write_text(json.dumps(rows, indent=1))
+    print()
+    print(f"wrote {out}")
 
     print(f"\npooled over {len({r['corpus'] for r in rows})} corpora")
     print(
