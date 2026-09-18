@@ -229,6 +229,88 @@ to catch drift.
 
 ---
 
+## H6 — RERANKING NEVER HURTS, and its benefit COLLAPSES as the corpus grows
+
+**16 corpora, 10 Python, `gemini-3.5-flash-lite` listwise at window 50, 137
+new calls.** Each delta divided by what its own fixture can resolve — one query
+is 0.050 MRR on a 20-query corpus and 0.022 on the 45-query ones.
+
+| corpus | chunks | q | vector | rerank | delta | queries | |
+|---|---|---|---|---|---|---|---|
+| requests | 335 | 45 | 0.646 | 0.791 | +0.145 | **+6.5** | PY |
+| log | 146 | 20 | 0.662 | 0.960 | +0.298 | **+6.0** | — |
+| quora | 82 | 17 | 0.608 | 0.848 | +0.240 | **+4.1** | PY |
+| smsspam | 89 | 20 | 0.653 | 0.833 | +0.180 | **+3.6** | PY |
+| notebooks | 382 | 20 | 0.528 | 0.698 | +0.170 | **+3.4** | PY |
+| cobra | 193 | 20 | 0.634 | 0.794 | +0.161 | **+3.2** | — |
+| disaster | 108 | 20 | 0.753 | 0.875 | +0.122 | **+2.4** | PY |
+| docx | 85 | 12 | 0.756 | 0.944 | +0.188 | **+2.3** | — |
+| pytest | 6,714 | 20 | 0.446 | 0.527 | +0.081 | **+1.6** | PY |
+| websocket | 78 | 15 | 0.668 | 0.717 | +0.049 | +0.7 | — |
+| click | 1,585 | 20 | 0.577 | 0.585 | +0.008 | +0.2 | PY |
+| pydantic | 9,846 | 20 | 0.530 | 0.532 | +0.002 | +0.0 | PY |
+| lung | 628 | 17 | 0.587 | 0.584 | −0.004 | −0.1 | PY |
+| zod | 1,160 | 20 | 0.802 | 0.775 | −0.027 | −0.5 | — |
+| titanic | 118 | 20 | 0.594 | 0.562 | −0.032 | −0.6 | PY |
+| docs | 463 | 19 | 0.864 | 0.816 | −0.048 | −0.9 | — |
+
+**9 real gains, 0 real losses, 7 below resolution.** `declined: 0` everywhere,
+so no corpus is hiding an abstention. That is a *stronger* result than v2's
+"9 gains, 1 loss, 3 nothing" — reranking with flash-lite never measurably hurt
+any of the 16.
+
+### But sort the same table by SIZE and it says something else
+
+| | corpora | mean MRR gain |
+|---|---|---|
+| **under 500 chunks** | **11** | **+0.134** |
+| **500 chunks and over** | **5** | **+0.012** |
+
+$$
+r\big(\log_{10}\text{chunks},\; \Delta\text{MRR}\big) = -0.493 \quad (n = 16)
+$$
+
+**Not one corpus at or above 500 chunks shows a real gain.** lung −0.1q,
+zod −0.5q, click +0.2q, pytest +1.6q, pydantic +0.0q. The mean gain on the
+large half is **+0.012 MRR — about a quarter of one query**, which is below
+what any of these fixtures can resolve.
+
+> **Reranking is measured to help on corpora 10–100× smaller than the artifacts
+> LabPilot actually targets, and to do nothing measurable on the ones it does.**
+
+**The v2 zoo could not have seen this.** Its largest corpus was `zod` at 1,160,
+and it held only 4 corpora at or above 500 chunks. The whole large half of this
+trend is new material, and 4 of the 5 large corpora are the Python ones added
+in v3.
+
+### What this does NOT establish
+
+- **n = 5 on the large side.** The correlation is moderate, not decisive.
+- **It is confounded with kind.** Every large corpus is a packaged library or
+  application; the small half includes prose, Word, and notebooks.
+- **It is not saturation.** pydantic's vector MRR is 0.530, so there is ample
+  room for a reranker to improve it. It simply does not.
+- The honest phrasing is *"no measurable gain at or above 500 chunks"*, not
+  *"reranking stops working"*.
+
+### The mechanism this suggests, and the experiment it generates
+
+A plausible reading: on a 9,846-chunk corpus the top 50 are **all plausible** —
+a large library repeats its own idioms — so a listwise reranker has no easy
+discriminations to make. On a 90-chunk corpus the top 50 contain obviously
+wrong candidates, and removing those is most of the measured gain.
+
+If that is right, a **narrower window should help the large corpora**, because
+it hands the reranker fewer near-identical candidates. That is measurable, and
+it is the one question v2 flagged as having **0% Python** behind it
+(`SEARCH_LIMIT` 30 vs 50 — its four w30 corpora are geo, gson, jq and papers,
+every one of them non-Python).
+
+**Running now: window 30 on lung, click, pytest, pydantic, zod and smsspam —
+6 corpora, 5 Python (83%).**
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
