@@ -105,16 +105,6 @@ WARN_MINUTES = 2.0
 # retuned. MIGRATION's own order now decides, and codestral leads it on
 # measured recall - 19 of 20 corpora against mistral-embed.
 
-# How many chunks survive the vector path when NO reranker ran.
-#
-# A SEPARATE number from RERANK_TOP_N on purpose, and the distinction was
-# missing from CLAUDE.md until 2026-09-14: one asks how many to send after a
-# reranker ordered them, the other how many to send when none did. The two
-# paths have different recall curves, so one number cannot serve both.
-#
-# UNMEASURED, like every other top_n here - slice 8 owns them all.
-VECTOR_TOP_N = 25
-
 
 def ingest_artifact(
     conn: psycopg.Connection,
@@ -379,8 +369,25 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
 # reranker ordered them, the other how many to send when none did. The two
 # paths have different recall curves, so one number cannot serve both.
 #
-# UNMEASURED, like every other top_n here - slice 8 owns them all.
-VECTOR_TOP_N = 25
+# MEASURED 2026-09-18, slice 8 v3: 18 corpora, 8 Python, 383 questions, one
+# model, graded on whether the answer cites the right chunk.
+#
+#   correct/asked   N=10 0.245   N=20 0.462   N=30 0.512
+#   corpora won     N=10 0       N=20 5       N=30 8      tied 5
+#
+# Per corpus against a 1.5-query bar, N=30 wins 6 and N=20 wins 2 - and one of
+# those two is a cell that re-ran at 14 instead of 8, so it is a tie. The solid
+# case for 20 is ONE corpus: pydantic at 9,846 chunks, which loses 4 queries of
+# 20. That is the closest corpus in the zoo to what this product targets, so 30
+# is chosen knowing it is slightly wrong for the very largest repositories.
+#
+# NOT higher: above 30 the gains thin to mostly ties, and every corpus carrying
+# N=50 and N=100 is one of v2's 13 - 3 Python of 13, the skew v3 exists to
+# remove. The shipped 25 was never measured at all.
+#
+# PER SIDE, so 30 is 60 chunks ~ 14,200 tokens against PROMPT_BUDGET 26,000.
+# docs/slice8v3/DECISIONS.md row 18.
+VECTOR_TOP_N = 30
 
 
 def ask(
