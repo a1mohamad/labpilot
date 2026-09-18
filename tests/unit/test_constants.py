@@ -103,3 +103,33 @@ def test_a_notebook_checkpoint_directory_is_never_walked():
     from labpilot.sources.defaults import SKIP_DIRECTORIES
 
     assert ".ipynb_checkpoints" in SKIP_DIRECTORIES
+
+
+def test_both_top_n_constants_are_in_PER_SIDE_units():
+    """The measurement counts the WHOLE PROMPT. These count ONE SIDE.
+
+    `scripts/score_answers.py` chooses N chunks from one corpus and puts them in
+    one prompt. The product sends TWO sides, so the prompt holds 2x the
+    constant, and reading a measured N straight into a constant DOUBLES it.
+
+    That is exactly what happened: RERANK_TOP_N got the conversion (experiment
+    N=20 -> 10 per side) and VECTOR_TOP_N did not, so it shipped 30 - a
+    60-chunk prompt, a size no run has ever tested. Caught by the user on
+    2026-09-19, not by any test.
+
+    Both best experiment values were 20 and 30, so both constants must be at or
+    below 15. This is a UNIT check, not a quality one: it cannot say the values
+    are right, only that neither has silently doubled again.
+    """
+    from labpilot.api.services import VECTOR_TOP_N
+    from labpilot.rerank.defaults import RERANK_TOP_N
+
+    largest_measured_prompt = 30
+
+    for name, value in (("RERANK_TOP_N", RERANK_TOP_N), ("VECTOR_TOP_N", VECTOR_TOP_N)):
+        assert value * 2 <= largest_measured_prompt, (
+            f"{name}={value} means a {value * 2}-chunk prompt, and the largest "
+            f"prompt ever measured is {largest_measured_prompt}. Either a new "
+            "measurement says otherwise, or a per-prompt number was pasted into "
+            "a per-side constant."
+        )

@@ -427,25 +427,29 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
 # reranker ordered them, the other how many to send when none did. The two
 # paths have different recall curves, so one number cannot serve both.
 #
-# MEASURED 2026-09-18, slice 8 v3: 18 corpora, 8 Python, 383 questions, one
-# model, graded on whether the answer cites the right chunk.
+# 30 -> 15 ON 2026-09-19, AND THE 30 WAS A UNIT ERROR, not a measurement.
 #
-#   correct/asked   N=10 0.245   N=20 0.462   N=30 0.512
-#   corpora won     N=10 0       N=20 5       N=30 8      tied 5
+# The experiment counts chunks in the WHOLE PROMPT. Both constants here are
+# PER SIDE, and the product sends two sides, so the prompt holds 2x the
+# constant and the conversion is experiment_N / 2. It was applied to
+# RERANK_TOP_N (best at experiment N=20 -> 10 per side) and NOT to this one,
+# which shipped 30 - a 60-chunk prompt, a value no run ever tested.
 #
-# Per corpus against a 1.5-query bar, N=30 wins 6 and N=20 wins 2 - and one of
-# those two is a cell that re-ran at 14 instead of 8, so it is a tie. The solid
-# case for 20 is ONE corpus: pydantic at 9,846 chunks, which loses 4 queries of
-# 20. That is the closest corpus in the zoo to what this product targets, so 30
-# is chosen knowing it is slightly wrong for the very largest repositories.
+# MEASURED, 18 corpora, 8 Python, 383 questions, flash-lite:
 #
-# NOT higher: above 30 the gains thin to mostly ties, and every corpus carrying
-# N=50 and N=100 is one of v2's 13 - 3 Python of 13, the skew v3 exists to
-# remove. The shipped 25 was never measured at all.
+#     experiment N=10  0.245     -> 5 per side
+#     experiment N=20  0.462     -> 10
+#     experiment N=30  0.512     -> 15   <- best, and this is the number
 #
-# PER SIDE, so 30 is 60 chunks ~ 14,200 tokens against PROMPT_BUDGET 26,000.
-# docs/slice8v3/DECISIONS.md row 18.
-VECTOR_TOP_N = 30
+# The knee is sharp. On 3.1-flash-lite over the four corpora carrying every
+# value, the first 10 chunks past N=10 buy +0.182 and the next EIGHTY buy
+# +0.091 - ten times less per chunk. Past a 20-chunk prompt the two-sided
+# total also clears Gemma's 16,000-token input cap, which costs 57,600 calls a
+# day, so "send more" is not free even where it still helps slightly.
+#
+# PER SIDE, so 15 is 30 chunks ~ 7,100 tokens at the measured 236/chunk,
+# against PROMPT_BUDGET 26,000. docs/slice8v3/DECISIONS.md row 18.
+VECTOR_TOP_N = 15
 
 # How many of the searched chunks the RERANKER SEES.
 #
