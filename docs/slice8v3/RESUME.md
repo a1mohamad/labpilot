@@ -116,59 +116,119 @@ and a seventh check in `validate_fixture.py` (`degenerate`).
 
 ---
 
-## 5. RUNNING WHEN THIS WAS WRITTEN — check before re-running
+## 5. RESULTS THAT LANDED AFTER §3 WAS WRITTEN
 
-```bash
-ls .logs/results/ | sort        # if a result file exists, that run is DONE
+**Nothing is running any more.** Check `ls .logs/results/` before re-running:
+if a result file exists, that measurement is done.
+
+### RERANK_WINDOW — MEASURED, and it CHANGES from 50 to 20
+
+Six windows, 5 corpora, **100% Python, 89 to 9,846 chunks**, flash-lite:
+
+| corpus | chunks | w5 | w10 | w20 | w30 | w40 | w50 | best |
+|---|---|---|---|---|---|---|---|---|
+| smsspam | 89 | +0.147 | +0.222 | +0.264 | +0.234 | **+0.277** | +0.180 | w40 |
+| lung | 628 | +0.011 | **+0.099** | +0.054 | +0.030 | +0.019 | −0.004 | w10 |
+| click | 1585 | −0.021 | −0.023 | **+0.011** | +0.000 | — | +0.008 | w20 |
+| pytest | 6714 | −0.013 | **+0.129** | +0.123 | +0.123 | +0.117 | +0.081 | w10 |
+| pydantic | 9846 | **+0.079** | +0.049 | −0.003 | +0.033 | −0.016 | +0.002 | w5 |
+
+```
+w10 +0.095   w20 +0.090   w30 +0.084   w50 +0.053   w5 +0.041
+(w40 shows +0.099 on 4 corpora, missing click - flattered)
 ```
 
-| job | state | what it decides |
+**The shipped w50 is nearly HALF as good as the best.** w10/w20/w30 are
+indistinguishable (+1.84/+1.76/+1.67 queries, spread 0.17 queries — below
+resolution). **Recommend `RERANK_WINDOW = 20`**: middle of the flat region,
+fewer tokens per call so more tiers reachable, within noise of the best.
+
+**The per-corpus optimum is everywhere** — w5, w10, w20 and w40 each win on
+some corpus, and the spread WITHIN a corpus (pydantic +0.079 at w5, −0.016 at
+w40) exceeds the spread between window means. A global window is a compromise.
+
+Note what `--window` actually is, verified in the source
+(`vector_candidates = dense[q.id][:window]`): it is how many of the searched
+chunks the **reranker sees**, i.e. `RERANK_WINDOW`. It is NOT `SEARCH_LIMIT`.
+
+```
+search        -> 50   SEARCH_LIMIT
+top 20 of 50  -> 20   RERANK_WINDOW   <- this is what was measured
+reranked, send-> 10   RERANK_TOP_N    <- still unmeasured
+```
+
+### SEARCH_LIMIT — the COST measured, the benefit is nil, so KEEP 50
+
+Never swept in v2 or v3. It is a **hard ceiling**: an answer outside it can
+never be recovered by fusion or reranking. Over 20 corpora, vector alone:
+
+| SEARCH_LIMIT | mean recall | queries lost of 423 |
 |---|---|---|
-| **window ladder** | **8 of 20 runs** — w5/w10 partly done, **w20 and w40 outstanding** | `RERANK_WINDOW` |
-| **gemini-001** on titanic, disaster, smsspam, lung | mid-run (lung warming) | **`SMALL_CORPUS_CHUNKS`** |
+| 10 | 0.864 | **45** |
+| 20 | 0.930 | 16 |
+| 25 | 0.951 | 8 |
+| 30 | 0.957 | 5 |
+| **50** | **0.968** | 0 |
 
-Logs are in the session scratchpad and will be GONE. Re-derive state from
-`.logs/results/`, not from the logs.
+The only thing lowering it buys is time, and exact search is ~11 ms at 1,387
+rows against a 350 ms VPN round trip. **No trade to make — keep 50.** Going
+ABOVE 50 is the untested direction and is not free.
 
-### Window ladder so far — the best window DIFFERS PER CORPUS
+### Routing by question kind — CONFIRMED DEAD on the new zoo
 
-| corpus | w5 | w10 | w30 | w50 | best |
-|---|---|---|---|---|---|
-| smsspam | +0.147 | +0.222 | **+0.234** | +0.180 | w30 |
-| lung | +0.011 | **+0.099** | +0.030 | −0.004 | w10 |
-| click | −0.021 | −0.023 | +0.000 | **+0.008** | w50 |
-| pytest | −0.013 | — | **+0.123** | +0.081 | w30 |
-| pydantic | **+0.079** | — | +0.033 | +0.002 | w5 |
+16 corpora, 10 Python, flash-lite w50. **Every kind positive**: error +0.152,
+api +0.140, structure +0.090, behaviour +0.089, constant +0.019, claim +0.303
+(n=10), checklist +0.151 (n=7). The worst single cell is `structure −0.500` on
+`websocket` with **n=1** — G18's denominator trap reproducing exactly.
 
-Means over complete columns: **w30 +0.084**, w50 +0.053, w5 +0.041. w10 shows
-+0.099 on only 3 corpora and is missing both big ones, so it is flattered.
-**w30 leads, NOT settled.** The per-corpus spread is larger than the
-between-window spread, which may be the more useful finding.
+### SMALL_CORPUS_CHUNKS — DELETED FROM THE CODE
 
-### Embedders on the new Python corpora — nobody dominates
+See §4. Measured on six corpora against `gemini-embedding-001`: three wins
+each, net codestral ahead 0.023 MRR ≈ half a query, below resolution. Deleted
+rather than retuned to 200, because a rule that exists to buy quality and buys
+none has no threshold that fixes it.
 
-| corpus | chunks | codestral | cohere | gemini-2 | mistral |
-|---|---|---|---|---|---|
-| smsspam | 89 | 0.653 | **0.663** | — | 0.559 |
-| disaster | 108 | 0.753 | **0.768** | 0.751 | 0.730 |
-| titanic | 118 | **0.594** | 0.546 | 0.507 | 0.491 |
-| lung | 628 | 0.587 | 0.551 | **0.615** | 0.421 |
-| click | 1585 | **0.577** | 0.395 | — | 0.430 |
+### DUAL-EMBEDDER FUSION — explored on the user's prompt, then PARKED
 
-Cohere wins the two smallest by **+0.010 / +0.015** and collapses on `click`
-(**−0.182**). codestral is the only one that never falls apart.
+Free experiment over cached vectors: fuse two embedders' rankings with RRF, the
+way vector and BM25 are fused. 8–12 corpora.
 
----
+| | mean MRR | mean r@50 |
+|---|---|---|
+| codestral alone | 0.6457 | 0.9596 |
+| google-001 alone | 0.5898 | 0.9778 |
+| cohere alone | 0.6050 | 0.9714 |
+| codestral + cohere | 0.6412 | 0.9788 |
+| **codestral + google** | **0.6664** | 0.9743 |
+| ORACLE (best of two per query) | **0.7172** | 0.9812 |
+
+**The insight worth keeping: Google ALONE is worse than codestral, but Google
+ADDED to codestral is better.** That is exactly why the deleted routing rule
+failed — it *substituted* where it should have *added*. And the ORACLE gap
+(+0.085 MRR over codestral) proves the embedders fail on genuinely different
+queries; RRF captures only part of it.
+
+**PARKED, and the user agreed it is not worth it now:**
+- under 200 chunks both fusions are **3 of 6** — a coin flip, and `r@50` is
+  already 0.9917, so there is nothing left to find;
+- gains concentrate on LARGER corpora (`geo`, `lung`: r@50 0.8745 → 0.9222),
+  where the quota does not stretch;
+- ingest cost: +cohere 0.81 min at 500 chunks (silent), **+google 4.3 min
+  (trips WARN_MINUTES)**. Cohere is 5x faster than Google; its blocker is the
+  1,000-calls-a-MONTH budget, not time;
+- `pytest` and `pydantic` have **no Cohere or Google vectors at all**.
+
+Revisit only if a paid Cohere or Google tier appears. It is a Step 2 idea, not
+a slice 8 decision.
 
 ## 6. STILL TO MEASURE
 
 | # | measurement | cost | note |
 |---|---|---|---|
-| A | finish the **window ladder** (w20, w40; w10 on pytest+pydantic) | ~180 flash-lite | |
 | B | **`VECTOR_TOP_N` / `RERANK_TOP_N`** | **~390 GENERATION calls** | **nothing has measured these in v2 OR v3** |
 | C | chunk **overlap** `o` and **header** on Python | re-embed per variant | v2 has non-Python only |
 | D | chunk size on **pytest** | re-embed | crashed at 5,760/9,839 on a Mistral 503 |
-| E | **reranker model** comparison on new Python | flash-lite + gemma + voyage | v2 ranked 9 configs on the old zoo |
+| E | **reranker model** comparison on new Python | flash-lite + gemma + voyage | v2 ranked 9 configs on the old zoo. NOTE: `tier_reach` now shows Gemma serves 10/10 Python corpora at w50 (v2 said 4 of 13), so chain 3's BUDGET reasoning was wrong even if its order is right |
 | F | BGE embedder | never run **anywhere** | |
 | G | all-suffix corpus check | re-embed 1 corpus | see below |
 
