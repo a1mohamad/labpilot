@@ -1,0 +1,235 @@
+{
+  "corpus": {
+    "key": "pydantichand",
+    "env": "LABPILOT_PYDANTIC_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/.git/**",
+      "tests/mypy/outputs/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "data validation and settings management",
+    "licence": "MIT",
+    "repo": "https://github.com/pydantic/pydantic",
+    "commit": "915896d",
+    "chunks_at_this_commit": 9846,
+    "drafted_by": "HAND-WRITTEN, no model",
+    "note": "The SAME corpus as `pydantic`, file for file. It exists only so that hand-written queries can be compared with LLM-drafted ones while everything else is held still. Its chunk vectors are a copy of pydantic's, which is exact because the file set is identical.",
+    "include_note": "Identical to the `pydantic` fixture. Do not change one without the other or the comparison stops being paired.",
+    "why": "Written question-first: each question was written from what a pydantic user would want to know, then its answer was located with grep. No model was involved. They use ordinary DOMAIN vocabulary (json schema, alias, enum, immutable) but never an identifier copied out of the answer - which is the line corpora.leaked() draws, and the line a first attempt at this fixture got wrong by banning plain words too and scoring an unfairly low MRR of 0.101."
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, written BEFORE its answer was located",
+    "file": "the file holding the answer",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named or paraphrase"
+  },
+  "queries": [
+    {
+      "id": "PH01",
+      "query": "which two formats can a timedelta be serialized to in json",
+      "file": "pydantic/config.py",
+      "expects": [
+        564
+      ],
+      "asks": "constant",
+      "wording": "named"
+    },
+    {
+      "id": "PH02",
+      "query": "how do i reject input keys that the model does not declare",
+      "file": "pydantic/config.py",
+      "expects": [
+        264
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "PH03",
+      "query": "what is raised when a discriminated union references a model that was never defined",
+      "file": "pydantic/_internal/_discriminated_union.py",
+      "expects": [
+        18
+      ],
+      "asks": "error",
+      "wording": "named"
+    },
+    {
+      "id": "PH04",
+      "query": "how do i run code immediately after a model instance is initialised",
+      "file": "pydantic/main.py",
+      "expects": [
+        672
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "PH05",
+      "query": "where is the json schema generated from the core schema",
+      "file": "pydantic/_internal/_model_construction.py",
+      "expects": [
+        88
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "PH06",
+      "query": "which config option turns off automatic type coercion",
+      "file": "pydantic/config.py",
+      "expects": [
+        462
+      ],
+      "asks": "constant",
+      "wording": "named"
+    },
+    {
+      "id": "PH07",
+      "query": "is a field re-validated when i assign to it on an existing instance",
+      "file": "pydantic/config.py",
+      "expects": [
+        654
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "PH08",
+      "query": "what error is raised when pydantic cannot build a schema for a type",
+      "file": "pydantic/aliases.py",
+      "expects": [
+        38
+      ],
+      "asks": "error",
+      "wording": "named"
+    },
+    {
+      "id": "PH09",
+      "query": "how do i validate the arguments of a plain function without a model",
+      "file": "pydantic/validate_call_decorator.py",
+      "expects": [
+        74
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "PH10",
+      "query": "where is the metaclass that assembles a model class",
+      "file": "pydantic/json_schema.py",
+      "expects": [
+        223
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "PH11",
+      "query": "which config option lets a field be populated by its real name as well as its alias",
+      "file": "pydantic/config.py",
+      "expects": [
+        61
+      ],
+      "asks": "constant",
+      "wording": "named"
+    },
+    {
+      "id": "PH12",
+      "query": "are default values validated against the field type",
+      "file": "pydantic/alias_generators.py",
+      "expects": [
+        25
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "PH13",
+      "query": "what happens when an alias path points at a key that is not there",
+      "file": "pydantic/errors.py",
+      "expects": [
+        140
+      ],
+      "asks": "error",
+      "wording": "named"
+    },
+    {
+      "id": "PH14",
+      "query": "how do i expose a property in the output without making it a stored field",
+      "file": "pydantic/fields.py",
+      "expects": [
+        1845
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "PH15",
+      "query": "where is the class that lets one field accept several possible aliases",
+      "file": "pydantic/aliases.py",
+      "expects": [
+        57
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "PH16",
+      "query": "which config option makes a model immutable after construction",
+      "file": "pydantic/config.py",
+      "expects": [
+        187
+      ],
+      "asks": "constant",
+      "wording": "named"
+    },
+    {
+      "id": "PH17",
+      "query": "how are field names converted to camel case for an external api",
+      "file": "pydantic/config.py",
+      "expects": [
+        177
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    },
+    {
+      "id": "PH18",
+      "query": "how do i copy a model instance while replacing some values",
+      "file": "pydantic/main.py",
+      "expects": [
+        410
+      ],
+      "asks": "api",
+      "wording": "named"
+    },
+    {
+      "id": "PH19",
+      "query": "where does the code resolve which member of a discriminated union applies",
+      "file": "pydantic/_internal/_discriminated_union.py",
+      "expects": [
+        33
+      ],
+      "asks": "structure",
+      "wording": "named"
+    },
+    {
+      "id": "PH20",
+      "query": "which config option stores the underlying value of an enum instead of the member",
+      "file": "pydantic/config.py",
+      "expects": [
+        226
+      ],
+      "asks": "behaviour",
+      "wording": "named"
+    }
+  ]
+}

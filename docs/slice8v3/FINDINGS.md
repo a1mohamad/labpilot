@@ -377,6 +377,112 @@ for a per-tier rule to arbitrate.
 
 ---
 
+## H8 — THE DRAFTED FIXTURES ARE FAR TOO EASY, and it moved a DESIGN DECISION, not just a number
+
+**This is the most important finding of the run, and it kills H1 and the causal
+claim in H6.** It exists because the user refused H1 and asked whether the
+queries were simply too easy.
+
+### The experiment
+
+`pydantic` keeps its 20 Gemma-drafted queries. A second fixture,
+`pydantichand`, was added over the **byte-identical corpus** — verified by
+hashing all 9,846 chunks' `embed_text`, so the vector cache is a copy rather
+than a re-embed. Same chunks, same embedder, same reranker, same window.
+**The only variable is who wrote the questions.**
+
+The 20 hand-written questions were written **question-first**: each was written
+from what a pydantic user would want to know, then its answer was located with
+`grep`. No model was involved. The drafter works the opposite way — it is shown
+a chunk and writes a question *about that chunk*, so the question inherits the
+chunk's wording and is findable by construction.
+
+### The result
+
+| | r@1 | r@10 | r@50 | MRR |
+|---|---|---|---|---|
+| Gemma-drafted | 0.400 | 0.800 | **1.000** (20/20) | **0.530** |
+| **hand-written** | **0.100** | **0.400** | **0.450** (9/20) | **0.189** |
+
+**MRR is 2.8× lower and `r@50` falls from 20 of 20 to 9 of 20.**
+
+A first attempt scored even lower — MRR 0.101, `r@50` 0.750 — because it
+over-paraphrased, writing *"the portable description of the data"* rather than
+*"json schema"*. That was **my error**: the project's rule bans a shared
+**identifier**, not a shared plain word. The numbers above are the corrected,
+fair version using ordinary domain vocabulary, and `leaked()` flags none of
+them. Both phrasings score far below the drafted set, so the conclusion does
+not rest on either wording.
+
+### H1 IS DEAD
+
+H1 claimed *"size does not create `r@50` headroom"*, resting on pydantic
+missing 0 of 20 at a 0.5% window. With realistic questions it misses **11 of
+20**. Retrieval at 10,000 chunks is much worse than the drafted fixtures
+showed, and the mission's original premise for building P6/P7 was right after
+all — it simply could not be seen through a drafted fixture.
+
+### H6's CAUSAL CLAIM IS OVERTURNED
+
+H6 found reranking's benefit collapsing as corpora grow, and read that as a
+property of size. On the same 9,846-chunk corpus, changing only the questions:
+
+| queries | vector MRR | + rerank | delta |
+|---|---|---|---|
+| Gemma-drafted | 0.530 | 0.532 | **+0.002 (+0.0 queries)** |
+| **hand-written** | 0.189 | **0.320** | **+0.131 (+2.6 queries, +69%)** |
+
+**Reranking does nothing on easy queries and helps substantially on realistic
+ones — on the identical corpus.** The mechanism is obvious once seen: if vector
+search already put the answer at rank 1, there is nothing to reorder. The
+drafted queries were easy enough that the answer was usually already at the
+top, so the reranker had no work to do.
+
+So *"reranking's benefit collapses with corpus size"* is better stated as
+**"reranking's benefit collapses when the query is easy"**, and large drafted
+corpora happened to produce easy queries. The v2 and v3 conclusion that
+**reranking ships** is unaffected and if anything strengthened: it helps most
+exactly where it is most needed.
+
+### H7 IS WEAKENED, NOT OVERTURNED — and the denominator saved me twice
+
+On the hand-written fixture the two windows give +2.6 queries (w50) against
++1.7 (w30), which reads like a reversal of H7. It is not:
+
+- the gap is **0.9 queries on a 20-query fixture** — below what it can resolve,
+  and below the 1.5-query bar used everywhere else in this document;
+- `r@30` and `r@50` are **both 0.450**, so a 30-window loses nothing in reach
+  here. My first explanation — *"w30 cannot reach answers ranked 31–50"* — was
+  wrong, and checking the recall curve is what caught it.
+
+**So on realistic queries the two windows are indistinguishable.** H7's w30
+advantage stands only on drafted fixtures, which this finding shows are the
+wrong instrument for it. `RERANK_WINDOW = 30` should therefore be recorded as
+**not settled**, not as a decision change.
+
+### What this means for every other number in v2 and v3
+
+> **A fixture that is uniformly too easy does not merely inflate the absolute
+> numbers. It can flip the DIRECTION of a design decision** — here, "reranking
+> does nothing at production scale" and "window 30 beats window 50". Both are
+> artifacts.
+
+Relative comparisons where all methods see the identical queries — H3's fusion
+ranking, H4's bm25-vs-vector split — are the least affected, because an easy
+query is easy for every ranker. Anything that depends on *how much room there
+is to improve* is affected, and that includes every rerank conclusion in v2.
+
+### Limits, stated plainly
+
+- **n = 1.** One corpus has a realistic fixture. The other 19 do not.
+- 20 hand-written queries, so one query is 0.050 MRR.
+- They are mine, and I am not a pydantic user; a real user's questions might
+  differ again in either direction.
+- **17 of the zoo's 20 fixtures are Gemma-drafted**, so this caveat applies to
+  nearly the whole zoo, including all 7 corpora added in v3.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
