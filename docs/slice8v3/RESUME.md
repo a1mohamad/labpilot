@@ -1,11 +1,63 @@
 # SLICE 8 v3 — RESUME. Read this, then `FINDINGS.md`.
 
-**READ THIS FILE ONLY.** It is self-sufficient. `FINDINGS.md` has the
-long-form evidence (H0–H11) and is optional detail; `MISSION.md` is the
-original brief and is now PARTLY SUPERSEDED by §1 and §6.
+**READ `DECISIONS.md` FIRST — it is the deliverable and it is current.**
+This file is the working log behind it, and it is self-sufficient on its own.
+`FINDINGS.md` holds the long-form evidence, H0–H19. `MISSION.md` is the original
+brief and is now PARTLY SUPERSEDED by §1 and §6.
 
-Branch **`slice8/measure-final`**, off `slice8/measure-v2`. Suite **752 passed,
+Branch **`slice8/measure-final`**, off `slice8/measure-v2`. Suite **764 passed,
 4 skipped**, ruff clean. **Never commit to `main`.**
+
+---
+
+## STATE, 2026-09-19 — READ THIS FIRST
+
+**`docs/slice8v3/DECISIONS.md` is written and current: 29 decisions, TEN of them
+now in `labpilot/` rather than in a document.** This file is the working log
+behind it; `FINDINGS.md` (H0–H19) is the long-form evidence.
+
+**Branch `slice8/measure-final`. 764 passed, 4 skipped, ruff clean.**
+
+### Shipped to the code today, each one mutation-verified
+
+```
+VECTOR_TOP_N      25 -> 15    and the 30 I shipped first was a UNIT ERROR
+RERANK_WINDOW     new, 20     the reranker reads 20 of the 50
+RERANK_TOP_N      10          unchanged - measured for the first time, and it held
+MIGRATION         BGE 2 -> last, mistral -> second-last, 001 above 2
+the embedder gate + a per-TEXT daily budget, so Google cannot start what it
+                    cannot finish
+SKIP_DIRECTORIES  +22 names, including .ipynb_checkpoints
+ingest            duplicate chunks dropped, NEWEST copy wins
+rerank chain      + the second Google account: 29,800 -> 59,600 calls a day
+the LLM chain     a 500 is RETRIED - 3s, then 10s
+```
+
+### The one thing still running
+
+**The reranker MODEL comparison** — 4 corpora, N held at 20, the reranker
+varied. `flash-lite` and `3.1-flash-lite` are done and tie at 0.544 / 0.543;
+`gemma26`, `gemma31`, `bge`, `voyage3lite` and `cohere` remain.
+
+### Four defects found by measuring, none of them on anyone's list
+
+| | |
+|---|---|
+| **thinking burn scored as a result** | `papers` N=20 "answered 0 of 20" was the model running out of output tokens mid-sentence. `ask()` discarded `finish_reason`, so MAX_TOKENS looked like a real zero |
+| **the rerank chain had one Google account** | half its budget unreachable |
+| **a 500 was never retried** | gemma fails 2 calls of 3 and recovers on the next — the largest quota in the project, thrown away |
+| **`VECTOR_TOP_N` declared twice** | the second shadowed the first |
+
+### Two traps that cost real time
+
+```
+stopping a background job kills the WRAPPER, not python
+  - two runs survived being stopped and kept burning quota for ten minutes,
+    appending into the log the NEW run had just truncated
+
+score_answers OVERWRITES answers_<model>.json, and saves only at the END
+  - back it up before every invocation
+```
 
 ---
 
@@ -260,13 +312,13 @@ a slice 8 decision.
 
 | # | measurement | cost | note |
 |---|---|---|---|
-| B | **`VECTOR_TOP_N` / `RERANK_TOP_N`** | **~390 GENERATION calls** | **nothing has measured these in v2 OR v3** |
-| C | chunk **overlap** `o` and **header** on Python | re-embed per variant | v2 has non-Python only |
-| D | chunk size on **pytest** | re-embed | crashed at 5,760/9,839 on a Mistral 503 |
-| E | **reranker model** comparison on new Python | flash-lite + gemma + voyage | v2 ranked 9 configs on the old zoo. NOTE: `tier_reach` now shows Gemma serves 10/10 Python corpora at w50 (v2 said 4 of 13), so chain 3's BUDGET reasoning was wrong even if its order is right |
+| B | ~~`VECTOR_TOP_N` / `RERANK_TOP_N`~~ | **DONE.** 15 and 10, both in code | |
+| C | ~~overlap and header on Python~~ | **DONE** — 7 Python corpora. Header +0.069, overlap decides nothing | |
+| D | ~~chunk size on pytest~~ | **DONE** — 12 corpora, 8 Python. `s=500` confirmed | |
+| E | **reranker model** comparison | RUNNING — the last item of B | |
 | F | ~~BGE embedder~~ | **DONE** — loses 4 of 4, mean −0.149. Position 2 in MIGRATION is now known to be wrong | |
-| H | ~~TOP-N, take two~~ | **DONE** — 18 corpora, 8 Python, ONE model. `VECTOR_TOP_N = 25` confirmed, N=10 eliminated, `RERANK_TOP_N` untouched | |
-| G | all-suffix corpus check | re-embed 1 corpus | see below |
+| H | ~~TOP-N~~ | **DONE** — 18 corpora vector, 8 corpora reranked. `VECTOR_TOP_N = 15`, `RERANK_TOP_N = 10`, both in code | |
+| G | ~~all-suffix corpus check~~ | **DONE — H17.** Every corpus is worse on a real walk, and `lung` is REFUSED outright | |
 
 ### B — HALF DONE, and v2's advice on it was wrong
 
