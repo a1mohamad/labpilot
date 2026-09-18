@@ -522,7 +522,8 @@ def main() -> int:
     chunks, queries = CORPORA[name]()
     print(f"{name}: {len(chunks)} chunks, {len(queries)} queries, {embedder.model}")
 
-    tag = f"{name}_{embedder.model}"
+    # Slashes in a model name would make this a path - see warm_embeddings.
+    tag = f"{name}_{embedder.model.replace('/', '_')}"
     vectors = embedded(
         embedder, [c.embed_text for c in chunks], task="document", tag=f"{tag}_chunks"
     )
@@ -566,7 +567,8 @@ def main() -> int:
     # the whole point of this run.
     out = Path(".logs/results")
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"hybrid_{name}_{embedder.model}.json").write_text(
+    # Slashes again - see the tag above. BGE is "@cf/baai/...".
+    (out / f"hybrid_{name}_{embedder.model.replace(chr(47), chr(95))}.json").write_text(
         json.dumps(
             {
                 "corpus": name,

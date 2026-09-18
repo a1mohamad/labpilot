@@ -51,7 +51,13 @@ def warm(corpus: str, model: str) -> int:
     embedder = next(e for e in MIGRATION if e.model == model)
 
     CACHE.mkdir(parents=True, exist_ok=True)
-    out = CACHE / f"{corpus}_{model}_chunks.pkl"
+    # A model name can contain SLASHES - BGE is "@cf/baai/bge-base-en-v1.5"
+    # - which turns the cache filename into a PATH and the write into a
+    # FileNotFoundError. Measured 2026-09-18: the embedding SUCCEEDED, 89 of
+    # 89 vectors and 17,807 tokens spent, and then the result was thrown away
+    # on the write. score_rerank already sanitised this; the embed path did
+    # not, which is part of why BGE had never been scored.
+    out = CACHE / f"{corpus}_{model.replace('/', '_')}_chunks.pkl"
     if out.exists():
         print(f"already cached: {out}")
         return 0

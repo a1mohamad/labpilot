@@ -264,7 +264,8 @@ a slice 8 decision.
 | C | chunk **overlap** `o` and **header** on Python | re-embed per variant | v2 has non-Python only |
 | D | chunk size on **pytest** | re-embed | crashed at 5,760/9,839 on a Mistral 503 |
 | E | **reranker model** comparison on new Python | flash-lite + gemma + voyage | v2 ranked 9 configs on the old zoo. NOTE: `tier_reach` now shows Gemma serves 10/10 Python corpora at w50 (v2 said 4 of 13), so chain 3's BUDGET reasoning was wrong even if its order is right |
-| F | **BGE embedder** | never run **ANYWHERE**, in v2 or v3 | **SEE BELOW — this is the biggest hole** |
+| F | ~~BGE embedder~~ | **DONE** — loses 4 of 4, mean −0.149. Position 2 in MIGRATION is now known to be wrong | |
+| H | **TOP-N, take two** | flash-lite, running | take one was VOID — see §5 |
 | G | all-suffix corpus check | re-embed 1 corpus | see below |
 
 ### B is the most important, and the shipped value is probably wrong
