@@ -66,7 +66,7 @@ def test_the_three_top_n_numbers_keep_their_order():
 
     Added 2026-09-18, when slice 8 v3 moved `VECTOR_TOP_N` 25 -> 30.
     """
-    from labpilot.api.services import VECTOR_TOP_N
+    from labpilot.api.services import RERANK_WINDOW, VECTOR_TOP_N
     from labpilot.rerank.defaults import RERANK_TOP_N
     from labpilot.store.defaults import SEARCH_LIMIT
 
@@ -77,4 +77,12 @@ def test_the_three_top_n_numbers_keep_their_order():
     assert VECTOR_TOP_N <= SEARCH_LIMIT, (
         f"search returns {SEARCH_LIMIT} per side and the cut keeps "
         f"{VECTOR_TOP_N} - a cut larger than the window is not a cut"
+    )
+    assert RERANK_TOP_N <= RERANK_WINDOW, (
+        f"the reranker reads {RERANK_WINDOW} and we keep {RERANK_TOP_N} of "
+        "them - it cannot return more than it was shown"
+    )
+    assert RERANK_WINDOW <= SEARCH_LIMIT, (
+        f"search returns {SEARCH_LIMIT} per side and the reranker is handed "
+        f"{RERANK_WINDOW} - a window wider than the search is not a window"
     )

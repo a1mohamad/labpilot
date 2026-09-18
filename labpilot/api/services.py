@@ -389,6 +389,36 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
 # docs/slice8v3/DECISIONS.md row 18.
 VECTOR_TOP_N = 30
 
+# How many of the searched chunks the RERANKER SEES.
+#
+# A THIRD number, and a different question from both of the others:
+#
+#   SEARCH_LIMIT   50   what search returns          per side
+#   RERANK_WINDOW  20   what the reranker reads      per side   <- this
+#   RERANK_TOP_N   10   what survives reranking      per side
+#   VECTOR_TOP_N   30   what we send when NO reranker ran
+#
+# MEASURED 2026-09-18, slice 8 v3: six windows on 5 corpora that are 100%
+# Python, 89 to 9,846 chunks, flash-lite. Mean MRR gain over vector alone:
+#
+#   w10 +0.095   w20 +0.090   w30 +0.084   w50 +0.053   w5 +0.041
+#
+# THE SHIPPED w50 IS NEARLY HALF AS GOOD AS THE BEST. w10, w20 and w30 are
+# indistinguishable - +1.84, +1.76 and +1.67 queries, a spread of 0.17 against
+# a 1.5-query bar - so the pick inside that band is made on cost and reach, not
+# on score: 20 is the middle of the flat region and costs fewer tokens per call
+# than 30, so more rerank tiers stay reachable.
+#
+# It supersedes v2's per-tier window argument (CLAUDE.md 14.3), which existed so
+# Voyage could be served at 30 while others took 50. At 20 EVERY tier serves
+# EVERY corpus, so there is nothing left for a per-tier rule to arbitrate.
+# rerank/'s own max_documents stays as the lower-level guard.
+#
+# Note it sits BELOW VECTOR_TOP_N on purpose. The two are different paths with
+# different recall curves: the reranked path is sharper, so it can cut harder.
+# docs/slice8v3/DECISIONS.md row 10, FINDINGS H12.
+RERANK_WINDOW = 20
+
 
 def ask(
     conn: psycopg.Connection,
@@ -563,10 +593,23 @@ def _best(
     if not should_rerank([hit.score for hit in hits]):
         return list(hits[:VECTOR_TOP_N])
 
-    ranking = rank(question, [hit.text for hit in hits], top_n=None)
-    kept = VECTOR_TOP_N if ranking.model == SKIP else RERANK_TOP_N
+    window = hits[:RERANK_WINDOW]
+    ranking = rank(question, [hit.text for hit in window], top_n=None)
 
-    return [hits[position] for position in ranking.order[:kept]]
+    # The DEGRADED path reads `hits`, never `window`. A tier that declined has
+    # not narrowed anything, so narrowing for it would throw away chunks the
+    # vector path had already paid for - and VECTOR_TOP_N is calibrated on the
+    # full list.
+    if ranking.model == SKIP:
+        return list(hits[:VECTOR_TOP_N])
+
+    # POSITIONS index the list we PASSED, which is `window`. Today `hits`
+    # would give the identical element, because `window` is a PREFIX of it and
+    # every position is inside the window - a mutation swapping the two broke
+    # nothing, which is the honest state and is recorded rather than tested.
+    # We index `window` because it is the list we handed over, and that stays
+    # right if the window is ever chosen rather than truncated.
+    return [window[position] for position in ranking.order[:RERANK_TOP_N]]
 
 
 def _embed_question(question: str, *, model: str) -> tuple[float, ...]:
