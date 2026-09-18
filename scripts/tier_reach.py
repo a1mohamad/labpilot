@@ -55,21 +55,25 @@ TIERS: tuple[tuple[str, int, str], ...] = (
     ("cohere rerank-v4.0-fast", 1_000_000, "1,000 a MONTH"),
 )
 
-ORDER = (
-    "websocket",
-    "quora",
-    "docx",
-    "log",
-    "cobra",
-    "requests",
-    "notebooks",
-    "papers",
-    "docs",
-    "jq",
-    "geo",
-    "gson",
-    "zod",
-)
+
+def order() -> tuple[str, ...]:
+    """Every corpus in the zoo, smallest first.
+
+    This was a hardcoded tuple of the thirteen v2 corpora, and it is the one
+    place the project's own "a corpus is DATA, not code" rule was broken: the
+    seven Python corpora added in v3 were silently absent from this table
+    while every other script picked them up automatically. A hardcoded list
+    does not fail when it goes stale, it just quietly measures less - so the
+    order is derived from the zoo and sorted by size, which is what the old
+    tuple spelled out by hand anyway.
+    """
+    from scripts import corpora
+
+    sizes = {}
+    for name in CORPORA:
+        spec = corpora.SPECS.get(name, {})
+        sizes[name] = spec.get("chunks_at_this_commit", 0)
+    return tuple(sorted(sizes, key=lambda n: (sizes[n], n)))
 
 
 def main(argv: list[str]) -> int:
@@ -85,7 +89,7 @@ def main(argv: list[str]) -> int:
     )
 
     rows = []
-    for name in ORDER:
+    for name in order():
         chunks, _ = CORPORA[name]()
         mean = sum(estimate_tokens(c.embed_text) for c in chunks) / len(chunks)
         per_document = mean + QUERY_TOKENS
