@@ -291,7 +291,27 @@ def render(chunks, keep: list[int]) -> str:
     )
 
 
-def ask(client: LLMClient, context: str, questions: list) -> str:
+def ask(client: LLMClient, context: str, questions: list) -> tuple[str, str]:
+    """The reply AND why it stopped. The second half was thrown away until now.
+
+    THINKING BURN LOOKS EXACTLY LIKE A BAD SCORE. `papers` at N=20 returned
+    1,033 bytes of the model reasoning aloud about AdaMax, cut off mid-sentence
+    at `And then equation (11):` - not one answer in the asked-for format. The
+    grader read zero citations and recorded `correct: 0`, which went into a
+    table as if the model had tried and failed.
+
+    It had not. It spent all 8,192 output tokens thinking. The SAME corpus
+    answered all 20 questions at N=5, 10, 30, 50 and 100, so this is
+    stochastic, not a property of the corpus - and `.text` discarded the one
+    field that says so.
+
+    CLAUDE.md has called this out since 2026-08-17: *more thinking is not more
+    answer, past some point it is less answer*. It was never wired into this
+    instrument.
+
+    So MAX_TOKENS is now RETRIED like a transport failure, and the reason is
+    returned either way so a burnt cell can be told apart from a real zero.
+    """
     numbered = chr(10).join(f"Q{i + 1}: {q.text}" for i, q in enumerate(questions))
     prompt = INSTRUCTION.format(context=context, questions=numbered)
     # A dropped connection is not a spent quota. The chain treats a transport
@@ -299,11 +319,22 @@ def ask(client: LLMClient, context: str, questions: list) -> str:
     # them, so the whole walk is retried rather than the call.
     for attempt in range(3):
         try:
-            return client.generate(prompt, max_tokens=8192).text
+            result = client.generate(prompt, max_tokens=8192)
         except AllFreeTiersExhausted as exc:
             print(f"      chain {attempt + 1}/3 failed: {str(exc)[:60]}", flush=True)
             time.sleep(10 + 20 * attempt)
-    return ""
+            continue
+
+        if result.finish_reason != "MAX_TOKENS" or CITATION.search(result.text):
+            return result.text, result.finish_reason
+
+        print(
+            f"      thinking burn {attempt + 1}/3: cut at MAX_TOKENS with no "
+            f"citation in {len(result.text)} chars - retrying",
+            flush=True,
+        )
+        time.sleep(5)
+    return "", "MAX_TOKENS"
 
 
 def grade(reply: str, chunks, queries, sent: list[int]) -> dict:
@@ -433,7 +464,7 @@ def run(
             )
             continue
 
-        reply = ask(client, context, queries)
+        reply, finish = ask(client, context, queries)
         got = grade(reply, chunks, queries, keep)
 
         print(
@@ -465,6 +496,10 @@ def run(
                 # The project's own rule, broken by me: assert the anchor is
                 # UNIQUE before trusting an edit.
                 "rerank_declined": rerank_declined,
+                # WHY THE MODEL STOPPED. MAX_TOKENS with no citations is
+                # thinking burn, not a score of zero - see ask(). Recorded
+                # so a burnt cell can never be read as a result again.
+                "finish_reason": finish,
                 **got,
             }
         )
