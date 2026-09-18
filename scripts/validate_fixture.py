@@ -17,6 +17,12 @@ project already; the last two arrive with drafted fixtures.
                  the corpus, so it scores whatever the ranker happened to put
                  first
   duplicate      the same question twice is one measurement counted twice
+  degenerate     the drafter fell into a repetition loop. Found 2026-09-18 on
+                 titanic TI03, which was 2 KB of "the-the-the-..." and passed
+                 every check above: it is not generic, it leaks no identifier
+                 and its anchor resolves. A degenerate query embeds to
+                 nonsense, so it fails for every method and costs rerank
+                 tokens on every run
 
 WHAT THIS DELIBERATELY DOES NOT CHECK: whether retrieval FINDS the answer.
 Dropping the queries our embedder misses would build a fixture that agrees
@@ -37,6 +43,29 @@ from scripts.score_hybrid import CORPORA, targets
 # is allowed outright, because a short answer can legitimately straddle an
 # overlap boundary.
 MAX_TARGET_SHARE = 0.05
+
+# A developer's question is one sentence. The longest legitimate query in the
+# zoo is 108 characters, so 300 is a wide margin and still catches a model
+# that has started repeating itself.
+MAX_QUERY_CHARS = 300
+
+
+def degenerate(text: str) -> str | None:
+    """Why this query looks like a repetition loop rather than a question.
+
+    Two signals, because either alone has a legitimate case. A long query can
+    be a clumsy one, and a repeated word is normal in English - but a long
+    query whose vocabulary has collapsed is a model that stopped writing and
+    started looping.
+    """
+    if len(text) > MAX_QUERY_CHARS:
+        return f"{len(text)} characters, over {MAX_QUERY_CHARS}"
+    words = text.lower().split()
+    if len(words) >= 12:
+        commonest = Counter(words).most_common(1)[0]
+        if commonest[1] / len(words) > 0.4:
+            return f"{commonest[1]} of {len(words)} words are {commonest[0]!r}"
+    return None
 
 
 def check(corpus: str) -> tuple[int, dict]:
@@ -65,6 +94,11 @@ def check(corpus: str) -> tuple[int, dict]:
         lowered = query.text.lower().strip()
         if generic(query.text):
             print(f"  GENERIC     {query.id} {query.text!r}")
+            bad += 1
+
+        why = degenerate(query.text)
+        if why:
+            print(f"  DEGENERATE  {query.id} {why}: {query.text[:60]!r}...")
             bad += 1
 
         if lowered in seen:

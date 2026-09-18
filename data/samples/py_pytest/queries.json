@@ -18,7 +18,8 @@
     "note": "Line numbers are valid only for this commit. Clone with --depth 1 and check out this sha before scoring. The source is NOT committed: it is third-party code, and the provenance rule keeps it out of the repository.",
     "chunks_at_this_commit": 6714,
     "include_note": "**/*.py INCLUDING the test suite. Source-only would be 2,452 (pytest) and 2,652 (pydantic) chunks, far short of the ~10,000 this corpus exists to provide. Including every readable suffix would reach 9,653 / 13,377 but ~25-30% of those chunks are RST and Markdown, which would make a corpus counted as Python mostly not Python. `**/*.py` with tests is both 100% Python and at the target scale, and it is what our own walker would really store from this repository.",
-    "queries_planned": 20
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
   },
   "fields": {
     "id": "stable id for this query",
@@ -28,5 +29,226 @@
     "asks": "constant | behaviour | error | api | structure",
     "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
   },
-  "queries": []
+  "queries": [
+    {
+      "id": "PY01",
+      "query": "how many tests are expected to be skipped in the provided example",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "testing/test_skipping.py",
+      "expects": [
+        269
+      ],
+      "anchor": "reprec.assertoutcome(skipped=3)"
+    },
+    {
+      "id": "PY02",
+      "query": "what happens when a test fails because of a nested import problem",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "testing/test_session.py",
+      "expects": [
+        60
+      ],
+      "anchor": "assert out.find(\"does_not_work\") != -1"
+    },
+    {
+      "id": "PY03",
+      "query": "what happens if the matcher cannot handle the expression",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/_pytest/mark/expression.py",
+      "expects": [
+        359
+      ],
+      "anchor": ":raises UsageError:"
+    },
+    {
+      "id": "PY04",
+      "query": "how is a mock path object created for testing",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "testing/_py/test_local.py",
+      "expects": [
+        544
+      ],
+      "anchor": "return FakeFSPathClass(os.path.join(\"this\", \"is\", \"a\", \"fake\", \"path\"))"
+    },
+    {
+      "id": "PY05",
+      "query": "how are files listed in a json file used to find tests",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "testing/example_scripts/customdirectory/conftest.py",
+      "expects": [
+        15
+      ],
+      "anchor": "for file in manifest[\"files\"]:"
+    },
+    {
+      "id": "PY06",
+      "query": "which python version is required for the same exception group handling",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "src/_pytest/runner.py",
+      "expects": [
+        40
+      ],
+      "anchor": "if sys.version_info < (3, 11):"
+    },
+    {
+      "id": "PY07",
+      "query": "what is returned when the setup plan option is enabled",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/_pytest/setupplan.py",
+      "expects": [
+        30
+      ],
+      "anchor": "return fixturedef.cached_result"
+    },
+    {
+      "id": "PY08",
+      "query": "what is printed to the error stream when a system exit occurs",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "testing/test_main.py",
+      "expects": [
+        63
+      ],
+      "anchor": "assert result.stderr.lines == [\"mainloop: caught unexpected SystemExit!\"]"
+    },
+    {
+      "id": "PY09",
+      "query": "how can a single mark or a list of marks be applied to a specific parameter set",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/_pytest/mark/__init__.py",
+      "expects": [
+        73
+      ],
+      "anchor": "A single mark or a list of marks to be applied to this parameter set."
+    },
+    {
+      "id": "PY10",
+      "query": "where is the number of garbage collection cycles stored",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "src/_pytest/unraisableexception.py",
+      "expects": [
+        24
+      ],
+      "anchor": "gc_collect_iterations_key = StashKey[int]()"
+    },
+    {
+      "id": "PY11",
+      "query": "how many times should the setup and teardown messages be counted",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "testing/test_setupplan.py",
+      "expects": [
+        74
+      ],
+      "anchor": "assert setup_count == 1"
+    },
+    {
+      "id": "PY12",
+      "query": "what happens if the keys of the compared objects do not match",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/_pytest/approx.py",
+      "expects": [
+        380
+      ],
+      "anchor": "return False"
+    },
+    {
+      "id": "PY13",
+      "query": "what warning is issued when the cache directory is not writable",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "testing/test_cacheprovider.py",
+      "expects": [
+        176
+      ],
+      "anchor": "f\"{unwritable_cache_dir}/v/cache/nodeids: *\""
+    },
+    {
+      "id": "PY14",
+      "query": "to what extent can a single parameter set be hidden from the test name",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/_pytest/mark/__init__.py",
+      "expects": [
+        83
+      ],
+      "anchor": "Can only be used at most 1 time, as"
+    },
+    {
+      "id": "PY15",
+      "query": "how many characters are used to represent the result of a test run in the test terminal output",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "testing/test_terminal.py",
+      "expects": [
+        3075
+      ],
+      "anchor": "one file name per line, single character describing result"
+    },
+    {
+      "id": "PY16",
+      "query": "what does the executable script for the frozen version do",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "testing/freeze/runtests_script.py",
+      "expects": [
+        14
+      ],
+      "anchor": "sys.exit(pytest.main())"
+    },
+    {
+      "id": "PY17",
+      "query": "how do i get the folder where the test runner was started",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "src/_pytest/legacypath.py",
+      "expects": [
+        354
+      ],
+      "anchor": "return legacy_path(str(self.invocation_params.dir))"
+    },
+    {
+      "id": "PY18",
+      "query": "what is the default scope for a fixture if none is provided",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "src/_pytest/fixtures.py",
+      "expects": [
+        1168
+      ],
+      "anchor": "scope = Scope.Function"
+    },
+    {
+      "id": "PY19",
+      "query": "does a custom equality check that calls the parent class method result in two objects with different field values being equal",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "testing/example_scripts/dataclasses/test_compare_dataclasses_with_custom_eq.py",
+      "expects": [
+        19
+      ],
+      "anchor": "assert left == right"
+    },
+    {
+      "id": "PY20",
+      "query": "can i change the logging level for a specific logger instance",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "testing/logging/test_fixture.py",
+      "expects": [
+        40
+      ],
+      "anchor": "caplog.set_level(logging.CRITICAL, logger=sublogger.name)"
+    }
+  ]
 }
