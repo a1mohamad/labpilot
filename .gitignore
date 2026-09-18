@@ -219,3 +219,8 @@ __marimo__/
 
 # Artifacts files like LLM prompt and responses
 artifacts/
+# Third-party benchmark corpora, fetched not committed (see each queries.json)
+.corpora/
+
+# Background job logs from measurement runs
+.logs/
