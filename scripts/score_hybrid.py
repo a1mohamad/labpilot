@@ -36,6 +36,7 @@ import psycopg
 from dotenv import load_dotenv
 
 from labpilot.embed import (
+    BGE_BASE,
     CODESTRAL_EMBED,
     COHERE_EMBED,
     GEMINI_EMBED_001,
@@ -57,6 +58,12 @@ CACHE = Path(".cache/hybrid")
 # The two spaces are incompatible, so they are separate entries by necessity.
 EMBEDDERS = {
     "codestral": CODESTRAL_EMBED,
+    # ADDED 2026-09-18. BGE sits SECOND in MIGRATION and had never been scored
+    # on any corpus, in v2 or v3 - and this dict is why: the instrument could
+    # not reach it. Same class of defect as tier_reach's hardcoded corpus list.
+    # Its daily neuron budget caps it near 2,900 chunks, so it can only be
+    # measured on the small and mid corpora.
+    "bge": BGE_BASE,
     "google": GEMINI_EMBED_001,
     "google2": GEMINI_EMBED_2,
     "mistral": MISTRAL_EMBED,
