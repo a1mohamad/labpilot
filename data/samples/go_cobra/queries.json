@@ -1,0 +1,252 @@
+{
+  "corpus": {
+    "key": "cobra",
+    "env": "LABPILOT_COBRA_SRC",
+    "include": [
+      "**/*.go"
+    ],
+    "exclude": [
+      "**/*_test.go"
+    ],
+    "source": "relpath",
+    "language": "Go",
+    "splitter": "recursive",
+    "domain": "CLI framework",
+    "repo": "https://github.com/spf13/cobra",
+    "commit": "adbc881",
+    "licence": "Apache-2.0",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 193,
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "CO01",
+      "query": "how long is the help message shown on windows when started from explorer",
+      "asks": "constant",
+      "wording": "named",
+      "file": "cobra.go",
+      "expects": [
+        81
+      ],
+      "anchor": "var MousetrapDisplayDuration = 5 * time.Second"
+    },
+    {
+      "id": "CO02",
+      "query": "what happens to the list of subcommands when a local flag is used",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "bash_completions.go",
+      "expects": [
+        310
+      ],
+      "anchor": "commands=()"
+    },
+    {
+      "id": "CO03",
+      "query": "what happens if the equality check is called with a type that is not a string or integer",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "cobra.go",
+      "expects": [
+        143
+      ],
+      "anchor": "Unsupported types will panic."
+    },
+    {
+      "id": "CO04",
+      "query": "how do you load completions for the current session in bash",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "completions.go",
+      "expects": [
+        814
+      ],
+      "anchor": "source <(%[1]s completion bash)"
+    },
+    {
+      "id": "CO05",
+      "query": "how is the environment variable name for a specific program constructed",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "active_help.go",
+      "expects": [
+        59
+      ],
+      "anchor": "return configEnvVar(name, activeHelpEnvVarSuffix)"
+    },
+    {
+      "id": "CO06",
+      "query": "what is the default section for a man page if none is provided",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "doc/man_docs.go",
+      "expects": [
+        61
+      ],
+      "anchor": "section := \"1\""
+    },
+    {
+      "id": "CO07",
+      "query": "what does the system do if the description function fails to find any completions",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "zsh_completions.go",
+      "expects": [
+        272
+      ],
+      "anchor": "if eval _describe $keepOrder \"completions\" completions $flagPrefix $noSpace; then"
+    },
+    {
+      "id": "CO08",
+      "query": "what happens if the number of provided arguments is not within the allowed range",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "args.go",
+      "expects": [
+        120
+      ],
+      "anchor": "return fmt.Errorf(\"accepts between %d and %d arg(s), received %d\", min, max, len(args))"
+    },
+    {
+      "id": "CO09",
+      "query": "how is the fish shell completion file generated",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "fish_completions.go",
+      "expects": [
+        276
+      ],
+      "anchor": "func (c *Command) GenFishCompletion(w io.Writer, includeDesc bool) error {"
+    },
+    {
+      "id": "CO10",
+      "query": "what is included in the see also section of the yaml documentation",
+      "asks": "structure",
+      "wording": "named",
+      "file": "doc/yaml_docs.go",
+      "expects": [
+        134
+      ],
+      "anchor": "yamlDoc.SeeAlso = result"
+    },
+    {
+      "id": "CO11",
+      "query": "how does the markdown generator handle the synopsis section",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "doc/md_docs.go",
+      "expects": [
+        66
+      ],
+      "anchor": "if len(cmd.Long) > 0 {"
+    },
+    {
+      "id": "CO12",
+      "query": "what happens when a fatal error is encountered during execution",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "cobra.go",
+      "expects": [
+        238
+      ],
+      "anchor": "os.Exit(1)"
+    },
+    {
+      "id": "CO13",
+      "query": "what field is used to provide examples of how to use a command",
+      "asks": "structure",
+      "wording": "named",
+      "file": "command.go",
+      "expects": [
+        83
+      ],
+      "anchor": "Example string"
+    },
+    {
+      "id": "CO14",
+      "query": "what happens when the shell is in a restricted language mode",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "powershell_completions.go",
+      "expects": [
+        267
+      ],
+      "anchor": "if ($ExecutionContext.SessionState.LanguageMode -eq \"FullLanguage\"){"
+    },
+    {
+      "id": "CO15",
+      "query": "what happens to other options in a group when one is already provided",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "flag_groups.go",
+      "expects": [
+        284
+      ],
+      "anchor": "flag.Hidden = true"
+    },
+    {
+      "id": "CO16",
+      "query": "how is the auto generated tag added to the rest documentation",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "doc/rest_docs.go",
+      "expects": [
+        126
+      ],
+      "anchor": "buf.WriteString(\"*Auto generated by spf13/cobra on \" + time.Now().Format(\"2-Jan-2006\") + \"*\\n\")"
+    },
+    {
+      "id": "CO17",
+      "query": "what happens when there are no completion choices to show",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "bash_completionsV2.go",
+      "expects": [
+        222
+      ],
+      "anchor": "__%[1]s_reprint_commandLine"
+    },
+    {
+      "id": "CO18",
+      "query": "what does the function that prepares completions return if the result is empty",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "fish_completions.go",
+      "expects": [
+        142
+      ],
+      "anchor": "return 1"
+    },
+    {
+      "id": "CO19",
+      "query": "how are multiple positional arguments handled when combined",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "args.go",
+      "expects": [
+        128
+      ],
+      "anchor": "return func(cmd *Command, args []string) error {"
+    },
+    {
+      "id": "CO20",
+      "query": "when does a string get a newline added to it",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "doc/util.go",
+      "expects": [
+        42
+      ],
+      "anchor": "if len(s) > 60 && !strings.Contains(s, \"\\n\") {"
+    }
+  ]
+}
