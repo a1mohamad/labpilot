@@ -1,0 +1,254 @@
+{
+  "corpus": {
+    "key": "click",
+    "env": "LABPILOT_CLICK_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/.git/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "command line interface toolkit",
+    "licence": "BSD-3-Clause",
+    "repo": "https://github.com/pallets/click",
+    "commit": "6aabf09",
+    "note": "Line numbers are valid only for this commit. Clone with --depth 1 and check out this sha before scoring. The source is NOT committed: it is third-party code, and the provenance rule keeps it out of the repository.",
+    "chunks_at_this_commit": 1585,
+    "include_note": "**/*.py INCLUDING tests, for the same reason as pytest and pydantic: a packaged library at mid size, 100% Python.",
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": [
+    {
+      "id": "CL01",
+      "query": "what is the return code for a user mistake",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "src/click/exceptions.py",
+      "expects": [
+        77
+      ],
+      "anchor": "exit_code: t.ClassVar[int] = 2"
+    },
+    {
+      "id": "CL02",
+      "query": "how does the system find a fallback value when a key is missing",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "tests/test_defaults.py",
+      "expects": [
+        442
+      ],
+      "anchor": "prefix = name.split(\"_\", 1)[0]"
+    },
+    {
+      "id": "CL03",
+      "query": "what happens if a variable number of arguments is required but none are provided",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "tests/test_arguments.py",
+      "expects": [
+        231
+      ],
+      "anchor": "assert \"Missing argument 'ARG...'\" in result.output"
+    },
+    {
+      "id": "CL04",
+      "query": "how do i specify a custom name for the executable in a test",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "tests/test_testing.py",
+      "expects": [
+        414
+      ],
+      "anchor": "result = runner.invoke(cli, prog_name=\"foobar\")"
+    },
+    {
+      "id": "CL05",
+      "query": "which module provides the utility for wrapping text",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "src/click/__init__.py",
+      "expects": [
+        41
+      ],
+      "anchor": "from .formatting import wrap_text as wrap_text"
+    },
+    {
+      "id": "CL06",
+      "query": "what is the escape sequence for a bright red background",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "tests/test_utils/test_style.py",
+      "expects": [
+        36
+      ],
+      "anchor": "({\"bg\": \"bright_red\"}, \"\\x1b[101mx y\\x1b[0m\")"
+    },
+    {
+      "id": "CL07",
+      "query": "how is the program name determined when a module is run",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "tests/test_utils/test__detect_program_name.py",
+      "expects": [
+        27
+      ],
+      "anchor": "assert click.utils._detect_program_name(path, _main=MockMain(main)) == expected"
+    },
+    {
+      "id": "CL08",
+      "query": "what is the exit status when a required argument is missing",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "tests/test_formatting.py",
+      "expects": [
+        307
+      ],
+      "anchor": "assert result.exit_code == 2"
+    },
+    {
+      "id": "CL09",
+      "query": "how do i enable shell completion for a specific argument",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "examples/completion/completion.py",
+      "expects": [
+        25
+      ],
+      "anchor": "@click.argument(\"envvar\", shell_complete=get_env_vars)"
+    },
+    {
+      "id": "CL10",
+      "query": "where can i find examples of command aliases",
+      "asks": "structure",
+      "wording": "named",
+      "file": "tests/typing/typing_aliased_group.py",
+      "expects": [
+        1
+      ],
+      "anchor": "\"\"\"Example from https://click.palletsprojects.com/en/stable/advanced/#command-aliases\"\"\""
+    },
+    {
+      "id": "CL11",
+      "query": "what is the default value for the prompt",
+      "asks": "constant",
+      "wording": "named",
+      "file": "tests/test_utils/test_prompt.py",
+      "expects": [
+        12
+      ],
+      "anchor": "value = click.prompt(\"value\", default=\"100\", type=int)"
+    },
+    {
+      "id": "CL12",
+      "query": "what is the output format for shell completion",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "tests/test_shell_completion.py",
+      "expects": [
+        492
+      ],
+      "anchor": "assert result.output == \"plain,a\\nplain,b\\n\""
+    },
+    {
+      "id": "CL13",
+      "query": "what happens if the output stream is missing",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "src/click/utils.py",
+      "expects": [
+        299
+      ],
+      "anchor": "if file is None:"
+    },
+    {
+      "id": "CL14",
+      "query": "what coordinates are needed to delete a mine",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "examples/naval/naval.py",
+      "expects": [
+        70
+      ],
+      "anchor": "def mine_remove(x, y):"
+    },
+    {
+      "id": "CL15",
+      "query": "how does the image processing decorator work",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "examples/imagepipe/imagepipe.py",
+      "expects": [
+        42
+      ],
+      "anchor": "def processor(f):"
+    },
+    {
+      "id": "CL16",
+      "query": "what color is the warning message when a command is no longer recommended",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "src/click/core.py",
+      "expects": [
+        1417
+      ],
+      "anchor": "echo(style(message, fg=\"red\"), err=True)"
+    },
+    {
+      "id": "CL17",
+      "query": "how does the adding of extra indentation be handled",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "src/click/_textwrap.py",
+      "expects": [
+        168
+      ],
+      "anchor": "self.initial_indent += indent"
+    },
+    {
+      "id": "CL18",
+      "query": "how can i change the color of the help heading",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "tests/test_custom_classes.py",
+      "expects": [
+        54
+      ],
+      "anchor": "heading = click.style(heading, fg=\"yellow\")"
+    },
+    {
+      "id": "CL19",
+      "query": "what is the website for the project source code",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "docs/conf.py",
+      "expects": [
+        45
+      ],
+      "anchor": "ProjectLink(\"Source Code\", \"https://github.com/pallets/click/\")"
+    },
+    {
+      "id": "CL20",
+      "query": "can multiple commands be executed in a sequence",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "tests/test_chain.py",
+      "expects": [
+        122
+      ],
+      "anchor": "result = runner.invoke(cli, [\"bdist\", \"1\", \"sdist\", \"2\"])"
+    }
+  ]
+}
