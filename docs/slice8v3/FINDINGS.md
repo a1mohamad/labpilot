@@ -749,35 +749,55 @@ climbing to 1000.** Bigger chunks FIND more and ORDER worse.
 > routinely sells the other.** It also means `s=500` is only right *while a
 > reranker runs*: with no reranker, ordering is all we have.
 
-**Overlap** - 3 corpora:
+**Overlap** - re-run 2026-09-18 on **SEVEN Python corpora**, not the three the
+first pass had:
 
-| setting | MRR | r@50 |
-|---|---|---|
-| s=500 o=0 | 0.6102 | 0.9245 |
-| s=500 o=25 | **0.6176** | **0.9804** |
-| s=500 o=50 | 0.6057 | 0.9608 |
-| s=500 o=100 | 0.6048 | 0.9441 |
+| setting | MRR | r@10 | r@50 |
+|---|---|---|---|
+| s=500 o=0 | **0.6302** | 0.8381 | 0.9645 |
+| s=500 o=25 | 0.6260 | 0.8608 | **0.9884** |
+| s=500 o=50 | 0.6199 | **0.8640** | 0.9800 |
+| s=500 o=100 | 0.6159 | 0.8608 | 0.9729 |
 
-Every MRR here sits inside 0.013 - **below resolution, so overlap decides
-nothing on MRR.** The one real signal is that `o=0` costs `r@50`, 0.9245
-against 0.9804: no overlap really does cut answers in half. `o=25` and `o=50`
-are indistinguishable, so **`o=50` stays** - unchanged, because nothing
-measurable argues for moving it.
+Every MRR sits inside **0.014** - below resolution, so overlap decides nothing
+on ordering. The one real signal is `r@50`: `o=0` costs 0.024 against `o=25`,
+roughly **3-4 queries** across these corpora. No overlap really does cut answers
+in half. `o=25`, `o=50` and `o=100` are indistinguishable, so **`o=50` stays**,
+because nothing measurable argues for moving it.
 
-**The header** - the same 3 corpora, chunk text with and without its
+> **And look at the direction of the two columns.** MRR falls monotonically as
+> overlap rises, 0.6302 -> 0.6159, while `r@50` peaks in the middle. More
+> overlap means more near-duplicate chunks: easier to FIND the answer, harder to
+> ORDER it. **That is the fourth appearance of one shape in this run** - BGE,
+> Cohere, chunk size, and now overlap.
+
+**The header** - the same seven corpora, chunk text with and without its
 `[file - symbol - lines]` prefix:
 
 | | MRR | r@10 | r@50 |
 |---|---|---|---|
-| **s=500 o=50 +header** | **0.6057** | **0.8216** | **0.9608** |
-| s=500 o=50 bare | 0.5424 | 0.7824 | 0.9078 |
+| **s=500 o=50 +header** | **0.6199** | **0.8640** | **0.9800** |
+| s=500 o=50 bare | 0.5507 | 0.8472 | 0.9605 |
 
-**+0.063 MRR and +0.053 `r@50` - the largest single effect in the whole
-chunking pass**, and far larger than anything size or overlap moved. The header
-costs about 20 tokens a chunk and is built from metadata we already hold.
+**+0.069 MRR, and it wins on 6 of 7 corpora** - the largest single effect in the
+whole chunking pass, and far larger than anything size or overlap moved:
+
+```
+titanic  +0.210    disaster +0.085    smsspam +0.083    click +0.080
+requests +0.033    lung     +0.027    notebooks -0.035
+```
+
+The header costs about 20 tokens a chunk and is built from metadata we already
+hold.
 
 > **The cheapest thing in the chunker is the one that matters most.** Both
 > parameters people tune were worth less than the free string we prepend.
+
+**The one loss is worth naming rather than averaging away.** `notebooks` is
+−0.035, and `titanic` - the other notebook corpus - is **+0.210**, the largest
+gain of the seven. Two corpora of the same format at opposite ends means the
+header's value is not a property of the format, and n=2 cannot say what it is a
+property of. Recorded, not explained.
 
 ---
 
