@@ -1,0 +1,162 @@
+{
+  "corpus": {
+    "key": "docx",
+    "env": "LABPILOT_DOCX_SRC",
+    "include": [
+      "*.docx"
+    ],
+    "exclude": [],
+    "source": "name",
+    "language": "English prose",
+    "splitter": "recursive",
+    "domain": "mixed Word reports",
+    "repo": "the user's own documents, local",
+    "commit": "n/a",
+    "licence": "personal material, never committed",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 85,
+    "queries_planned": 12,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "DO01",
+      "query": "how long do these animals live in captivity",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "tiger.docx",
+      "expects": [
+        3
+      ],
+      "anchor": "در باغ‌وحش ببرها معمولاً بین ۱۰تا۱۵ سال عمر می‌کنند."
+    },
+    {
+      "id": "DO02",
+      "query": "can the initial instructions be changed after the conversation starts",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "genai_intro.docx",
+      "expects": [
+        1104
+      ],
+      "anchor": "These instructions will be locked when you start the chat and cannot be modified later."
+    },
+    {
+      "id": "DO03",
+      "query": "where can i run the code that was converted to python",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "genai_intro.docx",
+      "expects": [
+        868
+      ],
+      "anchor": "To test the code, launch the Python Online Compiler by clicking Programiz."
+    },
+    {
+      "id": "DO04",
+      "query": "what does the basic introductory course provide a comprehensive understanding of",
+      "asks": "structure",
+      "wording": "paraphrase",
+      "file": "genai_intro.docx",
+      "expects": [
+        37
+      ],
+      "anchor": "This specialization provides a comprehensive understanding of the fundamental concepts, models, tools, and applications of Generative AI, empowering you to apply and unlock its possibilities."
+    },
+    {
+      "id": "DO05",
+      "query": "which text tool is better for doing research",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "genai_intro.docx",
+      "expects": [
+        908
+      ],
+      "anchor": "ChatGPT is more effective for maintaining conversational flow, and Bard is a better choice for research."
+    },
+    {
+      "id": "DO06",
+      "query": "what is the assumption regarding the relationship between feature pairs in the basic classification method",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "ddos_ensemble.docx",
+      "expects": [
+        47
+      ],
+      "anchor": "It is classification method based on Bayes’ theorem with the \"naive\" assumption of conditional probability between any pair of features given the value of the target class."
+    },
+    {
+      "id": "DO07",
+      "query": "how can you check if the generated code is correct",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "genai_intro.docx",
+      "expects": [
+        788
+      ],
+      "anchor": "Testing the generated code helps you validate the accuracy and reliability of the code."
+    },
+    {
+      "id": "DO08",
+      "query": "who wrote the paper on software defined networks and ddos detection",
+      "asks": "structure",
+      "wording": "named",
+      "file": "ddos_ensemble.docx",
+      "expects": [
+        335
+      ],
+      "anchor": "A. S. N. M. D. G. N. a. M. M. M. L. Barki, \"Detection of distributed denial of service attacks in software defined networks,\" in International Conference on Advances in Computing, Communications and Informatics (ICACCI), Jaipur, India, 2016, pp. 2576-2581, doi: 10.1109/ICACCI.2016.7732445., 2016."
+    },
+    {
+      "id": "DO09",
+      "query": "which ensemble method achieved the highest accuracy",
+      "asks": "constant",
+      "wording": "named",
+      "file": "ddos_ensemble.docx",
+      "expects": [
+        299
+      ],
+      "anchor": "Stochastic Gradient Classifier 94.6% and with Voting ensemble we have got an accuracy of 94.1%."
+    },
+    {
+      "id": "DO10",
+      "query": "what are the metrics used to evaluate the base machine learning models",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "ddos_ensemble.docx",
+      "expects": [
+        195
+      ],
+      "anchor": "We have evaluated the results of the existing base classifier of machine learning, in which we have taken five base classifiers to find the results which include accuracy, F1 which is a function of Precision and Recall, Precession, and Recall."
+    },
+    {
+      "id": "DO11",
+      "query": "what will i learn about in the professional certificate for applied ai",
+      "asks": "structure",
+      "wording": "named",
+      "file": "genai_intro.docx",
+      "expects": [
+        1030
+      ],
+      "anchor": "This professional certificate gives you a firm understanding of AI technology, its applications, and its use cases."
+    },
+    {
+      "id": "DO12",
+      "query": "how do attackers get control over computers to launch a distributed attack",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "ddos_ensemble.docx",
+      "expects": [
+        25
+      ],
+      "anchor": "When the frameworks or different machines get contaminated with malware everyone reflects into a Bot, at that point the assailant can undoubtedly get access over the PCs through controllers."
+    }
+  ]
+}
