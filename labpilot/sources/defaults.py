@@ -131,6 +131,40 @@ SKIP_DIRECTORIES = frozenset(
         # Jupyter's is the case a notebook-first product cannot ask users to
         # exclude by hand.
         ".ipynb_checkpoints",
+        # MACHINE-LEARNING RUN OUTPUT. This is a Python-and-ML tool, so the
+        # directories its users actually have are the ones its own skip list was
+        # missing. Each of these is written BY a tool and named by that tool -
+        # none is a word someone would choose for source.
+        #
+        # `lung` is why: 34.8% of its chunks were duplicate copies under
+        # `mlflow/artifacts/`, and the fixture had to exclude them BY HAND for
+        # the measurement to be fair. A user cannot be asked to do that.
+        "mlruns",
+        "wandb",
+        "lightning_logs",
+        "catboost_info",
+        ".dvc",
+        ".neptune",
+        # BUILD AND TOOL CACHES not already covered. Deliberately conservative:
+        # `out`, `bin`, `runs` and `checkpoints` are NOT here, because they are
+        # ordinary English words a user may have chosen for real source.
+        ".cache",
+        ".gradle",
+        ".terraform",
+        ".hypothesis",
+        "htmlcov",
+        ".nyc_output",
+        "bower_components",
+        ".parcel-cache",
+        ".turbo",
+        ".svelte-kit",
+        ".nuxt",
+        ".dart_tool",
+        ".expo",
+        ".serverless",
+        ".yarn",
+        ".pnpm-store",
+        "__MACOSX",
     }
 )
 

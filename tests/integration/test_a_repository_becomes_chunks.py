@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
@@ -200,17 +201,25 @@ def test_a_minified_file_is_skipped_and_counted_while_the_rest_is_ingested(tmp_p
     assert skipped == {"generated or minified": 1}
 
 
-def a_file_of(functions: int) -> str:
+def a_file_of(functions: int, tag: str = "a") -> str:
     """Source long enough to become SEVERAL chunks, not one.
 
     Per-file numbering with one chunk per file gives [0, 0, 0], which almost
     any assertion catches. The failure that needs a real fixture is a file
     that restarts at 0 in the MIDDLE of a repository, so every file here has
     to cross the chunker's size cap on its own.
+
+    `tag` MAKES EACH FILE DIFFERENT, and it had to be added on 2026-09-18.
+    Without it three "different" files held byte-identical source, so once
+    ingest began dropping duplicate chunks the repository collapsed to one
+    file's worth. The test failed for the RIGHT reason and the fixture was
+    what was wrong: a repository of identical files is not a repository.
     """
-    body = "\n".join(f"    step_{n} = compute({n}) * 31 + offset" for n in range(40))
+    body = "\n".join(
+        f"    step_{n} = compute_{tag}({n}) * 31 + offset" for n in range(40)
+    )
     return "\n\n".join(
-        f"def routine_{index}(offset):\n{body}\n    return step_0\n"
+        f"def routine_{tag}_{index}(offset):\n{body}\n    return step_0\n"
         for index in range(functions)
     )
 
@@ -231,9 +240,9 @@ def test_chunk_index_never_repeats_across_a_repository(tmp_path):
     build(
         tmp_path / "repo",
         {
-            "src/train.py": a_file_of(3),
-            "src/model.py": a_file_of(3),
-            "tests/test_train.py": a_file_of(3),
+            "src/train.py": a_file_of(3, "train"),
+            "src/model.py": a_file_of(3, "model"),
+            "tests/test_train.py": a_file_of(3, "check"),
         },
     )
 
@@ -247,3 +256,53 @@ def test_chunk_index_never_repeats_across_a_repository(tmp_path):
     indexes = [chunk.chunk_index for chunk in chunks]
     assert indexes == list(range(len(chunks)))
     assert len(set(indexes)) == len(chunks), "a repeat is a duplicate primary key"
+
+
+def test_a_duplicated_file_is_stored_once_and_the_NEWEST_copy_wins(tmp_path):
+    """A repository really does hold the same content several times.
+
+    Our own fixtures had to exclude the copies BY HAND for the measurement to
+    be fair: `lung` was 34.8% duplicate chunks from mlflow artifact copies,
+    `pydantic` 6.6% from mypy outputs, and the user's `titanic` folder holds
+    three versions of one notebook plus Jupyter's auto-save - 39.1% duplicate
+    text. A user cannot be asked to do that by hand.
+
+    NEWEST, not first, and that is the whole point. Sorted-path order would
+    keep `analysis.ipynb` over `analysis_v2.ipynb`, so a divergence report
+    would compare the paper against code the user replaced months ago -
+    confidently, with a citation. For a tool whose job is explaining why two
+    things differ, answering from a stale copy is the worst failure it has.
+    """
+    build(
+        tmp_path / "repo",
+        {
+            # THE NAMES ARE LOAD-BEARING. The newest file must sort LATER
+            # than the stale one, or "keep the newest" and "keep the first
+            # in path order" agree and the fixture cannot tell them apart.
+            # A mutation proved that: with old_copy/new_copy, first-wins
+            # passed this test, because new_copy sorts first anyway.
+            # This is the real shape - titanic_analysis vs ...V2.
+            "analysis.py": a_file_of(2, "shared"),
+            "analysis_v2.py": a_file_of(2, "shared"),
+            "different.py": a_file_of(2, "other"),
+        },
+    )
+    old = tmp_path / "repo" / "analysis.py"
+    new = tmp_path / "repo" / "analysis_v2.py"
+    os.utime(old, (1_000_000, 1_000_000))
+    os.utime(new, (2_000_000, 2_000_000))
+
+    with open_folder(tmp_path / "repo") as source:
+        chunks = tuple(chunk_source(source, side="B"))
+
+    kept = {chunk.source for chunk in chunks}
+    assert "analysis_v2.py" in kept, "the NEWEST copy is the one worth keeping"
+    assert "analysis.py" not in kept, (
+        "a stale copy must never reach the prompt - and note it sorts FIRST, "
+        "so path order alone would have kept exactly the wrong one"
+    )
+    assert "different.py" in kept, "only DUPLICATES are dropped"
+    assert source.skipped.get("duplicate of a newer copy"), "a drop must be counted"
+
+    indexes = [chunk.chunk_index for chunk in chunks]
+    assert indexes == list(range(len(chunks))), "ids stay a gapless running count"
