@@ -135,3 +135,44 @@ measured five more times rather than once. Three of them are document formats
 whose loader path had never been scored at all. Two are above 1,000 chunks and
 two are under 150, so "it works at our size" stops meaning "it works at the one
 size we tried".
+
+
+## The v3 Python zoo — ten more fixtures, 2026-09-19
+
+Slice 8 was run a third time because the zoo did not match the product.
+LabPilot is a **Python and machine-learning** tool, and the v2 zoo was 3 of 13
+Python — so three shipped decisions had no Python behind them at all. These ten
+take the zoo to **20 corpora, 10 of them Python**.
+
+**Queries and ground truth are OURS** for every corpus below, and each fixture
+records its own `drafted_by`. Seven were drafted by `gemma-4-31b-it` against the
+real chunk text and then machine-validated by `scripts/validate_fixture.py`;
+**three are hand-written with no model involved**, and exist as the control that
+says whether a drafted fixture is as good as a written one.
+
+**No corpus is committed.** Every `queries.json` names its repository, its
+commit, its licence and the environment variable pointing at a checkout.
+
+| fixture | source | licence | drafted by |
+|---|---|---|---|
+| `py_pydantic` | github.com/pydantic/pydantic @ `915896d` | MIT | `gemma-4-31b-it` |
+| `py_pydantic_hand` | the same corpus and commit | MIT | **hand-written** |
+| `py_pytest` | github.com/pytest-dev/pytest @ `6a0de9b` | MIT | `gemma-4-31b-it` |
+| `py_pytest_hand` | the same corpus and commit | MIT | **hand-written** |
+| `py_click` | github.com/pallets/click @ `6aabf09` | BSD-3-Clause | `gemma-4-31b-it` |
+| `py_lung` | the user's own application, local | personal, never committed | `gemma-4-31b-it` |
+| `py_lung_hand` | the same corpus | personal, never committed | **hand-written** |
+| `py_smsspam` | the user's own application, local | personal, never committed | `gemma-4-31b-it` |
+| `py_disaster` | the user's own application, local | personal, never committed | `gemma-4-31b-it` |
+| `ipynb_titanic` | the user's own research notebook, local | personal, never committed | `gemma-4-31b-it` |
+
+**Why these.** Four are the user's own work, which is the real target and had
+never been measured. Three pair a drafted fixture with a hand-written one over
+the *identical* corpus, so "are generated queries trustworthy?" becomes a
+measurement instead of an argument. `py_pytest` and `py_pydantic` are both above
+9,000 chunks, which is the size the product actually targets and the zoo had
+never reached.
+
+**A note on the four personal corpora.** They are named here and are **not** in
+the repository, and they never can be. So those four fixtures are reproducible
+only on this machine; the six public ones are reproducible anywhere.

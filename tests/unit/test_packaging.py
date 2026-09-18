@@ -164,19 +164,32 @@ def test_no_runtime_requirement_would_blow_the_memory_budget():
 
 
 def test_every_committed_fixture_names_its_source_and_its_licence():
-    """A binary in data/samples/ is in git history forever and cannot be
+    """Anything in data/samples/ is in git history forever and cannot be
     audited afterwards. SOURCES.md is where provenance lives, and its own rule
     -- record the source and licence in the same commit -- had nothing
     enforcing it.
+
+    WIDENED 2026-09-19, because it had been checking the wrong half. It matched
+    on SUFFIX, so only binaries counted, and a retrieval fixture is a .json --
+    which meant TEN of them (the whole v3 Python zoo) landed undocumented while
+    this stayed green. A fixture is exactly as permanent as a PDF and names a
+    third-party repository, a commit and a licence, so it needs the same rule.
+
+    Fixtures are checked by their DIRECTORY name, because every one of them is
+    called `queries.json` and matching on that would pass for all of them the
+    moment any single fixture was documented.
     """
     documented = SOURCES.read_text(encoding="utf-8")
 
-    undocumented = sorted(
+    binaries = {
         path.name
         for path in SAMPLES.rglob("*")
-        if path.is_file()
-        and path.suffix.lower() in THIRD_PARTY_SUFFIXES
-        and path.name not in documented
+        if path.is_file() and path.suffix.lower() in THIRD_PARTY_SUFFIXES
+    }
+    fixtures = {path.parent.name for path in SAMPLES.glob("*/queries.json")}
+
+    undocumented = sorted(
+        name for name in binaries | fixtures if name not in documented
     )
 
     assert not undocumented, (
