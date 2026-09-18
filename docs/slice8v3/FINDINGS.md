@@ -311,6 +311,72 @@ every one of them non-Python).
 
 ---
 
+## H7 — THE RERANK WINDOW SHOULD BE 30, NOT 50, and it is the run's clearest decision change
+
+H6's mechanism predicted that a narrower window would help the large corpora,
+because it hands the reranker fewer near-identical candidates. **Measured on 6
+corpora, 5 Python (83%)** — against v2's `SEARCH_LIMIT` evidence, which was
+**4 corpora, 0 Python**.
+
+| corpus | chunks | q | vector | w50 | w30 | w50 queries | w30 queries | better |
+|---|---|---|---|---|---|---|---|---|
+| smsspam | 89 | 20 | 0.653 | 0.833 | **0.887** | +3.6 | **+4.7** | **w30** |
+| lung | 628 | 17 | 0.587 | 0.584 | **0.618** | −0.1 | **+0.5** | **w30** |
+| zod | 1,160 | 20 | 0.802 | 0.775 | **0.861** | −0.5 | **+1.2** | **w30** |
+| click | 1,585 | 20 | 0.577 | **0.585** | 0.577 | +0.2 | +0.0 | w50 |
+| pytest | 6,714 | 20 | 0.446 | 0.527 | **0.569** | +1.6 | **+2.5** | **w30** |
+| pydantic | 9,846 | 20 | 0.530 | 0.532 | **0.563** | +0.0 | **+0.7** | **w30** |
+
+**w30 wins on 5 of 6, and on 4 of the 5 corpora at or above 500 chunks.** The
+one w50 win, `click`, is +0.2 queries against +0.0 — both below what a
+20-query fixture can resolve, so it is a tie in everything but sign.
+
+Two corpora **change sign**: `lung` −0.1 → +0.5 and `zod` −0.5 → +1.2.
+
+### What it costs, measured rather than assumed
+
+A 30-window cannot promote an answer ranked 31st–50th. Across these 6 corpora
+and 114 queries:
+
+| corpus | `r@30` | `r@50` | queries lost |
+|---|---|---|---|
+| click | 0.950 | 1.000 | 1 |
+| pydantic | 0.950 | 1.000 | 1 |
+| lung, pytest, smsspam, zod | — | — | **0** |
+
+**Cost: 2 queries of 114 (1.8%). Gain: about +4.8 queries of ordering.**
+Roughly 2.4 to 1 in favour of the narrower window.
+
+### And it is better on three further axes, independently
+
+```
+QUALITY     better ordering on 5 of 6 corpora, 4 of 5 large ones
+COST        30 documents instead of 50 - about 40% fewer tokens per call
+REACH       Gemma   serves 11 of 20 at w50  ->  20 of 20 at w30
+            Voyage  serves  0 of 20 at w50  ->  11 of 20 at w30
+BUDGET      Gemma at every corpus is 28,800 calls/day against Flash-Lite's 1,000
+```
+
+> **Four independent reasons point the same way**, which is this project's own
+> standard for believing a result — judge a method by how many ways it was
+> shown better, never by its best single number.
+
+**`RERANK_WINDOW` should be 30.** Note this is the rerank candidate count, not
+`SEARCH_LIMIT`: search can keep returning 50, and the cut to 30 happens before
+the rerank call. That also makes v2's per-tier window machinery largely
+unnecessary — at 30 every tier serves every corpus, so there is nothing left
+for a per-tier rule to arbitrate.
+
+### Limits
+
+- 6 corpora, and only two windows were compared. 20 and 40 are unmeasured, so
+  30 is *better than 50*, not *optimal*.
+- `r@30` vs `r@50` is measured on the vector path; a fused candidate set would
+  differ.
+- The two windows were compared on one reranker, `gemini-3.5-flash-lite`.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
