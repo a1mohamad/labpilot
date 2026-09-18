@@ -120,6 +120,17 @@ class HTTPEmbedder(ABC):
         if budget and tokens > budget:
             return math.inf
 
+        # THE TEXT BUDGET, and it is a different question from either of the
+        # others. Google counts one TEXT as one request, so a corpus larger
+        # than the day's allowance cannot be ingested AT ALL today - no amount
+        # of waiting inside this run helps, because the bucket refills
+        # tomorrow. Without this the walk picked Google for a 20,000-chunk
+        # corpus, reported 163 minutes, and died on a 429 part way through:
+        # measured twice on 2026-09-18.
+        texts = self.rate.daily_text_budget
+        if texts and chunks > texts:
+            return math.inf
+
         rate = self.measured_tokens_per_minute
         if not rate:
             return math.inf

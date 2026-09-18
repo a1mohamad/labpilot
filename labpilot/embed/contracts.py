@@ -31,12 +31,25 @@ class Rate:
     allowance. Cloudflare's 10,000 free neurons buy ~684,000 tokens, after
     which BGE cannot run at all until tomorrow.
 
+    `daily_text_budget` is a FOURTH kind, and it exists because Google counts
+    one TEXT as one request. A 96-text batchEmbedContents call spends 96 of the
+    day's 1,000, not one - so the limit is neither a token budget nor a call
+    budget, and modelling it as either was wrong.
+
+    MEASURED 2026-09-18, twice, while this was still unmodelled: a
+    `gemini-embedding-2` warm died with HTTP 429 on its SECOND corpus, and
+    `gemini-embedding-001` exhausted after 943 chunks. `embedding_minutes()`
+    had predicted 163 minutes for a 20,000-chunk Google ingest; the truth is
+    twenty DAYS. So the walk chose Google, started, and could not finish -
+    exactly the failure the inf-gate exists to prevent.
+
     None means NOT KNOWN, never "unlimited".
     """
 
     tokens_per_minute: int | None = None
     requests_per_minute: int | None = None
     daily_token_budget: int | None = None
+    daily_text_budget: int | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

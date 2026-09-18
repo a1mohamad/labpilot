@@ -67,18 +67,44 @@ SPECS: dict[str, Spec] = {
     "gemini-embedding-2": Spec(
         dim=3072,
         max_input_tokens=8192,
-        rate=Rate(tokens_per_minute=30_000, requests_per_minute=100),
+        # daily_text_budget, not daily_token_budget: Google counts one TEXT as
+        # one request, so a 96-text batch spends 96 of the day's 1,000. Read
+        # from the account's own rate-limit page and confirmed by two 429s on
+        # 2026-09-18 - a warm died on its SECOND corpus, and 001 exhausted
+        # after 943 chunks.
+        rate=Rate(
+            tokens_per_minute=30_000,
+            requests_per_minute=100,
+            daily_text_budget=1_000,
+        ),
         measured_tokens_per_minute=29_000,
     ),
     "gemini-embedding-001": Spec(
         dim=3072,
         max_input_tokens=2048,
-        rate=Rate(tokens_per_minute=30_000, requests_per_minute=100),
+        # Same per-TEXT billing as embedding-2, and a separate 1,000 a day:
+        # Google's quota is per project per MODEL.
+        rate=Rate(
+            tokens_per_minute=30_000,
+            requests_per_minute=100,
+            daily_text_budget=1_000,
+        ),
         measured_tokens_per_minute=29_000,
     ),
     "embed-v4.0": Spec(
         dim=1536,
-        rate=Rate(requests_per_minute=10),
+        # Cohere bills per CALL, and a call carries up to 96 texts - so unlike
+        # Google the limit is NOT per text. 1,000 calls a MONTH, shared with
+        # reranking and chat, is ~96,000 chunks a month; a single ingest is
+        # gated by the token rate instead. The monthly ceiling is a BUDGET
+        # question for the caller, not a per-ingest refusal, so it is
+        # deliberately not modelled as daily_text_budget here - doing so would
+        # refuse a corpus this model can in fact embed today.
+        #
+        # 100,000 tokens/minute is the TRIAL cap, measured 2026-09-16 by
+        # hitting it. The registry previously carried 640,000, which was a
+        # burst that never met a limit - 6.4x optimistic.
+        rate=Rate(requests_per_minute=10, tokens_per_minute=100_000),
         measured_tokens_per_minute=640_000,
     ),
 }
@@ -215,20 +241,47 @@ COHERE_EMBED = CohereEmbedder(
     **_spec("embed-v4.0"),
 )
 
-# THE STRENGTH ORDER. Measured models first, in measured order; unmeasured
-# after them; Cohere last for the quota reason above. One structural override:
-# BGE sits second because it is the only early entry on a different platform -
-# codestral and mistral-embed share one API key, so a Mistral outage would take
-# both.
+# THE STRENGTH ORDER, RE-SORTED ON MEASUREMENT 2026-09-18 (slice 8 v3).
+#
+# It used to read codestral, BGE, mistral, google, cohere - which put the
+# WEAKEST measured model third. Head to head, on the corpora where each pair
+# both ran:
+#
+#     mistral vs gemini-001   n=7    mistral 1, google 6    0.503 vs 0.602
+#     mistral vs cohere       n=13   mistral 3, cohere 10   0.511 vs 0.593
+#     mistral vs gemini-2     n=11   mistral 4, google 7    0.537 vs 0.563
+#
+# mistral-embed loses to EVERY other embedder it has been compared with, so it
+# moves to the back. Measured mean MRR over the 20-corpus zoo:
+#
+#     codestral 0.634 > gemini-001 0.602 > cohere 0.593 > gemini-2 0.563
+#                     > mistral 0.511
+#
+# COHERE IS NO LONGER LAST, and the reason it was has weakened. Its quota is a
+# real cost - 1,000 calls a MONTH shared with reranking - but it is BILLED PER
+# CALL at up to 96 texts, so a small corpus is a handful of calls. The models
+# that genuinely cannot finish a large ingest now say so through
+# `daily_text_budget`, which is where a hard limit belongs; an ordering is for
+# strength.
+#
+# Two structural overrides remain, and both are deliberate:
+#   - BGE sits second because it is the only early entry on a DIFFERENT
+#     platform. codestral and mistral-embed share one API key, so a Mistral
+#     outage would otherwise take the top two. It is also the one model in this
+#     list NOBODY HAS EVER SCORED - on any corpus, in v2 or v3 - so position 2
+#     is a robustness argument, not a recall one.
+#   - mistral-embed stays IN the list despite being last on quality, because it
+#     is the only model that can ingest 10,000 chunks quickly: google cannot
+#     today at all, and cohere is 21 minutes. A walk must not dead-end.
 MIGRATION = (
     CODESTRAL_EMBED,
     BGE_BASE,
-    MISTRAL_EMBED,
     GEMINI_EMBED_001,
     GEMINI_EMBED_001_KEY2,
+    COHERE_EMBED,
     GEMINI_EMBED_2,
     GEMINI_EMBED_2_KEY2,
-    COHERE_EMBED,
+    MISTRAL_EMBED,
 )
 
 

@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import pytest
@@ -122,3 +123,48 @@ def test_no_single_platform_can_empty_the_migration():
         survivors = [e for e in MIGRATION if e.api_key_env != platform]
 
         assert survivors, f"losing {platform} would leave nothing to embed with"
+
+
+def test_a_model_that_cannot_finish_today_is_skipped_not_attempted():
+    """Google counts one TEXT as one request, so a big corpus is impossible.
+
+    ADDED 2026-09-18 after the gap was found by running into it. `Rate` modelled
+    a token budget and a call budget, and Google's real limit is neither: a
+    96-text batchEmbedContents call spends 96 of the day's 1,000. So
+    `embedding_minutes` reported a plausible 163 minutes for a 20,000-chunk
+    Google ingest when the truth is twenty DAYS, the walk chose Google, started,
+    and died on a 429 part way through. Measured twice that day - a warm failed
+    on its SECOND corpus, and 001 exhausted after 943 chunks.
+
+    An inf here is what removes a model from the walk, so this is the
+    difference between refusing before the first call and failing half way
+    through an ingest that cannot be resumed.
+    """
+    google = next(e for e in MIGRATION if e.model == "gemini-embedding-001")
+    budget = google.rate.daily_text_budget
+
+    assert budget, "Google's per-TEXT daily budget must be modelled"
+    assert google.embedding_minutes(tokens=budget * 236, chunks=budget) < math.inf
+    assert (
+        google.embedding_minutes(tokens=(budget + 1) * 236, chunks=budget + 1)
+        == math.inf
+    )
+
+
+def test_the_migration_is_ordered_by_measured_strength():
+    """mistral-embed loses to every embedder it has been compared with.
+
+    Measured on the 20-corpus zoo: codestral 0.634 > gemini-001 0.602 > cohere
+    0.593 > gemini-2 0.563 > mistral 0.511. Head to head, mistral wins 1 of 7
+    against gemini-001, 3 of 13 against cohere, 4 of 11 against gemini-2.
+
+    It sat THIRD until 2026-09-18, above three better models, in a tuple whose
+    own comment called it "the strength order". It stays in the list because a
+    walk must not dead-end - it is the only model that can ingest 10,000 chunks
+    quickly - but it belongs at the back.
+    """
+    order = [e.model for e in MIGRATION]
+
+    assert order.index("codestral-embed") < order.index("mistral-embed")
+    assert order.index("gemini-embedding-001") < order.index("mistral-embed")
+    assert order.index("embed-v4.0") < order.index("mistral-embed")
