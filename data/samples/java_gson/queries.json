@@ -1,0 +1,177 @@
+{
+  "corpus": {
+    "key": "gson",
+    "env": "LABPILOT_GSON_SRC",
+    "include": [
+      "**/*.java"
+    ],
+    "exclude": [
+      "**/test/**",
+      "**/*Test.java",
+      "**/tests/**"
+    ],
+    "source": "relpath",
+    "language": "Java",
+    "splitter": "recursive",
+    "domain": "JSON serialisation",
+    "repo": "https://github.com/google/gson",
+    "commit": "698ba9e",
+    "licence": "Apache-2.0",
+    "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
+    "chunks_at_this_commit": 750,
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "file": "the file holding the answer, spelled the way `source` says",
+    "expects": "the lines in that file that really answer the question",
+    "asks": "what kind of thing the question wants: constant, behaviour, error, api, structure",
+    "wording": "named = the question uses a word that also appears in the text. paraphrase = it deliberately avoids them. NEITHER may contain the identifier it is looking for - that would measure string matching, not retrieval",
+    "anchor": "the exact line the question was written from, used only to resolve `expects`"
+  },
+  "queries": [
+    {
+      "id": "GS01",
+      "query": "what is the state when a document has been closed",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "gson/src/main/java/com/google/gson/stream/JsonScope.java",
+      "expects": [
+        50
+      ],
+      "anchor": "static final int CLOSED = 8;"
+    },
+    {
+      "id": "GS02",
+      "query": "does the writer for the dummy class actually work",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "test-shrinker/src/main/java/com/example/GenericClasses.java",
+      "expects": [
+        64
+      ],
+      "anchor": "throw new UnsupportedOperationException();"
+    },
+    {
+      "id": "GS03",
+      "query": "what happens if you try to deserialize this object directly",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java",
+      "expects": [
+        91
+      ],
+      "anchor": "throw new InvalidObjectException(\"Deserialization is unsupported\");"
+    },
+    {
+      "id": "GS04",
+      "query": "how do i check if the current instance is configured to escape html characters",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "gson/src/main/java/com/google/gson/Gson.java",
+      "expects": [
+        325
+      ],
+      "anchor": "public boolean htmlSafe() {"
+    },
+    {
+      "id": "GS05",
+      "query": "is the use of unsafe instantiation allowed when creating the map adapter",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+      "expects": [
+        145
+      ],
+      "anchor": "boolean allowUnsafe = false;"
+    },
+    {
+      "id": "GS06",
+      "query": "how is the post deserializer created",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "extras/src/main/java/com/google/gson/interceptors/InterceptorFactory.java",
+      "expects": [
+        48
+      ],
+      "anchor": "this.postDeserializer = intercept.postDeserialize().getDeclaredConstructor().newInstance();"
+    },
+    {
+      "id": "GS07",
+      "query": "what is thrown when the parser runs out of memory",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "gson/src/main/java/com/google/gson/JsonStreamParser.java",
+      "expects": [
+        91
+      ],
+      "anchor": "throw new JsonParseException(\"Failed parsing JSON source to Json\", e);"
+    },
+    {
+      "id": "GS08",
+      "query": "how does the writer handle null strings",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "gson/src/main/java/com/google/gson/internal/Streams.java",
+      "expects": [
+        118
+      ],
+      "anchor": "Objects.requireNonNull(str);"
+    },
+    {
+      "id": "GS09",
+      "query": "how is it decided if sql types are supported",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "gson/src/main/java/com/google/gson/internal/sql/SqlTypesSupport.java",
+      "expects": [
+        55
+      ],
+      "anchor": "Class.forName(\"java.sql.Date\");"
+    },
+    {
+      "id": "GS10",
+      "query": "how does the manual parsing loop handle different field names",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "metrics/src/main/java/com/google/gson/metrics/BagOfPrimitivesDeserializationBenchmark.java",
+      "expects": [
+        67
+      ],
+      "anchor": "switch (name) {"
+    },
+    {
+      "id": "GS11",
+      "query": "how is it determined if the current environment is running a newer version of the language",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "gson/src/main/java/com/google/gson/internal/JavaVersion.java",
+      "expects": [
+        93
+      ],
+      "anchor": "return majorJavaVersion >= 9;"
+    },
+    {
+      "id": "GS12",
+      "query": "what happens when an unexpected token is encountered during parsing",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "metrics/src/main/java/com/google/gson/metrics/ParseBenchmark.java",
+      "expects": [
+        265
+      ],
+      "anchor": "throw new IllegalArgumentException(\"Unexpected token \" + token);"
+    },
+    {
+      "id": "GS13",
+      "query": "how are null long values handled during serialization",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "gson/src/main/java/com/google/gson/LongSerializationPolicy.java",
+      "expects": [
+        41
+      ],
+      "anchor": "return JsonNull.INSTANCE;"
+    }
+  ]
+}
