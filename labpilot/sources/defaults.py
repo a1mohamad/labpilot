@@ -114,6 +114,57 @@ SKIP_DIRECTORIES = frozenset(
         ".eggs",
         ".idea",
         ".vscode",
+        # MEASURED 2026-09-18, and it is the one entry here aimed at THIS
+        # product's own users. Jupyter writes `.ipynb_checkpoints/<name>-
+        # checkpoint.ipynb` beside every notebook it saves - a stale near-copy,
+        # not a build artifact, so no other skip rule catches it.
+        #
+        # On the user's own `titanic` repository a real walk stored 463 chunks
+        # of which 181 - 39.1% - were DUPLICATE TEXT, almost all of it the
+        # checkpoint and two earlier versions of one notebook. Retrieval then
+        # has to choose between several copies of the same answer, and the
+        # comparison prompt can be handed the STALE one.
+        #
+        # This project already knows the shape: `lung` was 34.8% duplicate
+        # chunks from mlflow artifact copies and `pydantic` 6.6% from mypy
+        # outputs, and both had to be excluded by hand for the measurement.
+        # Jupyter's is the case a notebook-first product cannot ask users to
+        # exclude by hand.
+        ".ipynb_checkpoints",
+        # MACHINE-LEARNING RUN OUTPUT. This is a Python-and-ML tool, so the
+        # directories its users actually have are the ones its own skip list was
+        # missing. Each of these is written BY a tool and named by that tool -
+        # none is a word someone would choose for source.
+        #
+        # `lung` is why: 34.8% of its chunks were duplicate copies under
+        # `mlflow/artifacts/`, and the fixture had to exclude them BY HAND for
+        # the measurement to be fair. A user cannot be asked to do that.
+        "mlruns",
+        "wandb",
+        "lightning_logs",
+        "catboost_info",
+        ".dvc",
+        ".neptune",
+        # BUILD AND TOOL CACHES not already covered. Deliberately conservative:
+        # `out`, `bin`, `runs` and `checkpoints` are NOT here, because they are
+        # ordinary English words a user may have chosen for real source.
+        ".cache",
+        ".gradle",
+        ".terraform",
+        ".hypothesis",
+        "htmlcov",
+        ".nyc_output",
+        "bower_components",
+        ".parcel-cache",
+        ".turbo",
+        ".svelte-kit",
+        ".nuxt",
+        ".dart_tool",
+        ".expo",
+        ".serverless",
+        ".yarn",
+        ".pnpm-store",
+        "__MACOSX",
     }
 )
 
