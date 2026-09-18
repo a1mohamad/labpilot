@@ -279,43 +279,39 @@ Only `VECTOR_TOP_N` is settled, because the experiment picks its chunks by
 **vector search alone** — `chosen()` reads `dense_orders` and no reranker
 touches it. See FINDINGS **H16**.
 
-**18 corpora, 8 Python, 383 questions, flash-lite, zero damaged cells:**
+**18 corpora, 8 Python, 383 questions, flash-lite, regraded:**
 
 ```
-correct / asked   N=10 0.222   N=20 0.386   N=30 0.465
-corpora won       N=10 0       N=20 6       N=30 9      tied 3
+correct / asked   N=10 0.245   N=20 0.462   N=30 0.512
+corpora won       N=10 0       N=20 5       N=30 8      tied 5
 ```
 
 **N=10 is eliminated outright** and wins on zero corpora of 18. On v2's 13,
-which carry N=50 and N=100, coverage flattens after 30 and **precision peaks at
-30** (0.616, then 0.592 and 0.584) — the first time this project has *measured*
-a dilution penalty rather than assuming one.
+which carry N=50 and N=100, **nothing turns over** — coverage reaches 0.707 and
+precision 0.781 at N=100, both still rising.
 
-**Python gets less out of extra context**, which is the finding v3 exists for:
+**Python scores lower at every N, and only Python shows dilution at all:**
 
 | | N=10 | N=20 | N=30 | precision @30 |
 |---|---|---|---|---|
-| 8 Python | 0.190 | 0.318 | **0.391** | 0.479 |
-| 10 non-Python | 0.250 | 0.446 | **0.529** | **0.679** |
+| 10 non-Python | 0.289 | 0.544 | **0.574** | **0.750** |
+| 8 Python | 0.196 | 0.369 | **0.441** | 0.541 |
 | the 5 NEW Python corpora | 0.268 | **0.423** | 0.381 | 0.487 |
 | above 5,000 chunks (2) | 0.275 | **0.375** | 0.250 | — |
 
-Non-Python answers ~35% more questions correctly at every N. The five new
-Python corpora turn over at N=20 and their precision falls monotonically.
+> **⚠ USE `.logs/results/answers_regraded.json`, NOT `answers_flashlite.json`.**
+> The citation regex was fixed twice on 2026-09-17 (`9e43ae4` 11:42, `b60e865`
+> 11:48); the run file was written at 11:49, mid-fix, and the regrade pass at
+> 11:57 moved **62 of its 75 cells**. Reading the older file invents three
+> "damaged cells" the project had already fixed and understates every other
+> cell. `scripts/combine_topn.py` now points at the regraded file.
 
-> **THREE CELLS OF v2's OWN DATA WERE DAMAGED** — `answered > 0` with
-> `cited == 0`, so `correct` was forced to 0: `papers` N=30, `zod` N=30, `geo`
-> N=10. Two of three on N=30, the same unevenly-spread damage that voided take
-> one. **All three were re-run and all three cite normally** (10/14, 14/16,
-> 6/8), and the repair moved N=30 from level with N=20 to clearly ahead.
-> `.logs/results/answers_flashlite_original.json` keeps the unrepaired file;
-> `scripts/combine_topn.py` flags the pattern on every run.
-
-**13 of the 18 corpora are v2's cached flash-lite run from 2026-09-17**, re-used
-rather than re-measured — same model, same script, same fixtures. Only the three
-cells that looked wrong were re-run. A full re-run of the 13 is ~780 calls
-against a 500/day key; `GOOGLE_API_KEY` was already 429 by the end of this
-session and `GOOGLE_API_KEY_2` carried the rest.
+**13 of the 18 corpora are v2's cached run from 2026-09-17, deliberately
+re-used** — same model, same script, same fixtures, and after the regrade the
+same grader too. Three cells were re-run live as a spot check: `papers` N=30 and
+`geo` N=10 reproduced **exactly** (10 and 6), `zod` N=30 moved 8 → 14. So the
+cache is sound and **a single cell can move by 6 questions of 20** between runs
+— only pooled figures are evidence.
 
 ### F — BGE SITS AT POSITION 2 AND HAS NEVER BEEN SCORED
 
@@ -423,7 +419,8 @@ adds 4 Python corpora.
 | **a listwise rerank cache is keyed by CANDIDATE SET** (G14) | a new window or `--fusion` is a **fresh call at full price**, never a cache hit |
 | **3 jobs over the VPN** | SSL EOF. Two actively calling is the limit; it killed a sweep today |
 | **`score_answers.py` OVERWRITES `answers_<model>.json`** | it saves once, at the END, over the whole file. Running 5 corpora would have destroyed v2's 13-corpus run. Back it up before every invocation |
-| **`answered > 0` with `cited == 0`** | a GRADING failure wearing a result's clothes: `correct` is 0 by construction. Three cells of v2's top-N data, two of them on one N |
+| **`answered > 0` with `cited == 0`** | a GRADING failure wearing a result's clothes. It fired on three cells — and what it had really caught was that I was reading a **stale file** |
+| **two result files for one run** | `answers_flashlite.json` (11:49, mid-fix) and `answers_regraded.json` (11:57) differ in **62 of 75 cells**. The canonical-looking name was the wrong one |
 
 ---
 

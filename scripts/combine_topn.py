@@ -167,7 +167,12 @@ def main(v2: str, v3: str) -> int:
     return 0
 
 
-V2 = ".logs/results/answers_flashlite.json"  # 13 corpora, N=5..100
+# THE REGRADED file, not answers_flashlite.json. The citation regex was fixed
+# twice on 2026-09-17 (9e43ae4, b60e865) AFTER the 13-corpus run was written,
+# and the regrade pass eight minutes later moved 62 of its 75 cells. Reading the
+# pre-fix file makes three cells look like grading failures that the project had
+# already fixed - and understates every other cell too.
+V2 = ".logs/results/answers_regraded.json"  # 13 corpora, N=5..100, REGRADED
 V3 = ".logs/results/answers_flashlite_py.json"  # 5 Python corpora, N=10,20,30
 
 
