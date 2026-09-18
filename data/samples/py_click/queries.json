@@ -1,0 +1,32 @@
+{
+  "corpus": {
+    "key": "click",
+    "env": "LABPILOT_CLICK_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/.git/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "command line interface toolkit",
+    "licence": "BSD-3-Clause",
+    "repo": "https://github.com/pallets/click",
+    "commit": "6aabf09",
+    "note": "Line numbers are valid only for this commit. Clone with --depth 1 and check out this sha before scoring. The source is NOT committed: it is third-party code, and the provenance rule keeps it out of the repository.",
+    "chunks_at_this_commit": 1585,
+    "include_note": "**/*.py INCLUDING tests, for the same reason as pytest and pydantic: a packaged library at mid size, 100% Python.",
+    "queries_planned": 20
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": []
+}

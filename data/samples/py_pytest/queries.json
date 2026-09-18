@@ -1,0 +1,32 @@
+{
+  "corpus": {
+    "key": "pytest",
+    "env": "LABPILOT_PYTEST_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/.git/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "test framework",
+    "licence": "MIT",
+    "repo": "https://github.com/pytest-dev/pytest",
+    "commit": "6a0de9b",
+    "note": "Line numbers are valid only for this commit. Clone with --depth 1 and check out this sha before scoring. The source is NOT committed: it is third-party code, and the provenance rule keeps it out of the repository.",
+    "chunks_at_this_commit": 6714,
+    "include_note": "**/*.py INCLUDING the test suite. Source-only would be 2,452 (pytest) and 2,652 (pydantic) chunks, far short of the ~10,000 this corpus exists to provide. Including every readable suffix would reach 9,653 / 13,377 but ~25-30% of those chunks are RST and Markdown, which would make a corpus counted as Python mostly not Python. `**/*.py` with tests is both 100% Python and at the target scale, and it is what our own walker would really store from this repository.",
+    "queries_planned": 20
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": []
+}

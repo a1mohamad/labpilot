@@ -1,0 +1,36 @@
+{
+  "corpus": {
+    "key": "disaster",
+    "env": "LABPILOT_DISASTER_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/tests/**",
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/.ipynb_checkpoints/**",
+      "**/migrations/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "disaster tweet classification, research + deployment",
+    "repo": "the user's own application, local",
+    "commit": "n/a",
+    "licence": "personal material, never committed",
+    "note": "The source is NOT committed: it is the user's own personal material, and the provenance rule keeps it out of the repository. Point the env var at the folder before scoring.",
+    "chunks_at_this_commit": 108,
+    "include_note": "**/*.py, excluding tests and generated migrations. A small SCRIPT application rather than a packaged library.",
+    "queries_planned": 20
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": []
+}
