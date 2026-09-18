@@ -1,0 +1,258 @@
+{
+  "corpus": {
+    "key": "disaster",
+    "env": "LABPILOT_DISASTER_SRC",
+    "include": [
+      "**/*.py"
+    ],
+    "exclude": [
+      "**/tests/**",
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/.ipynb_checkpoints/**",
+      "**/migrations/**"
+    ],
+    "source": "relpath",
+    "language": "Python",
+    "splitter": "python-ast",
+    "domain": "disaster tweet classification, research + deployment",
+    "repo": "the user's own application, local",
+    "commit": "n/a",
+    "licence": "personal material, never committed",
+    "note": "The source is NOT committed: it is the user's own personal material, and the provenance rule keeps it out of the repository. Point the env var at the folder before scoring.",
+    "chunks_at_this_commit": 108,
+    "include_note": "**/*.py, excluding tests and generated migrations. A small SCRIPT application rather than a packaged library.",
+    "queries_planned": 20,
+    "drafted_by": "gemma-4-31b-it"
+  },
+  "fields": {
+    "id": "stable id for this query",
+    "query": "the question, as a developer would ask it",
+    "file": "the file holding the answer, spelled as Chunk.source spells it",
+    "expects": "line numbers in that file that answer it",
+    "asks": "constant | behaviour | error | api | structure",
+    "wording": "named if it shares ordinary words with the answer, paraphrase if it deliberately avoids them"
+  },
+  "queries": [
+    {
+      "id": "DI01",
+      "query": "what is the minimum length required for the text input in a prediction request",
+      "asks": "constant",
+      "wording": "named",
+      "file": "deployment/app/schemas.py",
+      "expects": [
+        9
+      ],
+      "anchor": "tweet: str = Field(..., min_length=1)"
+    },
+    {
+      "id": "DI02",
+      "query": "how are vectors initialized before loading the file",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "research/model/embedding.py",
+      "expects": [
+        14
+      ],
+      "anchor": "emb_matrix = np.random.normal(0.0, 1.0, (vocab_size, emb_dim))"
+    },
+    {
+      "id": "DI03",
+      "query": "what happens when a model or vocabulary file is missing",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "deployment/app/utils/errors.py",
+      "expects": [
+        46
+      ],
+      "anchor": "class ArtifactError(AppError):"
+    },
+    {
+      "id": "DI04",
+      "query": "what does the health check endpoint return",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "deployment/app/api.py",
+      "expects": [
+        176
+      ],
+      "anchor": "return {\n        \"status\": \"ok\",\n        \"backend\": predictor.backend_name if predictor else None,\n    }"
+    },
+    {
+      "id": "DI05",
+      "query": "which torch data utility is used for the dataset",
+      "asks": "structure",
+      "wording": "named",
+      "file": "research/data_utils/dataset.py",
+      "expects": [
+        8
+      ],
+      "anchor": "from torch.utils.data import Dataset"
+    },
+    {
+      "id": "DI06",
+      "query": "what is the default value for the dropout rate",
+      "asks": "constant",
+      "wording": "paraphrase",
+      "file": "deployment/app/app_config.py",
+      "expects": [
+        44
+      ],
+      "anchor": "DROPOUT: float = float(os.getenv(\"DROPOUT\", \"0.28\"))"
+    },
+    {
+      "id": "DI07",
+      "query": "where is the learning rate stored during training",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "research/training/callbacks.py",
+      "expects": [
+        70
+      ],
+      "anchor": "self.history[\"lr\"].append(optimizer.param_groups[0][\"lr\"])"
+    },
+    {
+      "id": "DI08",
+      "query": "what happens if the difference in probabilities is too high during validation",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "deployment/scripts/export_onnx.py",
+      "expects": [
+        118
+      ],
+      "anchor": "raise RuntimeError(\n            f\"ONNX validation failed: max probability delta {max_delta:.8f} > {tolerance}\""
+    },
+    {
+      "id": "DI09",
+      "query": "how is the database connection configured to allow access from different threads",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "deployment/app/db.py",
+      "expects": [
+        27
+      ],
+      "anchor": "conn = sqlite3.connect(str(db_path), check_same_thread=False)"
+    },
+    {
+      "id": "DI10",
+      "query": "how are the training metrics initialized",
+      "asks": "structure",
+      "wording": "named",
+      "file": "research/training/metrics.py",
+      "expects": [
+        9
+      ],
+      "anchor": "train_metrics = {\n        \"accuracy\": BinaryAccuracy(threshold=cfg.METRIC_THRESHOLD).to(cfg.DEVICE)\n    }"
+    },
+    {
+      "id": "DI11",
+      "query": "how is the final training input constructed from the keyword and text",
+      "asks": "behaviour",
+      "wording": "named",
+      "file": "research/data_utils/preprocessing.py",
+      "expects": [
+        41
+      ],
+      "anchor": "return f\"{keyword} : {cleaned_text}\""
+    },
+    {
+      "id": "DI12",
+      "query": "when is a non-english input rejected",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "deployment/app/utils/validation.py",
+      "expects": [
+        54
+      ],
+      "anchor": "if enough_text and strong_confidence:"
+    },
+    {
+      "id": "DI13",
+      "query": "what are the available command line options for running a single tweet prediction",
+      "asks": "api",
+      "wording": "paraphrase",
+      "file": "deployment/main.py",
+      "expects": [
+        18
+      ],
+      "anchor": "parser.add_argument(\"--keyword\", type=str, default=\"\")"
+    },
+    {
+      "id": "DI14",
+      "query": "how is the warning message object structured",
+      "asks": "structure",
+      "wording": "named",
+      "file": "deployment/app/utils/validation.py",
+      "expects": [
+        80
+      ],
+      "anchor": "payload = {\n            \"warning_code\": warning_code,\n            \"message\": message,\n        }"
+    },
+    {
+      "id": "DI15",
+      "query": "how is the weight for the positive class calculated",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "research/training/loss.py",
+      "expects": [
+        12
+      ],
+      "anchor": "pos_weight = torch.tensor([neg_num / pos_num]).to(config.DEVICE)"
+    },
+    {
+      "id": "DI16",
+      "query": "what happens when a high level application error occurs during the prediction process",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "deployment/main.py",
+      "expects": [
+        83
+      ],
+      "anchor": "print(exc.to_json())"
+    },
+    {
+      "id": "DI17",
+      "query": "how does the system get the raw output from the model",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "deployment/app/model/predictor.py",
+      "expects": [
+        48
+      ],
+      "anchor": "output = self.session.run([self.output_name], feeds)[0]"
+    },
+    {
+      "id": "DI18",
+      "query": "what happens if the language detection library is not installed",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "deployment/app/data/preprocessing.py",
+      "expects": [
+        76
+      ],
+      "anchor": "if not _LANGDETECT_AVAILABLE:"
+    },
+    {
+      "id": "DI19",
+      "query": "how does the system decide which hardware accelerator to use when the setting is set to automatic",
+      "asks": "behaviour",
+      "wording": "paraphrase",
+      "file": "deployment/app/model/disaster_model.py",
+      "expects": [
+        72
+      ],
+      "anchor": "device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")"
+    },
+    {
+      "id": "DI20",
+      "query": "what error is thrown when the json configuration for the limit is corrupted",
+      "asks": "error",
+      "wording": "paraphrase",
+      "file": "deployment/app/model/predictor.py",
+      "expects": [
+        193
+      ],
+      "anchor": "raise ArtifactError(\n                    \"THRESHOLD_JSON_INVALID\",\n                    \"Threshold JSON file is invalid.\",\n                    {\"path\": str(config.THRESHOLD_JSON_PATH), \"error\": str(exc)},\n                ) from exc"
+    }
+  ]
+}
