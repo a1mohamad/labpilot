@@ -487,8 +487,141 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 SLICES 1, 1b, 2, 3, 4, 5, 6 AND 7 ARE DONE. ONLY SLICE 8 — THE
-MEASUREMENT — REMAINS.**
+**Phase: STEP 1 IS COMPLETE. ALL NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 —
+ARE DONE. STEP 2, THE AGENT, IS NEXT.**
+
+> ### ⚠⚠ SLICE 8 v3 IS ALMOST DONE — READ `docs/slice8v3/DECISIONS.md` FIRST
+>
+> **THE ZOO WAS REBUILT: 20 corpora, 10 PYTHON (50%), 423 queries**, against
+> v2's 3 of 13. LabPilot is a Python and machine-learning tool, and three v2
+> decisions had **zero** Python behind them. Branch `slice8/measure-final`.
+>
+> **`docs/slice8v3/DECISIONS.md` is the deliverable and it is current — 29
+> decisions, TEN of them now in `labpilot/` rather than in a document.**
+> `RESUME.md` is the working log, `FINDINGS.md` (H0–H19) the evidence.
+>
+> **WHAT SHIPPED TO THE CODE, each one mutation-verified:**
+>
+> ```
+> VECTOR_TOP_N      25 -> 15    (and the 30 shipped first was a UNIT ERROR)
+> RERANK_WINDOW     new, 20     the reranker reads 20 of the 50, not all 50
+> MIGRATION         BGE 2 -> last; mistral -> second-last; 001 above 2
+> the embedder gate + a per-TEXT daily budget - Google can no longer start an
+>                     ingest it cannot finish
+> SMALL_CORPUS_CHUNKS  DELETED
+> SKIP_DIRECTORIES  +22 names, including .ipynb_checkpoints
+> ingest            duplicate chunks dropped, NEWEST copy wins
+> rerank chain      + the SECOND Google account: 29,800 -> 59,600 calls a day
+> the LLM chain     A 500 IS NOW RETRIED - 3s, then 10s
+> ```
+>
+> **THE FIVE-WAY RULE IS NOW SIX-WAY.** *"400 / 500 / empty / timeout → next
+> tier, retrying cannot change it"* is FALSE for Gemma and it is measured:
+> **gemma-4-31b answers 500 on two calls of three and 200 on the third.** That
+> rule was discarding the largest quota in the project over a fault that clears
+> in three seconds.
+>
+> **RETRIEVAL IS FREE, and it reframes the whole slice.** The first end-to-end
+> measurement: a searched answer is **50.5s**, of which embed + search + rerank
+> is **13.9s**. Every knob this run tuned lives inside those fourteen seconds.
+> They decide what the model SEES; they do not move the clock. So every decision
+> here is a QUALITY decision, and any argued on latency was argued on a false
+> premise. **`WARN_MINUTES = 2.0` is measured to be wrong in both directions and
+> is NOT yet fixed.**
+>
+> **FOUR DEFECTS FOUND BY MEASURING, none on anyone's list:** thinking burn
+> scored as a result (`papers` "answered 0 of 20" was the model running out of
+> output tokens mid-sentence, and `ask()` discarded `finish_reason`); the rerank
+> chain missing its second Google account; a 500 never retried; and
+> `VECTOR_TOP_N` declared TWICE in one module, the second shadowing the first.
+>
+> **STILL OPEN:** the reranker MODEL comparison (running), the STUFF path (never
+> exercised - the obvious fixture needs 28,246 tokens against a 26,000 budget),
+> `WARN_MINUTES`, and content-kind filtering (parked for a final pass).
+>
+> **All v2 results are KEPT and stay valid for what they measured.**
+
+> ### ⚠ SLICE 8 WAS RE-RUN TWICE. READ `docs/slice8v2/` BEFORE ANY NUMBER BELOW
+>
+> **`docs/slice8/` is the FIRST run — three corpora, two of them already used.**
+> **`docs/slice8v2/` is THIRTEEN corpora, nine languages and formats, 286
+> queries, and it CORRECTS the first run in several places.** Start at
+> `docs/slice8v2/RESUME.md`, then `DECISIONS.md`, then `FINDINGS.md`.
+>
+> **The third session, 2026-09-17, began by finding the MEASUREMENT INSTRUMENT
+> BROKEN.** `PairScores` synthesised a score from a LISTWISE reranker's ORDER —
+> `len(order) − place` — and cached it per pair, so every call produced the same
+> numbers 50…1 and two calls for one query collided. **Five of thirteen rerank
+> corpora and all three merged benchmarks were void.** It does NOT reach
+> production: nothing in `labpilot/` outside `rerank/contracts.py` reads
+> `.scores`. See `docs/slice8v2/FINDINGS.md` **G14**.
+>
+> **What the third session settled, and what it overturned:**
+>
+> | | |
+> |---|---|
+> | **how many chunks to SEND** | **20**, and N is a **COUNT**, not a coverage share — cv 0.41 against ~1.0 over a 15× range of corpus sizes. **CORRECTED**: the experiment picked its chunks by VECTOR SEARCH ALONE - `chosen()` uses `dense_orders` and no reranker touches it - so it measures the DEGRADED path directly: **`VECTOR_TOP_N` should be 10 per side, not 25**. `RERANK_TOP_N` is NOT measured by it. Reranked chunks are better ordered, so their optimum is at most 20 and may be lower - an argument, not a number |
+> | **the skip gate** | **`SKIP_MARGIN` stays `None`.** The v2 run's `0.05` is OVERTURNED: the best GLOBAL tau is worth **+2.4 queries out of 286**, and the best per-corpus tau is never the same twice |
+> | **merged vs per-side reranking** | **PER SIDE, confirmed.** Merged starves a side entirely on **43 of 57** queries — where the broken instrument had reported **0 of 20** |
+> | **fusion** | switch the keyword channel **ON below `r@50` ≈ 0.95 and OFF above** — every recall gain lands on the three corpora below it, and every corpus at or above is exactly +0.000. And the method is **SCORE FUSION**, not wRRF, whose entire MRR range sits inside one-query resolution |
+> | **the routing signal** | **DEAD.** Weighted over 286 queries every question kind is POSITIVE. `structure` — slice 6's −0.534, which became a design principle — is **+0.169**, and its worst case was **one query** scored −0.500 |
+> | **reranking** | still ships, restated against each fixture's RESOLUTION: **9 REAL gains, 1 REAL loss, 3 nothing measurable**. "Helped 10, hurt 3" overstated both sides |
+> | **chain 3's order** | **rests on ONE corpus.** On three more, Cohere beats flash-lite 2–1 and has never hurt a corpus, while flash-lite hurts on 3 of 13. Their means are +6.0q and +6.1q — indistinguishable. Flash-lite belongs first for **budget** (1,000/day against 1,000/month), not for quality, and **Cohere does not belong at tier 7** |
+> | **the splitter decides the rerank tier** | a language with no AST splitter gives chunks ~2× larger, so one rerank call is ~2× the tokens. At `SEARCH_LIMIT = 50` **Voyage serves 0 of 13 corpora and both Gemma tiers serve 4 of 13**; at a window of 30 Gemma serves **all 13** — 28,800 calls a day against Flash-Lite's 1,000. `scripts/tier_reach.py` |
+>
+> **THE ONE METHODOLOGICAL RULE THIS SESSION EARNED, because the same error
+> produced three different wrong conclusions:**
+>
+> > **Print the DENOMINATOR beside every ratio, and judge a delta against what
+> > the fixture can RESOLVE, not against zero.** One query is 0.042 MRR on the
+> > 12-query `docx` and 0.011 on the 45-query `geo`.
+>
+> ```
+> top-N      USED at N=5 over <3 answerable questions  ->  "the best N is 5"
+> reranking  an MRR delta on 13 queries beside one on 45  ->  "helped 10, hurt 3"
+> routing    a per-kind delta with ONE query in the kind  ->  structure = -0.534
+> ```
+>
+> **⚠ AND THE TWO PRODUCTION DEFECTS ARE STILL UNFIXED — one now breaks a
+> SHIPPED decision.** `MAX_BATCH_SIZE = 96` is a **Mistral** constant with a
+> global name, so a 96-text Google batch is ~32,800 tokens against a
+> 30,000/minute ceiling and is refused on the **first batch** — while
+> `embed_batches()` halves only on a refusal naming *tokens*, which Google's
+> does not. **Decision A8 shipped `SMALL_CORPUS_CHUNKS = 500`, routing every
+> small corpus to Google first, so the shipped routing cannot finish an
+> ingest.** And `embedding_minutes()` counts HTTP calls where Google counts
+> TEXTS, reporting ~118 minutes for a 10,000-chunk Google ingest against a
+> truth of **ten days**. The fix already exists — **in
+> `scripts/warm_embeddings.py`**, which batches by tokens and paces by texts,
+> so the instrument's private workaround hides the product's defect.
+
+**SLICE 8 WAS MEASURED 2026-09-16 and it overturned TWO of this file's own
+headlines. Read [SLICE 8 — MEASURED](#slice-8--measured-2026-09-16-step-1-is-complete),
+`docs/slice8/RESULTS.md` and `docs/slice8/FINDINGS.md`.**
+**A THIRD FIXTURE was built first and is why the run was worth doing:
+`golang/geo` at `b200a11` — Go, computational geometry, 729 chunks, 45
+interleaved queries, and the FIRST corpus where vector `r@50` is not
+saturated (0.867). Both older corpora are Python and one of them is full.**
+**FUSION: slice 5 is OVERTURNED. Every one of 30+ wRRF settings improved
+`r@50` on geo (best +0.067); slice 5's "not one setting improved it" was a
+statement about two SATURATED corpora. The keyword channel switches ON.**
+**RERANKING SHIPS, led by `gemini-3.5-flash-lite`: MRR 0.526 -> 0.759 on geo
+(+75% of headroom) and 0.646 -> 0.791 on requests. `bge-reranker-base` is
+DELETED — worse than not reranking on three corpora.**
+**SLICE 6's "ROUTING SIGNAL" DOES NOT REPRODUCE. It was a fingerprint of
+`bge`, not a law: with flash-lite there is NOT ONE negative category on
+either corpus, and `structure` went from -0.534 to +0.201.**
+**EXACT SEARCH STANDS, and the question is CLOSED. Server-side exact is
+2.9 / 6.1 / 11.3 ms at 335 / 729 / 1,387 rows on the REAL Supabase instance —
+against a 350 ms network round trip and a 52,700 ms report.**
+**⚠ TWO PRODUCTION DEFECTS FOUND, both unfixed. `MAX_BATCH_SIZE = 96` is a
+MISTRAL constant with a global name, so every Google embedder fails on its
+FIRST batch; and GOOGLE COUNTS ONE TEXT AS ONE REQUEST, so it can embed
+1,000 CHUNKS a day, not 96,000 — which disqualifies it for any real
+repository whatever its recall.**
+**`codestral-embed` STAYS PRIMARY, and not because it wins: no embedder wins
+on all three corpora and the averages are within 0.013. It stays because it
+is the only strong one that can actually ingest 10,000 chunks.**
 **PIECES 1-3 SHIPPED 2026-09-14 on `feat/selector`: the rebuilt embedding-time estimator, `ingest_artifact()`, and `POST /api/v1/artifacts`. PIECE 4 - THE ASK PATH - IS NEXT, and every decision it needs is already taken in [section 10](#10-the-ask-path--decided-2026-09-14-before-piece-4-was-written).**
 **SLICE 6 IS FINISHED 2026-09-11. `labpilot/rerank/` is the seventh package: four cross-encoder
 tiers proven live, an LLM reranker that takes a CALLABLE so the package still never imports `llm/`,
@@ -1282,10 +1415,12 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
   `.env.example`, and every provider declares its token limits.
 - Suite: **73 unit tests passing, 7 smoke tests, ruff clean.**
 
-### How the chain decides — the five-way rule
+### How the chain decides — the SIX-way rule
 
-*Was three ways. Two more were added 2026-08-16, each after a real failure that
-the three-way rule handled wrongly.*
+*Was three ways, then five on 2026-08-16. **A sixth was added 2026-09-19: a 500
+is RETRIED.** Each one arrived after a real failure the previous rule handled
+wrongly, and this one was costing the largest quota in the project — 57,600
+Gemma calls a day — over a fault that clears by itself in three seconds.*
 
 | The failure | Response | Why |
 |---|---|---|
@@ -1293,7 +1428,8 @@ the three-way rule handled wrongly.*
 | 429, resets **tomorrow** | **skip every tier on that pool** | the *account* is spent, not the model |
 | **429, `limit` header is `0`** | **fail this tier alone, pool untouched** | not busy — **not entitled**. It will never reset |
 | **503** | wait, **retry the same tier** | the server said *"try again later"*, and it works |
-| 400 / 500 / empty / timeout | **next tier** | retrying cannot change it |
+| **500** | wait 3s, **retry the same tier**, then 10s | **CORRECTED 2026-09-19** — the server is failing, not refusing, and it recovers. Measured: gemma-4-31b answers 500 on **two calls of three** and 200 on the third |
+| 400 / empty / timeout | **next tier** | retrying cannot change it |
 
 **Why the `limit: 0` case had to exist.** GLM-5.2 (then tier 2) began answering
 `429` with `x-ratelimit-limit-tokens-minute: 0`. Read the *limit*, not the
@@ -8912,6 +9048,231 @@ broken, not the test"*.
   archive limit is 10MB and the per-file upload limit is 5MB, so a zip between
   the two is refused by the upload guard and the archive limit never fires.
   That is the same shape as the xfail slice 7 just closed, one door further in.
+
+## SLICE 8 — MEASURED 2026-09-16. STEP 1 IS COMPLETE
+
+*The full run is in `docs/slice8/RESULTS.md` and the findings with their
+evidence in `docs/slice8/FINDINGS.md` - both TRACKED, because they are
+analysis rather than model output. The raw run files are in
+`artifacts/slice8/runs/`, which is git-ignored like the rest of `artifacts/`. New instruments: `warm_embeddings.py`,
+`load_corpus.py`, `bench_index.py`, `validate_fixture.py`,
+`score_report_tier.py`, plus `geo` added to `score_hybrid.py`.*
+
+**Exit `80.240.20.89`, AS20473 The Constant Company (Vultr, Frankfurt) — a
+FOURTH ISP, and a datacenter one. Google answered 200.** The probe decided
+it; the ISP name would have predicted nothing.
+
+### 0. A THIRD FIXTURE, and it is what made the run worth doing
+
+`data/samples/golang_geo/queries.json` — `golang/geo` at `b200a11`,
+computational geometry on the sphere. **729 chunks, 45 queries, 9 per
+category, categories INTERLEAVED so any prefix is a stratified sample** (the
+`requests` fixture's first ten queries are all `constant`, which is how the
+2026-09-11 Voyage run became a category study by accident).
+
+| | quora | requests | **geo** |
+|---|---|---|---|
+| language | Python | Python | **Go** |
+| domain | ML | HTTP client | **spherical geometry** |
+| splitter | AST | AST | **`split_recursive`, first ever measured** |
+| chunks · mean | 82 · 217 tok | 335 · 244 tok | **729 · 474 tok** |
+| 50-doc window | 61% of corpus | 15% | **7%** |
+| vector `r@50` | 1.000 | 0.978 | **0.867 — NOT saturated** |
+
+Two by-products: the generic splitter packs Go chunks **94% larger** than the
+Python AST splitter, and their headers carry **no function label** at all.
+Both change which tiers can accept them.
+
+**All four recorded 2026-09-07 runs reproduce to three decimals**, so nothing
+below rests on a drifted instrument.
+
+### 1. THE EMBEDDER — codestral stays, and NOT because it wins on recall
+
+| embedder | quora | requests | **geo** | mean r@50 |
+|---|---|---|---|---|
+| **codestral-embed** | 0.608 | 0.646 | **0.526** | 0.948 |
+| gemini-embedding-001 | 0.674 | **0.650** | 0.493 | 0.956 |
+| embed-v4.0 | **0.710** | 0.627 | 0.458 | **0.963** |
+| gemini-embedding-2 | 0.702 | 0.559 | **0.341** | 0.919 |
+| mistral-embed | 0.461 | 0.474 | 0.380 | 0.926 |
+
+**No model wins everywhere and the averages are within 0.013.** Recall does
+not decide this — **a capability gate does**:
+
+> **GOOGLE COUNTS ONE TEXT AS ONE REQUEST. It can embed 1,000 CHUNKS a day
+> per model per key, not 96,000.** Proven twice: `729 + 335 = 1064` texts hit
+> `limit: 1000`; and three 40-text calls in six seconds hit `limit: 100`.
+> Three HTTP calls cannot exceed 100 — 120 texts can.
+
+LabPilot targets 1,000-10,000 chunks per artifact. **Google can embed a
+notebook and cannot embed a repository** — ten days for a 10k-chunk repo.
+
+**`gemini-embedding-2` is now scored and does not justify its rank.** It was
+placed above 001 on Google's own MTEB numbers, the only entry in `MIGRATION`
+ranked on somebody else's benchmark. On geo it is **the worst of five**
+(0.341, below `mistral-embed`) with `r@50` 0.756. Strong on the saturated
+Python corpus, collapses on Go.
+
+**BGE is dropped.** Its real tokenizer ratio is **1.12-1.45x** our estimate,
+not the 2.36x recorded — that figure compared BGE to *codestral*, a different
+denominator. **91% of geo chunks** exceed its 512-token limit.
+
+**Cohere's trial tier is 100,000 tokens/minute**, recorded nowhere; the
+registry's 640,000 was a burst that never met a limit, so the estimator is
+6.4x optimistic for it.
+
+### 2. FUSION — SLICE 5 IS OVERTURNED, and the reason is measurable
+
+Slice 5: *"NOT ONE fusion setting improved recall@50 on any run."* True — and
+a statement about **two saturated Python corpora** where `r@50` was already
+0.978-1.000. Nothing was available to win.
+
+On geo, with real headroom:
+
+```
+vector alone        r@10 0.689   r@50 0.867
+score a=0.85        r@10 0.756   r@50 0.933   +0.067
+wRRF k=30 w=0.3     r@10 0.756   r@50 0.933   +0.067
+```
+
+**Every one of the 30+ wRRF settings in the sweep improved `r@50`.** Not one
+was negative, and it reproduces on a second embedder.
+
+**DECISION: the keyword channel is switched ON for large corpora.** It has
+been built and callerless since slice 5; it now has a caller. The gain is one
+corpus and it costs nothing on the saturated ones.
+
+### 3. RERANKING SHIPS, and slice 6's negative result was about ONE MODEL
+
+| corpus | reranker | MRR | headroom captured |
+|---|---|---|---|
+| **geo** | `gemini-3.5-flash-lite` | 0.526 -> **0.759** | **+75%** |
+| **geo** | `rerank-v4.0-fast` | 0.526 -> 0.632 | +100% of r@10 |
+| **geo** | `bge-reranker-base` | 0.526 -> **0.347** | **-50%** |
+| **requests** | `gemini-3.5-flash-lite` | 0.646 -> **0.791** | +50% |
+
+`r@50` unchanged on every run — the sanity check passed every time.
+
+**THE CATEGORY SPLIT DOES NOT REPRODUCE.** Slice 6 measured `bge` at -0.534
+on `structure` and built a **routing signal** on it. With flash-lite, per
+category on geo / requests: error **+0.400 / +0.300**, constant +0.231 /
++0.153, api +0.172 / +0.216, behaviour +0.161 / +0.141, structure **+0.201 /
++0.000**. **Not one negative cell.**
+
+> The split was a fingerprint of `bge-reranker-base`, not a law about
+> reranking. Routing by question type may still be right; **this is not
+> evidence for it, and the old evidence describes a model we should delete.**
+
+**`bge-reranker-base` is DELETED, not reordered** — worse than not reranking
+on three corpora, two languages, three domains, which is exactly the
+condition `rerank/registry.py` set for removing it.
+
+**The gate stays off.** Third corpus, same answer: the best `tau` skips 2 of
+45 and is within noise of always-rerank. `SKIP_MARGIN = None` confirmed.
+
+### 4. THE WINDOW TURNS OVER BETWEEN 50 AND 100
+
+| window | r@1 | r@10 | MRR |
+|---|---|---|---|
+| 10 | 0.622 | 0.689 | 0.640 |
+| 20 | 0.689 | 0.756 | 0.726 |
+| 30 | 0.667 | 0.778 | 0.719 |
+| **50** | **0.711** | 0.822 | **0.759** |
+| 100 | 0.511 | **0.911** | 0.686 |
+
+**The two metrics disagree above 50.** More candidates means more chances to
+surface the answer *somewhere in the ten* and more chances to put something
+else first. **`SEARCH_LIMIT = 50` is the default** because it wins MRR and
+`r@1`; 100 wins only if generation cares about "is it in the ten" more than
+about ordering, and that is a generation measurement nobody has made.
+
+**This also settles section 14.3 for the per-tier window.** A global cut to
+25 would have cost `r@10` 0.822 -> 0.756, and the tier it protected cannot
+serve this corpus at any width.
+
+### 5. TWO RERANK TIERS CANNOT SERVE A REAL CORPUS, and chunk size is why
+
+```
+gemma-4-26b-a4b-it   16,000 input tok/min   50 geo docs ~27,344  REFUSED locally
+same, at window 30                          ~16,376              STILL refused
+Voyage, card-free    10,000 TPM, whole call ~23,700              refused by provider
+```
+
+Gemma is third-best on quora and **cannot rerank a Go repository**; even at a
+width it accepts, its per-minute input budget makes 45 queries ~34 minutes.
+
+> **A tier's usable window is a property of the CORPUS, not only the
+> provider.** The same tier serves 50 Python chunks and refuses 30 Go ones.
+
+### 6. EXACT SEARCH STANDS — measured on the real instance
+
+| artifact | rows | client ms | **server ms** |
+|---|---|---|---|
+| requests | 335 | 356 | **2.86** |
+| geo | 729 | 340 | **6.07** |
+| labpilot | 1,387 | 358 | **11.33** |
+
+Linear at 8.2-8.5 microseconds per row, so 10,000 chunks extrapolates to
+**~82 ms**. And the first thing the numbers say is that **the database is not
+the cost**:
+
+```
+exact search, 1,387 rows       11 ms
+one round trip to Supabase    350 ms      30x larger
+one report                 52,700 ms   4,600x larger
+```
+
+With a partial HNSW index per artifact: **below ~1,000 rows Postgres refuses
+the index and sorts instead**. At 1,387 it uses it — **9.3x faster, recall
+0.960** — and at `ef_search = 100` it **stops using it again**, because a
+wider search costs more than sorting 1,387 rows. So "raise ef_search to
+recover recall" and "use the index at all" are in TENSION at this size.
+
+**DECISION: exact ships, and the question is CLOSED rather than deferred.**
+The only condition 2026-09-05 allowed — time on real artifacts — is measured
+and does not overturn it. Revisit at ~20,000 chunks in one artifact.
+
+### 7. TWO PRODUCTION DEFECTS, both found by measurement
+
+**`MAX_BATCH_SIZE = 96` is a Mistral constant wearing a global name.** 96 geo
+texts = 44,554 tokens -> **429**; 40 texts = 18,072 -> **200 immediately
+after**, so the call was refused for its own size. The halving fallback
+matches the word `token` and Google's 429 never says it, so `embed_batches`
+**raises instead of halving**. Every Google entry in `MIGRATION` fails on its
+first batch for any corpus averaging over ~312 tokens per chunk — which
+includes this repository.
+
+**`embedding_minutes()` counts HTTP calls where Google counts texts, and
+models no daily REQUEST budget at all.** It reports 118 minutes for a
+10,000-chunk Google ingest; the truth is ten days.
+
+### 8. JOB 9 — the report keeps the strong chain
+
+The lean `REPORT`, stuffed, on `gemini-3.5-flash-lite`: **STOP, 16.4s, 12 of
+12 citations resolved**, and **~8 of 19 findings** against the baseline's 13,
+with **2 of the 5 that carry the story** against 4. It also **breaks the
+comparability gate** — §6 correctly says the two F1 numbers are not
+comparable and §9 compares them anyway, the exact failure recorded on
+2026-08-14.
+
+Section 11.9's challenge was well argued and **does not survive for the
+report**. It stands for the other nine calls in a report, which is where
+routing already sends cheap tiers.
+
+### WHAT SLICE 8 DID NOT SETTLE
+
+- **Merged vs per-side reranking** — not measured. Per-side stays the
+  default on the structural-coverage argument, not on evidence.
+- **`VECTOR_TOP_N` / `RERANK_TOP_N`** — the WINDOW is measured; how many
+  chunks to SEND is a generation property and still unmeasured.
+- **`gemini-3.1-flash-lite` on geo** — died on repeated `UNAVAILABLE`.
+- **`rerank-3` (non-lite)** — still never scored anywhere.
+- **Voyage on geo** — 3 RPM is ~56 minutes for 45 queries, and it cannot take
+  the window regardless.
+- **Above 1,387 rows** in the index benchmark; 10,000 is an extrapolation.
+- **A fourth language.** Three corpora beats two and is still three.
+
+---
 
 ### Slice 8 decides the embedder AND the reranker — recorded 2026-08-28
 
