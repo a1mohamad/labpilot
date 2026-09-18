@@ -60,20 +60,29 @@ def test_every_google_embedder_has_a_second_account_behind_it(model):
     assert keys == {"GOOGLE_API_KEY", "GOOGLE_API_KEY_2"}, keys
 
 
-def test_the_newer_google_embedder_outranks_the_older_one():
-    """Ranked on GOOGLE's evidence, not ours - and that is the exception.
+def test_the_measured_google_embedder_outranks_the_one_google_prefers():
+    """MEASURED AND MOVED, 2026-09-18 - this test used to assert the reverse.
 
-    `gemini-embedding-2` is version 2 against version 001 in Google's own model
-    listing, MTEB mean-by-task 69.9 against 68.32, and accepts 8,192 input
-    tokens against 2,048. It has NEVER been scored on our fixture, which makes
-    it the only entry in MIGRATION ordered by somebody else's benchmark.
+    `gemini-embedding-2` sat above 001 on GOOGLE's evidence rather than ours:
+    version 2 against version 001 in the model listing, MTEB mean-by-task 69.9
+    against 68.32. It was the only entry in MIGRATION ordered by somebody
+    else's benchmark, and the previous version of this test existed to keep
+    that deliberate - "slice 8 owes this model a score, and if it loses on our
+    data the order has to move back".
 
-    The test exists so that stays deliberate: slice 8 owes this model a score,
-    and if it loses on our data the order has to move back.
+    Slice 8 scored it and it LOST, on 3 of the 4 corpora where both ran:
+    websocket 0.530 vs 0.364, requests 0.650 vs 0.559, geo 0.493 vs 0.341, and
+    only quora the other way at 0.674 vs 0.702.
+
+    So the order moved back, which is what MIGRATION's own rule requires: order
+    by MEASURED recall. The test moved with it, and still guards the same
+    property - that this pair's order is a decision somebody took on evidence,
+    not an accident of edit history. v2's G21 reached the same verdict and the
+    code was never changed, which is exactly the failure this pins.
     """
     order = [e.model for e in MIGRATION]
 
-    assert order.index("gemini-embedding-2") < order.index("gemini-embedding-001")
+    assert order.index("gemini-embedding-001") < order.index("gemini-embedding-2")
 
 
 def test_the_newer_google_embedder_lifts_the_chunk_cap_ceiling():

@@ -130,20 +130,29 @@ BGE_BASE = CloudflareEmbedder(
     **_spec("@cf/baai/bge-base-en-v1.5"),
 )
 
-# UNVERIFIED against our own fixture, and shipped anyway - the same gamble as
-# `gemini-embedding-001` on 2026-08-20, and safe for the same reason: `dim` is
-# documented rather than observed, so a wrong value raises loudly in
-# `_validated` on the first real call instead of storing a wrong-width vector.
+# MEASURED AND DEMOTED, 2026-09-18. This entry used to sit ABOVE 001 on
+# Google's own evidence rather than ours - version 2 against version 001 in the
+# model listing, MTEB mean-by-task 69.9 against 68.32 - and the comment here
+# said plainly that it was the only entry in MIGRATION ranked on somebody
+# else's benchmark, with "slice 8 owes this model a score".
 #
-# It is ranked above 001 on Google's own evidence, NOT ours: version 2 against
-# version 001 in the model listing, MTEB mean-by-task 69.9 against 68.32, and a
-# 8,192 token input limit against 2,048. This file's rule is that MIGRATION is
-# ordered by MEASURED recall, so **slice 8 owes this model a score** - it is
-# the only entry here ranked on somebody else's benchmark.
+# Slice 8 scored it. It LOST, on our own fixture, on 3 of the 4 corpora where
+# both models ran:
 #
-# The bigger input limit removes a constraint CLAUDE.md recorded as permanent:
-# 001's 2,048 tokens meant our 510-token chunk cap could never rise. 8,192 does
-# not bind at any chunk size we would choose.
+#     corpus      001     2
+#     websocket   0.530   0.364     001
+#     requests    0.650   0.559     001
+#     geo         0.493   0.341     001
+#     quora       0.674   0.702       2
+#
+# v2's G21 reached the same verdict and the order was never actually changed in
+# this file, so the finding sat unshipped for a whole run while the routing
+# kept preferring the weaker model. It is corrected below: 001 now sits above
+# 2, which is what MIGRATION's own rule - order by MEASURED recall - requires.
+#
+# What 2 keeps is a bigger input limit, 8,192 tokens against 001's 2,048. That
+# does not bind at any chunk size we would choose (the cap is 510), so it does
+# not buy back the ranking.
 #
 # THE TWO SPACES ARE INCOMPATIBLE - Google says so explicitly. That is not a
 # footnote here, it is the whole reason MIGRATION is a migration: moving from
@@ -161,9 +170,10 @@ GEMINI_EMBED_2_KEY2 = dataclasses.replace(
     api_key_env="GOOGLE_API_KEY_2",
 )
 
-# Proven live 2026-08-27: 200, dim 3072 observed. Kept below embedding-2 but
-# above Cohere, because it is measured on OUR fixture and is the only model
-# with perfect recall@5 there (1.000, against codestral's 0.941).
+# Proven live 2026-08-27: 200, dim 3072 observed. PROMOTED ABOVE embedding-2 on
+# 2026-09-18, because it beats it on our own fixture on 3 of the 4 corpora where
+# both ran - see the note on GEMINI_EMBED_2. It is also the only model with
+# perfect recall@5 on the original fixture (1.000, against codestral's 0.941).
 GEMINI_EMBED_001 = GoogleEmbedder(
     name="Gemini Embedding 001",
     url=GOOGLE_URL,
@@ -214,10 +224,10 @@ MIGRATION = (
     CODESTRAL_EMBED,
     BGE_BASE,
     MISTRAL_EMBED,
-    GEMINI_EMBED_2,
-    GEMINI_EMBED_2_KEY2,
     GEMINI_EMBED_001,
     GEMINI_EMBED_001_KEY2,
+    GEMINI_EMBED_2,
+    GEMINI_EMBED_2_KEY2,
     COHERE_EMBED,
 )
 
