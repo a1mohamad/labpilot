@@ -4,6 +4,7 @@ import hashlib
 import math
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
+from hashlib import sha256
 
 import psycopg
 
@@ -77,15 +78,33 @@ EMBEDDING_MINUTES_BUDGET = 6.0
 # measurement, and only that can set it honestly.
 WARN_MINUTES = 2.0
 
-# How many chunks survive the vector path when NO reranker ran.
+# SMALL_CORPUS_CHUNKS WAS HERE AND IS DELETED - 2026-09-18.
 #
-# A SEPARATE number from RERANK_TOP_N on purpose, and the distinction was
-# missing from CLAUDE.md until 2026-09-14: one asks how many to send after a
-# reranker ordered them, the other how many to send when none did. The two
-# paths have different recall curves, so one number cannot serve both.
+# It routed any corpus under 500 chunks to Google first, on the v2 finding that
+# "Google retrieves best where vector search is already easy". That rested on
+# THREE corpora. Re-measured on six, against `gemini-embedding-001` (the model
+# that matters after the MIGRATION fix in embed/registry.py):
 #
-# UNMEASURED, like every other top_n here - slice 8 owns them all.
-VECTOR_TOP_N = 25
+#     corpus      chunks  codestral  gemini-001
+#     websocket       78    0.668      0.530     codestral +0.138
+#     quora           82    0.608      0.674     google    +0.066
+#     disaster       108    0.753      0.760     google    +0.006
+#     titanic        118    0.594      0.537     codestral +0.057
+#     requests       335    0.646      0.650     google    +0.004
+#     lung           628    0.587      0.569     codestral +0.019
+#
+# THREE WINS EACH, and net codestral ahead by 0.023 MRR - about half a query on
+# a 20-query fixture, which is BELOW what these fixtures can resolve. So the
+# rule bought no measurable quality, while costing:
+#
+#   19x slower than codestral at every size (4.1 min against 0.21 at 500)
+#   it tripped its own WARN_MINUTES = 2.0, so the router chose an embedder the
+#     UI then had to apologise for
+#   1,000 TEXTS a day, exhausted by a single 943-chunk run while measuring this
+#
+# A rule that exists to buy quality, and buys none, is deleted rather than
+# retuned. MIGRATION's own order now decides, and codestral leads it on
+# measured recall - 19 of 20 corpora against mistral-embed.
 
 
 def ingest_artifact(
@@ -202,10 +221,15 @@ def _pick_embedder(
     A model that cannot finish TODAY reports infinite time and is skipped,
     which is how Cloudflare's daily neuron budget removes BGE from a large
     corpus without needing a second mechanism.
+
+    THERE IS NO LONGER A SPECIAL CASE FOR SMALL CORPORA. One used to send
+    anything under 500 chunks to Google first; it was re-measured on six
+    corpora in slice 8 v3, found to buy no resolvable quality, and deleted -
+    the numbers are above the constants at the top of this file.
     """
     order = candidates
     if (
-        candidates[0].embedding_minutes(tokens=tokens, chunks=chunks)
+        order[0].embedding_minutes(tokens=tokens, chunks=chunks)
         > EMBEDDING_MINUTES_BUDGET
     ):
         order = by_speed(tokens=tokens, chunks=chunks, candidates=candidates)
@@ -306,7 +330,51 @@ def _prompt(
     return prompt, selected
 
 
+def _newest_owner(source: Source, *, side: Side) -> dict[str, str]:
+    """For every distinct chunk text, the NEWEST file that holds it.
+
+    A repository really does hold the same content several times, and the copies
+    are the ones our own fixtures had to exclude by hand: `lung` was 34.8%
+    duplicate chunks from mlflow artifact copies, `pydantic` 6.6% from mypy
+    outputs, and the user's `titanic` folder holds THREE versions of one
+    notebook plus Jupyter's auto-save - 39.1% duplicate text, measured.
+
+    NEWEST, not first, and that is the whole point. Sorted-path order would have
+    kept `titanic_V2.ipynb` over `titanic_analysisV2.ipynb`, so a divergence
+    report would compare the paper against code the user replaced months ago -
+    confidently, with a citation. For a tool whose job is explaining why two
+    things differ, answering from a stale copy is the worst failure it has.
+
+    IDS STILL COME FROM PATH ORDER. mtime decides only WHICH copy survives,
+    never the order chunks are numbered in: a fresh clone gives every file the
+    same mtime, so ordering by it would make chunk ids differ between machines -
+    the determinism `_paths` sorts for.
+
+    The cost is one extra chunking pass. MEASURED: 0.9s for pytest's 10,064
+    chunks, against an embed of several minutes. Only hashes are kept, so the
+    streaming rule is untouched.
+    """
+    owners: dict[str, tuple[float, str]] = {}
+    for found in walk(source):
+        try:
+            pieces = chunk_file(
+                found.path, side=side, artifact_id=source.name, source=found.relpath
+            )
+            mtime = found.path.stat().st_mtime
+        except (LoaderError, OSError):
+            continue
+
+        for piece in pieces:
+            key = sha256(piece.text.encode("utf-8")).hexdigest()
+            best = owners.get(key)
+            if best is None or mtime > best[0]:
+                owners[key] = (mtime, found.relpath)
+    return {key: relpath for key, (_, relpath) in owners.items()}
+
+
 def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
+    owners = _newest_owner(source, side=side)
+    seen: set[str] = set()
     index = 0
     for found in walk(source):
         try:
@@ -330,6 +398,19 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
             continue
 
         for piece in pieces:
+            # A chunk this file does not OWN is a copy of one we are keeping
+            # elsewhere, and a second copy buys nothing: it cannot answer a
+            # question the first cannot, and it spends embedding budget, a
+            # storage row and a slot in every future search window.
+            #
+            # The cost is real and small: two modules that genuinely define the
+            # same thing are now cited once, at the newest of them.
+            key = sha256(piece.text.encode("utf-8")).hexdigest()
+            if owners.get(key) != found.relpath or key in seen:
+                source.skip("duplicate of a newer copy")
+                continue
+            seen.add(key)
+
             # chunk_index restarts at 0 in every file, because chunk_file
             # numbers what IT produced. The chunks table's primary key is
             # (artifact_id, chunk_index), so a repository of twenty files would
@@ -346,8 +427,59 @@ def chunk_source(source: Source, *, side: Side) -> Iterator[Chunk]:
 # reranker ordered them, the other how many to send when none did. The two
 # paths have different recall curves, so one number cannot serve both.
 #
-# UNMEASURED, like every other top_n here - slice 8 owns them all.
-VECTOR_TOP_N = 25
+# 30 -> 15 ON 2026-09-19, AND THE 30 WAS A UNIT ERROR, not a measurement.
+#
+# The experiment counts chunks in the WHOLE PROMPT. Both constants here are
+# PER SIDE, and the product sends two sides, so the prompt holds 2x the
+# constant and the conversion is experiment_N / 2. It was applied to
+# RERANK_TOP_N (best at experiment N=20 -> 10 per side) and NOT to this one,
+# which shipped 30 - a 60-chunk prompt, a value no run ever tested.
+#
+# MEASURED, 18 corpora, 8 Python, 383 questions, flash-lite:
+#
+#     experiment N=10  0.245     -> 5 per side
+#     experiment N=20  0.462     -> 10
+#     experiment N=30  0.512     -> 15   <- best, and this is the number
+#
+# The knee is sharp. On 3.1-flash-lite over the four corpora carrying every
+# value, the first 10 chunks past N=10 buy +0.182 and the next EIGHTY buy
+# +0.091 - ten times less per chunk. Past a 20-chunk prompt the two-sided
+# total also clears Gemma's 16,000-token input cap, which costs 57,600 calls a
+# day, so "send more" is not free even where it still helps slightly.
+#
+# PER SIDE, so 15 is 30 chunks ~ 7,100 tokens at the measured 236/chunk,
+# against PROMPT_BUDGET 26,000. docs/slice8v3/DECISIONS.md row 18.
+VECTOR_TOP_N = 15
+
+# How many of the searched chunks the RERANKER SEES.
+#
+# A THIRD number, and a different question from both of the others:
+#
+#   SEARCH_LIMIT   50   what search returns          per side
+#   RERANK_WINDOW  20   what the reranker reads      per side   <- this
+#   RERANK_TOP_N   10   what survives reranking      per side
+#   VECTOR_TOP_N   30   what we send when NO reranker ran
+#
+# MEASURED 2026-09-18, slice 8 v3: six windows on 5 corpora that are 100%
+# Python, 89 to 9,846 chunks, flash-lite. Mean MRR gain over vector alone:
+#
+#   w10 +0.095   w20 +0.090   w30 +0.084   w50 +0.053   w5 +0.041
+#
+# THE SHIPPED w50 IS NEARLY HALF AS GOOD AS THE BEST. w10, w20 and w30 are
+# indistinguishable - +1.84, +1.76 and +1.67 queries, a spread of 0.17 against
+# a 1.5-query bar - so the pick inside that band is made on cost and reach, not
+# on score: 20 is the middle of the flat region and costs fewer tokens per call
+# than 30, so more rerank tiers stay reachable.
+#
+# It supersedes v2's per-tier window argument (CLAUDE.md 14.3), which existed so
+# Voyage could be served at 30 while others took 50. At 20 EVERY tier serves
+# EVERY corpus, so there is nothing left for a per-tier rule to arbitrate.
+# rerank/'s own max_documents stays as the lower-level guard.
+#
+# Note it sits BELOW VECTOR_TOP_N on purpose. The two are different paths with
+# different recall curves: the reranked path is sharper, so it can cut harder.
+# docs/slice8v3/DECISIONS.md row 10, FINDINGS H12.
+RERANK_WINDOW = 20
 
 
 def ask(
@@ -523,10 +655,23 @@ def _best(
     if not should_rerank([hit.score for hit in hits]):
         return list(hits[:VECTOR_TOP_N])
 
-    ranking = rank(question, [hit.text for hit in hits], top_n=None)
-    kept = VECTOR_TOP_N if ranking.model == SKIP else RERANK_TOP_N
+    window = hits[:RERANK_WINDOW]
+    ranking = rank(question, [hit.text for hit in window], top_n=None)
 
-    return [hits[position] for position in ranking.order[:kept]]
+    # The DEGRADED path reads `hits`, never `window`. A tier that declined has
+    # not narrowed anything, so narrowing for it would throw away chunks the
+    # vector path had already paid for - and VECTOR_TOP_N is calibrated on the
+    # full list.
+    if ranking.model == SKIP:
+        return list(hits[:VECTOR_TOP_N])
+
+    # POSITIONS index the list we PASSED, which is `window`. Today `hits`
+    # would give the identical element, because `window` is a PREFIX of it and
+    # every position is inside the window - a mutation swapping the two broke
+    # nothing, which is the honest state and is recorded rather than tested.
+    # We index `window` because it is the list we handed over, and that stays
+    # right if the window is ever chosen rather than truncated.
+    return [window[position] for position in ranking.order[:RERANK_TOP_N]]
 
 
 def _embed_question(question: str, *, model: str) -> tuple[float, ...]:
