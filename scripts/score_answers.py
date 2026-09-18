@@ -56,6 +56,7 @@ from labpilot.api.services import RERANK_WINDOW
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.llm.defaults import SAFETY_MARGIN_RATIO
 from labpilot.llm.registry import (
+    GEMINI_3_1_FLASH_LITE,
     GEMINI_3_5_FLASH_LITE,
     GEMMA_4_26B,
     GEMMA_4_31B,
@@ -70,7 +71,15 @@ RESULTS = Path(".logs/results")
 CACHE = Path(".cache/topn")
 OUT = Path("artifacts/slice8v2/answers")
 
-MODELS = {"flashlite": GEMINI_3_5_FLASH_LITE, "gemma31": GEMMA_4_31B}
+# ADDED 2026-09-19 for the N=50/100 sweep. flash-lite's 500/day is spent on
+# BOTH keys, and Gemma cannot do the job at all: its 16,000-token INPUT cap
+# refuses a 100-chunk prompt (26,000-31,000 tokens measured). 3.1-flash-lite
+# has a 1M context and no input cap, and its own untouched 1,000/day.
+MODELS = {
+    "flashlite": GEMINI_3_5_FLASH_LITE,
+    "flashlite31": GEMINI_3_1_FLASH_LITE,
+    "gemma31": GEMMA_4_31B,
+}
 
 # EVERY rerank tier the chain holds, keyed by a short name, IN CHAIN ORDER.
 # The user's rule for this run: use whatever is alive, in the order we have -
