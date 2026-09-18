@@ -650,14 +650,188 @@ row rather than left to look fuller than it is.
 
 ---
 
+## H12 - THE WINDOW SWEEP FINISHES H7, and the answer moves from 30 to 20
+
+H7 compared **two** windows and said so in its own limits: *"20 and 40 are
+unmeasured, so 30 is better than 50, not optimal."* Six windows were then run,
+on **5 corpora that are 100% Python**, spanning 89 to 9,846 chunks, flash-lite.
+
+| corpus | chunks | w5 | w10 | w20 | w30 | w40 | w50 | best |
+|---|---|---|---|---|---|---|---|---|
+| smsspam | 89 | +0.147 | +0.222 | +0.264 | +0.234 | **+0.277** | +0.180 | w40 |
+| lung | 628 | +0.011 | **+0.099** | +0.054 | +0.030 | +0.019 | -0.004 | w10 |
+| click | 1,585 | -0.021 | -0.023 | **+0.011** | +0.000 | - | +0.008 | w20 |
+| pytest | 6,714 | -0.013 | **+0.129** | +0.123 | +0.123 | +0.117 | +0.081 | w10 |
+| pydantic | 9,846 | **+0.079** | +0.049 | -0.003 | +0.033 | -0.016 | +0.002 | w5 |
+
+```
+w10 +0.095   w20 +0.090   w30 +0.084   w50 +0.053   w5 +0.041
+(w40 reads +0.099 on 4 corpora and is MISSING click - flattered, not compared)
+```
+
+**The shipped w50 is nearly half as good as the best**, and w10/w20/w30 are
+indistinguishable: +1.84, +1.76 and +1.67 queries, a spread of **0.17 queries**
+against a bar of 1.5. So H7's direction holds and its number does not.
+
+**`RERANK_WINDOW = 20`** - the middle of the flat region, fewer tokens per call
+than 30 so more tiers stay reachable, and within noise of the best.
+
+**The per-corpus optimum is everywhere**: w5, w10, w20 and w40 each win
+somewhere, and the spread WITHIN one corpus (pydantic +0.079 at w5 against
+-0.016 at w40) is larger than the spread between the window means. A global
+window is a compromise, and this is the measurement that says so out loud.
+
+> **Two points make a direction, never an optimum.** H7 was right that 50 is
+> wrong and wrong about where to stop, because a two-point comparison cannot
+> see a flat region - it can only see which of the two points is higher.
+
+### And `--window` is not `SEARCH_LIMIT`, verified in the source
+
+`vector_candidates = dense[q.id][:window]` - it is what the **reranker sees**.
+
+```
+search             -> 50   SEARCH_LIMIT
+top 20 of those 50 -> 20   RERANK_WINDOW   <- what H7 and H12 measured
+reranked, sent     -> 10   RERANK_TOP_N    <- still unmeasured
+```
+
+---
+
+## H13 - `SEARCH_LIMIT` IS A CEILING, and lowering it buys nothing we need
+
+Never swept in v2 or v3. It deserves its own finding because it is not like the
+other knobs: an answer outside `SEARCH_LIMIT` **can never be recovered** by
+fusion, by reranking or by any later stage. Over **20 corpora, 423 queries**,
+vector alone:
+
+| `SEARCH_LIMIT` | mean recall | queries lost of 423 |
+|---|---|---|
+| 10 | 0.864 | **45** |
+| 20 | 0.930 | 16 |
+| 25 | 0.951 | 8 |
+| 30 | 0.957 | 5 |
+| **50** | **0.968** | **0** |
+
+The only thing a smaller limit buys is database time, and exact search measures
+**~11 ms at 1,387 rows** against a 350 ms VPN round trip and a ~50 s report.
+
+**There is no trade to make. `SEARCH_LIMIT` stays 50.** Note this is not the
+same question as H12: the window narrows what the *reranker* reads, which costs
+provider tokens; the search limit narrows what *exists*, and costs answers.
+
+**Going ABOVE 50 is the untested direction** and is not free - it is more
+storage read, more fusion arithmetic, and a longer list for the window to cut.
+
+---
+
+## H14 - THE CHUNKER WAS RE-SEARCHED, and the HEADER is the biggest effect in it
+
+Three sweeps, all free over cached vectors, all searched on the new zoo rather
+than re-tested at v2's chosen values.
+
+**Size** - the 7 corpora that completed every setting:
+
+| setting | MRR | r@10 | r@50 |
+|---|---|---|---|
+| s=250 o=50 | 0.5358 | 0.8092 | 0.9618 |
+| s=375 o=50 | 0.5655 | 0.8378 | 0.9546 |
+| **s=500 o=50** | **0.6144** | 0.8450 | 0.9546 |
+| s=750 o=50 | 0.6001 | **0.8521** | 0.9773 |
+| s=1000 o=50 | 0.5820 | 0.8378 | **0.9845** |
+
+**`s=500` is confirmed, and it was searched rather than assumed.** But read the
+last column before quoting the first: **MRR peaks at 500 while `r@50` keeps
+climbing to 1000.** Bigger chunks FIND more and ORDER worse.
+
+> That is the third time this run one shape has appeared - BGE on `lung` (r@50
+> 0.941 against codestral's 0.882, MRR -0.200), Cohere, and now chunk size.
+> **Recall and ordering are different axes, and a change that buys one
+> routinely sells the other.** It also means `s=500` is only right *while a
+> reranker runs*: with no reranker, ordering is all we have.
+
+**Overlap** - 3 corpora:
+
+| setting | MRR | r@50 |
+|---|---|---|
+| s=500 o=0 | 0.6102 | 0.9245 |
+| s=500 o=25 | **0.6176** | **0.9804** |
+| s=500 o=50 | 0.6057 | 0.9608 |
+| s=500 o=100 | 0.6048 | 0.9441 |
+
+Every MRR here sits inside 0.013 - **below resolution, so overlap decides
+nothing on MRR.** The one real signal is that `o=0` costs `r@50`, 0.9245
+against 0.9804: no overlap really does cut answers in half. `o=25` and `o=50`
+are indistinguishable, so **`o=50` stays** - unchanged, because nothing
+measurable argues for moving it.
+
+**The header** - the same 3 corpora, chunk text with and without its
+`[file - symbol - lines]` prefix:
+
+| | MRR | r@10 | r@50 |
+|---|---|---|---|
+| **s=500 o=50 +header** | **0.6057** | **0.8216** | **0.9608** |
+| s=500 o=50 bare | 0.5424 | 0.7824 | 0.9078 |
+
+**+0.063 MRR and +0.053 `r@50` - the largest single effect in the whole
+chunking pass**, and far larger than anything size or overlap moved. The header
+costs about 20 tokens a chunk and is built from metadata we already hold.
+
+> **The cheapest thing in the chunker is the one that matters most.** Both
+> parameters people tune were worth less than the free string we prepend.
+
+---
+
+## H15 - THE EMBEDDER GATE, and `MIGRATION` ordered by somebody else's numbers
+
+Two production defects, both found by running into them rather than by reading.
+
+**The gate could not see Google's real limit.** `Rate` modelled a token budget
+and a call budget. Google's limit is **neither**: one TEXT is one request, so a
+96-text `batchEmbedContents` call spends 96 of the day's 1,000.
+
+```
+embedding_minutes() predicted    163 minutes for a 20,000-chunk Google ingest
+the truth                        twenty DAYS
+```
+
+So the walk chose Google, started, and died part way through an ingest that
+cannot be resumed. **Measured twice the same day** - a `gemini-embedding-2`
+warm failed on its SECOND corpus, and `001` exhausted after 943 chunks.
+
+Fixed with a fourth field, `daily_text_budget`, and a gate in
+`embedding_minutes()` that returns `inf` - which is what removes a model from
+the walk. **An unknown is not a promise, and neither is a budget in the wrong
+units.**
+
+**`MIGRATION` was ordered partly on MTEB.** `mistral-embed` sat THIRD, above
+three better models, inside a tuple whose own comment called it *"the strength
+order"*; and `gemini-embedding-2` sat above `001` on Google's version number
+and Google's MTEB mean. Measured on the 20-corpus zoo:
+
+```
+codestral 0.634 > gemini-001 0.602 > cohere 0.593 > gemini-2 0.563 > mistral 0.511
+```
+
+Head to head, mistral wins **1 of 7** against gemini-001, **3 of 13** against
+cohere, **4 of 11** against gemini-2. And gemini-2 loses to 001 on 3 of the 4
+corpora where both ran. Both were reordered, and both are now pinned by a test
+so the order stays a decision somebody took on evidence.
+
+> v2's G21 had already reached the gemini-2 verdict **and the code was never
+> changed.** A finding written in a document and not in a test is a finding
+> that will be re-derived.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
 |---|---|
 | reranking on the 7 new corpora | H1 says ordering is the real question, so this is now the priority |
-| `SEARCH_LIMIT` 30 vs 50 with Python | 0% Python in v2 |
+| ~~`SEARCH_LIMIT` 30 vs 50 with Python~~ | **DONE - H13.** 50 stays; 30 loses 5 queries of 423 and buys nothing we are short of |
 | Cohere vs flash-lite with Python | 0% Python in v2; 1,000 calls a MONTH |
 | the fusion `r@50` threshold | H1 complicates it: almost nothing has `r@50` headroom now |
-| `RERANK_TOP_N` | never measured in v2 either |
+| `RERANK_TOP_N` | never measured in v2 either. **Take one was VOID** - gemma31, so uncombinable with v2's flash-lite 13, and 3 of 15 cells failed on N=10/N=30 and never N=20. Take two is running on flash-lite |
 | merged vs per-side with a Python+Python pair | |
+| the all-suffix corpus | every corpus is `.py` only; `pydantic` would be 13,377 chunks rather than 9,846 with mixed formats |
 | end-to-end time / `WARN_MINUTES` | still a guess |
