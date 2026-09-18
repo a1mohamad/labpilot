@@ -43,23 +43,33 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 | 3 | **keyword ranker** | BM25, not `ts_rank` | BM25 | 20 (10) | **CONFIRMED** |
 | 4 | **BM25 `k1` / `b`** | `1.2 / 0.75`, never swept | `1.2 / 0.75` — all six within 0.0037 | 20 (10) | **CONFIRMED, and shown not to matter** |
 | 5 | **embedder primary** | `codestral-embed` | codestral, **19–0–1** | 20 (10) | **CONFIRMED** |
-| 6 | **`MIGRATION` order** | gemini-2 above 001; mistral third | 001 above 2; mistral **last** | 20 (10) | **CHANGED — in code** |
-| 7 | **the embedder gate** | tokens and calls | **+ a per-TEXT daily budget** | — | **CHANGED — in code** |
-| 8 | **`SMALL_CORPUS_CHUNKS`** | 500 | **DELETED** | 6 (4) | **CHANGED — in code** |
+| 6 | **`MIGRATION` order** | gemini-2 above 001; mistral third | 001 above 2; mistral second-last | 20 (10) | **CHANGED — IN CODE** |
+| 7 | **the embedder gate** | tokens and calls | **+ a per-TEXT daily budget** | — | **CHANGED — IN CODE** |
+| 8 | **`SMALL_CORPUS_CHUNKS`** | 500 | **DELETED** | 6 (4) | **CHANGED — IN CODE** |
 | 9 | **`SEARCH_LIMIT`** | 50, never swept | **50**, and now swept | 20 (10) | **CONFIRMED** |
 | 10 | **`RERANK_WINDOW`** | 50 (per tier) | **20** | 5 (5) | **CHANGED — IN CODE** |
 | 11 | **reranking ships** | yes | yes — 9 real gains, **0 real losses** | 16 (10) | **CONFIRMED** |
 | 12 | **the skip gate** | `SKIP_MARGIN = None` | `None` | 16 (10) | **CONFIRMED** |
 | 13 | **routing by question kind** | dead | **dead** — every kind positive | 16 (10) | **CONFIRMED** |
-| 14 | **chunk size `s`** | 500 | **500** | 7 (3) | **CONFIRMED** |
-| 15 | **chunk overlap `o`** | 50 | **50** — nothing measurable moves it | 3 (3) | **CONFIRMED, and shown not to matter** |
-| 16 | **the chunk header** | keep | **keep — +0.063 MRR, the largest chunking effect** | 3 (3) | **CONFIRMED** |
+| 14 | **chunk size `s`** | 500 | **500** | 12 (8) | **CONFIRMED** |
+| 15 | **chunk overlap `o`** | 50 | **50** — nothing measurable moves it | 7 (7) | **CONFIRMED, and shown not to matter** |
+| 16 | **the chunk header** | keep | **keep — +0.069 MRR, wins 6 of 7** | 7 (7) | **CONFIRMED** |
 | 17 | **merged vs per-side rerank** | per side | **per side** — merged starves a side on **43 of 57** queries | v2 | **CONFIRMED** |
-| 18 | **`VECTOR_TOP_N`** | 25, and "should be 10" | **15** — the measured best prompt of 30, halved for two sides | 18 (8) | **CHANGED — IN CODE. My first attempt shipped 30, a UNIT ERROR** |
-| 18b | **`RERANK_TOP_N`** | 10 | 10 | 0 | **STILL UNMEASURED** |
-| 19 | **exact vs HNSW** | exact | exact | — | **reused on purpose** |
-| 20 | **BGE at `MIGRATION` position 2** | untouchable, platform argument | **moved to LAST** — the worst embedder we have | 4 (4) | **OVERTURNED — IN CODE** |
-| 21 | **dual-embedder fusion** | never considered | **REJECTED** | 8–12 | **new, and negative** |
+| 18 | **`VECTOR_TOP_N`** | 25, and "should be 10" | **15** | 18 (8) | **CHANGED — IN CODE.** My first attempt shipped 30, a **unit error** |
+| 19 | **`RERANK_TOP_N`** | 10, measured by nobody | **10** — measured at last | 8 (5) | **CONFIRMED** |
+| 20 | **exact vs HNSW** | exact | exact | — | **reused on purpose** |
+| 21 | **BGE at `MIGRATION` position 2** | untouchable, platform argument | **moved to LAST** | 4 (4) | **OVERTURNED — IN CODE** |
+| 22 | **dual-embedder fusion** | never considered | **REJECTED** | 8–12 | new, and negative |
+| 23 | **junk directories** | 21 names | **+ 22**, ML run output and `.ipynb_checkpoints` | — | **NEW — IN CODE** |
+| 24 | **duplicate chunks** | stored, all of them | **dropped, NEWEST copy wins** | 5 (5) | **NEW — IN CODE** |
+| 25 | **excluding tests / docs** | never asked | **REJECTED** — 11 of 20 queries die | 4 (2) | new, and negative |
+| 26 | **the rerank chain's 2nd Google account** | absent | **added** — 29,800 → 59,600 calls/day | — | **NEW — IN CODE** |
+| 27 | **a 500 is retried** | "retrying cannot change it" | **3s, then 10s** | measured | **OVERTURNED — IN CODE** |
+| 28 | **end-to-end runtime** | never measured | **50.5s searched**, retrieval is 14s of it | 2 runs | **NEW.** `WARN_MINUTES` still wrong |
+| 29 | **reranker MODEL** | 9 configs, old zoo | *running* | 4 (2) | **IN PROGRESS** |
+
+**Nine decisions are now IN THE CODE.** Rows 6, 7, 8, 10, 18, 21, 23, 24, 26 and
+27 changed `labpilot/`, each one mutation-verified.
 
 ---
 
@@ -211,7 +221,7 @@ no trade to make.** Going above 50 is the untested direction and is not free.
 
 ---
 
-## 10. `RERANK_WINDOW` 50 → 20 — CHANGED (recommended, not yet in code)
+## 10. `RERANK_WINDOW` 50 → 20 — CHANGED, IN CODE
 
 Six windows, 5 corpora, **100% Python**, 89 to 9,846 chunks:
 
@@ -292,9 +302,9 @@ reranker, ordering is all we have.
 `o=100` sits inside 0.013 MRR. The one real signal is that `o=0` costs `r@50`
 (0.9245 against `o=25`'s 0.9804) — no overlap really does cut answers in half.
 
-**The header** — the `[file · symbol · lines]` prefix — is worth **+0.063 MRR
-and +0.053 `r@50`**, the largest single effect in the whole chunking pass and
-larger than anything either tunable parameter moved.
+**The header** — the `[file · symbol · lines]` prefix — is worth **+0.069 MRR
+and wins on 6 of 7 Python corpora**, the largest single effect in the whole
+chunking pass and larger than anything either tunable parameter moved.
 
 > **The cheapest thing in the chunker is the one that matters most.** It costs
 > ~20 tokens a chunk and is built from metadata we already hold.
@@ -343,7 +353,7 @@ than quoted as support.
 
 **PER SIDE ships. This decision is closed.**
 
-## 18. `VECTOR_TOP_N` AND `RERANK_TOP_N`
+## 18. `VECTOR_TOP_N` = 15
 
 > **TAKE ONE OF THIS MEASUREMENT WAS VOID AND MUST NOT BE QUOTED.** It ran on
 > `gemma-4-31b-it`, which (a) cannot be combined with v2's flash-lite 13-corpus
@@ -530,10 +540,12 @@ early warning.
 and says nothing directly about `RERANK_TOP_N`.
 
 ```
-VECTOR_TOP_N = 25 -> 30   the shipped 25 was never measured; 20 and 30 were,
-                          and 30 wins. v2's own unshipped "should be 10" is
-                          OVERTURNED: 10 wins ZERO corpora of 18.
-RERANK_TOP_N = 10   STILL UNMEASURED, by anyone.
+VECTOR_TOP_N = 15   the best measured PROMPT is 30 chunks, and both
+                    constants are PER SIDE, so it is 30/2. Shipping 30 was a
+                    unit error: a 60-chunk prompt nothing has ever tested.
+                    v2's unshipped "should be 10" is OVERTURNED - the
+                    10-chunk prompt wins ZERO corpora of 18.
+RERANK_TOP_N = 10   MEASURED - see row 19.
 ```
 
 **`RERANK_TOP_N` is untouched.** Reranked chunks are better ordered, so their
@@ -556,7 +568,55 @@ optimum is at most this one and may be lower — an argument, not a number.
 
 ---
 
-## 19. EXACT VS HNSW — reused from v2 on purpose
+## 19. `RERANK_TOP_N` = 10 — MEASURED AT LAST, by anyone
+
+Shipped at 10 since slice 6 and **measured by nobody**, because the instrument
+could not do it: `score_answers.py` picked chunks from `dense_orders` and no
+reranker ever touched them, so every run it had ever done answered
+`VECTOR_TOP_N`. It now takes `--rerank`, `--window` and `--pace`.
+
+**5 Python corpora, 97 questions, flash-lite reranker at window 20, 0 declines:**
+
+```
+prompt of 10 chunks  (=  5 per side)   0.299
+prompt of 20 chunks  (= 10 per side)   0.515   <- shipped
+prompt of 30 chunks  (= 15 per side)   0.515
+```
+
+**20 and 30 tie exactly — 50 correct each.** So the choice inside the tie is
+made on cost, and 10 per side is half the tokens of 15.
+
+### Reranking removes the dilution penalty
+
+| | N=10 | N=20 | N=30 |
+|---|---|---|---|
+| vector alone | 0.268 | 0.423 | **0.381** ← turns over |
+| **reranked** | 0.299 | 0.515 | **0.515** ← flat |
+
+Without a reranker, sending more chunks starts to **hurt**. With one it does
+not. So a reranker does not only improve the ordering — **it removes the risk of
+sending more**, which is exactly the argument slice 6 made from theory and could
+not measure.
+
+### Three non-Python corpora say 15 would be better, and it rests on one of them
+
+On `geo`, `zod` and `papers` the 20→30 step is **+9 queries of 85**, against
+**+2 of 97** on Python. But `geo` alone carries +7 of that 9, `zod` is a tie,
+and one corpus is not a finding.
+
+**The right long-term answer is probably per-artifact rather than one global
+number** — prose and Go want more context, Python wants less. That is a design
+change, and three non-Python corpora do not justify building it.
+
+### The honest limit
+
+Measured on **flash-lite only**. And this run also showed that the best N *is*
+model-dependent — flash-lite turns over at 20 where 3.1-flash-lite keeps
+improving to 100. So 10 is the best evidence that exists, on one model.
+
+---
+
+## 20. EXACT VS HNSW — reused from v2 on purpose
 
 The only measurement in this run deliberately **not** repeated. It is a
 database benchmark, and its inputs are row count and vector width — neither of
@@ -565,7 +625,7 @@ milliseconds that do not depend on which corpora we chose.
 
 ---
 
-## 20. BGE AT `MIGRATION` POSITION 2 — OVERTURNED
+## 21. BGE AT `MIGRATION` POSITION 2 — OVERTURNED
 
 `@cf/baai/bge-base-en-v1.5` sits **second** in `MIGRATION` and had never been
 scored — not in v2, not in v3. It is there on a **platform** argument:
@@ -616,7 +676,7 @@ belongs behind `mistral-embed` rather than in front of it.
 
 ---
 
-## 21. DUAL-EMBEDDER FUSION — explored, and REJECTED
+## 22. DUAL-EMBEDDER FUSION — explored, and REJECTED
 
 Not a v2 decision. It came from the user's question about using Cohere's
 strength without paying its monthly budget, and it was free to test because
@@ -638,11 +698,143 @@ embedder for the other where the only thing that helps is **adding** them.
 
 ---
 
+
+## 23–24. TWO INGEST GATES — what is REDUNDANT can be dropped before it is stored
+
+**23. The junk list gained 22 names**, chosen for this product's own users:
+`mlruns`, `wandb`, `lightning_logs`, `catboost_info`, `.dvc`, `.neptune`, plus
+tool caches — and **`.ipynb_checkpoints`**, which matters most, because LabPilot
+is a notebook-first tool and Jupyter writes a stale near-copy of every notebook
+its users save.
+
+Deliberately conservative: `out`, `bin`, `runs` and `checkpoints` are **not**
+there. They are ordinary words someone may have chosen for real source.
+
+**24. A duplicate chunk is dropped, and the NEWEST copy wins.**
+
+```
+lung      34.8% duplicate chunks   mlflow artifact copies
+titanic   39.1%                    3 notebook versions + Jupyter's auto-save
+pydantic   6.6%                    mypy outputs
+```
+
+Our own fixtures had to exclude those **by hand** for the numbers to be fair. A
+user cannot be asked to do that.
+
+**NEWEST, not first, and that is the whole point.** Sorted-path order would keep
+`titanic_V2.ipynb` over `titanic_analysisV2.ipynb`, so a divergence report would
+compare the paper against code the user replaced months ago — confidently, with
+a citation. For a tool whose job is explaining why two things differ, **answering
+from a stale copy is the worst failure it has.**
+
+Ids still come from path order; `mtime` only decides which copy survives. A
+fresh clone gives every file the same mtime, so ordering by it would make chunk
+ids differ between machines.
+
+**Measured effect: +0.100 MRR on `titanic`, +0.001 elsewhere.** That is the right
+shape — a clean library has 2 duplicate chunks, the notebook folder had 67.
+
+---
+
+## 25. EXCLUDING TESTS OR DOCS — REJECTED, and the data is not close
+
+| corpus | mix (source/test/doc/config) | without tests | without docs |
+|---|---|---|---|
+| smsspam | 186 / 127 / 60 / 16 | +0.069 | +0.019 |
+| disaster | 446 / 0 / 45 / 6 | — | +0.035 |
+| click | 753 / **831** / 384 / 29 | **−0.045, 11 QUERIES LOST** | +0.111 |
+| pytest | 2,507 / **4,170** / 3,327 / 60 | **−0.174, 11 QUERIES LOST** | +0.005 |
+
+**On `click` and `pytest`, 11 of 20 questions have their answer INSIDE a test
+file.** Excluding tests does not make them harder, it makes them
+**unanswerable**.
+
+> **More than half the questions people ask about a library are answered by its
+> tests** — which is not surprising: a test is the executable statement of what
+> the code should do, exactly what a divergence tool looks for.
+
+The conditional version — *hide unless the question mentions tests* — was also
+measured. It is a clean win on personal projects (0 queries lost) and still
+loses 11 on `click`, because **only 1 question of 20 contains the word "test"**
+while 11 need one. The question's words do not predict where the answer lives.
+
+Demoting instead of hiding removes the loss but the benefit flips sign the same
+way, and pooled it is **+0.0098** — under one query.
+
+> The gates that worked are about what is **redundant**. The gate that failed is
+> about what is **relevant**, and relevance is a property of the question, not of
+> the file. A kind rule would have to be applied at INGEST, before the question
+> exists — the same defect that killed v2's fusion threshold.
+
+**PARKED for a final pass** on ~10 corpora, variant "remove docs only, keep
+tests" first — pooled ≈ +0.043 and the simplest of the three.
+
+---
+
+## 26–27. TWO CHAIN DEFECTS, both found by running into them
+
+**26. The rerank chain never used the second Google account.** The generator
+chain has used both keys since 2026-09-11; this one had all four LLM tiers on
+`GOOGLE_API_KEY` alone.
+
+```
+before   flash-lite 500 · 3.1 500 · gemma26 14,400 · gemma31 14,400 = 29,800/day
+after    all four doubled                                           = 59,600/day
+```
+
+Found when a measurement refused with
+`GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit: 500` **while the
+identical model answered 200 on the other key**.
+
+**27. A 500 was never retried**, because CLAUDE.md's five-way rule said *"400 /
+500 / empty / timeout → next tier, retrying cannot change it"*. For Gemma that
+premise is false and it is measured: **gemma-4-31b answers 500 on two calls of
+three and 200 on the third.** The rule was discarding the largest quota in the
+project over a fault that clears in three seconds.
+
+The walk is now `3s → 10s → the same model on key 2 → the sibling model → next
+tier`. A 500 still never kills a pool; only a 429 may.
+
+---
+
+## 28. THE END-TO-END RUNTIME — and retrieval turns out to be free
+
+```
+INGEST          ~26s per 100 chunks
+
+one answer      retrieval  13.9s        generate  36.6s       TOTAL  50.5s
+another         retrieval  10.3s        generate 308.5s       TOTAL 318.8s
+```
+
+**Everything this document decides lives inside those ten to fourteen seconds.**
+Fusion, the window, both top-N constants, the embedder, the chunker — they
+decide what the model *sees* and they do not move the clock.
+
+> So every decision here is a **quality** decision. Any argued on latency was
+> argued on a false premise, and two of mine were.
+
+**The two rows differ only in CONTENT**, not in size — same path, same 20
+chunks, same question, same model, 8× the generation time. Prompt size does not
+predict generation time.
+
+**`WARN_MINUTES = 2.0` is wrong and is NOT fixed.** It models embedding, which
+costs seconds, and says nothing about generation, which costs minutes. Fixing it
+needs a total, and a total needs more than two runs.
+
+**The STUFF path is still completely unmeasured** — the obvious fixture needs
+28,246 tokens against a 26,000 budget, so it searches instead.
+
+---
+
 ## WHAT THIS RUN DID NOT SETTLE
 
 | | why it is still open |
 |---|---|
-| **merged vs per-side reranking** | never run, in either version |
+| **the reranker MODEL** | running now — the last item |
+| **the STUFF path** | never exercised; needs a pair under 26,000 tokens |
+| **`WARN_MINUTES`** | measured to be wrong in both directions, not yet fixed |
+| **content-kind filtering** | parked for a final pass on ~10 corpora |
+| **N above 30** | keeps improving on 3.1-flash-lite, turns over on flash-lite |
 | **the reranker MODEL on the new Python corpora** | v2 ranked 9 configs on the old zoo. `tier_reach` now says Gemma serves 10 of 10 Python corpora at w50 where v2 said 4 of 13, so chain 3's BUDGET reasoning was wrong even where its order is right |
 | **the all-suffix corpus** | every corpus here is `.py` only. A real ingest reads 58 suffixes, so `pydantic` would be 13,377 chunks rather than 9,846 (+36%) |
 | **BGE's position in code** | row 20 is a recommendation, not a commit |
