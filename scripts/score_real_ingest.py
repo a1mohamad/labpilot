@@ -38,8 +38,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from labpilot.ingest import LoaderError, chunk_file
-from labpilot.sources import Source, SourceError, walk
+from labpilot.api.services import chunk_source
+from labpilot.sources import Source, SourceError
 from scripts import corpora
 from scripts.score_hybrid import EMBEDDERS, embedded, targets
 
@@ -48,40 +48,27 @@ DEFAULT_EMBEDDER = "codestral"
 
 
 def real_chunks(name: str) -> tuple[list, dict[str, int]]:
-    """Chunk a corpus the way `api.services.chunk_source` does.
+    """The corpus the product builds, by CALLING the product.
 
-    The refusals are the product's, not ours: a machine-written file, an
-    unreadable one and a non-UTF-8 one are COUNTED and skipped, never fatal.
+    This used to re-implement `chunk_source` - walk, chunk, catch - and that
+    was wrong the moment ingest grew a gate the copy did not have. When
+    duplicate dropping shipped on 2026-09-18 the copy silently went on
+    measuring the OLD pipeline, which is the one failure this whole script
+    exists to catch, one level up.
+
+    So it calls `api.services.chunk_source` and reads the skips off the Source.
     """
     spec, _ = corpora._spec(name)
     root = corpora._root(spec, name)
-    by_name = spec.get("source", "relpath") == "name"
 
     source = Source(root=root, name=name)
-    chunks = []
     try:
-        items = list(walk(source))
+        chunks = list(chunk_source(source, side="B"))
     except SourceError as exc:
         # NOT a bug in this script. The product REFUSES this repository, and
         # that refusal is the measurement: a corpus we score happily is one the
         # user could not have ingested. Reported, never swallowed.
         return [], {f"REFUSED: {type(exc).__name__}": str(exc)}
-
-    for item in items:
-        rel = str(item.path.relative_to(root)).replace("\\", "/")
-        try:
-            chunks.extend(
-                chunk_file(
-                    item.path,
-                    side="B",
-                    artifact_id=name,
-                    source=item.path.name if by_name else rel,
-                )
-            )
-        except LoaderError as exc:
-            source.skip(type(exc).__name__)
-        except OSError:
-            source.skip("unreadable file")
     return chunks, dict(source.skipped)
 
 

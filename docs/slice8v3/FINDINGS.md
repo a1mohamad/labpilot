@@ -1123,6 +1123,85 @@ corpus whose number was an artifact and one repository that cannot be ingested.
 
 ---
 
+## H18 - EXCLUDING TESTS BY DEFAULT WOULD DESTROY ANSWERS, and the data is not close
+
+The obvious next ingest gate after junk directories and duplicates is *"drop
+the tests and the docs, they are noise competing with the source"*. The user
+refused it outright - *"maybe user wanna ask about them!"* - and asked for a
+condition instead.
+
+**They were right, and by more than anyone guessed.** Each kind was dropped from
+the corpus the real walk builds and the same queries re-scored. Free: every
+vector was already cached, and dropping chunks only removes rows.
+
+| corpus | mix (source / test / doc / config) | without tests | without docs | without config |
+|---|---|---|---|---|
+| smsspam | 186 / 127 / 60 / 16 | **+0.069** | +0.019 | +0.000 |
+| disaster | 446 / 0 / 45 / 6 | — | +0.035 | +0.003 |
+| click | 753 / **831** / 384 / 29 | **−0.045, 11 QUERIES LOST** | +0.111, 1 lost | +0.000 |
+| pytest | 2,507 / **4,170** / 3,327 / 60 | **−0.174, 11 QUERIES LOST** | +0.005 | +0.000 |
+
+### "QUERIES LOST" is the whole finding
+
+On `click` and `pytest`, **11 of 20 questions have their answer INSIDE a test
+file.** Excluding tests does not make those questions harder - it makes them
+**unanswerable**, and the tool would have to say *"not found"* about something
+sitting in the repository it was given.
+
+> **More than half the questions people ask about a library are answered by its
+> tests.** That is not a surprise on reflection - a test is the executable
+> statement of what the code is supposed to do, which is exactly what a
+> divergence tool is looking for.
+
+And the counter-example was already on the table and had been read past:
+**`pytest` is a corpus that is mostly tests, and it lost 0.004 MRR on the real
+walk** - the smallest drop of any corpus measured. If tests were noise, the
+corpus made of them should have been the worst.
+
+### Docs are a small real gain, and still not worth a default
+
+`click` gains **+0.111** without its 384 doc chunks, which is the largest single
+number in the table - and it loses a query doing it. The other three gain
++0.005 to +0.035. So docs are mild noise **on average** and carry answers **some
+of the time**, which is the worst shape for a hard rule.
+
+### Config is worth exactly nothing
+
+**+0.000 on three corpora of four**, for 6 to 60 chunks. Not a lever.
+
+### THE DECISION: no content-kind exclusion at ingest, in any form
+
+```
+tests    NEVER exclude - 11 of 20 queries on two corpora die
+docs     small average gain, and it costs answers. NOT by default
+config   +0.000. no effect to buy
+```
+
+**And the shape of the rule matters as much as the answer.** A kind-based rule
+would have to be evaluated at INGEST, before the question exists - the same
+defect that killed v2's fusion threshold (decision 1): a condition that needs
+information production does not have at the moment it must be applied.
+
+If this is ever wanted, it belongs at **search** time, where the question is
+known, and it needs **no schema change**: `source` is already a column, so a
+filter is a `WHERE` clause. Deciding when to apply it is the Step 2 planner's
+job - it is the only layer that knows which capability is running.
+
+> **The gates that worked are about what is REDUNDANT - a build directory, a
+> stale duplicate. The gate that failed is about what is RELEVANT, and
+> relevance is a property of the question, not of the file.**
+
+### Limits
+
+- 4 corpora, 80 queries, vector search alone.
+- The classifier is a path regex - `tests/`, `test_`, `conftest`, `.md`,
+  `.rst`, `.yml` - so `pytest`'s `testing/` directory counts as tests, which is
+  correct for it and may not generalise.
+- These queries were drafted against corpora that already included tests, so
+  they are not biased toward or against them by construction.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
