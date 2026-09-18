@@ -14,7 +14,8 @@
     "repo": "https://github.com/psf/requests",
     "commit": "dae7ef6",
     "note": "Line numbers are valid only for this commit. Clone with --depth 1 and check out this sha before scoring. The source is NOT committed: it is third-party code, and the provenance rule keeps it out of the repository.",
-    "include_note": "src/requests/*.py"
+    "include_note": "src/requests/*.py",
+    "chunks_at_this_commit": 335
   },
   "fields": {
     "file": "the file holding the answer. REQUIRED, because this corpus has 19 files and line 186 exists in most of them",

@@ -16,7 +16,8 @@
     "repo": "https://github.com/golang/geo",
     "commit": "b200a11",
     "note": "Line numbers are valid only for this commit. Clone with --depth 1 and point LABPILOT_GEO_SRC at the checkout before scoring. The source is NOT committed: it is third-party code, and the provenance rule keeps it out of the repository.",
-    "include_note": "**/*.go, excluding *_test.go"
+    "include_note": "**/*.go, excluding *_test.go",
+    "chunks_at_this_commit": 729
   },
   "why": [
     "THE THIRD FIXTURE, and it exists to break two monocultures at once.",

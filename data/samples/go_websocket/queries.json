@@ -17,7 +17,7 @@
     "commit": "e064f32",
     "licence": "BSD-3-Clause",
     "note": "Line numbers are valid only for the commit named here. The source is NOT committed: it is third-party or personal material, and the provenance rule keeps it out of the repository. Fetch it and point the env var at the checkout before scoring.",
-    "chunks_at_this_commit": 167,
+    "chunks_at_this_commit": 78,
     "queries_planned": 15,
     "drafted_by": "gemma-4-31b-it"
   },
