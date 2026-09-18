@@ -823,6 +823,123 @@ so the order stays a decision somebody took on evidence.
 
 ---
 
+## H16 - TOP-N, 18 CORPORA AND ONE MODEL - and the two halves disagree
+
+### The measurement, and the three damaged cells inside v2's half of it
+
+Before any number: a cell with `answered > 0` and `cited == 0` is a **grading**
+failure, not a result — the model replied and not one citation resolved, so
+`correct` is 0 by construction. **v2's own data has three of them, and two sit
+on N=30**:
+
+```
+papers  N=30   answered 16   cited 0   -> correct forced to 0
+zod     N=30   answered 11   cited 0   -> correct forced to 0
+geo     N=10   answered  8   cited 0   -> correct forced to 0
+```
+
+Their neighbours at N=20 and N=50 cite normally, so these are not corpora the
+model cannot answer. **This is the same defect that voided take one** — an
+unevenly-spread damaged numerator — sitting in the data we were about to trust
+*instead* of the gemma run. It was found by looking for it, not by the totals
+looking wrong.
+
+So every figure is given twice.
+
+| | N=10 | N=20 | N=30 |
+|---|---|---|---|
+| **18 corpora, damaged cells left in** | 0.206 | 0.386 | 0.402 |
+| **15 corpora, every damaged corpus dropped** | **0.235** | **0.393** | **0.453** |
+
+Dropping them moves N=30 from *level with N=20* to *clearly ahead*, which is
+the whole reason the check exists.
+
+### On the clean 15 — 8 Python, 298 questions — MORE IS BETTER, up to 30
+
+```
+correct / asked      N=10 0.235   N=20 0.393   N=30 0.453
+per-corpus mean      N=10 0.261   N=20 0.425   N=30 0.483
+corpora won          N=10 0       N=20 6       N=30 7      tied 2
+```
+
+**N=10 is eliminated outright** — it loses on every slice, every metric, and
+wins on zero corpora of 18.
+
+### And v2's 13 keep improving all the way to N=100
+
+The same data carries N=50 and N=100, which the new run did not. Damaged cells
+dropped, and **precision printed beside coverage**, because a bigger context
+makes the model decline less as well as answer better and the two must not be
+read as one number:
+
+| N | correct/asked | answered/asked | **correct/answered** |
+|---|---|---|---|
+| 5 | 0.097 | 0.137 | 0.710 |
+| 10 | 0.220 | 0.456 | 0.482 |
+| 20 | 0.374 | 0.710 | 0.527 |
+| 30 | 0.476 | 0.809 | 0.588 |
+| 50 | 0.507 | 0.857 | 0.592 |
+| **100** | **0.577** | **0.896** | **0.643** |
+
+**Nothing turns over.** Precision *rises* with context rather than falling, so
+on this population there is no measurable dilution penalty up to 100 chunks —
+which is the opposite of what "lost in the middle" predicts and what slice 6
+assumed when it eliminated N ∈ {20, 50} on theory.
+
+### The 8 Python corpora say something different, and that is the point of v3
+
+| slice | N=10 | N=20 | N=30 |
+|---|---|---|---|
+| PYTHON, 8 corpora | 0.190 | 0.318 | **0.391** |
+| other, 7 corpora | 0.303 | 0.504 | **0.546** |
+| the 5 NEW Python corpora alone, precision | 0.591 | 0.526 | **0.487** |
+| above 5,000 chunks, 2 corpora | 0.275 | **0.375** | 0.250 |
+
+On the five new Python corpora **precision falls monotonically** — 0.591,
+0.526, 0.487 — and `correct/asked` turns over at N=20 (0.423 against 0.381).
+The two corpora above 5,000 chunks do the same.
+
+**So the dilution penalty is real and it is where the product lives**: large
+Python repositories. It is absent on the population v2 measured.
+
+> **The 13-corpus answer and the 8-Python answer disagree, and neither is
+> wrong.** That is exactly the skew this whole run exists to expose: a
+> conclusion drawn from 3 Python corpora of 13 was a conclusion about Go, C,
+> Java and prose.
+
+### What this decides, and what it does not
+
+**This experiment picks its chunks by VECTOR SEARCH ALONE** — `chosen()` reads
+`dense_orders` and no reranker touches it — so it measures **`VECTOR_TOP_N`**
+and says nothing directly about `RERANK_TOP_N`.
+
+```
+VECTOR_TOP_N = 25   shipped   CONFIRMED - v2's own "should be 10" is OVERTURNED
+RERANK_TOP_N = 10   shipped   STILL UNMEASURED, by anyone
+```
+
+**v2 recommended dropping `VECTOR_TOP_N` to 10 and never shipped it. Good — it
+is the worst of the three values on every slice of 18 corpora.** 25 sits
+between the two values the evidence supports (20 on large Python, 30+ on
+everything else) and is confirmed as a reasonable compromise rather than
+re-derived as optimal.
+
+**`RERANK_TOP_N` is untouched.** Reranked chunks are better ordered, so their
+optimum is at most this one and may be lower — an argument, not a number.
+
+### Limits
+
+- **One model.** Everything above is `gemini-3.5-flash-lite`.
+- **The two halves have different N coverage** — 5..100 on v2's 13, 10..30 on
+  the new 5 — so the N=50/100 rows are 13 corpora with 3 Python, not 18.
+- **The Python turn-over rests on 5 corpora and 97 questions**, and is driven
+  by `pydantic` (9 -> 5) against `lung` (7 -> 10). The direction is consistent
+  with the size buckets; the size of it is not settled.
+- `correct` depends on a citation resolving, so the whole metric inherits
+  whatever made three cells report zero.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
@@ -831,7 +948,7 @@ so the order stays a decision somebody took on evidence.
 | ~~`SEARCH_LIMIT` 30 vs 50 with Python~~ | **DONE - H13.** 50 stays; 30 loses 5 queries of 423 and buys nothing we are short of |
 | Cohere vs flash-lite with Python | 0% Python in v2; 1,000 calls a MONTH |
 | the fusion `r@50` threshold | H1 complicates it: almost nothing has `r@50` headroom now |
-| `RERANK_TOP_N` | never measured in v2 either. **Take one was VOID** - gemma31, so uncombinable with v2's flash-lite 13, and 3 of 15 cells failed on N=10/N=30 and never N=20. Take two is running on flash-lite |
+| `RERANK_TOP_N` | never measured by anyone. H16 settles `VECTOR_TOP_N` and cannot speak to this one: its chunks are picked by vector search alone |
 | merged vs per-side with a Python+Python pair | |
 | the all-suffix corpus | every corpus is `.py` only; `pydantic` would be 13,377 chunks rather than 9,846 with mixed formats |
 | end-to-end time / `WARN_MINUTES` | still a guess |
