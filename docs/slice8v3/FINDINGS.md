@@ -1251,6 +1251,107 @@ test - every vector is cached and filtering only removes rows -
 
 ---
 
+## H19 - THE END-TO-END RUNTIME, and the knobs we tuned all day do not move it
+
+Slice 8's job 4, never done by anyone. The project had per-stage numbers - 34 ms
+for search, 1.3 s for a rerank call, 52.7 s for a report - and **no total**, so
+`WARN_MINUTES = 2.0` and `EMBEDDING_MINUTES_BUDGET = 6.0` were guesses that
+CLAUDE.md itself labelled as guesses.
+
+`scripts/bench_end_to_end.py` drives the REAL `services.ask()`, so it measures
+what ships: the assembled rerank chain, the real generator chain with its
+fallbacks, and a real database.
+
+```
+INGEST, once per artifact
+  A_paper.md    18 chunks     5.0s
+  B_train.py    82 chunks    21.5s        ~26s for 100 chunks
+
+STUFF  (paper + one file)          SEARCH (paper + a 729-chunk Go repo)
+  embed question    1.30s  0.4%      embed question    3.80s   7.5%
+  search            0.99s  0.3%      search            1.58s   3.1%
+  rerank            7.98s  2.5%      rerank            8.52s  16.9%
+  build prompt      0.00s  0.0%      build prompt      0.00s   0.0%
+  generate        308.53s 96.8%      generate         36.64s  72.5%
+  TOTAL           318.80s            TOTAL            50.54s
+```
+
+Both were served by **`z-ai/glm-5.3-flash`, tier 1** - free, on Cline - so the
+chain never reached the Google tiers that were spent that day.
+
+### RETRIEVAL IS FREE, and that reframes this entire slice
+
+```
+embed + search + rerank   =  10.3s of 50.5   on the search path
+                          =  10.3s of 318.8  on the stuffed path
+```
+
+**Everything slice 8 measured - fusion, the window, both top-N constants, the
+embedder, the chunker - lives inside those ten seconds.** They decide what the
+model SEES. They do not measure on the clock at all.
+
+> So the whole run's decisions are QUALITY decisions, and any of them argued on
+> latency grounds was argued on a false premise. Two of mine were: preferring a
+> smaller `RERANK_WINDOW` "so calls are cheaper", and preferring a smaller
+> `RERANK_TOP_N` partly for speed. Both conclusions survive on other grounds -
+> reach and token budget - but the speed argument is worth nothing.
+
+### THE CHEAP PATH WAS SIX TIMES SLOWER THAN THE EXPENSIVE ONE
+
+`STUFF` exists because a corpus that FITS needs no embedding, no search and no
+reranking. It is the simple case. It took **318.8s against 50.5s**.
+
+Same model, same question, same machine. A 20-chunk prompt of paper-plus-code
+made GLM-5.3 think for five minutes; a 20-chunk prompt of Go code took 37
+seconds.
+
+**So prompt SIZE does not predict generation time. Prompt CONTENT does.** The
+two paths differ by what is in them, not by how much.
+
+### `WARN_MINUTES = 2.0` IS WRONG IN BOTH DIRECTIONS
+
+```
+a SEARCH answer   50.5s    well under the warning
+a STUFF answer   318.8s    well over - and nothing warns, because the warning
+                           is on the EMBED estimate and stuffing does not embed
+```
+
+`Ingested.minutes` estimates **embedding only**, and the one path that has no
+embedding is the one that took five minutes. The user is warned about the stage
+that costs seconds and told nothing about the stage that costs minutes.
+
+**Not fixed here.** The honest fix is to warn on a TOTAL, and a total needs more
+than one run of each shape.
+
+### Ingest is ~26s per 100 chunks, so the threshold is in the wrong place
+
+At that rate a 1,000-chunk repository is about **4 minutes** and a 10,000-chunk
+one about **40**. A 2-minute warning therefore fires at roughly **500 chunks** -
+far below the 1,000-10,000 range this product targets, so in practice it fires
+on nearly every real repository and tells the user nothing they can act on.
+
+### A guess of mine that the run corrected
+
+While it was running I told the user the runtime was dominated by walking dead
+tiers, because the log sat still for six minutes and the last lines were
+Flash-Lite 429s. **It was not.** Tier 1 answered both shapes. The silence was
+ONE slow generation.
+
+> **A static log is not evidence of a stuck chain.** The visible lines were the
+> most recent failures, not the current state, and I read them as the present.
+
+### Limits, and they are large
+
+- **n = 1 for each shape.** The 318.8s figure especially must be repeated before
+  anyone plans around it; a single sample of a stochastic generator is a story,
+  not a measurement.
+- One model, and one that this project has never scored for quality.
+- One small pair. The SEARCH case used a 729-chunk repository, not the
+  1,000-10,000 the product targets.
+- Measured over a VPN, on a day when the Google tiers were spent.
+
+---
+
 ## STILL UNMEASURED at this point in the run
 
 | | why it matters |
@@ -1262,4 +1363,4 @@ test - every vector is cached and filtering only removes rows -
 | `RERANK_TOP_N` | never measured by anyone. H16 settles `VECTOR_TOP_N` and cannot speak to this one: its chunks are picked by vector search alone |
 | ~~merged vs per-side~~ | **CLOSED.** v2 measured it: merged starves a side entirely on 43 of 57 queries. Dropped from the queue 2026-09-19 |
 | ~~the all-suffix corpus~~ | **DONE - H17.** Every corpus is worse on the real walk, and `lung` is REFUSED outright |
-| end-to-end time / `WARN_MINUTES` | still a guess |
+| ~~end-to-end time~~ | **DONE - H19.** 50.5s searched, 318.8s stuffed, and retrieval is 10s of either. `WARN_MINUTES` is wrong in BOTH directions and is still not fixed |
