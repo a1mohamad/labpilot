@@ -67,18 +67,44 @@ SPECS: dict[str, Spec] = {
     "gemini-embedding-2": Spec(
         dim=3072,
         max_input_tokens=8192,
-        rate=Rate(tokens_per_minute=30_000, requests_per_minute=100),
+        # daily_text_budget, not daily_token_budget: Google counts one TEXT as
+        # one request, so a 96-text batch spends 96 of the day's 1,000. Read
+        # from the account's own rate-limit page and confirmed by two 429s on
+        # 2026-09-18 - a warm died on its SECOND corpus, and 001 exhausted
+        # after 943 chunks.
+        rate=Rate(
+            tokens_per_minute=30_000,
+            requests_per_minute=100,
+            daily_text_budget=1_000,
+        ),
         measured_tokens_per_minute=29_000,
     ),
     "gemini-embedding-001": Spec(
         dim=3072,
         max_input_tokens=2048,
-        rate=Rate(tokens_per_minute=30_000, requests_per_minute=100),
+        # Same per-TEXT billing as embedding-2, and a separate 1,000 a day:
+        # Google's quota is per project per MODEL.
+        rate=Rate(
+            tokens_per_minute=30_000,
+            requests_per_minute=100,
+            daily_text_budget=1_000,
+        ),
         measured_tokens_per_minute=29_000,
     ),
     "embed-v4.0": Spec(
         dim=1536,
-        rate=Rate(requests_per_minute=10),
+        # Cohere bills per CALL, and a call carries up to 96 texts - so unlike
+        # Google the limit is NOT per text. 1,000 calls a MONTH, shared with
+        # reranking and chat, is ~96,000 chunks a month; a single ingest is
+        # gated by the token rate instead. The monthly ceiling is a BUDGET
+        # question for the caller, not a per-ingest refusal, so it is
+        # deliberately not modelled as daily_text_budget here - doing so would
+        # refuse a corpus this model can in fact embed today.
+        #
+        # 100,000 tokens/minute is the TRIAL cap, measured 2026-09-16 by
+        # hitting it. The registry previously carried 640,000, which was a
+        # burst that never met a limit - 6.4x optimistic.
+        rate=Rate(requests_per_minute=10, tokens_per_minute=100_000),
         measured_tokens_per_minute=640_000,
     ),
 }
@@ -113,6 +139,28 @@ MISTRAL_EMBED = MistralEmbedder(
     **_spec("mistral-embed"),
 )
 
+# SCORED AT LAST, 2026-09-18 - the first time in this project's history, and
+# it comes LAST on the strength of it. Against codestral on four Python corpora:
+#
+#     corpus     chunks   codestral   BGE     delta
+#     smsspam        89       0.653   0.519   -0.134
+#     disaster      108       0.753   0.633   -0.120
+#     titanic       118       0.594   0.452   -0.143
+#     lung          628       0.587   0.388   -0.200
+#
+# Loses 4 of 4, mean -0.149 MRR, about 3 queries per corpus. That is worse than
+# mistral-embed, which was demoted to the back for losing by far less.
+#
+# One redeeming detail, and it is a shape this run met three times: on `lung`
+# its r@50 is 0.941 against codestral's 0.882. It FINDS more and ORDERS far
+# worse - the same trade as Cohere, and as a larger chunk size.
+#
+# It had never been scored because three bugs made it unmeasurable, not because
+# nobody tried: score_hybrid's EMBEDDERS dict did not contain it, and the model
+# id "@cf/baai/bge-base-en-v1.5" has SLASHES, so both the chunk-cache path and
+# the result path became directories and raised. The embedding SUCCEEDED - 89
+# of 89 vectors, 17,807 tokens spent - and the result was thrown away.
+#
 # BGE truncates at 512 tokens and says nothing about it, so the limit is
 # declared in SPECS and refused locally instead of arriving as a weaker vector.
 #
@@ -130,20 +178,29 @@ BGE_BASE = CloudflareEmbedder(
     **_spec("@cf/baai/bge-base-en-v1.5"),
 )
 
-# UNVERIFIED against our own fixture, and shipped anyway - the same gamble as
-# `gemini-embedding-001` on 2026-08-20, and safe for the same reason: `dim` is
-# documented rather than observed, so a wrong value raises loudly in
-# `_validated` on the first real call instead of storing a wrong-width vector.
+# MEASURED AND DEMOTED, 2026-09-18. This entry used to sit ABOVE 001 on
+# Google's own evidence rather than ours - version 2 against version 001 in the
+# model listing, MTEB mean-by-task 69.9 against 68.32 - and the comment here
+# said plainly that it was the only entry in MIGRATION ranked on somebody
+# else's benchmark, with "slice 8 owes this model a score".
 #
-# It is ranked above 001 on Google's own evidence, NOT ours: version 2 against
-# version 001 in the model listing, MTEB mean-by-task 69.9 against 68.32, and a
-# 8,192 token input limit against 2,048. This file's rule is that MIGRATION is
-# ordered by MEASURED recall, so **slice 8 owes this model a score** - it is
-# the only entry here ranked on somebody else's benchmark.
+# Slice 8 scored it. It LOST, on our own fixture, on 3 of the 4 corpora where
+# both models ran:
 #
-# The bigger input limit removes a constraint CLAUDE.md recorded as permanent:
-# 001's 2,048 tokens meant our 510-token chunk cap could never rise. 8,192 does
-# not bind at any chunk size we would choose.
+#     corpus      001     2
+#     websocket   0.530   0.364     001
+#     requests    0.650   0.559     001
+#     geo         0.493   0.341     001
+#     quora       0.674   0.702       2
+#
+# v2's G21 reached the same verdict and the order was never actually changed in
+# this file, so the finding sat unshipped for a whole run while the routing
+# kept preferring the weaker model. It is corrected below: 001 now sits above
+# 2, which is what MIGRATION's own rule - order by MEASURED recall - requires.
+#
+# What 2 keeps is a bigger input limit, 8,192 tokens against 001's 2,048. That
+# does not bind at any chunk size we would choose (the cap is 510), so it does
+# not buy back the ranking.
 #
 # THE TWO SPACES ARE INCOMPATIBLE - Google says so explicitly. That is not a
 # footnote here, it is the whole reason MIGRATION is a migration: moving from
@@ -161,9 +218,10 @@ GEMINI_EMBED_2_KEY2 = dataclasses.replace(
     api_key_env="GOOGLE_API_KEY_2",
 )
 
-# Proven live 2026-08-27: 200, dim 3072 observed. Kept below embedding-2 but
-# above Cohere, because it is measured on OUR fixture and is the only model
-# with perfect recall@5 there (1.000, against codestral's 0.941).
+# Proven live 2026-08-27: 200, dim 3072 observed. PROMOTED ABOVE embedding-2 on
+# 2026-09-18, because it beats it on our own fixture on 3 of the 4 corpora where
+# both ran - see the note on GEMINI_EMBED_2. It is also the only model with
+# perfect recall@5 on the original fixture (1.000, against codestral's 0.941).
 GEMINI_EMBED_001 = GoogleEmbedder(
     name="Gemini Embedding 001",
     url=GOOGLE_URL,
@@ -205,20 +263,57 @@ COHERE_EMBED = CohereEmbedder(
     **_spec("embed-v4.0"),
 )
 
-# THE STRENGTH ORDER. Measured models first, in measured order; unmeasured
-# after them; Cohere last for the quota reason above. One structural override:
-# BGE sits second because it is the only early entry on a different platform -
-# codestral and mistral-embed share one API key, so a Mistral outage would take
-# both.
+# THE STRENGTH ORDER, RE-SORTED ON MEASUREMENT 2026-09-18 (slice 8 v3).
+#
+# It used to read codestral, BGE, mistral, google, cohere - which put the
+# WEAKEST measured model third. Head to head, on the corpora where each pair
+# both ran:
+#
+#     mistral vs gemini-001   n=7    mistral 1, google 6    0.503 vs 0.602
+#     mistral vs cohere       n=13   mistral 3, cohere 10   0.511 vs 0.593
+#     mistral vs gemini-2     n=11   mistral 4, google 7    0.537 vs 0.563
+#
+# mistral-embed loses to EVERY other embedder it has been compared with, so it
+# moves to the back. Measured mean MRR over the 20-corpus zoo:
+#
+#     codestral 0.634 > gemini-001 0.602 > cohere 0.593 > gemini-2 0.563
+#                     > mistral 0.511
+#
+# COHERE IS NO LONGER LAST, and the reason it was has weakened. Its quota is a
+# real cost - 1,000 calls a MONTH shared with reranking - but it is BILLED PER
+# CALL at up to 96 texts, so a small corpus is a handful of calls. The models
+# that genuinely cannot finish a large ingest now say so through
+# `daily_text_budget`, which is where a hard limit belongs; an ordering is for
+# strength.
+#
+# BGE MOVED FROM SECOND TO LAST, 2026-09-18. It sat at position 2 on a
+# ROBUSTNESS argument - codestral and mistral-embed share one API key, so a
+# Mistral outage would otherwise take the top two - inside a tuple whose own
+# comment calls it the strength order, and it was the one model here NOBODY HAD
+# EVER SCORED. Scored, it loses 4 of 4 at a mean -0.149 MRR: the fallback from
+# our primary was the weakest model we have.
+#
+# The robustness argument is not abandoned, it is satisfied by a better model.
+# gemini-embedding-001 is on a THIRD platform and scores 0.602, so position 2
+# is now strong AND independent of Mistral, which is what the argument actually
+# asked for. `test_the_two_best_embedders_do_not_share_a_platform` still holds.
+#
+# One structural override remains, and it is deliberate:
+#   - mistral-embed stays IN the list despite being second-last on quality,
+#     because it is the only model that can ingest 10,000 chunks quickly:
+#     google cannot today at all, and cohere is 21 minutes. A walk must not
+#     dead-end. BGE cannot either - 684,000 neurons a day stops it at ~2,900
+#     chunks - which is a second reason it belongs behind mistral rather than
+#     in front of it.
 MIGRATION = (
     CODESTRAL_EMBED,
-    BGE_BASE,
-    MISTRAL_EMBED,
-    GEMINI_EMBED_2,
-    GEMINI_EMBED_2_KEY2,
     GEMINI_EMBED_001,
     GEMINI_EMBED_001_KEY2,
     COHERE_EMBED,
+    GEMINI_EMBED_2,
+    GEMINI_EMBED_2_KEY2,
+    MISTRAL_EMBED,
+    BGE_BASE,
 )
 
 
