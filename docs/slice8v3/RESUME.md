@@ -418,6 +418,8 @@ adds 4 Python corpora.
 | **Python buffers stdout to a file** | use `-u`, or a background log shows nothing for ten minutes |
 | **a listwise rerank cache is keyed by CANDIDATE SET** (G14) | a new window or `--fusion` is a **fresh call at full price**, never a cache hit |
 | **3 jobs over the VPN** | SSL EOF. Two actively calling is the limit; it killed a sweep today |
+| **stopping a background job kills the WRAPPER, not python** | two `score_answers` processes survived being stopped and went on burning key 1's 500/day for ten minutes - into the same log the new run had just truncated, so the output read like the new run failing. `Get-CimInstance Win32_Process ... Stop-Process` to be sure |
+| **the RERANK chain had no key-2 twins** | the generator chain has used both Google accounts since 2026-09-11 and this one never did, so a spent flash-lite fell through to a WEAKER model while the same model sat idle on the other key. Fixed 2026-09-19 |
 | **`score_answers.py` OVERWRITES `answers_<model>.json`** | it saves once, at the END, over the whole file. Running 5 corpora would have destroyed v2's 13-corpus run. Back it up before every invocation |
 | **`answered > 0` with `cited == 0`** | a GRADING failure wearing a result's clothes. It fired on three cells — and what it had really caught was that I was reading a **stale file** |
 | **two result files for one run** | `answers_flashlite.json` (11:49, mid-fix) and `answers_regraded.json` (11:57) differ in **62 of 75 cells**. The canonical-looking name was the wrong one |
