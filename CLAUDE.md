@@ -11759,6 +11759,71 @@ Three details that make it work:
 - **8,192 is the reasoning floor.** At 2,048 `mistral-medium-latest` sometimes
   spends the whole budget thinking and returns nothing — flaky, not broken.
 
+#### PARAMETRIZE OVER THE LIST THE CODE USES, NEVER OVER ITS PARTS — 2026-09-19
+
+*The third time this project has shipped a tier nobody was watching, and the
+first time the cause was named properly.*
+
+The rerank smoke run parametrized over **the two halves** of chain 3:
+
+```
+RERANK_CHAIN       the cross-encoders        3 tiers
+LLM_RERANK_ORDER   the Gemini tiers          4 models x 2 keys
+```
+
+Both lists are real, both are complete, and **neither is what the ask path
+calls**. `api/reranking.CHAIN` is — it is assembled from those two *plus*
+anything placed between them. So when Jev was shipped at **position 3**, it
+was covered by nothing, while every tier on either side of it had weekly
+liveness. A gap of exactly one tier, and the newest one.
+
+**The fix is to iterate the assembled chain**, which cannot miss a tier by
+construction:
+
+```
+before   @parametrize("reranker", RERANK_CHAIN)      3 cases
+         @parametrize("reranker", LLM_TIERS)         8 cases
+after    @parametrize("reranker", CHAIN)            12 cases, Jev included
+```
+
+> **A test that iterates the INPUTS to a structure does not test the
+> structure.** Parametrize over the object the production code actually
+> reaches for. Two lists that are each complete can still leave a hole
+> between them, and the hole is invisible — every case passes.
+
+**Three occurrences now, same shape each time:** five of fifteen generator
+models had no smoke test at all (2026-08-17); the four LLM tiers that *led*
+chain 3 had no liveness check (slice 6); and Jev (2026-09-19). Each was found
+by asking "which tier is not in this list?" rather than by anything failing.
+
+#### A FIELD TEST IS NOT THE RULE — the same review pass, 2026-09-19
+
+`test_only_known_tiers_cannot_serve_a_full_report` compares one field:
+
+```
+max_output_tokens < REPORT_MAX_TOKENS
+```
+
+The chain applies a different rule. `_check_fits` enforces the **sum against
+the context window**, so a tier with a generous `max_output` and a small
+CONTEXT passes the field test and still cannot serve a report:
+
+$$
+26{,}000\ \text{prompt} \;+\; 32{,}000\ \text{output} \;=\; 58{,}000
+$$
+
+GLM-5.2's move to OpenRouter brought exactly that shape — a 32,768 context —
+and was caught by its output cap instead, **by luck**. The next one would sit
+in the report chain and fail at the provider on every report.
+
+`test_every_tier_we_believe_can_serve_a_report_really_can` calls `_check_fits`
+with a report-sized prompt instead. Proven by the mutation that the field
+test cannot see: raise `max_output` to 32,768 and drop the name from the
+list — the old test stays green and the new one fires **alone**.
+
+> **When a test checks a FIELD and the code applies a RULE, the test is a
+> proxy.** Proxies drift. Call the rule.
+
 #### A unit test now guards the workflow file
 
 `test_every_chain_env_var_is_mapped_in_the_smoke_workflow` reads
