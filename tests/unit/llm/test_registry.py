@@ -9,7 +9,7 @@ from labpilot.llm import (
     LLMError,
     OpenAICompatibleProvider,
 )
-from labpilot.prompts import REPORT_MAX_TOKENS
+from labpilot.prompts import PROMPT_BUDGET, REPORT_MAX_TOKENS
 
 ROOT = Path(__file__).resolve().parents[3]
 ENV_EXAMPLE = ROOT / ".env.example"
@@ -27,7 +27,22 @@ REJECTS_THINKING = ("gemma-4-31b-it",)
 # Deliberate, measured exceptions. A new name appearing here is a real problem.
 # Groq's 8,000 is a TOTAL per-minute budget (prompt + reserved output), so it is
 # modelled as a small context_window. Gemma's 16,000 counts input only.
-OUTPUT_TOO_SMALL = ("GPT-OSS 120B (Groq)", "Devstral 2")
+# Qwen3.8 27B (Groq) joined 2026-09-19. Same cause as its Groq sibling: the
+# 8,000 is a per-MINUTE budget over prompt AND reserved output, so it can
+# never serve a report however large Groq says its context is (131,042).
+# It earns its place anyway - _check_fits refuses it locally for nothing,
+# and Step 2's small code jobs fit easily at 1,000 requests a day.
+OUTPUT_TOO_SMALL = (
+    "Qwen3.8 27B (Groq)",
+    # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
+    # brought a 32,768 context with it, against the 58,000 a report needs.
+    # BOTH routes carry it - the limit belongs to the model's free serving,
+    # not to the gateway in front of it.
+    "GLM-5.2 (Kilo)",
+    "GLM-5.2",
+    "GPT-OSS 120B (Groq)",
+    "Devstral 2",
+)
 INPUT_LIMITED = ("gemma-4-31b-it",)
 
 # Cline lists SIX free models and its API serves only these TWO. Measured
@@ -197,6 +212,67 @@ def test_an_input_limited_tier_costs_no_request():
             provider._check_fits(oversized, 1024)
 
 
+def test_every_tier_we_believe_can_serve_a_report_really_can():
+    """OUTPUT_TOO_SMALL names them by FIELD. This checks the RULE.
+
+    test_only_known_tiers_cannot_serve_a_full_report compares
+    max_output_tokens against REPORT_MAX_TOKENS, which is one field and not
+    what the chain applies. `_check_fits` enforces the SUM - prompt plus
+    reserved output against the context window - so a tier with a generous
+    max_output and a small CONTEXT passes that test and still cannot serve a
+    report: 26,000 of prompt plus 32,000 of output is 58,000.
+
+    GLM-5.2's move to OpenRouter on 2026-09-19 brought exactly that shape, a
+    32,768 context, and it was caught by its output cap rather than by the
+    limit that actually binds. The next tier like it might not be so lucky -
+    it would sit in the report chain, be tried on every report, and fail at
+    the provider instead of here.
+    """
+    prompt = "x" * (PROMPT_BUDGET * 3)
+    excused = set(OUTPUT_TOO_SMALL) | {
+        provider.name for provider in CHAIN if provider.model in INPUT_LIMITED
+    }
+
+    for provider in CHAIN:
+        if provider.name in excused:
+            continue
+        provider._check_fits(prompt, REPORT_MAX_TOKENS)
+
+
+def test_the_two_qwen_hosts_do_not_share_a_reasoning_value():
+    """THE SAME MODEL ON TWO HOSTS TAKES TWO DIFFERENT WORDS, measured.
+
+        Cloudflare  reasoning_effort=high   -> 400 "Supported types are
+                                                    xhigh (default), medium,
+                                                    and low"
+        Groq        reasoning_effort=xhigh  -> 400 "invalid Qwen3.8
+                                                    reasoning_effort"
+        Groq        reasoning_effort=high   -> 200
+
+    So a tidy-up that gave both the shared OPENAI_REASONING constant would
+    make every Cloudflare Qwen call a 400. The chain would swallow it and
+    fall through, so nothing would look broken - the tier would simply stop
+    existing, at the cost of one request per report.
+
+    This file already records that the same model on two hosts has different
+    LIMITS. It also has different PARAMETER VOCABULARY.
+    """
+    cloudflare = next(p for p in CHAIN if p.name == "Qwen3.8 27B")
+    groq = next(p for p in CHAIN if p.name == "Qwen3.8 27B (Groq)")
+
+    # The premise, and the two hosts spell it differently: Cloudflare
+    # namespaces its own catalogue with "@cf/".
+    assert cloudflare.model.removeprefix("@cf/") == groq.model, (
+        "these must be the SAME underlying model, or the finding is about two "
+        "different things"
+    )
+    assert cloudflare.extra_body == {"reasoning_effort": "xhigh"}
+    assert groq.extra_body == {"reasoning_effort": "high"}
+    assert cloudflare.extra_body != groq.extra_body, (
+        "one shared constant would 400 on Cloudflare for every call"
+    )
+
+
 def _thinking_tiers():
     return [
         provider
@@ -238,6 +314,62 @@ def test_a_tier_that_rejects_thinking_does_not_ask_for_it():
         f"{asking} reject a thinking level with HTTP 400 but are configured to "
         f"send one, so every call to them fails. Set thinking=None."
     )
+
+
+def test_a_gateway_route_comes_before_its_openrouter_twin():
+    """SAME MODEL -> the bigger free allowance goes first. That is the rule.
+
+        OpenRouter   50 requests per DAY   (our account)
+        Kilo        200 requests per HOUR  (per IP)
+
+    One hour of Kilo is four times our whole OpenRouter day, and the two are
+    separate accounts - measured, three Kilo calls left our OpenRouter
+    counter at 17 of 50. So spending OpenRouter first throws away the scarcer
+    pool for nothing.
+
+    Nothing else catches a reordering. Both routes answer, the report still
+    comes out, and the only symptom is running out of OpenRouter days earlier
+    than necessary - which is invisible until it happens.
+    """
+    positions = {(p.model, p.api_key_env): p.tier for p in CHAIN}
+    twins = [
+        (model, key)
+        for (model, key) in positions
+        if key == "OPENROUTER_API_KEY" and (model, "KILO_API_KEY") in positions
+    ]
+    assert twins, "no Kilo/OpenRouter twin left - delete this test or the tiers"
+
+    for model, key in twins:
+        kilo = positions[(model, "KILO_API_KEY")]
+        openrouter = positions[(model, key)]
+        assert kilo < openrouter, (
+            f"{model}: Kilo is tier {kilo} and OpenRouter is tier "
+            f"{openrouter}. The larger free allowance must come first - "
+            f"200/hour against 50/day."
+        )
+
+
+def test_each_gateway_shares_one_quota_pool():
+    """Kilo's 200/hour is per IP and Requesty's 200/day is per account.
+
+    Neither is per model, so every tier on one gateway must share ONE pool.
+    Split them and a single 429 stops skipping its siblings: the chain would
+    retry the same exhausted allowance nine times over, spending nine
+    requests to learn one fact.
+
+    This is the mirror of test_every_google_tier_owns_a_pool_of_its_own -
+    Google bills per model, so there the pools must DIFFER. Same question,
+    opposite answer, and getting it backwards is silent either way.
+    """
+    for env_var in ("KILO_API_KEY", "REQUESTY_API_KEY"):
+        pools = {p.quota_pool for p in CHAIN if p.api_key_env == env_var}
+        tiers = [p.name for p in CHAIN if p.api_key_env == env_var]
+        assert len(tiers) > 1, f"{env_var} has too few tiers to test"
+        assert pools == {env_var}, (
+            f"{env_var} has {len(tiers)} tiers across pools {sorted(pools)}. "
+            f"Its limit is not per model, so one spent pool must retire them "
+            f"all at once."
+        )
 
 
 def test_every_cline_tier_is_a_model_the_api_actually_serves():
