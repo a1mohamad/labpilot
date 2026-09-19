@@ -1,4 +1,10 @@
-from labpilot.retrieval.fusion import RRF_K, RRF_WEIGHTS, weighted_rrf
+from labpilot.retrieval.fusion import (
+    RRF_K,
+    RRF_WEIGHTS,
+    SCORE_ALPHA,
+    score_fusion,
+    weighted_rrf,
+)
 from labpilot.retrieval.gate import SKIP_MARGIN, margin, should_rerank
 from labpilot.retrieval.selector import (
     INPUT_BUDGET,
@@ -13,10 +19,12 @@ __all__ = [
     "LABEL_TOKENS",
     "RRF_K",
     "RRF_WEIGHTS",
+    "SCORE_ALPHA",
     "SIDES",
     "SIDE_SHARE",
     "SKIP_MARGIN",
     "margin",
+    "score_fusion",
     "select",
     "should_rerank",
     "weighted_rrf",
