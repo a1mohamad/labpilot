@@ -27,7 +27,16 @@ REJECTS_THINKING = ("gemma-4-31b-it",)
 # Deliberate, measured exceptions. A new name appearing here is a real problem.
 # Groq's 8,000 is a TOTAL per-minute budget (prompt + reserved output), so it is
 # modelled as a small context_window. Gemma's 16,000 counts input only.
-OUTPUT_TOO_SMALL = ("GPT-OSS 120B (Groq)", "Devstral 2")
+# Qwen3.8 27B (Groq) joined 2026-09-19. Same cause as its Groq sibling: the
+# 8,000 is a per-MINUTE budget over prompt AND reserved output, so it can
+# never serve a report however large Groq says its context is (131,042).
+# It earns its place anyway - _check_fits refuses it locally for nothing,
+# and Step 2's small code jobs fit easily at 1,000 requests a day.
+OUTPUT_TOO_SMALL = (
+    "Qwen3.8 27B (Groq)",
+    "GPT-OSS 120B (Groq)",
+    "Devstral 2",
+)
 INPUT_LIMITED = ("gemma-4-31b-it",)
 
 # Cline lists SIX free models and its API serves only these TWO. Measured

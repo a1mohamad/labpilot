@@ -63,6 +63,20 @@ ANOTHER_MODEL = next(
 # these tests measure Google's behaviour and nothing else.
 BEFORE_GOOGLE = tuple(p for p in CHAIN if p.tier < GOOGLE_1.tier)
 
+# Everything that is neither the spent model, its twin, nor the rescue.
+#
+# It used to be BEFORE_GOOGLE alone, which quietly assumed the rescue tier sat
+# immediately after the twin. That held until 2026-09-19, when DeepSeek and
+# two Qwen tiers were inserted between them and the test began failing for a
+# reason that had nothing to do with quota pools. Deriving the scenery from
+# what the test is ABOUT, rather than from a position, makes an insertion
+# anywhere in the chain harmless.
+SCENERY = tuple(
+    p
+    for p in CHAIN
+    if p.tier < ANOTHER_MODEL.tier and p not in (GOOGLE_1, GOOGLE_1_KEY_2)
+)
+
 GOOGLE_TIER_1_URL = url_for(GOOGLE_1)
 ANOTHER_MODEL_URL = url_for(ANOTHER_MODEL)
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
@@ -82,7 +96,7 @@ def fail_everything_before_google():
     400 is the status that still means exactly "next tier, retrying cannot
     change it", which is what the scenery is for.
     """
-    for provider in BEFORE_GOOGLE:
+    for provider in SCENERY:
         responses.post(
             url_for(provider), status=400, json={"error": "not the tier under test"}
         )
@@ -147,10 +161,11 @@ def test_one_spent_google_model_does_not_skip_the_others(keys):
 
     assert result.tier == ANOTHER_MODEL.tier
     assert result.text == "a different model"
+    # Every tier ahead of the rescue was tried, and NONE was skipped - which
+    # is the whole claim: a 429 on one Google MODEL must not retire the pool
+    # that the others sit on.
     assert [attempt.tier for attempt in result.attempts] == [
-        *(p.tier for p in BEFORE_GOOGLE),
-        GOOGLE_1.tier,
-        GOOGLE_1_KEY_2.tier,
+        p.tier for p in CHAIN if p.tier < ANOTHER_MODEL.tier
     ]
 
 

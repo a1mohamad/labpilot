@@ -317,6 +317,87 @@ GEMMA_4_26B = _gemini(
 )
 
 
+# ADDED 2026-09-19, and the placement rests on TWO independent sources
+# because one of them contradicted the blogs badly. See CLAUDE.md.
+#
+#                        AA v4.3   Code Arena     out tok/s
+#   GLM-5.3 Flash          42      1607  (#17)       94.6
+#   Gemini 3.7 Flash       39         -             288.3
+#   DeepSeek V4 Flash      35      1580  (#22)      211.9
+#   Gemini 3.6 Flash       34      1537  (#32)      182.5
+#   Qwen3.8-27B            34      1593  (#18)       43.1
+#   Gemini 3.5 Flash       33      1500  (#44)      207.8
+#
+# ⚠ EVERY OTHER AA NUMBER IN THIS FILE IS FROM AN OLDER INDEX VERSION and is
+# NOT comparable with these. v4.3 scores Flash-Lite at 23, where the table
+# above the chain still says 37.4. Only re-scored models may be compared.
+# THE SAME MODEL ON TWO HOSTS TAKES TWO DIFFERENT WORDS, measured:
+#
+#   Cloudflare  "Unexpected reasoning effort high. Supported types are
+#                xhigh (default), medium, and low."
+#   Groq        "invalid Qwen3.8 reasoning_effort" for xhigh; `high` is fine.
+#
+# So neither host accepts the other's value, and a single shared constant
+# would break one of them. This file already records that the same model on
+# two hosts has different LIMITS; it also has different PARAMETER VOCABULARY.
+#
+# xhigh is Cloudflare's default AND the setting Artificial Analysis scored at
+# 34, so the placement in CHAIN describes the configuration we actually send.
+QWEN_CF_REASONING = {"reasoning_effort": "xhigh"}
+
+DEEPSEEK_V4_FLASH = OpenAICompatibleProvider(
+    name="DeepSeek V4 Flash",
+    tier=0,
+    url=OPENROUTER_URL,
+    model="deepseek/deepseek-v4-flash-0731:free",
+    api_key_env="OPENROUTER_API_KEY",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+    extra_body=OPENROUTER_REASONING,
+)
+
+# THE CODING SPECIALIST, and that is a measured claim rather than a vendor
+# one. On general intelligence it TIES Gemini 3.6 Flash (34 = 34); on Code
+# Arena it beats it by 56 Elo (1593 against 1537) and beats DeepSeek V4 Flash
+# too (#18 against #22). AA also ranks it #1 of 142 open-weights models in the
+# 4B-40B class. Step 2 should ROUTE code-writing sub-tasks here rather than
+# walking the chain - the same rule this file already applies to Devstral.
+#
+# Cloudflare FIRST because it is the only one of the two that can serve a
+# report: 262,144 context against Groq's binding 8,000 tokens per MINUTE.
+# Measured cost: 244 neurons for a 4,860-token call, so ~41 such calls a day
+# out of 10,000. Slow, though - 43.1 tok/s is the lowest of any tier here.
+QWEN_3_8_27B = OpenAICompatibleProvider(
+    name="Qwen3.8 27B",
+    tier=0,
+    url=CLOUDFLARE_URL,
+    model="@cf/qwen/qwen3.8-27b",
+    api_key_env="CLOUDFLARE_API_KEY",
+    account_env="CLOUDFLARE_ACCOUNT_ID",
+    context_window=262_144,
+    max_output_tokens=262_144,
+    extra_body=QWEN_CF_REASONING,
+)
+
+# The SAME model on Groq, and modelled at 8,000 like GPT-OSS is - because the
+# binding limit is a per-minute budget covering prompt AND reserved output,
+# not the 131,042 context Groq advertises. Read from its own headers:
+# x-ratelimit-limit-requests 1000, x-ratelimit-limit-tokens 8000.
+#
+# So it can NEVER serve a report and _check_fits refuses it locally for free.
+# It is here for Step 2's small code jobs, where 1,000 requests a day and a
+# 0.6s round trip are worth more than a context it cannot fill.
+QWEN_3_8_27B_GROQ = OpenAICompatibleProvider(
+    name="Qwen3.8 27B (Groq)",
+    tier=0,
+    url=GROQ_URL,
+    model="qwen/qwen3.8-27b",
+    api_key_env="GROQ_API_KEY",
+    context_window=8_000,
+    max_output_tokens=8_000,
+    extra_body=OPENAI_REASONING,
+)
+
 GPT_OSS_120B_GROQ = OpenAICompatibleProvider(
     name="GPT-OSS 120B (Groq)",
     tier=12,
@@ -354,6 +435,22 @@ CHAIN = _ordered(
     CLINE_GLM_5_3_FLASH,
     GEMINI_3_7_FLASH,
     _second_account(GEMINI_3_7_FLASH),
+    # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
+    # DeepSeek first of the three: it and Qwen TIE on AA (35 vs 34, inside
+    # the +-1 interval), Qwen wins Code Arena by 13 Elo, and DeepSeek is
+    # FIVE TIMES faster (211.9 tok/s against 43.1) with a 1.05M context and
+    # no per-day neuron budget. A 13-Elo coding edge does not buy a 5x
+    # slowdown when generation is already 98.2% of an answer.
+    DEEPSEEK_V4_FLASH,
+    # Then the coding specialist. It ties Gemini 3.6 Flash on general
+    # intelligence and beats it by 56 Elo on code, which is the task this
+    # project actually does - so it goes above it.
+    QWEN_3_8_27B,
+    # ADJACENT, for the same reason the Google twins are: once Cloudflare's
+    # neurons are gone the strongest thing still available is the same model
+    # on Groq, not a weaker one. It can never serve a report (8,000 tokens a
+    # MINUTE), and _check_fits refuses it locally for free.
+    QWEN_3_8_27B_GROQ,
     GEMINI_3_6_FLASH,
     _second_account(GEMINI_3_6_FLASH),
     GEMINI_3_5_FLASH,
