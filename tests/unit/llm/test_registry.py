@@ -9,7 +9,7 @@ from labpilot.llm import (
     LLMError,
     OpenAICompatibleProvider,
 )
-from labpilot.prompts import REPORT_MAX_TOKENS
+from labpilot.prompts import PROMPT_BUDGET, REPORT_MAX_TOKENS
 
 ROOT = Path(__file__).resolve().parents[3]
 ENV_EXAMPLE = ROOT / ".env.example"
@@ -207,6 +207,67 @@ def test_an_input_limited_tier_costs_no_request():
     for provider in blocked:
         with pytest.raises(LLMError, match="input"):
             provider._check_fits(oversized, 1024)
+
+
+def test_every_tier_we_believe_can_serve_a_report_really_can():
+    """OUTPUT_TOO_SMALL names them by FIELD. This checks the RULE.
+
+    test_only_known_tiers_cannot_serve_a_full_report compares
+    max_output_tokens against REPORT_MAX_TOKENS, which is one field and not
+    what the chain applies. `_check_fits` enforces the SUM - prompt plus
+    reserved output against the context window - so a tier with a generous
+    max_output and a small CONTEXT passes that test and still cannot serve a
+    report: 26,000 of prompt plus 32,000 of output is 58,000.
+
+    GLM-5.2's move to OpenRouter on 2026-09-19 brought exactly that shape, a
+    32,768 context, and it was caught by its output cap rather than by the
+    limit that actually binds. The next tier like it might not be so lucky -
+    it would sit in the report chain, be tried on every report, and fail at
+    the provider instead of here.
+    """
+    prompt = "x" * (PROMPT_BUDGET * 3)
+    excused = set(OUTPUT_TOO_SMALL) | {
+        provider.name for provider in CHAIN if provider.model in INPUT_LIMITED
+    }
+
+    for provider in CHAIN:
+        if provider.name in excused:
+            continue
+        provider._check_fits(prompt, REPORT_MAX_TOKENS)
+
+
+def test_the_two_qwen_hosts_do_not_share_a_reasoning_value():
+    """THE SAME MODEL ON TWO HOSTS TAKES TWO DIFFERENT WORDS, measured.
+
+        Cloudflare  reasoning_effort=high   -> 400 "Supported types are
+                                                    xhigh (default), medium,
+                                                    and low"
+        Groq        reasoning_effort=xhigh  -> 400 "invalid Qwen3.8
+                                                    reasoning_effort"
+        Groq        reasoning_effort=high   -> 200
+
+    So a tidy-up that gave both the shared OPENAI_REASONING constant would
+    make every Cloudflare Qwen call a 400. The chain would swallow it and
+    fall through, so nothing would look broken - the tier would simply stop
+    existing, at the cost of one request per report.
+
+    This file already records that the same model on two hosts has different
+    LIMITS. It also has different PARAMETER VOCABULARY.
+    """
+    cloudflare = next(p for p in CHAIN if p.name == "Qwen3.8 27B")
+    groq = next(p for p in CHAIN if p.name == "Qwen3.8 27B (Groq)")
+
+    # The premise, and the two hosts spell it differently: Cloudflare
+    # namespaces its own catalogue with "@cf/".
+    assert cloudflare.model.removeprefix("@cf/") == groq.model, (
+        "these must be the SAME underlying model, or the finding is about two "
+        "different things"
+    )
+    assert cloudflare.extra_body == {"reasoning_effort": "xhigh"}
+    assert groq.extra_body == {"reasoning_effort": "high"}
+    assert cloudflare.extra_body != groq.extra_body, (
+        "one shared constant would 400 on Cloudflare for every call"
+    )
 
 
 def _thinking_tiers():

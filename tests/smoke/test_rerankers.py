@@ -26,7 +26,7 @@ test must not encode our hardest open research question as a pass condition.
 import pytest
 from dotenv import load_dotenv
 
-from labpilot.api.reranking import LLM_RERANK_ORDER, PROVIDERS, _listwise
+from labpilot.api.reranking import CHAIN, LLM_RERANK_ORDER, PROVIDERS, _listwise
 from labpilot.ingest import chunk_file
 from labpilot.rerank import RERANK_CHAIN
 from tests.smoke.test_embedders import SAMPLES
@@ -63,6 +63,31 @@ def test_the_fixture_gives_the_answer_the_only_claim_on_the_query():
     assert len(DECOYS) == 4
     for decoy in DECOYS:
         assert not any(word in decoy.text.lower() for word in CLIPPING_WORDS)
+
+
+@pytest.mark.smoke
+@pytest.mark.parametrize("reranker", CHAIN, ids=lambda r: r.model)
+def test_every_tier_of_the_shipped_chain_is_alive(reranker):
+    """The ASSEMBLED chain, which is the only list that cannot miss a tier.
+
+    This used to parametrize over RERANK_CHAIN and LLM_RERANK_ORDER, the two
+    halves - so a tier that is neither was invisible to the weekly run. Jev
+    was exactly that: added at position 3 of the shipped chain on 2026-09-19
+    and watched by nobody, while every tier around it had liveness cover.
+
+    It is the same hole slice 6 left and slice 7 had to close, one tier along:
+    "the four tiers that now LEAD chain 3 had no liveness check". Parametrise
+    over the thing the ask path actually calls and it cannot happen again.
+    """
+    ranking = reranker.rank(QUERY, DOCUMENTS)
+
+    assert ranking.model == reranker.model
+    assert len(ranking.order) == len(DOCUMENTS)
+    assert set(ranking.order) == set(range(len(DOCUMENTS)))
+    assert ranking.order[0] == WANTED, (
+        f"{reranker.name} ranked document {ranking.order[0]} above the chunk "
+        f"that actually sets CLIP_NORM; scores were {ranking.scores}"
+    )
 
 
 @pytest.mark.smoke
