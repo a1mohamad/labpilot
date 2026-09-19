@@ -487,8 +487,16 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 IS COMPLETE. ALL NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 —
-ARE DONE. STEP 2, THE AGENT, IS NEXT.**
+**Phase: STEP 1 IS COMPLETE AND CLOSED — 2026-09-19. ALL NINE SLICES — 1, 1b,
+2, 3, 4, 5, 6, 7 AND 8 — ARE DONE, AND SLICE 8 RAN THREE TIMES (v1, v2, v3).
+STEP 2, THE AGENT, IS NEXT.**
+
+**871 passed, 4 skipped, 0 xfailed, ruff clean.** The RAG system ingests a
+file, a `.zip` or a git URL; stores it in pgvector; and answers a question by
+stuffing when the pair fits and by search + fusion + gate + rerank when it does
+not. Every constant in that sentence was measured — see
+[STEP 1 IS CLOSED](#-step-1-is-closed--2026-09-19-all-nine-slices-measured-and-shipped)
+for the numbers and the four defects measuring found.
 
 > ### ⚠⚠⚠ STEP 2's FIRST PROBLEM IS GENERATION TIME — 400 SECONDS, MEASURED
 >
@@ -506,56 +514,99 @@ ARE DONE. STEP 2, THE AGENT, IS NEXT.**
 > **Read [the Step 2 time block](#agent-design--step-2-recorded-2026-08-11)
 > before designing a single node.**
 
-> ### ⚠⚠ SLICE 8 v3 IS ALMOST DONE — READ `docs/slice8v3/DECISIONS.md` FIRST
+> ### ✅ STEP 1 IS CLOSED — 2026-09-19. ALL NINE SLICES, MEASURED AND SHIPPED
 >
-> **THE ZOO WAS REBUILT: 20 corpora, 10 PYTHON (50%), 423 queries**, against
-> v2's 3 of 13. LabPilot is a Python and machine-learning tool, and three v2
-> decisions had **zero** Python behind them. Branch `slice8/measure-final`.
+> **The RAG system is complete and every number in it was measured rather than
+> chosen.** `docs/slice8v3/DECISIONS.md` is the deliverable — 29 decisions,
+> FOURTEEN of them now in `labpilot/` rather than in a document. `RESUME.md` is
+> the working log, `FINDINGS.md` (H0–H19) the evidence. v1 and v2 are KEPT and
+> stay valid for what they measured.
 >
-> **`docs/slice8v3/DECISIONS.md` is the deliverable and it is current — 29
-> decisions, TEN of them now in `labpilot/` rather than in a document.**
-> `RESUME.md` is the working log, `FINDINGS.md` (H0–H19) the evidence.
->
-> **WHAT SHIPPED TO THE CODE, each one mutation-verified:**
+> #### THE SHIPPED SYSTEM, end to end
 >
 > ```
-> VECTOR_TOP_N      25 -> 15    (and the 30 shipped first was a UNIT ERROR)
-> RERANK_WINDOW     new, 20     the reranker reads 20 of the 50, not all 50
-> MIGRATION         BGE 2 -> last; mistral -> second-last; 001 above 2
-> the embedder gate + a per-TEXT daily budget - Google can no longer start an
->                     ingest it cannot finish
-> SMALL_CORPUS_CHUNKS  DELETED
-> SKIP_DIRECTORIES  +22 names, including .ipynb_checkpoints
-> ingest            duplicate chunks dropped, NEWEST copy wins
-> rerank chain      + the SECOND Google account: 29,800 -> 59,600 calls a day
-> the LLM chain     A 500 IS NOW RETRIED - 3s, then 10s
+> POST /artifacts   file | .zip | git URL  ->  sources -> ingest -> embed -> pgvector
+> POST /compare     {a, b, question}       ->  ask()
+>
+> ask()   measure both sides          one round trip, no rows move
+>         fits PROMPT_BUDGET?  yes -> READ EVERYTHING BACK. no embed/search/rerank
+>                              no  -> embed the question with EACH side's OWN model
+>                                     search per side          SEARCH_LIMIT  50
+>                                     + BM25, fused            SCORE_ALPHA   0.85
+>                                     the skip gate            SKIP_MARGIN   None
+>                                     rerank per side, never merged
+>                                       the tier reads         RERANK_WINDOW 20
+>                                       and we keep            RERANK_TOP_N  10
+>                                       a tier declined ->     VECTOR_TOP_N  15
+>                                     select, equal share      SIDE_SHARE    0.5
+>                                     outline ladder           OUTLINE_BUDGET 4,000
+>                                     build_prompt             PROMPT_BUDGET 26,000
+>                                     generate                 REPORT_MAX_TOKENS 32,000
 > ```
+>
+> **23 generator tiers · 8 embedders in `MIGRATION` · 11 assembled rerank
+> tiers · exact search, no index.** `test_the_three_top_n_numbers_keep_their_order`
+> pins the one relationship that is arithmetic rather than a knob:
+> `RERANK_TOP_N <= RERANK_WINDOW <= SEARCH_LIMIT` and `RERANK_TOP_N <=
+> VECTOR_TOP_N <= SEARCH_LIMIT`.
+>
+> #### WHAT THE THREE RUNS MEASURED — the whole of slice 8 in one table
+>
+> | | v1, 3 corpora | v2, 13 corpora | **v3, 20 corpora / 423 queries** |
+> |---|---|---|---|
+> | **embedder** | codestral stays | confirmed | **confirmed — and NOT on recall.** No model wins everywhere, averages within 0.013. **Google counts one TEXT as one request**, so it embeds 1,000 chunks a day, not 96,000, and cannot ingest a repository at all |
+> | **fusion** | slice 5 OVERTURNED — every wRRF setting improved `r@50` on geo, best +0.067 | ON below `r@50` ~0.95 | **ALWAYS ON.** The v2 rule is not implementable — `r@50` needs ground truth and a user's repo has none, ever. Always-on `score a=0.85`: **gains ≥1 query on 5 corpora, loses ≥1 on NONE** |
+> | **reranking** | SHIPS, +75% of headroom on geo | 9 real gains, 1 real loss | **SHIPS.** `bge-reranker-base` DELETED — worse than not reranking on three corpora, two languages, three domains |
+> | **chain 3's order** | — | rests on ONE corpus | **Cohere ABOVE Voyage.** Cohere is the only reranker measured that has never hurt a corpus, and it rescues `gson` — flash-lite's worst case — by 5.8 queries |
+> | **the routing signal** | does not reproduce | **DEAD** — every question kind positive | stays dead |
+> | **the gate** | best tau never reranks | within noise | **`SKIP_MARGIN = None` confirmed, third corpus** |
+> | **the window** | — | — | **`SEARCH_LIMIT = 50`.** Turns over between 50 and 100: `r@1` 0.711 -> 0.511 while `r@10` 0.822 -> 0.911 |
+> | **`VECTOR_TOP_N`** | 25 | "should be 10" | **15** (and the 30 that shipped first was a UNIT ERROR) |
+> | **exact vs HNSW** | exact | exact | **exact, CLOSED.** 2.9 / 6.1 / 11.3 ms at 335 / 729 / 1,387 rows on the real instance, against a 350 ms round trip and a 52,700 ms report |
+>
+> #### THE END-TO-END CLOCK — measured at last, and it is the Step 2 problem
+>
+> ```
+> INGEST    ~26s per 100 chunks. The ESTIMATE was 1.4-2.4x optimistic and the
+>           page showed it; +0.030s per chunk of overhead lands it within +-14%
+>
+> ANSWER    STUFF  paper + model_architecture.py   27 chunks   119.0s
+>           STUFF  paper + 01-tokenizer.ipynb      29 chunks   401.5s
+>           SEARCH paper + B_train.py              20 chunks   496.7s
+>
+>           retrieval is 8.8s of that 496.7s.  GENERATION IS 98.2%
+> ```
+>
+> **Two findings that reframe the whole slice.** Retrieval is FREE, so every
+> knob above is a QUALITY decision and any argued on latency was argued on a
+> false premise. And **STUFF is not the cheap path** — it saves ~9 seconds of a
+> two-to-eight-minute answer, while two STUFF runs of the same model on the same
+> machine differ from each other by **282 seconds**. Generation time does not
+> follow the path and barely follows prompt size.
+>
+> #### FOUR DEFECTS FOUND BY MEASURING, none on anyone's list
+>
+> thinking burn scored as a result (`papers` "answered 0 of 20" was the model
+> running out of output tokens mid-sentence, and `ask()` discarded
+> `finish_reason`) · the rerank chain missing its second Google account ·
+> a 500 never retried · and `VECTOR_TOP_N` declared TWICE in one module, the
+> second shadowing the first.
 >
 > **THE FIVE-WAY RULE IS NOW SIX-WAY.** *"400 / 500 / empty / timeout → next
-> tier, retrying cannot change it"* is FALSE for Gemma and it is measured:
-> **gemma-4-31b answers 500 on two calls of three and 200 on the third.** That
-> rule was discarding the largest quota in the project over a fault that clears
-> in three seconds.
+> tier"* is FALSE for Gemma and it is measured: **gemma-4-31b answers 500 on two
+> calls of three and 200 on the third.** That rule was discarding the largest
+> quota in the project over a fault that clears in three seconds.
 >
-> **RETRIEVAL IS FREE, and it reframes the whole slice.** The first end-to-end
-> measurement: a searched answer is **50.5s**, of which embed + search + rerank
-> is **13.9s**. Every knob this run tuned lives inside those fourteen seconds.
-> They decide what the model SEES; they do not move the clock. So every decision
-> here is a QUALITY decision, and any argued on latency was argued on a false
-> premise. **`WARN_MINUTES = 2.0` is measured to be wrong in both directions and
-> is NOT yet fixed.**
+> #### WHAT IS DELIBERATELY LEFT OPEN
 >
-> **FOUR DEFECTS FOUND BY MEASURING, none on anyone's list:** thinking burn
-> scored as a result (`papers` "answered 0 of 20" was the model running out of
-> output tokens mid-sentence, and `ask()` discarded `finish_reason`); the rerank
-> chain missing its second Google account; a 500 never retried; and
-> `VECTOR_TOP_N` declared TWICE in one module, the second shadowing the first.
->
-> **STILL OPEN:** the reranker MODEL comparison (running), the STUFF path (never
-> exercised - the obvious fixture needs 28,246 tokens against a 26,000 budget),
-> `WARN_MINUTES`, and content-kind filtering (parked for a final pass).
->
-> **All v2 results are KEPT and stay valid for what they measured.**
+> | | why |
+> |---|---|
+> | **GENERATION TIME** | the whole clock, and unsolved. **Step 2 owns it** — see the Step 2 block above |
+> | content-kind filtering | parked for a final pass |
+> | merged vs per-side rerank | per-side ships on the structural-coverage argument, not on evidence |
+> | how many chunks to SEND | a GENERATION property; `recall@N` is monotone and cannot have an optimum |
+> | a fourth language | 20 corpora beats 13, and is still one zoo |
+> | `scripts/score_answers.py` retry loop | re-asks a spent quota five times; burned five hours on 2026-09-19 |
 
 > ### ⚠ SLICE 8 WAS RE-RUN TWICE. READ `docs/slice8v2/` BEFORE ANY NUMBER BELOW
 >
@@ -903,16 +954,34 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
 >
-> > ## ✅ SLICE 7 IS CLOSED — 2026-09-15. ONLY SLICE 8 REMAINS
+> > ## ✅ STEP 1 IS DONE — 2026-09-19. STEP 2, THE AGENT, IS NEXT
 > >
-> > **STATE, verified rather than remembered.** Branch **`feat/ask-path`**,
-> > clean, everything committed and PUSHED, well ahead of `main` - ask git for
-> > the count rather than trusting a number here, because it goes stale on the
-> > very next commit (`git rev-list --count main..feat/ask-path`). Suite
-> > **843 passed, 4 skipped, 0 xfailed** in ~150s, ruff clean both ways. **DO NOT COMMIT TO
+> > **STATE, verified rather than remembered.** Slice 8 v3 landed on `main`;
+> > the closing test pass is on **`feat/step1-closed`**. Suite
+> > **871 passed, 4 skipped, 0 xfailed**, ruff clean both ways. Ask git for any
+> > count rather than trusting a number here - it goes stale on the next commit
+> > (`git rev-list --count main..feat/step1-closed`). **DO NOT COMMIT TO
 > > `main`** - only the user does that, or when they say "merge and commit".
 > >
-> > **STEP 1 IS EFFECTIVELY DONE. Two things are left in the whole step:**
+> > **READ THE STEP 2 TIME BLOCK BEFORE DESIGNING A SINGLE NODE.** Generation
+> > is 98.2% of a 497-second answer and it is the blocking problem of the whole
+> > next step. Everything else below is history.
+> >
+> > **The four things the closing pass added, each mutation-verified:**
+> >
+> > ```
+> > smoke        the weekly run drove the pipeline slice 7 REPLACED. It now
+> >              drives ask() over a real corpus in Postgres, and the frozen
+> >              baseline was cut from 4 generation calls to 1
+> > unit         web/app.js reads fields off our replies and NOTHING checked
+> >              the names - the drift that broke the page for a week
+> > api          the skip gate was wired and nothing proved it, which is how
+> >              the rerank chain and fusion both went unwired before
+> > integration  fusion was proven in halves: bm25 on a real db, the wiring on
+> >              stubs, and never the seam between them
+> > ```
+> >
+> > **What the OLD block below describes is slice 7, kept for its reasoning.**
 > >
 > > ```
 > > SLICE 8   a MEASUREMENT, not a build   - nine numbers, listed below
@@ -9287,6 +9356,141 @@ routing already sends cheap tiers.
   the window regardless.
 - **Above 1,387 rows** in the index benchmark; 10,000 is an extrapolation.
 - **A fourth language.** Three corpora beats two and is still three.
+
+---
+
+## THE STEP 1 CLOSING PASS — 2026-09-19, and it asked one question
+
+*Run across the whole RAG system rather than across the newest code, asking
+only the standing question: **which real failure is still unprotected?** Four
+answers, each mutation-verified, and one of the four was DELETED for being a
+second copy of a guard that already existed.*
+**871 passed, 4 skipped, 0 xfailed, ruff clean.**
+
+### 1. THE WEEKLY RUN WAS WATCHING A BUILDING WE HAD MOVED OUT OF
+
+`tests/smoke/test_pipeline_answers.py` drove `chunk_file` -> `select` ->
+`build_prompt` -> `LLMClient`. **Slice 7 replaced that pipeline.** So the store,
+the ask ladder, the assembled rerank chain and both doors — four whole layers —
+had **no live coverage at all**, and telling us a free provider died in the
+night is the entire reason smoke exists.
+
+`tests/smoke/test_ask_answers.py` now drives `ingest_artifact` -> `ask()`
+against a real corpus in Postgres, on the SEARCH branch (the committed pair is
+28,246 tokens against a 26,000 budget, so it cannot stuff). It asserts which
+path ran rather than assuming it, and it resolves the model's own citations
+back to lines on disk.
+
+**And the baseline was cut from four generation calls to one.** FULL, CORE and
+CORE-stuffed are templates this file already calls *"frozen baselines we no
+longer use"*; at 119-497s per report that was ~20 minutes a week proving nothing
+about what ships. `REPORT` stuffed stays, because stuffing removes retrieval as
+a variable and keeps its score comparable with every saved baseline.
+
+### 2. NOTHING CHECKED THAT THE PAGE READS FIELDS WE SEND
+
+The one drift with **two** incidents behind it. Slice 7 changed `/compare` to
+take ids and `web/app.js` kept posting files — the page was broken for a week
+with a green suite. And `embedding_minutes` -> `ingest_minutes` touched
+contracts, schemas, the router and `app.js`; missing the last would have
+rendered `~undefined min to ingest` with no error anywhere.
+
+Neither is catchable at the API boundary: Pydantic renames happily, every
+`api/` test updates with it, and the only consumer that disagrees is written in
+another language and imported by nothing.
+`tests/unit/test_frontend_contract.py` reads `app.js` as text and checks the
+names against the models that produce them — the same move `test_packaging.py`
+makes for `requirements.txt`.
+
+> **Mutation: renaming `finish_reason` across `schemas.py` AND
+> `routers/compare.py` — a complete, correct server-side rename that misses
+> `app.js` — fires it ALONE out of 880 tests.**
+
+*A first draft reported `payload.error` as drift. That was the test being
+wrong: `app.js` parses the JSON once and branches on `response.ok`, so the same
+name holds either the success model or the error envelope.*
+
+### 3. THE SKIP GATE WAS WIRED AND NOTHING PROVED IT
+
+`SKIP_MARGIN` is `None`, so `should_rerank` always answers True and **deleting
+the call from `_best` changes no behaviour whatever**. That is precisely the
+condition under which a component quietly stops being connected, and this
+project has shipped that failure twice:
+
+```
+slice 6   the rerank chain BUILT AND NEVER BOUND - the ask path used only the
+          cross-encoders and never the four tiers that beat them
+slice 8   score fusion DECIDED AND NEVER APPLIED for three sessions, while
+          RESULTS.md claimed "it now has a caller"
+```
+
+Both were invisible because the unwired component still returned something
+plausible. A test now forces the gate to answer NO and asserts no tier is
+asked; deleting the call fires it alone.
+
+> **A component that is tested in isolation and never asserted to be CALLED is
+> the most repeated defect in this project.** Three now have a wiring test:
+> fusion, the rerank chain, and the gate.
+
+### 4. FUSION WAS PROVEN IN HALVES, NEVER AT THE SEAM
+
+`test_store_keyword.py` runs `bm25_search` against a real database.
+`test_fusion_is_on.py` runs the wiring with both channels stubbed. **Nothing
+ran the real query builder against really-ingested rows** — so a keyword
+channel returning nothing on real data would take `_fused`'s
+`if not sparse: return dense` branch, make every answer vector-alone, leave
+both files green, and quietly undo a decision measured over 20 corpora and 423
+queries.
+
+Not hypothetical: slice 5 probed this same builder and found **three** silent
+defects, two of which return zero rows rather than raising.
+
+> **Mutation: turning the OR back into an AND — the defect that scored 0 of 17
+> — fires the new test ALONE.**
+
+#### THE BOUND THIS TEST DISCOVERED, and it is new knowledge about what we ship
+
+The first fixture buried the answer at the **bottom** on cosine and the test
+failed. The keyword channel was healthy the whole time — BM25 returned exactly
+the planted chunk, score 6.39. **The fixture was impossible:**
+
+```
+min-max puts the worst dense hit at 0.0 and the best at 1.0
+alpha = 0.85 caps the keyword channel's whole contribution at 0.15
+```
+
+$$
+0.85 \times 0.0 + 0.15 \times 1.0 = 0.15
+\quad<\quad
+0.85 \times 1.0 + 0.15 \times 0.0 = 0.85
+$$
+
+> **A chunk ranked LAST by cosine can never be lifted past one ranked FIRST, at
+> ANY keyword score. Score fusion rescues the MIDDLE, never the floor.**
+
+And that matches the measurement it was built for: `D2` sits at place **46 of
+82** on codestral — mid-pack — not at place 82. Verified numerically: a graded
+21-chunk corpus with the answer at place 12 fuses to place **9**; the same
+answer at last place stays last.
+
+### THE FOURTH CANDIDATE WAS DELETED
+
+*"the fused window never exceeds `SEARCH_LIMIT`"* was written, and mutating the
+cut fired `test_the_fused_window_never_exceeds_what_search_returns` in `api/`
+and **not** the new one. **A new corpus is not a new invariant** — re-asserting
+a rule you already test, on different data, buys a number and no protection.
+
+### One refactor this needed
+
+`tests/integration/conftest.py` moved **whole and unchanged** to
+`tests/conftest.py`. The database fixtures sat in `integration/` while only that
+folder needed a live Postgres; `smoke/` needs one now, because the shipped ask
+path reads its corpus from the database and a smoke test that cannot store an
+artifact cannot exercise what we ship. pytest resolves fixtures upward, so
+integration kept working by inheritance — verified, 94 tests, before anything
+else was written. `load_dotenv` stays **inside** the fixture, because five
+`tests/unit/embed/` files manipulate env vars and a module-level load would
+change what they see.
 
 ---
 
