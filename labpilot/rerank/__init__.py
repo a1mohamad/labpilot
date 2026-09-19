@@ -10,10 +10,12 @@ from labpilot.rerank.defaults import (
     RERANK_TOP_N,
 )
 from labpilot.rerank.errors import RerankError
+from labpilot.rerank.jev import JevReranker
 from labpilot.rerank.llm import LLMReranker
 from labpilot.rerank.registry import (
     CLOUDFLARE_RERANK,
     COHERE_RERANK,
+    JEV_RERANK,
     LLM_RERANK_ORDER,
     RERANK_CHAIN,
     VOYAGE_RERANK_3,
@@ -27,6 +29,8 @@ __all__ = [
     "CloudflareReranker",
     "CohereReranker",
     "HTTPReranker",
+    "JEV_RERANK",
+    "JevReranker",
     "LLMReranker",
     "MAX_DOCUMENTS",
     "MAX_DOCUMENT_TOKENS",
