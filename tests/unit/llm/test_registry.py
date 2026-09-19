@@ -316,6 +316,62 @@ def test_a_tier_that_rejects_thinking_does_not_ask_for_it():
     )
 
 
+def test_a_gateway_route_comes_before_its_openrouter_twin():
+    """SAME MODEL -> the bigger free allowance goes first. That is the rule.
+
+        OpenRouter   50 requests per DAY   (our account)
+        Kilo        200 requests per HOUR  (per IP)
+
+    One hour of Kilo is four times our whole OpenRouter day, and the two are
+    separate accounts - measured, three Kilo calls left our OpenRouter
+    counter at 17 of 50. So spending OpenRouter first throws away the scarcer
+    pool for nothing.
+
+    Nothing else catches a reordering. Both routes answer, the report still
+    comes out, and the only symptom is running out of OpenRouter days earlier
+    than necessary - which is invisible until it happens.
+    """
+    positions = {(p.model, p.api_key_env): p.tier for p in CHAIN}
+    twins = [
+        (model, key)
+        for (model, key) in positions
+        if key == "OPENROUTER_API_KEY" and (model, "KILO_API_KEY") in positions
+    ]
+    assert twins, "no Kilo/OpenRouter twin left - delete this test or the tiers"
+
+    for model, key in twins:
+        kilo = positions[(model, "KILO_API_KEY")]
+        openrouter = positions[(model, key)]
+        assert kilo < openrouter, (
+            f"{model}: Kilo is tier {kilo} and OpenRouter is tier "
+            f"{openrouter}. The larger free allowance must come first - "
+            f"200/hour against 50/day."
+        )
+
+
+def test_each_gateway_shares_one_quota_pool():
+    """Kilo's 200/hour is per IP and Requesty's 200/day is per account.
+
+    Neither is per model, so every tier on one gateway must share ONE pool.
+    Split them and a single 429 stops skipping its siblings: the chain would
+    retry the same exhausted allowance nine times over, spending nine
+    requests to learn one fact.
+
+    This is the mirror of test_every_google_tier_owns_a_pool_of_its_own -
+    Google bills per model, so there the pools must DIFFER. Same question,
+    opposite answer, and getting it backwards is silent either way.
+    """
+    for env_var in ("KILO_API_KEY", "REQUESTY_API_KEY"):
+        pools = {p.quota_pool for p in CHAIN if p.api_key_env == env_var}
+        tiers = [p.name for p in CHAIN if p.api_key_env == env_var]
+        assert len(tiers) > 1, f"{env_var} has too few tiers to test"
+        assert pools == {env_var}, (
+            f"{env_var} has {len(tiers)} tiers across pools {sorted(pools)}. "
+            f"Its limit is not per model, so one spent pool must retire them "
+            f"all at once."
+        )
+
+
 def test_every_cline_tier_is_a_model_the_api_actually_serves():
     """Four of Cline's six free models are API-blocked, and blocked SILENTLY.
 
