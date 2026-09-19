@@ -97,8 +97,8 @@ def ingest(
         side=result.artifact.side,
         chunks=result.chunks,
         embedding_model=result.artifact.embedding_model,
-        embedding_minutes=result.embedding_minutes,
-        slow=result.embedding_minutes > services.WARN_MINUTES,
+        ingest_minutes=result.ingest_minutes,
+        slow=result.ingest_minutes > services.WARN_MINUTES,
     )
 
 

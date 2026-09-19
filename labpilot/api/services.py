@@ -76,11 +76,56 @@ logger = logging.getLogger(__name__)
 # one is spent - the user is shown the estimate and asked first.
 EMBEDDING_MINUTES_BUDGET = 6.0
 
-# When to STOP and ask the user. Deliberately far lower, because embedding is
-# one stage of several: measured, a full report is another ~52s today and
-# roughly ten LLM calls once the agent exists. A 2-minute embed is already a
-# 3-4 minute answer. THIS NUMBER IS A GUESS - slice 8 owes an end-to-end
-# measurement, and only that can set it honestly.
+# WHAT THE INGEST ESTIMATE WAS MISSING, measured 2026-09-19 by
+# scripts/bench_ingest.py over five real corpora, 213 to 1,506 chunks:
+#
+#   corpus      chunks   MEASURED  PREDICTED  ratio   gap per chunk
+#   websocket      213     18.3s      10.2s   1.8x        0.038s
+#   log            308     21.4s      12.3s   1.7x        0.030s
+#   cobra          598     42.2s      27.2s   1.6x        0.025s
+#   requests       334     21.4s       8.9s   2.4x        0.037s
+#   geo           1506    105.7s      77.3s   1.4x        0.019s
+#
+# `embedding_minutes()` models EMBEDDING THROUGHPUT and nothing else, so it was
+# optimistic by 1.4-2.4x on every corpus - and it is the number the page
+# renders. We were telling a user "~6 min" for an 11-minute wait.
+#
+# The gap is ~0.030s per chunk and it is OUR work, not the provider's:
+# chunking, and the write transaction. That is why it is added here rather than
+# inside embed/ - it is the same for every embedder, so adding it there would
+# have blurred the one thing that estimate exists to compare.
+INGEST_OVERHEAD_SECONDS = 0.030
+
+# When to STOP and ask the user, against the CORRECTED estimate above.
+#
+# 2.0 STAYS, and the threshold was never the defect - the number it was
+# compared against was. Re-checked on the same five corpora, the correction
+# lands the estimate within +-14% instead of 40-60% short:
+#
+#   corpus      chunks  measured     was          NOW
+#   websocket      213     18.3s   10.2s 1.8x   16.6s 1.1x
+#   log            308     21.4s   12.3s 1.7x   21.5s 1.0x
+#   cobra          598     42.2s   27.2s 1.6x   45.1s 0.9x
+#   requests       334     21.4s    8.9s 2.4x   18.9s 1.1x
+#   geo           1506    105.7s   77.3s 1.4x  122.5s 0.9x
+#
+# At the project's own 236 tokens/chunk the warning now fires above ~2,150
+# chunks: quiet for a notebook, loud for a repository, which is the behaviour a
+# warning needs to be worth reading.
+#
+#   1,000 chunks   0.9 min   quiet
+#   2,200 chunks   2.0 min   WARNED
+#  10,000 chunks   9.3 min   WARNED
+#
+# Note it still reads slightly LOW at the largest size measured (0.9x on geo),
+# so 10,000 chunks is likely nearer 11 minutes than 9. Recorded rather than
+# padded: a fudge factor on top of a measured one would make the next person
+# unable to tell which part was measured.
+#
+# STILL NOT A TOTAL, and the label must keep saying so: a report is another
+# 2-8 minutes on top, measured 2026-09-19 at 119s, 401s and 488s on three runs
+# of the SAME model and machine. Warning on a true end-to-end total needs a
+# stable generation time, and three samples spanning 4x is not one.
 WARN_MINUTES = 2.0
 
 # SMALL_CORPUS_CHUNKS WAS HERE AND IS DELETED - 2026-09-18.
@@ -183,7 +228,7 @@ def _store(
     except EmbeddingError as exc:
         raise EmbeddingUnavailable(f"{embedder.name}: {exc}") from exc
 
-    return Ingested(artifact=artifact, chunks=written, embedding_minutes=minutes)
+    return Ingested(artifact=artifact, chunks=written, ingest_minutes=minutes)
 
 
 def _source_id(chunks: Sequence[Chunk], side: Side) -> str:
@@ -242,7 +287,11 @@ def _pick_embedder(
     for embedder in order:
         minutes = embedder.embedding_minutes(tokens=tokens, chunks=chunks)
         if minutes != math.inf:
-            return embedder, minutes
+            # The ORDERING above uses the embedding estimate, because that is
+            # the part that differs between models. What we RETURN is the whole
+            # ingest, because that is what the caller waits through and what
+            # the page renders.
+            return embedder, minutes + chunks * INGEST_OVERHEAD_SECONDS / 60
 
     raise EmbeddingUnavailable(
         f"no embedder can ingest {chunks} chunks ({tokens} tokens) today"

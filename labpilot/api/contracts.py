@@ -33,4 +33,4 @@ class Comparison:
 class Ingested:
     artifact: ArtifactRecord
     chunks: int
-    embedding_minutes: float
+    ingest_minutes: float
