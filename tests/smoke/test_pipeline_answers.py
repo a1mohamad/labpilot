@@ -7,8 +7,6 @@ from dotenv import load_dotenv
 from labpilot.ingest import chunk_file
 from labpilot.llm import LLMClient
 from labpilot.prompts import (
-    CORE,
-    FULL,
     PROMPT_BUDGET,
     REPORT,
     REPORT_MAX_TOKENS,
@@ -53,11 +51,23 @@ def comparison():
     print(f"\nsaved -> {path}")
 
 
-# REPORT stuffed is the one that matters: it is the template the API ships, and
-# stuffing removes retrieval as a variable so the score can be compared with the
-# saved baselines. FULL and CORE are frozen baselines kept for comparison only.
-RUNS = ((FULL, False), (CORE, False), (CORE, True), (REPORT, True))
-IDS = ("full", "core", "core-stuffed", "report-stuffed")
+# CUT FROM FOUR RUNS TO ONE - 2026-09-19.
+#
+# This ran FULL, CORE, CORE-stuffed and REPORT-stuffed every week: four
+# generation calls, three of them on templates CLAUDE.md itself calls "frozen
+# baselines we no longer use", driving a pipeline slice 7 replaced. At the
+# 119-497s per report measured on 2026-09-19 that is ~20 minutes of a weekly
+# run spent proving nothing about what we ship.
+#
+# REPORT stuffed is the one that earns its request. It is the template the API
+# ships, and STUFFING removes retrieval as a variable, so its score stays
+# comparable with every saved baseline in artifacts/ - which is the only reason
+# re-running a frozen prompt is worth anything.
+#
+# The SHIPPED path is covered by test_ask_answers.py, which drives ask() over a
+# real corpus in Postgres. This file is a MEASUREMENT now, not a liveness check.
+RUNS = ((REPORT, True),)
+IDS = ("report-stuffed",)
 
 
 @pytest.mark.smoke
