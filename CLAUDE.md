@@ -15163,6 +15163,39 @@ deliberately crude: one prompt, all sections, no branching.*
 >    cap never makes a call faster, it only fails it - and you have still paid
 >    the wall clock before it fails.
 >
+> #### AN OPTION, NOT A RULE: asking for LENGTH in the instructions
+>
+> *Raised by the user 2026-09-19. Recorded as something Step 2 may try, not as
+> a decision - nothing here has been measured on our own prompts yet.*
+>
+> **A model has no clock.** It cannot feel seconds passing, so *"answer in
+> under 60 seconds"* is not an instruction it can obey - it will agree and then
+> write whatever it was going to write. Time cannot be asked for directly.
+>
+> **But time comes from how much it writes, and length it CAN obey:**
+>
+> ```
+> "answer in under 60 seconds"     no effect - it cannot measure time
+> "at most 300 words per section"  works, and the time follows
+> "at most 10 rows in the table"   works
+> ```
+>
+> So the prompt is an INDIRECT lever on time, through length. Two limits keep
+> it an option rather than a solution:
+>
+> - **Instructions are soft.** IFScale, already cited above: ~90% adherence at
+>   10 instructions, ~70% at 50, and models drop whole instructions rather than
+>   degrade evenly. A length it sometimes ignores is not a budget.
+> - **`max_tokens` is the only hard stop**, and it does not make the model
+>   write shorter - it CUTS mid-sentence, which is why `MAX_TOKENS` renders as
+>   a warning.
+>
+> So the honest pairing, if this is tried: **ask for a length in the prompt,
+> and keep `max_tokens` as the backstop.** And weigh it against what slice 4
+> measured going the other way - `CORE` cut sections and lost the home of five
+> of the seven misses. **Length bought back from the prompt may be coverage
+> spent**, the same trade as choosing a faster tier.
+>
 > #### What Step 2 owes, and it is not optional
 >
 > - **RANK THE WHOLE CHAIN BY LATENCY.** We have ordered 23 tiers by quality
