@@ -102,7 +102,7 @@ function describe(payload) {
     tag(`${payload.chunks} chunks`),
     tag(payload.embedding_model),
     // `slow` is the EMBEDDING estimate only, never the whole answer.
-    tag(`~${payload.embedding_minutes.toFixed(1)} min to embed`, payload.slow),
+    tag(`~${payload.ingest_minutes.toFixed(1)} min to ingest`, payload.slow),
     tag(payload.name),
   ];
 
