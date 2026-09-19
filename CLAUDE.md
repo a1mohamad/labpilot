@@ -67,6 +67,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) ·
 [**Prompt design rules**](#prompt-design-rules-earned-2026-08-17) ·
 [**Cline — tier 1, free, zero credits**](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13) ·
+[**The gateway sweep — Zen, Kilo, Requesty**](#the-gateway-sweep--zen-kilo-requesty-2026-09-19) ·
 [**Qwen3.8-27B + DeepSeek V4 Flash**](#qwen38-27b-and-deepseek-v4-flash--added-to-the-chain-2026-09-19) ·
 [**Reviving dead tiers — GLM-5.2, Cline**](#reviving-the-dead-tiers--investigated-2026-09-19) ·
 [**Jev — a decision model, chain 3 tier 2**](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19) ·
@@ -11958,34 +11959,48 @@ added.*
 **The numbers are POSITIONS, derived by `_ordered()`, never typed.** Read this
 table by model name; a tier index in this file has gone stale three times now.
 
-| # | Model | Provider | AA | LMArena | Note |
+| # | Model | Provider | AA v4.3 | Code Arena | Note |
 |---|---|---|---|---|---|
-| 1 | **GLM-5.3 Flash (Cline)** | **Cline** | **42** † | **1607 code (#17)** | **FREE, 0 credits** · Toolathlon **#1 of 42** |
-| 2 | **Gemini 3.7 Flash** | Google | **39** † | — | 20/day |
-| 3 | **Gemini 3.7 Flash (key 2)** | Google (key 2) | **39** † | — | a separate daily allowance |
-| **4** | **DeepSeek V4 Flash** | **OpenRouter** | **35** † | **1580 code (#22)** | **FREE** · **1.05M ctx** · **211.9 tok/s** · added 2026-09-19 |
-| **5** | **Qwen3.8 27B** | **Cloudflare** | **34** † | **1593 code (#18)** | **FREE**, 10,000 neurons/day · **the coding specialist** · 43.1 tok/s |
-| **6** | **Qwen3.8 27B (Groq)** | **Groq** | **34** † | **1593 code (#18)** | **FREE**, 1,000/day · ⏸ **8,000 tok/min** · small jobs only |
-| 7 | **Gemini 3.6 Flash** | Google | 34 † | 1537 code (#32) | the most-proven model here |
-| 8 | **Gemini 3.6 Flash (key 2)** | Google (key 2) | 34 † | 1537 code (#32) | a separate daily allowance |
-| 9 | **Gemini 3.5 Flash** | Google | 33 † | 1500 code (#44) | |
-| 10 | **Gemini 3.5 Flash (key 2)** | Google (key 2) | 33 † | 1500 code (#44) | a separate daily allowance |
-| 11 | **GLM-5.2** | **OpenRouter** | 34 † | **1592 code (#19)** | **MOVED off Mistral 2026-09-19** — it is behind a paid tier there now. Free here, ~1 call in 4 (`upstream_provider_shared_pool`) · ⏸ **32,768 ctx**, so no reports |
-| 12 | **Laguna S 2.1 (Cline)** | **Cline** | — | — | **FREE, 0 credits** · coding specialist |
-| 13 | **Nemotron 3 Ultra** | OpenRouter | — | — | 550B MoE, 1M context |
-| 14 | **Gemini 3.5 Flash-Lite** | Google | **23** † | — | **500/day · 358.4 tok/s** — the workhorse |
-| 15 | **Gemini 3.5 Flash-Lite (key 2)** | Google (key 2) | **23** † | — | a separate daily allowance |
-| 16 | **Mistral Medium** | Mistral | — | — | reasoning model |
-| 17 | **Gemma 4 31B** | Google | **15** † | — | ⏸ 16K input · rejects `thinking` |
-| 18 | **Gemma 4 31B (key 2)** | Google (key 2) | **15** † | — | a separate daily allowance |
-| 19 | **North Mini Code** | OpenRouter | — | — | Coding Index 33.4 |
-| 20 | **Nemotron 3 Super** | OpenRouter | — | — | |
-| 21 | **GPT-OSS 120B** | Cloudflare | — | — | ~11 reports/day |
-| 22 | **GPT-OSS 120B (Groq)** | Groq | — | — | ⏸ 8K total budget |
-| 23 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
-| 24 | **Devstral 2** | Mistral | — | — | SWE-bench 72.2 · ⏸ 16K output |
-| 25 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
-| 26 | **Gemini 3.1 Flash-Lite (key 2)** | Google (key 2) | — | — | a separate daily allowance |
+| 1 | GLM-5.3 Flash (Cline) | Cline | 42 | 1607 (#17) | 1,310,720 ctx / 131,072 out |
+| 2 | Gemini 3.8 Flash | Google | 41 | 1568 (#23) | 1,048,576 ctx / 65,536 out |
+| 3 | Gemini 3.8 Flash (key 2) | Google (Key 2) | 41 | 1568 (#23) | 1,048,576 ctx / 65,536 out |
+| 4 | Gemini 3.7 Flash | Google | 39 | — | 1,048,576 ctx / 65,536 out |
+| 5 | Gemini 3.7 Flash (key 2) | Google (Key 2) | 39 | — | 1,048,576 ctx / 65,536 out |
+| 6 | DeepSeek V4 Flash (Kilo) | Kilo | 35 | 1580 (#22) | 1,048,576 ctx / 393,216 out |
+| 7 | DeepSeek V4 Flash | Openrouter | 35 | 1580 (#22) | 1,048,576 ctx / 393,216 out |
+| 8 | Qwen3.8 27B (Kilo) | Kilo | 34 | 1593 (#18) | 262,144 ctx / 235,929 out |
+| 9 | Qwen3.8 27B | Cloudflare | 34 | 1593 (#18) | 262,144 ctx / 262,144 out |
+| 10 | Qwen3.8 27B (Groq) | Groq | 34 | 1593 (#18) | 8,000 ctx / 8,000 out |
+| 11 | Gemini 3.6 Flash | Google | 34 | 1537 (#32) | 1,048,576 ctx / 65,536 out |
+| 12 | Gemini 3.6 Flash (key 2) | Google (Key 2) | 34 | 1537 (#32) | 1,048,576 ctx / 65,536 out |
+| 13 | Gemini 3.5 Flash | Google | 33 | 1500 (#44) | 1,048,576 ctx / 65,536 out |
+| 14 | Gemini 3.5 Flash (key 2) | Google (Key 2) | 33 | 1500 (#44) | 1,048,576 ctx / 65,536 out |
+| 15 | GLM-5.2 (Kilo) | Kilo | 34 | 1592 (#19) | 32,768 ctx / 29,491 out |
+| 16 | GLM-5.2 | Openrouter | 34 | 1592 (#19) | 32,768 ctx / 29,491 out |
+| 17 | Laguna S 2.1 (Cline) | Cline | — | — | 262,144 ctx / 32,768 out |
+| 18 | Laguna S 2.1 (Kilo) | Kilo | — | — | 262,144 ctx / 32,768 out |
+| 19 | Nemotron 3 Ultra (Kilo) | Kilo | — | — | 1,000,000 ctx / 65,536 out |
+| 20 | Nemotron 3 Ultra | Openrouter | — | — | 1,000,000 ctx / 65,536 out |
+| 21 | Nemotron 3 Ultra (Requesty) | Requesty | — | — | 1,000,000 ctx / 65,536 out |
+| 22 | Inkling Small (Kilo) | Kilo | 26 | 1407 (#73) | 1,048,576 ctx / 131,072 out |
+| 23 | Gemini 3.5 Flash-Lite | Google | 23 | — | 1,048,576 ctx / 65,536 out |
+| 24 | Gemini 3.5 Flash-Lite (key 2) | Google (Key 2) | 23 | — | 1,048,576 ctx / 65,536 out |
+| 25 | Mistral Medium | Mistral | — | — | 262,144 ctx / 262,144 out |
+| 26 | Step 3.7 Flash (Kilo) | Kilo | 19 | — | 262,144 ctx / 65,536 out |
+| 27 | Muse Glimmer 30B (Requesty) | Requesty | 18 | — | 262,144 ctx / 32,768 out |
+| 28 | Gemma 4 31B | Google | 15 | — | 262,144 ctx / 32,768 out |
+| 29 | Gemma 4 31B (key 2) | Google (Key 2) | 15 | — | 262,144 ctx / 32,768 out |
+| 30 | Gemma 4 31B (Requesty) | Requesty | 15 | — | 262,144 ctx / 32,768 out |
+| 31 | North Mini Code (Kilo) | Kilo | — | — | 256,000 ctx / 64,000 out |
+| 32 | North Mini Code | Openrouter | — | — | 256,000 ctx / 64,000 out |
+| 33 | Nemotron 3 Super (Kilo) | Kilo | — | — | 262,144 ctx / 235,929 out |
+| 34 | Nemotron 3 Super | Openrouter | — | — | 262,144 ctx / 262,144 out |
+| 35 | GPT-OSS 120B | Cloudflare | — | — | 128,000 ctx / 128,000 out |
+| 36 | GPT-OSS 120B (Groq) | Groq | — | — | 8,000 ctx / 8,000 out |
+| 37 | Magistral Small | Mistral | — | — | 262,144 ctx / 262,144 out |
+| 38 | Devstral 2 | Mistral | — | — | 262,144 ctx / 16,384 out |
+| 39 | Gemini 3.1 Flash-Lite | Google | — | — | 1,048,576 ctx / 65,536 out |
+| 40 | Gemini 3.1 Flash-Lite (key 2) | Google (Key 2) | — | — | 1,048,576 ctx / 65,536 out |
 
 † **AA INDEX v4.3, RE-READ 2026-09-19, AND IT IS NOT THE OLD COLUMN.** Every
 number marked † comes from Artificial Analysis's own v4.3 evaluations, read
@@ -12393,6 +12408,178 @@ pins what we use; the roster itself is worth re-reading before assuming a
 ```
 https://api.cline.bot/api/v1/ai/cline/recommended-models     public, no key
 ```
+
+### The gateway sweep — Zen, Kilo, Requesty, 2026-09-19
+
+*Three platforms investigated from a proposal file, every claim tested live.
+The chain went 26 -> 40 tiers. One platform is unusable, and the biggest win
+turned out to be on a key we already held.*
+
+#### ZEN IS UNUSABLE, and it says so in a typed error
+
+Every one of its 8 free models, on the endpoints its own docs specify (Muse
+via `/v1/responses`, MiMo via `/v1/chat/completions`):
+
+```
+error type:  "FreeTierError"
+message:     "OpenCode's free tier can only be used from within OpenCode"
+```
+
+Identical with `Bearer`, with `x-api-key`, and **with no key at all** - so it
+is not auth, not the endpoint and not the model id. The paid models answer
+`401 "No payment method"`. It is the same client gate as Cline's
+`cline-free/*`, and getting past it would mean presenting our code as the
+OpenCode CLI. **We do not do that.** `ZEN_API_KEY` is not needed.
+
+That cost the two biggest prizes in the proposal: **`jev-1.13-free`** (which
+would have removed the only paid tier in the project) and **Muse Spark 1.3
+Contributor** (AA 52, free nowhere else).
+
+#### KILO RESELLS OPENROUTER — ON ITS OWN ACCOUNT, WHICH IS THE POINT
+
+The error body settles what the catalogue could not:
+
+```
+Kilo        "user_id": "org_2uwFc1szZKyZweUX7p…"    Kilo's OpenRouter ORG
+OpenRouter  "user_id": "user_3HREb0z4hSrOSnqLt…"    ours
+```
+
+Byte-identical otherwise. **An initial reading of "Kilo shares our quota" was
+WRONG**, and the measurement that corrects it is the useful part:
+
+```
+our OpenRouter free-requests BEFORE:  17
+3 successful Kilo calls
+our OpenRouter free-requests AFTER :  17     delta 0
+```
+
+**Kilo spends Kilo's allowance.** So it is a genuine second pool:
+
+```
+OpenRouter    50 requests per DAY     our account
+Kilo         200 requests per HOUR    per IP, their docs
+```
+
+One hour of Kilo is four times our whole OpenRouter day, **which is why a
+Kilo route now goes BEFORE its OpenRouter twin** - the project's standing
+rule that within one model the bigger free allowance wins.
+
+**TWO CEILINGS, NEITHER OF THEM OURS.** The 200/hour is **per IP**, and we
+work from a shared VPN exit, so it is split with everyone else on that
+address - the thing that made OVH's anonymous tier unusable. And underneath
+sits a per-model daily cap on OpenRouter's shared capacity: `inkling-small`
+refused with `limit_source: openrouter_shared_capacity`,
+`X-RateLimit-Limit 5000`, `Remaining 0`, resetting at midnight UTC, and
+*"Credits don't affect this cap"*.
+
+**Its key is OPTIONAL** - Kilo's docs say anonymous and authenticated free
+requests are rate-limited identically, by IP. It sends **no rate-limit
+headers** on a success and has no usage endpoint, so the remaining allowance
+cannot be read. Blind, like Cline.
+
+> **A gateway can be an independent business and still be a reseller.** What
+> matters is not who owns it but WHOSE ACCOUNT the request is billed to - and
+> the only way to find out was to read the `user_id` in an error body.
+
+#### WHAT CONGESTION IS, AND WHY NO ACCOUNT FIXES IT
+
+Back-to-back, same model, same minute:
+
+```
+qwen3.8-27b    OpenRouter 429 | Kilo(auth) 429 | Kilo(anon) 429    x2
+glm-5.2        OpenRouter 429 | Kilo(auth) 429 | Kilo(anon) 429    x2
+```
+
+`limit_source: upstream_provider_shared_pool` - the **GPU host** (`Decart`,
+`ModelRun`), one level below OpenRouter. Every account fails together.
+
+> **Separate the ACCOUNT layer from the UPSTREAM layer.** A second account
+> buys more requests; it buys nothing when the host behind it is full.
+
+A 429 there is cheap - 0.7-1.2s, not retryable, straight to the next tier -
+while a spent OpenRouter day lasts until tomorrow. That asymmetry is what
+makes "try the congested-but-larger pool first" safe.
+
+#### REQUESTY — a third route, independent of Google AND OpenRouter
+
+200/day, no card, no trial expiry. **7 of 12 free models answered.** Its
+value is independence rather than capability: a refused Google exit has
+already cost this project every Google tier for a week, and Requesty serves
+Gemma and Nemotron without touching Google or OpenRouter.
+
+Dead, recorded so nobody re-adds them: `ling-3.0-tiny` 404, `laguna-m.1`
+404, `laguna-xs.2` 404, `nemotron-3-nano-30b-a3b` **410 Gone**. No usage or
+credits endpoint (both 404).
+
+#### WHAT WAS ADDED, ALL SCORED ON AA v4.3
+
+| tier | AA v4.3 | why |
+|---|---|---|
+| **Gemini 3.8 Flash ×2 keys** | **41** | position 2. **Free on a key we already had** - the biggest win of the sweep, and it needed no signup |
+| Inkling Small (Kilo) | 26 | above Flash-Lite's 23. ⚠ Code Arena **#73** - weak coder |
+| Step 3.7 Flash (Kilo) | 19 | between Flash-Lite and Gemma. Kilo's only exclusive free model |
+| Muse Glimmer 30B (Requesty) | 18 | same band |
+| 8 Kilo + 2 Requesty backup routes | — | second and third routes to models already in the chain |
+
+**REJECTED, with the reason:** `ling-3.0-flash-fin` (AA 23, but **finance**-
+specialised and our domain is code - the proposal file's own warning);
+`nemotron-3-nano-omni` (AA 10, below Gemma); and `dots-3-note`, `nex-n2.5`
+×2, `lfm-2.5-2.6b`, `leanstral-1-5`, which **have no AA or Arena page at
+all** and therefore cannot be ranked. Unrankable is not unworthy - it is
+unplaceable, and this project does not invent an order.
+
+#### THE LIVE SWEEP — 29 of 40, and every failure had a sibling
+
+```
+503 overloaded   Gemini 3.8 (key 1), 3.7 x2       -> key 2 answered
+500 server       Gemma 4 31B (key 1)              -> key 2 and Requesty answered
+429 upstream     Qwen (Kilo), GLM-5.2 both routes -> Qwen: Cloudflare + Groq answered
+429 daily cap    Inkling Small, Mistral x3
+```
+
+**Only GLM-5.2 lost every route**, and Mistral's three are one spent account.
+The redundancy added today is what turned three of those into non-events.
+
+#### A REAL DEFECT, AND A TRAP I WALKED INTO WITH MY EYES OPEN
+
+**The defect.** `z-ai/glm-5.3-flash` was added as a Kilo tier by matching
+Cline's tier-1 **model id** against Kilo's **catalogue**. Wrong list - the
+catalogue is what a gateway SERVES, the free list is what it serves for
+NOTHING. Kilo charges $0.150/$0.500 per M, so it answered *"Paid Model -
+Credits Required"* on every call: a dead tier burning a request per report,
+invisible because the chain swallows it.
+
+`tests/smoke/test_gateway_tiers_are_free.py` closes it, and is a SMOKE test
+deliberately - the lasting risk is not that mistake but **a gateway quietly
+moving a model from free to paid**, and Cline's roster changed twice in six
+days. A committed snapshot would be stale before it mattered.
+
+**The trap.** After mutation-testing that guard I ran
+`git checkout -- labpilot/llm/registry.py` to undo the deliberate break. HEAD
+was an older commit, so the checkout **also reverted two uncommitted changes
+in the same file** - the Requesty tiers and the paid-tier removal. The suite
+stayed green, and a commit went out claiming work it did not contain. It was
+caught only by a live sweep showing 36 tiers with the paid model at
+position 2.
+
+> This file already says: **"Never restore a mutation with git. Copy the file
+> aside and restore from the copy."** Knowing the rule did not stop me
+> breaking it - the same way the self-fulfilling-test rule was written down
+> and violated within hours on 2026-08-17. **Take the copy; do not rely on
+> remembering why.**
+
+#### Three invariants this earned, all mutation-verified alone
+
+```
+a gateway route comes BEFORE its OpenRouter twin   200/hour beats 50/day
+each gateway shares ONE quota pool                 their limits are not per model
+every gateway tier is still FREE on its gateway    smoke, live catalogue
+```
+
+The second is the exact mirror of `test_every_google_tier_owns_a_pool_of_its_own`:
+Google bills **per model** so those pools must differ, Kilo and Requesty bill
+per account so theirs must not. **Same question, opposite answer, and getting
+it backwards is silent in both directions.**
 
 ### Qwen3.8-27B and DeepSeek V4 Flash — added to the chain 2026-09-19
 
