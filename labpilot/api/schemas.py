@@ -108,8 +108,12 @@ class IngestResponse(BaseModel):
     embedding_model: str = Field(
         description="Every later query MUST be embedded with this same model."
     )
-    embedding_minutes: float = Field(
-        description="Estimate for EMBEDDING ONLY - not the time to get an answer."
+    ingest_minutes: float = Field(
+        description=(
+            "Estimate for the whole INGEST - chunk, embed and write - which is "
+            "what the caller waits through. NOT the time to get an answer: a "
+            "report is another 2-8 minutes on top, measured."
+        )
     )
     slow: bool = Field(
         description="True when the caller should have warned the user first."
