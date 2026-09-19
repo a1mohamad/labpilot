@@ -30,20 +30,25 @@ import statistics
 import sys
 import time
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
 from dotenv import load_dotenv
 
 from labpilot.embed import (
+    BGE_BASE,
     CODESTRAL_EMBED,
+    COHERE_EMBED,
     GEMINI_EMBED_001,
     GEMINI_EMBED_2,
+    MISTRAL_EMBED,
+    EmbeddingError,
     embed_batches,
 )
 from labpilot.ingest import chunk_file
 from labpilot.tokens import estimate_tokens
+from scripts import corpora
+from scripts.corpora import Query
 
 SAMPLES = Path("data/samples")
 CACHE = Path(".cache/hybrid")
@@ -53,16 +58,34 @@ CACHE = Path(".cache/hybrid")
 # The two spaces are incompatible, so they are separate entries by necessity.
 EMBEDDERS = {
     "codestral": CODESTRAL_EMBED,
+    # ADDED 2026-09-18. BGE sits SECOND in MIGRATION and had never been scored
+    # on any corpus, in v2 or v3 - and this dict is why: the instrument could
+    # not reach it. Same class of defect as tier_reach's hardcoded corpus list.
+    # Its daily neuron budget caps it near 2,900 chunks, so it can only be
+    # measured on the small and mid corpora.
+    "bge": BGE_BASE,
     "google": GEMINI_EMBED_001,
     "google2": GEMINI_EMBED_2,
+    "mistral": MISTRAL_EMBED,
+    "cohere": COHERE_EMBED,
 }
 
-# Each provider publishes a per-minute token budget, and the embedder raises on
-# a 429 rather than retrying, so pacing is the caller's job.
+# What the provider will ACTUALLY take, not what it publishes. The embedder
+# raises on a 429 rather than retrying, so pacing is the caller's job - but
+# pacing to a published number that is not enforced costs wall clock and buys
+# nothing. Mistral publishes 50,000 tokens/minute for codestral and was
+# measured on 2026-09-14 sustaining 554,000 over 37 requests with zero
+# refusals; 300,000 keeps most of that speed with room for a bad minute.
+#
+# Google's 30,000 IS enforced exactly, and Cohere's 100,000 was found by
+# hitting it, so those two stay at their published values.
 TOKENS_PER_MINUTE = {
-    "codestral-embed": 50_000,
+    "codestral-embed": 300_000,
+    "mistral-embed": 300_000,
     "gemini-embedding-001": 30_000,
     "gemini-embedding-2": 30_000,
+    "embed-v4.0": 100_000,  # MEASURED 2026-09-16 by hitting the trial 429
+    "@cf/baai/bge-base-en-v1.5": 500_000,
 }
 
 # BM25's two knobs. These are the TEXTBOOK values and, unlike RRF's k and
@@ -96,16 +119,6 @@ OR_QUERY = """
 """
 
 
-@dataclass(frozen=True)
-class Query:
-    id: str
-    text: str
-    file: str
-    expects: tuple[int, ...]
-    asks: str
-    wording: str
-
-
 def load_quora() -> tuple[list, list[Query]]:
     chunks = list(
         chunk_file(SAMPLES / "quora_siamese" / "B_train.py", side="B", artifact_id="q")
@@ -120,31 +133,51 @@ def load_quora() -> tuple[list, list[Query]]:
     return chunks, queries
 
 
-def load_requests() -> tuple[list, list[Query]]:
-    src = os.environ.get("LABPILOT_REQUESTS_SRC", "").strip()
-    if not src or not Path(src).is_dir():
-        raise SystemExit(
-            "LABPILOT_REQUESTS_SRC is not set to a directory. This corpus is "
-            "third-party source and is not committed; see the module docstring."
-        )
+def labpilot_chunks() -> list:
+    """This repository, as a BENCHMARK CORPUS ONLY - it has no query fixture.
+
+    Slice 8 job 3 asks whether exact search still beats HNSW on REAL
+    artifacts, and job 4 what the pipeline costs end to end. Both need a
+    corpus in the size range the project actually targets - 1,000 to 10,000
+    chunks - and geo (729) and requests (335) are both below it. This repo
+    chunks to about 5,400, right in the middle, and its vectors are real
+    rather than the uniform random that made the 2026-09-05 benchmark
+    meaningless twice.
+    """
+    root = Path(".")
     chunks = []
-    for path in sorted(Path(src).glob("*.py")):
-        chunks.extend(
-            chunk_file(path, side="B", artifact_id="requests", source=path.name)
-        )
-    raw = json.loads(
-        (SAMPLES / "requests_http" / "queries.json").read_text(encoding="utf-8")
-    )
-    queries = [
-        Query(
-            q["id"], q["query"], q["file"], tuple(q["expects"]), q["asks"], q["wording"]
-        )
-        for q in raw["queries"]
-    ]
-    return chunks, queries
+    for path in sorted(root.glob("labpilot/**/*.py")) + sorted(
+        root.glob("tests/**/*.py")
+    ):
+        rel = str(path).replace("\\", "/")
+        chunks.extend(chunk_file(path, side="B", artifact_id="labpilot", source=rel))
+    return chunks
 
 
-CORPORA = {"quora": load_quora, "requests": load_requests}
+def quora_chunks() -> list:
+    return load_quora()[0]
+
+
+# The registry is DATA now, not code. Every fixture whose `corpus` block names
+# an environment variable is discovered on disk by scripts/corpora.py, so the
+# twelfth corpus is a JSON file rather than a twelfth loader function.
+#
+# `quora` keeps a hand-written loader: its queries.json is a bare LIST written
+# before the schema existed, and its two sides live in the repository rather
+# than in a checkout. Migrating it would rewrite the only fixture whose ground
+# truth was ever hand-checked against an answer key.
+CORPORA = {
+    "quora": load_quora,
+    **{name: (lambda n=name: corpora.load(n)) for name in corpora.SPECS},
+}
+
+# Chunk vectors do not depend on the query set, so the slow models can be paid
+# for before the fixture exists. scripts/warm_embeddings.py reads this.
+CHUNK_LOADERS = {
+    "labpilot": labpilot_chunks,
+    "quora": quora_chunks,
+    **{name: (lambda n=name: corpora.chunks_for(n)) for name in corpora.SPECS},
+}
 
 
 def targets(chunks, query: Query) -> set[int]:
@@ -162,7 +195,13 @@ def embedded(embedder, texts: list[str], *, task: str, tag: str) -> list:
     CACHE.mkdir(parents=True, exist_ok=True)
     cached = CACHE / f"{tag}.pkl"
     if cached.exists():
-        return pickle.loads(cached.read_bytes())
+        vectors = pickle.loads(cached.read_bytes())
+        # A cache keyed by corpus and model, holding the wrong NUMBER of
+        # vectors, means the fixture changed under it - so every score after
+        # this point would describe the questions this corpus used to have.
+        if len(vectors) == len(texts):
+            return vectors
+        print(f"    cache is stale ({len(vectors)} != {len(texts)}), re-embedding")
 
     budget = TOKENS_PER_MINUTE[embedder.model]
     vectors: list = []
@@ -173,8 +212,26 @@ def embedded(embedder, texts: list[str], *, task: str, tag: str) -> list:
         if spent + cost > budget * 0.85:
             time.sleep(max(0.0, 62 - (time.time() - window)))
             spent, window = 0, time.time()
-        for out in embed_batches(embedder, batch, task=task, size=len(batch)):
-            vectors.extend(out.vectors)
+        # Two transient failures, both of them the NETWORK rather than the
+        # quota, and both measured on this run: Mistral's
+        # `backend_out_of_capacity` (a 429 that means busy, not spent) and an
+        # SSL handshake that times out because `DEFAULT_TIMEOUT` allows 10
+        # seconds to CONNECT and this VPN link was carrying three jobs at once.
+        #
+        # Worth noting beyond the script: a 10-second connect timeout is tight
+        # for a user on a slow link, and an ingest that dies halfway is the
+        # failure `write_artifact`'s single transaction exists to prevent.
+        for wait in (5, 15, 40, 90, None):
+            try:
+                for out in embed_batches(embedder, batch, task=task, size=len(batch)):
+                    vectors.extend(out.vectors)
+                break
+            except EmbeddingError as exc:
+                transient = ("capacity" in str(exc)) or ("timed out" in str(exc))
+                if wait is None or not transient:
+                    raise
+                print(f"    transient ({str(exc)[:40]}), waiting {wait}s", flush=True)
+                time.sleep(wait)
         spent += cost
         print(f"    {len(vectors)}/{len(texts)}", flush=True)
 
@@ -418,6 +475,13 @@ def evaluate(chunks, queries, dense_by_q, sparse_by_q, matched, pg, n, sweep):
             )
             found.append(place_of(order, targets(chunks, q), n))
         results[label] = metrics(found, n)
+        # The PLACE of every answer, kept beside the averages. An average over
+        # 20 queries cannot be split by question kind or by wording afterwards,
+        # and those splits are the only way thirteen corpora say more than
+        # three did. Cheap: one integer per query per ranker.
+        results[label]["places"] = dict(
+            zip((q.id for q in queries), found, strict=True)
+        )
     return results
 
 
@@ -458,7 +522,8 @@ def main() -> int:
     chunks, queries = CORPORA[name]()
     print(f"{name}: {len(chunks)} chunks, {len(queries)} queries, {embedder.model}")
 
-    tag = f"{name}_{embedder.model}"
+    # Slashes in a model name would make this a path - see warm_embeddings.
+    tag = f"{name}_{embedder.model.replace('/', '_')}"
     vectors = embedded(
         embedder, [c.embed_text for c in chunks], task="document", tag=f"{tag}_chunks"
     )
@@ -481,17 +546,42 @@ def main() -> int:
     # The fourth and fifth hyperparameters. Held at the textbook guess unless
     # --sweep-bm25 says otherwise, because the 2026-09-07 run never varied them.
     grid = BM25_GRID if "--sweep-bm25" in sys.argv else ((K1, B),)
+    saved = {}
     for k1, b in grid:
         if len(grid) > 1:
             print(f"\n### BM25 k1={k1} b={b}")
         sparse_by_q = bm25(counts, terms, n, k1=k1, b=b)
-        report(
-            evaluate(chunks, queries, dense_by_q, sparse_by_q, matched, pg, n, sweep)
+        results = evaluate(
+            chunks, queries, dense_by_q, sparse_by_q, matched, pg, n, sweep
         )
+        report(results)
+        saved[f"k1={k1},b={b}"] = results
 
     print(
         f"\n  keyword matched, median: "
         f"{statistics.median(matched.values()):.0f} of {n} chunks"
+    )
+
+    # Machine-readable beside the printed table. A claim like "wRRF won on 9 of
+    # 13 corpora" cannot be made by reading thirteen tables, and thirteen is
+    # the whole point of this run.
+    out = Path(".logs/results")
+    out.mkdir(parents=True, exist_ok=True)
+    # Slashes again - see the tag above. BGE is "@cf/baai/...".
+    (out / f"hybrid_{name}_{embedder.model.replace(chr(47), chr(95))}.json").write_text(
+        json.dumps(
+            {
+                "corpus": name,
+                "embedder": embedder.model,
+                "chunks": n,
+                "queries": len(queries),
+                "by_bm25": saved,
+                "kinds": {q.id: q.asks for q in queries},
+                "wording": {q.id: q.wording for q in queries},
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
     )
     return 0
 
