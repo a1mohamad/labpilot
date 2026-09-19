@@ -53,6 +53,7 @@ from labpilot.rerank import (
 )
 from labpilot.retrieval.gate import margin
 from labpilot.store.defaults import SEARCH_LIMIT
+from scripts.jev_reranker import JEV_RERANK
 from scripts.local_reranker import LOCAL_RERANK
 from scripts.score_hybrid import (
     CORPORA,
@@ -131,6 +132,7 @@ def listwise(provider) -> LLMReranker:
 
 
 RERANKERS = {
+    "jev": JEV_RERANK,
     "local": LOCAL_RERANK,
     "flashlite": listwise(GEMINI_3_5_FLASH_LITE),
     "gemma": listwise(GEMMA_4_31B),
@@ -145,6 +147,14 @@ RERANKERS = {
 # Cohere's trial header reports 10 requests/minute, so pace just under it.
 BUDGET_WARNING = {"rerank-v4.0-fast": "1,000 calls a MONTH, shared with chat and embed"}
 RERANKER = CLOUDFLARE_RERANK  # main() replaces this from the command line
+
+# --cached-only: re-derive a table from what is already stored and spend
+# NOTHING. It exists because the pointwise probe costs 2 REAL calls per model,
+# so simply "re-running from cache" would still spend 2 of Cohere's 1,000 a
+# MONTH - the rerank primary's own bucket - to reprint a number we already
+# have. With this flag a cache MISS raises instead of quietly becoming a call,
+# which is the only way the guarantee is structural rather than hoped for.
+CACHED_ONLY = False
 WINDOWS = (1, 3, 5, 10, 15, 20, 25, 30, 50)
 
 # Seconds to wait between calls, because the provider raises on a 429 rather
@@ -177,6 +187,7 @@ PACE = {
     "gemma-4-31b-it": 2.5,
     "gemini-3.1-flash-lite": 4.5,
     "gemma-4-26b-a4b-it": 2.5,
+    "jev-latest": 0.5,
 }
 # How far a pair's score may move between batch sizes before the per-pair
 # cache is unsafe. An API cross-encoder is exact - measured drift 0.0 on Voyage
@@ -343,6 +354,12 @@ class PairScores:
         return f"{query_id}#{len(chunk_indexes)}#{digest}"
 
     def _rank(self, query, batch: list[int], documents: list[str]):
+        if CACHED_ONLY:
+            raise SystemExit(
+                f"--cached-only, but {RERANKER.model} has no cached result for "
+                f"{query.id} over {len(batch)} documents. Re-run without the "
+                f"flag to pay for it, or pick a window that is already cached."
+            )
         if wait := PACE.get(RERANKER.model, 0.0):
             time.sleep(wait)
         # Back off and retry on a 429 rather than guessing a pace that is
@@ -423,6 +440,12 @@ def verify_pointwise(query, documents: list[str], candidates: list[int]) -> None
     broken fixture; this is the same class of check, run before the fixture is
     trusted rather than after.
     """
+    if CACHED_ONLY:
+        print(
+            "  pointwise check: SKIPPED - --cached-only. It costs 2 real "
+            "calls, and nothing new is being scored for it to validate."
+        )
+        return
     if RERANKER.model in LISTWISE:
         print(
             "  pointwise check: SKIPPED - a listwise reranker ranks documents "
@@ -484,7 +507,7 @@ def main() -> int:
     if len(sys.argv) < 3 or sys.argv[1] not in CORPORA or sys.argv[2] not in EMBEDDERS:
         print(
             f"usage: {sys.argv[0]} {{{'|'.join(CORPORA)}}} "
-            f"{{{'|'.join(EMBEDDERS)}}} [--fusion] [--no-header] "
+            f"{{{'|'.join(EMBEDDERS)}}} [--fusion] [--no-header] [--cached-only] "
             f"[--window=N] [--{' | --'.join(RERANKERS)}]",
             file=sys.stderr,
         )
@@ -498,6 +521,8 @@ def main() -> int:
             FUSION_WEIGHT = float(flag.split("=")[1])
     corpus, embedder = sys.argv[1], EMBEDDERS[sys.argv[2]]
     want_fusion = "--fusion" in sys.argv
+    global CACHED_ONLY
+    CACHED_ONLY = "--cached-only" in sys.argv
     for name, candidate in RERANKERS.items():
         if f"--{name}" in sys.argv:
             RERANKER = candidate
