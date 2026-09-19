@@ -67,6 +67,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) ·
 [**Prompt design rules**](#prompt-design-rules-earned-2026-08-17) ·
 [**Cline — tier 1, free, zero credits**](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13) ·
+[**Qwen3.8-27B + DeepSeek V4 Flash**](#qwen38-27b-and-deepseek-v4-flash--added-to-the-chain-2026-09-19) ·
 [**Jev — a decision model, chain 3 tier 2**](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
@@ -11893,29 +11894,44 @@ table by model name; a tier index in this file has gone stale three times now.
 
 | # | Model | Provider | AA | LMArena | Note |
 |---|---|---|---|---|---|
-| 1 | **GLM-5.3 Flash (Cline)** | **Cline** | — | — | **FREE, 0 credits** · TB **0.843** · Toolathlon **#1 of 42** |
-| 2 | **Gemini 3.7 Flash** | Google | **56.0** | — | released 2026-08-13, +4 over 3.6 |
-| 3 | **Gemini 3.7 Flash (key 2)** | Google (key 2) | **56.0** | — | the same model, a separate daily allowance |
-| 4 | **Gemini 3.6 Flash** | Google | 51.6 | 1484 (#15) | the most-proven model here |
-| 5 | **Gemini 3.6 Flash (key 2)** | Google (key 2) | 51.6 | 1484 (#15) | the same model, a separate daily allowance |
-| 6 | **Gemini 3.5 Flash** | Google | 50.2 | **1480 (#4)** |  |
-| 7 | **Gemini 3.5 Flash (key 2)** | Google (key 2) | 50.2 | **1480 (#4)** | the same model, a separate daily allowance |
-| 8 | **GLM-5.2** | Mistral | 52.6 | 1465 (#13) | ❌ **dead** — see Constraints |
-| 9 | **Laguna S 2.1 (Cline)** | **Cline** | — | — | **FREE, 0 credits** · TB 0.702 · SWE-ML 0.785 · coding specialist |
-| 10 | **Nemotron 3 Ultra** | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
-| 11 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
-| 12 | **Gemini 3.5 Flash-Lite (key 2)** | Google (key 2) | 37.4 | — | the same model, a separate daily allowance |
-| 13 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
-| 14 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input · rejects `thinking` |
-| 15 | **Gemma 4 31B (key 2)** | Google (key 2) | 29.7 | **1441 (#27)** | the same model, a separate daily allowance |
-| 16 | **North Mini Code** | OpenRouter | 27.6 | — | Coding Index 33.4 |
-| 17 | **Nemotron 3 Super** | OpenRouter | 25.7 | 1378 (#83) |  |
-| 18 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
-| 19 | **GPT-OSS 120B (Groq)** | Groq | 24.1 | 1365 (#98) | ⏸ 8K total budget |
-| 20 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
-| 21 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
-| 22 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
-| 23 | **Gemini 3.1 Flash-Lite (key 2)** | Google (key 2) | — | — | the same model, a separate daily allowance |
+| 1 | **GLM-5.3 Flash (Cline)** | **Cline** | **42** † | **1607 code (#17)** | **FREE, 0 credits** · Toolathlon **#1 of 42** |
+| 2 | **Gemini 3.7 Flash** | Google | **39** † | — | 20/day |
+| 3 | **Gemini 3.7 Flash (key 2)** | Google (key 2) | **39** † | — | a separate daily allowance |
+| **4** | **DeepSeek V4 Flash** | **OpenRouter** | **35** † | **1580 code (#22)** | **FREE** · **1.05M ctx** · **211.9 tok/s** · added 2026-09-19 |
+| **5** | **Qwen3.8 27B** | **Cloudflare** | **34** † | **1593 code (#18)** | **FREE**, 10,000 neurons/day · **the coding specialist** · 43.1 tok/s |
+| **6** | **Qwen3.8 27B (Groq)** | **Groq** | **34** † | **1593 code (#18)** | **FREE**, 1,000/day · ⏸ **8,000 tok/min** · small jobs only |
+| 7 | **Gemini 3.6 Flash** | Google | 34 † | 1537 code (#32) | the most-proven model here |
+| 8 | **Gemini 3.6 Flash (key 2)** | Google (key 2) | 34 † | 1537 code (#32) | a separate daily allowance |
+| 9 | **Gemini 3.5 Flash** | Google | 33 † | 1500 code (#44) | |
+| 10 | **Gemini 3.5 Flash (key 2)** | Google (key 2) | 33 † | 1500 code (#44) | a separate daily allowance |
+| 11 | **GLM-5.2** | Mistral | 34 † | 1592 code (#19) | ❌ **dead on Mistral** — but **`z-ai/glm-5.2:free` ANSWERS on OpenRouter**, measured 1 call in 4 (429 `upstream_provider_shared_pool`), 32,768 ctx |
+| 12 | **Laguna S 2.1 (Cline)** | **Cline** | — | — | **FREE, 0 credits** · coding specialist |
+| 13 | **Nemotron 3 Ultra** | OpenRouter | — | — | 550B MoE, 1M context |
+| 14 | **Gemini 3.5 Flash-Lite** | Google | **23** † | — | **500/day · 358.4 tok/s** — the workhorse |
+| 15 | **Gemini 3.5 Flash-Lite (key 2)** | Google (key 2) | **23** † | — | a separate daily allowance |
+| 16 | **Mistral Medium** | Mistral | — | — | reasoning model |
+| 17 | **Gemma 4 31B** | Google | **15** † | — | ⏸ 16K input · rejects `thinking` |
+| 18 | **Gemma 4 31B (key 2)** | Google (key 2) | **15** † | — | a separate daily allowance |
+| 19 | **North Mini Code** | OpenRouter | — | — | Coding Index 33.4 |
+| 20 | **Nemotron 3 Super** | OpenRouter | — | — | |
+| 21 | **GPT-OSS 120B** | Cloudflare | — | — | ~11 reports/day |
+| 22 | **GPT-OSS 120B (Groq)** | Groq | — | — | ⏸ 8K total budget |
+| 23 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
+| 24 | **Devstral 2** | Mistral | — | — | SWE-bench 72.2 · ⏸ 16K output |
+| 25 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
+| 26 | **Gemini 3.1 Flash-Lite (key 2)** | Google (key 2) | — | — | a separate daily allowance |
+
+† **AA INDEX v4.3, RE-READ 2026-09-19, AND IT IS NOT THE OLD COLUMN.** Every
+number marked † comes from Artificial Analysis's own v4.3 evaluations, read
+from their per-model pages. **The un-marked rows are from an older index
+version and MUST NOT be compared with them.** The gap is not small: this file
+recorded Flash-Lite at **37.4** and v4.3 scores it **23**; Gemma 4 31B was
+**29.7** and is now **15**. LMArena numbers in this table are now **Code
+Arena** Elo, which is the leaderboard relevant to what this project does.
+
+> **An index is a measuring stick, and measuring sticks get replaced.** Two
+> scores from different versions look comparable and are not. Re-score the
+> whole column or mark which rows are which — never mix them silently.
 
 ⏸ = alive but **unreachable today**, because a report prompt exceeds its limit.
 Each is refused *locally* by `_check_fits`, so it costs no request and no time —
@@ -12226,6 +12242,180 @@ wastes exactly one request.
 - **A smoke test of its own.** `tests/smoke/test_every_tier.py` parametrizes
   over `CHAIN`, so the new tier got weekly live coverage for free — the skip
   count went 46 → 47 and nothing had to be written.
+
+### Qwen3.8-27B and DeepSeek V4 Flash — added to the chain 2026-09-19
+
+*Three tiers, placed on TWO independent sources. The blogs were wrong twice
+and the index version was wrong once, so read the caveats before the numbers.*
+
+#### THE MEASURING STICK CHANGED, and most of this file's AA column is stale
+
+Artificial Analysis is now on **Intelligence Index v4.3**, and it is not the
+scale the chain table was built on:
+
+```
+                      this file said     AA v4.3 today
+gemini-3.5-flash-lite      37.4               23
+gemma-4-31b                29.7               15
+```
+
+> **An index is a measuring stick, and measuring sticks get replaced.** Two
+> scores from different versions look comparable and are not. The chain table
+> now marks every re-read row with †; an unmarked row may not be compared
+> with a marked one.
+
+#### Two blog claims, both wrong, both nearly repeated here
+
+| claim, from several blogs | truth, from the primary source |
+|---|---|
+| Qwen3.8-27B scores **52** on the AA Intelligence Index | **34** — AA's own page, v4.3, at `xhigh` |
+| Qwen3.8-27B is **#9 at 1595** on Code Arena | **#18 at 1593** — the leaderboard itself |
+
+A fourth source said the opposite again — that AA had **not indexed it at
+all** and every number was Alibaba's. That was also wrong: the page exists.
+**Three secondary sources, three different stories, and the primary settled
+it in two fetches.** This project's sources rule keeps earning its place.
+
+#### WHAT IS ACTUALLY MEASURED, and by whom
+
+| | Qwen3.8-27B | source |
+|---|---|---|
+| AA Intelligence Index v4.3 | **34** — and **#1 of 142** open-weights models in the 4B-40B class | **AA's own independent eval** |
+| LMArena **Code Arena** | **1593, rank #18** | **the leaderboard, independent** |
+| output speed | **43.1 tok/s** — the slowest tier here | AA |
+| SWE-bench Pro 61.7 · LiveCodeBench v6 90.3 · OSWorld 84.3 | — | ⚠ **Alibaba's own model card. NOT independently replicated.** Do not quote these as measured |
+
+#### IS IT GOOD AT CODING? Yes — and the evidence is the GAP, not the score
+
+The interesting part is not that it scores well. It is that its **coding rank
+is far better than its general rank**:
+
+```
+                     AA v4.3      Code Arena       so...
+Qwen3.8-27B            34         1593  (#18)
+Gemini 3.6 Flash       34         1537  (#32)    TIED general, +56 Elo code
+DeepSeek V4 Flash      35         1580  (#22)    AHEAD general, -13 Elo code
+GLM-5.2                34         1592  (#19)    tied on both
+```
+
+**It ties Gemini 3.6 Flash on general intelligence and beats it by 56 Elo on
+code.** That is a real specialisation, from an independent leaderboard rather
+than the vendor — so **Step 2 should ROUTE code-writing sub-tasks to it**
+instead of walking the chain, the same rule this file already applies to
+Devstral and North Mini Code.
+
+Proven live on a planted off-by-one, one short sentence each:
+
+```
+DeepSeek V4 Flash    7.9s   "window slice includes k+1 elements ... divides by k"
+Qwen 27B (Groq)      1.5s   "xs[i-k:i+1] wraps around for early indices"
+Qwen 27B (CF)       32.8s   "negative slice ... empty or incorrect early windows"
+```
+
+**Both Qwen hosts and DeepSeek found REAL bugs, and not the same one** — the
+disjoint-blind-spot pattern this file already measured across generators.
+
+#### THE WEAKNESSES, stated as plainly as the strengths
+
+| | |
+|---|---|
+| **It is the SLOWEST tier in the chain** | 43.1 tok/s against Flash-Lite's 358.4 — **8x slower**. Measured end to end: **32.8s** on Cloudflare for one short answer at `xhigh`. Against a Step 2 problem that is already 98.2% generation, that is a real cost |
+| **Cloudflare's budget is small** | 10,000 neurons/day, and **244 neurons** for one 4,860-token call — about **41 such calls a day** |
+| **Groq can never serve a report** | 1,000 requests/day but **8,000 tokens per MINUTE**, covering prompt *and* reserved output. Modelled as `context_window=8_000` so `_check_fits` refuses it locally for nothing, exactly like GPT-OSS |
+| **Its coding numbers are vendor-only** | SWE-bench Pro and LiveCodeBench are Alibaba's. Only AA and Code Arena are independent |
+| **Thinking is ON by default** | `xhigh` is Cloudflare's default, and it is what makes the 32.8s. `low` and `medium` exist and are **unscored** |
+
+#### THE SAME MODEL ON TWO HOSTS TAKES TWO DIFFERENT WORDS
+
+```
+Cloudflare  reasoning_effort=high   -> 400 "Supported types are xhigh
+                                           (default), medium, and low"
+Groq        reasoning_effort=xhigh  -> 400 "invalid Qwen3.8 reasoning_effort"
+Groq        reasoning_effort=high   -> 200
+```
+
+Neither host accepts the other's value **for the same model**, so a shared
+constant breaks one of them and `QWEN_CF_REASONING` exists. This file already
+records that *the same model on two hosts has different LIMITS*; it also has
+**different parameter vocabulary**.
+
+`xhigh` is the setting AA scored at 34, so the chain placement describes the
+configuration we actually send.
+
+#### DeepSeek V4 Flash leads the pair, and speed is why
+
+AA 35 against Qwen's 34 is **inside the ±1 interval — a tie** by this file's
+own reading rule. Qwen wins Code Arena by 13 Elo, which is small. What is not
+small:
+
+```
+DeepSeek   211.9 tok/s   1.05M context   TTFT 1.09s   free on OpenRouter
+Qwen        43.1 tok/s    262K context                ~41 calls/day on CF
+```
+
+**Five times faster, four times the context.** A 13-Elo coding edge does not
+buy a 5x slowdown when generation is already the blocking problem.
+
+#### The 25 free OpenRouter models, tested 2026-09-19
+
+**13 of 22 answered.** Worth knowing for Step 2 routing:
+
+```
+ANSWERED   deepseek-v4-flash-0731 (2.0s, 1.05M ctx) · nemotron-3-nano-omni ·
+           north-mini-code · dots-3-note-preview (512K) · ling-3.0-flash x3 ·
+           nex-n2.5-mini/pro · lfm-2.5-2.6b · openrouter/free ·
+           nemotron-3-ultra (26.7s) · nemotron-3.5-lightning (177.9s !)
+
+429        qwen3.8-27b · glm-5.2 · gemma-4-26b · gemma-4-31b · laguna-s ·
+           laguna-xs   - ALL of them "upstream_provider_shared_pool"
+403        inkling, inkling-small - "only available on agentic harnesses"
+503        nemotron-3-super - NVIDIA overloaded
+```
+
+**The 429s are NOT our quota** — they are a shared free pool, and every one is
+a popular model. `z-ai/glm-5.2:free` answered on 1 of 4 tries, which matters
+because **this file records GLM-5.2 as dead**: that was *Mistral*, with
+`limit: 0` meaning **not entitled**, and it never resets. Congestion is a
+different failure and the five-way rule already separates them.
+
+**`google/gemma-4-26b-a4b-it:free` and `gemma-4-31b-it:free` are a THIRD free
+pool** for two tiers we currently run on two Google keys. Not wired in.
+
+#### And the counter lied again
+
+Right after 13 successful free calls the counter read `used: 2`; a minute
+later, `used: 14`. **The same one-minute delay as the Jev billing counter** —
+two independent confirmations that OpenRouter's counters are not live
+instruments.
+
+#### Cerebras is STILL dead, re-tested 2026-09-19 with a real key
+
+```
+GET  /v1/models   -> 200   qwen-3.8-27b, gpt-oss-120b
+POST /v1/chat/... -> 402   "Payment required"  x-should-retry: false
+```
+
+Both models. The 2026-08-11 finding reproduced exactly, and with it the
+lesson: **an issued API key is not a working API, and a catalogue answering
+200 is not evidence.** ⚠ The variable in `.env` is spelled
+**`CREBERAS_API_KEY`** — a typo, and this project already lost scheduled runs
+to `OPENROUTE_API_KEY`.
+
+#### Where else Qwen3.8 lives, and where it does not
+
+`Qwen3.8-Flash-Next` (the 180B open checkpoint, ~125B main + 6B active) and
+its hosted twin `Qwen3.8-Flash` have **no free no-card route**: ModelScope
+serves it but needs Alibaba real-name verification, Featherless is a
+subscription, and Alibaba/DeepInfra/Novita are paid. **Only the 27B is free**,
+and only on Cloudflare, Groq and a congested OpenRouter `:free`.
+
+Checked and carrying no Qwen3.8 at all: NVIDIA NIM, SambaNova, Hyperbolic,
+Nebius, Fireworks, Mistral. **OVH AI Endpoints** has it free with no card and
+even an anonymous tier, but the anonymous bucket is **2 RPM per IP** and
+refused every call from our shared VPN exit — a free registered key would fix
+that and is untried. **Synapse Garden** authenticates our key and then answers
+**HTTP 500 `fetch failed`** on every endpoint, including `/models`; its
+`/api/health` returns 200, which is the same trap as `GET /v1beta/models`.
 
 ### Jev — the decision model, and the first paid tier (2026-09-19)
 
