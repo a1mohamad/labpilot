@@ -68,6 +68,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [**Prompt design rules**](#prompt-design-rules-earned-2026-08-17) ·
 [**Cline — tier 1, free, zero credits**](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13) ·
 [**Qwen3.8-27B + DeepSeek V4 Flash**](#qwen38-27b-and-deepseek-v4-flash--added-to-the-chain-2026-09-19) ·
+[**Reviving dead tiers — GLM-5.2, Cline**](#reviving-the-dead-tiers--investigated-2026-09-19) ·
 [**Jev — a decision model, chain 3 tier 2**](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
@@ -11904,7 +11905,7 @@ table by model name; a tier index in this file has gone stale three times now.
 | 8 | **Gemini 3.6 Flash (key 2)** | Google (key 2) | 34 † | 1537 code (#32) | a separate daily allowance |
 | 9 | **Gemini 3.5 Flash** | Google | 33 † | 1500 code (#44) | |
 | 10 | **Gemini 3.5 Flash (key 2)** | Google (key 2) | 33 † | 1500 code (#44) | a separate daily allowance |
-| 11 | **GLM-5.2** | Mistral | 34 † | 1592 code (#19) | ❌ **dead on Mistral** — but **`z-ai/glm-5.2:free` ANSWERS on OpenRouter**, measured 1 call in 4 (429 `upstream_provider_shared_pool`), 32,768 ctx |
+| 11 | **GLM-5.2** | **OpenRouter** | 34 † | **1592 code (#19)** | **MOVED off Mistral 2026-09-19** — it is behind a paid tier there now. Free here, ~1 call in 4 (`upstream_provider_shared_pool`) · ⏸ **32,768 ctx**, so no reports |
 | 12 | **Laguna S 2.1 (Cline)** | **Cline** | — | — | **FREE, 0 credits** · coding specialist |
 | 13 | **Nemotron 3 Ultra** | OpenRouter | — | — | 550B MoE, 1M context |
 | 14 | **Gemini 3.5 Flash-Lite** | Google | **23** † | — | **500/day · 358.4 tok/s** — the workhorse |
@@ -12242,6 +12243,91 @@ wastes exactly one request.
 - **A smoke test of its own.** `tests/smoke/test_every_tier.py` parametrizes
   over `CHAIN`, so the new tier got weekly live coverage for free — the skip
   count went 46 → 47 and nothing had to be written.
+
+### Reviving the dead tiers — investigated 2026-09-19
+
+*GLM-5.2 on Mistral, and Cline's free roster. One is replaceable, three are
+deliberately gated, and the gate is not what this file said it was.*
+
+#### MISTRAL's GLM-5.2 IS PROPERLY DEAD — a third error shape, cleanest yet
+
+```
+2026-08-11   answered
+2026-08-16   429, x-ratelimit-limit-tokens-minute: 0        "not entitled"
+2026-09-19   DROPPED from GET /v1/models entirely, and a direct call says
+             "This model is not available in your subscription tier"
+```
+
+**The wording is the whole diagnosis.** Mistral answers `Invalid model:
+glm-5.3` for something that does not exist, and *"not available in your
+subscription tier"* for `glm-5-2` and `zai-glm-5-2`. So the model still
+**exists** there and is behind a paid plan. **Not revivable for free.**
+Mistral's catalogue also shrank from 55 models to **46**.
+
+**But the MODEL is revivable — just not at Mistral.** `z-ai/glm-5.2:free` on
+OpenRouter answered 1 call in 4 on the first pass and first try on the
+second, with the rest `429 upstream_provider_shared_pool`. **That is
+congestion, not entitlement**, and the five-way rule already tells them
+apart. The tier now points there, with a 32,768 context that keeps it off
+reports and useful for Step 2's smaller jobs.
+
+> **When a tier dies, ask whether the MODEL died or the ROUTE did.** Three
+> weeks were spent treating GLM-5.2 as gone; it was Mistral that was gone.
+
+#### CLINE's FREE ROSTER ROTATES, and the gate is the NAMESPACE
+
+The list is different from the one recorded on 2026-09-13 — `longcat-2.0` is
+gone and `deepseek/deepseek-v4-flash` became `cline-free/deepseek-v4.1-flash`.
+Tested live, all five:
+
+| model | result |
+|---|---|
+| **`z-ai/glm-5.3-flash`** | ✅ 200, 2.2s — our tier 1 |
+| **`poolside/laguna-s-2.1:free`** | ✅ 200, 1.0s, cost 0 — our tier 12 |
+| `cline-free/deepseek-v4.1-flash` | ❌ 403 |
+| `cline-free/muse-spark-1.3-contributor` | ❌ 403 |
+| `cline-free/solar-pro4` | ❌ 403 |
+
+> *"X is only available via Cline product surfaces. If you are using an old
+> version of Cline, please update to the latest version."*
+
+**CORRECTION.** This file says *"the gate is per MODEL, not per namespace:
+`deepseek/deepseek-v4-flash` is an ordinary catalogue id and is still
+blocked."* With the current roster that is wrong — **every blocked model is
+under `cline-free/`, and both working ones are under a vendor namespace.**
+The old counter-example was an id that is no longer on the free list at all,
+so it was refused for not being free rather than by a per-model gate.
+
+#### THE THREE GATED MODELS WILL NOT BE REVIVED, and that is deliberate
+
+The 403 is a **client gate**, not a quota or an account problem. Getting past
+it means presenting our code as Cline's IDE, which is misrepresenting what the
+software is in order to defeat an access control the provider put there on
+purpose. **We do not do that**, and it is recorded here so nobody re-opens it
+as a clever idea.
+
+**What is legitimate is finding the same capability on another route**, and
+for the most valuable one that already worked:
+
+| Cline-gated model | elsewhere | free? |
+|---|---|---|
+| **DeepSeek V4 Flash** | **`deepseek/deepseek-v4-flash-0731:free`** on OpenRouter | ✅ **FREE — and it is now chain tier 4** |
+| Muse Spark 1.3 Contributor | `meta/muse-spark-1.3-contributor` | ❌ $0.10/$0.20 per M |
+| Solar Pro 4 | `upstage/solar-pro4` | ❌ $0.09/$0.36 per M |
+| LongCat 2.0 (dropped from the roster) | `meituan/longcat-2.0` | ❌ $0.30/$1.20 per M |
+
+**So the one that mattered is already recovered.** The other three exist only
+as paid models anywhere we can reach.
+
+#### The standing action, because the roster moves
+
+Cline's free list changed twice in six days. `test_every_cline_tier_is_a_model_the_api_actually_serves`
+pins what we use; the roster itself is worth re-reading before assuming a
+`cline-free/` model is still gated — or that a working one still works.
+
+```
+https://api.cline.bot/api/v1/ai/cline/recommended-models     public, no key
+```
 
 ### Qwen3.8-27B and DeepSeek V4 Flash — added to the chain 2026-09-19
 
