@@ -115,9 +115,16 @@ def _both_accounts(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
 
 
 # The four LLM tiers BEAT every purpose-built cross-encoder measured, so they
-# lead. RERANK_CHAIN follows, and its last tier (bge-reranker-base, 0.520) is
-# below vector alone at 0.608 - kept only because one saturated corpus is thin
-# evidence and its budget cannot run out. Slice 8 decides whether to delete it.
+# lead - eight entries, because each one is built on BOTH Google accounts.
+# RERANK_CHAIN follows, and since 2026-09-19 every tier in it is measured ABOVE
+# vector alone: bge-reranker-base was deleted rather than reordered, on v1's F6
+# condition, so the chain no longer ends in something worse than not reranking.
+# It still ends in skip(), which is what "no reranker was available" means.
+#
+# ELEVEN tiers, with Cohere at 9. That is the budget half of v2's G20: Cohere
+# never hurt a corpus and repairs flash-lite's worst case, so it belongs early
+# among the CROSS-ENCODERS - and it is 1,000 calls a MONTH against flash-lite's
+# 1,000 a day across two keys, so it belongs behind every LLM tier.
 CHAIN: tuple[Reranker, ...] = (
     tuple(
         tier for model in LLM_RERANK_ORDER for tier in _both_accounts(PROVIDERS[model])

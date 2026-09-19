@@ -73,11 +73,21 @@ MEASURED_MRR = {
 }
 VECTOR_ALONE = 0.608
 
-# Deliberate and arguable: bge-reranker-base measured BELOW vector alone and is
-# kept as the last tier anyway, on one corpus and one saturated fixture, because
-# it is the only tier whose budget cannot run out. Slice 8 re-measures it; if
-# the number holds, the right move is to DELETE the tier, not reorder it.
-KNOWN_WORSE_THAN_NOT_RERANKING = ("@cf/baai/bge-reranker-base",)
+# EMPTY SINCE 2026-09-19, and that is the point: bge-reranker-base was the one
+# name here, kept as the last tier although it measured BELOW vector alone,
+# pending a v3 re-check. The re-check was abandoned when Gemma's quota ran out,
+# so the tier was DELETED on v1's F6 instead - which had already named the
+# condition and seen it met. The chain ends in skip(), which is strictly better
+# than a tier that makes retrieval worse.
+KNOWN_WORSE_THAN_NOT_RERANKING: tuple[str, ...] = ()
+
+# MEASURED_MRR above is QUORA ONLY - 82 chunks, saturated, one corpus. v2's G20
+# added three more and Cohere's place did not reproduce: it gains +6.0q over
+# three corpora and has never hurt one, while flash-lite gains +6.1q over
+# thirteen and hurts on three. So the chain orders Cohere on BREADTH and this
+# table cannot see why. Named rather than deleted, the OUTPUT_TOO_SMALL
+# pattern: a deliberate exception is documented, an accidental one is red.
+ORDERED_ON_BREADTH_NOT_QUORA = ("rerank-v4.0-fast",)
 
 
 def test_the_chain_is_ordered_by_measured_quality():
@@ -86,7 +96,7 @@ def test_the_chain_is_ordered_by_measured_quality():
     scored = [
         (r.model, MEASURED_MRR[r.model])
         for r in RERANK_CHAIN
-        if r.model in MEASURED_MRR
+        if r.model in MEASURED_MRR and r.model not in ORDERED_ON_BREADTH_NOT_QUORA
     ]
     ranked = [model for model, _ in scored]
 
@@ -123,3 +133,25 @@ def test_the_llm_tiers_are_recorded_in_measured_order_too():
 
     assert scores == sorted(scores, reverse=True), LLM_RERANK_ORDER
     assert all(score > VECTOR_ALONE for score in scores)
+
+
+def test_cohere_outranks_voyage_on_breadth_even_though_quora_disagrees():
+    """The position ORDERED_ON_BREADTH_NOT_QUORA removes from the MRR check.
+
+    Excluding it from one test must not leave it pinned by nothing - a
+    decision defended only by a comment is a decision that quietly reverts.
+
+    Slice 6 put Cohere BELOW rerank-3-lite on ONE corpus: 0.669 against 0.725
+    on `quora`, 82 chunks and saturated. v2's G20 added three more corpora and
+    that did not reproduce - Cohere gains +6.0q and is the only reranker
+    measured that has NEVER hurt a corpus, while it rescues `gson`, the one
+    corpus flash-lite decisively hurts, by 5.8 queries.
+
+    `rerank-3` sitting above it has never been scored on any corpus at all.
+    """
+    order = [r.model for r in RERANK_CHAIN]
+
+    assert order.index("rerank-v4.0-fast") < order.index("rerank-3-lite"), (
+        "Cohere was demoted below Voyage again - that ordering comes from "
+        "quora alone, and three more corpora did not reproduce it"
+    )
