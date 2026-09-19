@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
@@ -47,7 +48,7 @@ from labpilot.prompts import (
     reserve,
 )
 from labpilot.rerank import RERANK_TOP_N, SKIP, Ranking
-from labpilot.retrieval import LABEL_TOKENS, select, should_rerank
+from labpilot.retrieval import LABEL_TOKENS, score_fusion, select, should_rerank
 from labpilot.sources import Source, walk
 from labpilot.store import (
     SEARCH_LIMIT,
@@ -57,7 +58,9 @@ from labpilot.store import (
     SearchHit,
     StoredArtifact,
     StoredChunk,
+    StoreError,
     UnknownArtifact,
+    bm25_search,
     measure,
     read_chunks,
     search,
@@ -65,17 +68,64 @@ from labpilot.store import (
 )
 from labpilot.tokens import CHARS_PER_TOKEN, estimate_tokens
 
+logger = logging.getLogger(__name__)
+
 # How long an ingest may take before we stop optimising for QUALITY and start
 # optimising for TIME. NOT a refusal: past this line the same list is sorted by
 # speed instead of by strength, and a slow model is still used when every fast
 # one is spent - the user is shown the estimate and asked first.
 EMBEDDING_MINUTES_BUDGET = 6.0
 
-# When to STOP and ask the user. Deliberately far lower, because embedding is
-# one stage of several: measured, a full report is another ~52s today and
-# roughly ten LLM calls once the agent exists. A 2-minute embed is already a
-# 3-4 minute answer. THIS NUMBER IS A GUESS - slice 8 owes an end-to-end
-# measurement, and only that can set it honestly.
+# WHAT THE INGEST ESTIMATE WAS MISSING, measured 2026-09-19 by
+# scripts/bench_ingest.py over five real corpora, 213 to 1,506 chunks:
+#
+#   corpus      chunks   MEASURED  PREDICTED  ratio   gap per chunk
+#   websocket      213     18.3s      10.2s   1.8x        0.038s
+#   log            308     21.4s      12.3s   1.7x        0.030s
+#   cobra          598     42.2s      27.2s   1.6x        0.025s
+#   requests       334     21.4s       8.9s   2.4x        0.037s
+#   geo           1506    105.7s      77.3s   1.4x        0.019s
+#
+# `embedding_minutes()` models EMBEDDING THROUGHPUT and nothing else, so it was
+# optimistic by 1.4-2.4x on every corpus - and it is the number the page
+# renders. We were telling a user "~6 min" for an 11-minute wait.
+#
+# The gap is ~0.030s per chunk and it is OUR work, not the provider's:
+# chunking, and the write transaction. That is why it is added here rather than
+# inside embed/ - it is the same for every embedder, so adding it there would
+# have blurred the one thing that estimate exists to compare.
+INGEST_OVERHEAD_SECONDS = 0.030
+
+# When to STOP and ask the user, against the CORRECTED estimate above.
+#
+# 2.0 STAYS, and the threshold was never the defect - the number it was
+# compared against was. Re-checked on the same five corpora, the correction
+# lands the estimate within +-14% instead of 40-60% short:
+#
+#   corpus      chunks  measured     was          NOW
+#   websocket      213     18.3s   10.2s 1.8x   16.6s 1.1x
+#   log            308     21.4s   12.3s 1.7x   21.5s 1.0x
+#   cobra          598     42.2s   27.2s 1.6x   45.1s 0.9x
+#   requests       334     21.4s    8.9s 2.4x   18.9s 1.1x
+#   geo           1506    105.7s   77.3s 1.4x  122.5s 0.9x
+#
+# At the project's own 236 tokens/chunk the warning now fires above ~2,150
+# chunks: quiet for a notebook, loud for a repository, which is the behaviour a
+# warning needs to be worth reading.
+#
+#   1,000 chunks   0.9 min   quiet
+#   2,200 chunks   2.0 min   WARNED
+#  10,000 chunks   9.3 min   WARNED
+#
+# Note it still reads slightly LOW at the largest size measured (0.9x on geo),
+# so 10,000 chunks is likely nearer 11 minutes than 9. Recorded rather than
+# padded: a fudge factor on top of a measured one would make the next person
+# unable to tell which part was measured.
+#
+# STILL NOT A TOTAL, and the label must keep saying so: a report is another
+# 2-8 minutes on top, measured 2026-09-19 at 119s, 401s and 488s on three runs
+# of the SAME model and machine. Warning on a true end-to-end total needs a
+# stable generation time, and three samples spanning 4x is not one.
 WARN_MINUTES = 2.0
 
 # SMALL_CORPUS_CHUNKS WAS HERE AND IS DELETED - 2026-09-18.
@@ -178,7 +228,7 @@ def _store(
     except EmbeddingError as exc:
         raise EmbeddingUnavailable(f"{embedder.name}: {exc}") from exc
 
-    return Ingested(artifact=artifact, chunks=written, embedding_minutes=minutes)
+    return Ingested(artifact=artifact, chunks=written, ingest_minutes=minutes)
 
 
 def _source_id(chunks: Sequence[Chunk], side: Side) -> str:
@@ -237,7 +287,11 @@ def _pick_embedder(
     for embedder in order:
         minutes = embedder.embedding_minutes(tokens=tokens, chunks=chunks)
         if minutes != math.inf:
-            return embedder, minutes
+            # The ORDERING above uses the embedding estimate, because that is
+            # the part that differs between models. What we RETURN is the whole
+            # ingest, because that is what the caller waits through and what
+            # the page renders.
+            return embedder, minutes + chunks * INGEST_OVERHEAD_SECONDS / 60
 
     raise EmbeddingUnavailable(
         f"no embedder can ingest {chunks} chunks ({tokens} tokens) today"
@@ -458,7 +512,7 @@ VECTOR_TOP_N = 15
 #   SEARCH_LIMIT   50   what search returns          per side
 #   RERANK_WINDOW  20   what the reranker reads      per side   <- this
 #   RERANK_TOP_N   10   what survives reranking      per side
-#   VECTOR_TOP_N   30   what we send when NO reranker ran
+#   VECTOR_TOP_N   15   what we send when NO reranker ran
 #
 # MEASURED 2026-09-18, slice 8 v3: six windows on 5 corpora that are 100%
 # Python, 89 to 9,846 chunks, flash-lite. Mean MRR gain over vector alone:
@@ -476,8 +530,18 @@ VECTOR_TOP_N = 15
 # EVERY corpus, so there is nothing left for a per-tier rule to arbitrate.
 # rerank/'s own max_documents stays as the lower-level guard.
 #
-# Note it sits BELOW VECTOR_TOP_N on purpose. The two are different paths with
-# different recall curves: the reranked path is sharper, so it can cut harder.
+# Note the window sits ABOVE VECTOR_TOP_N (20 against 15) and that is not a
+# contradiction: this is what the reranker READS, and VECTOR_TOP_N is what we
+# SEND when it never ran. Reading more than we would have sent is the point -
+# the reranker earns its place by reordering candidates the degraded path
+# would have dropped.
+#
+# What does sit BELOW VECTOR_TOP_N is RERANK_TOP_N, 10 against 15: the two are
+# different paths with different recall curves, and the reranked one is
+# sharper, so it can cut harder.
+#
+# (This paragraph said "it sits BELOW VECTOR_TOP_N" until 2026-09-19, which was
+# true only while VECTOR_TOP_N was still the unit-error 30.)
 # docs/slice8v3/DECISIONS.md row 10, FINDINGS H12.
 RERANK_WINDOW = 20
 
@@ -625,10 +689,66 @@ def _retrieved(
             ) from exc
 
         chunks.extend(
-            _as_chunk(hit, side, artifact.id) for hit in _best(question, hits)
+            _as_chunk(hit, side, artifact.id)
+            for hit in _best(question, _fused(conn, artifact.id, question, hits))
         )
 
     return tuple(chunks)
+
+
+def _fused(
+    conn: psycopg.Connection,
+    artifact_id: str,
+    question: str,
+    dense: tuple[SearchHit, ...],
+) -> tuple[SearchHit, ...]:
+    """Add the KEYWORD channel and fuse. Always on, never conditional.
+
+    v2 shipped the rule *"fuse below r@50 ~ 0.95 and not above"*, and v3 threw
+    it out for a reason no amount of measuring could fix: **r@50 needs ground
+    truth, and a user's repository has none, ever.** The condition can be
+    evaluated on a benchmark and never at run time, and no proxy stands in for
+    it - pydantic at 9,846 chunks is saturated while geo at 729 is not.
+
+    So the channel is permanently on, which is only safe because of what was
+    measured over 20 corpora and 423 queries: it gains a query or more on 5
+    corpora and loses a query or more on NONE.
+
+    Vectors are good at meaning, keywords are good at names, and code is mostly
+    names. `D2` is the case that pays for this: the constant CLIP_NORM = 1.5
+    sits at place 46 on cosine and place 4 on BM25.
+
+    BM25, never ts_rank: Postgres hands ts_rank ONE document, so it cannot know
+    document frequency and has no IDF at all. We compute BM25 in Python over
+    the stored lexemes, which is the 4-5 extra round trips this costs.
+    """
+    try:
+        sparse = bm25_search(conn, artifact_id, question, limit=SEARCH_LIMIT)
+    except StoreError:
+        # DEGRADE, LOUDLY. The keyword channel is worth +8.7 queries out of
+        # 423; the vector channel is worth the whole answer. A keyword fault
+        # must never take a working search down with it - the same shape as
+        # skip() when no reranker is available.
+        logger.warning(
+            "keyword channel failed for %s, answering on vector alone",
+            artifact_id,
+            exc_info=True,
+        )
+        return dense
+
+    if not sparse:
+        return dense
+
+    by_index = {hit.chunk_index: hit for hit in (*sparse, *dense)}
+    order = score_fusion(
+        [(hit.chunk_index, hit.score) for hit in dense],
+        [(hit.chunk_index, hit.score) for hit in sparse],
+    )
+
+    # Back to SEARCH_LIMIT: the union of two 50-hit channels can reach 100, and
+    # everything downstream - RERANK_WINDOW, VECTOR_TOP_N - is calibrated
+    # against a 50-candidate window per side.
+    return tuple(by_index[index] for index in order[:SEARCH_LIMIT])
 
 
 def _best(
