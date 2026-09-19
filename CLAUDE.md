@@ -490,6 +490,22 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: STEP 1 IS COMPLETE. ALL NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 —
 ARE DONE. STEP 2, THE AGENT, IS NEXT.**
 
+> ### ⚠⚠⚠ STEP 2's FIRST PROBLEM IS GENERATION TIME — 400 SECONDS, MEASURED
+>
+> One answer took **401s**, another **497s**, and generation was **98.2%** of
+> it. The slow model is the BEST model: tier 1 `glm-5.3-flash` is Toolathlon
+> #1 of 42, and `gemini-3.5-flash-lite` answers in 16.4s while losing 5 of 19
+> findings. Thinking is NOT the lever — tier 1's reasoning is already capped
+> at 17-60 tokens.
+>
+> **The levers are shorter per-node output, PARALLEL nodes, and routing.**
+> Step 2 also owes the first LATENCY ranking of the chain — 23 tiers ordered
+> by quality and quota, never once by speed — and it must handle EVERY tier,
+> because the chain falls back and any tier can serve any node.
+>
+> **Read [the Step 2 time block](#agent-design--step-2-recorded-2026-08-11)
+> before designing a single node.**
+
 > ### ⚠⚠ SLICE 8 v3 IS ALMOST DONE — READ `docs/slice8v3/DECISIONS.md` FIRST
 >
 > **THE ZOO WAS REBUILT: 20 corpora, 10 PYTHON (50%), 423 queries**, against
@@ -12406,12 +12422,16 @@ vector alone's MRR of **0.608**.*
 | 2 | **`gemini-3.1-flash-lite`** | Google | **0.745** | its own 500/day | LLM, listwise |
 | 3 | **`gemma-4-26b-a4b-it`** | Google | **0.732** | its own 14,400/day | LLM, listwise, MoE |
 | 4 | **`gemma-4-31b-it`** | Google | **0.732** | 14,400/day | LLM, listwise |
-| 5 | `rerank-3` | Voyage | *unmeasured* | 200M once · 3 RPM | cross-encoder |
-| 6 | `rerank-3-lite` | Voyage | 0.725 | its own 3 RPM | cross-encoder |
-| 7 | `rerank-v4.0-fast` | Cohere | 0.669 | 1,000/**month** | cross-encoder |
+| 5 | **`rerank-v4.0-fast`** | Cohere | 0.669 | 1,000/**month** | cross-encoder |
+| 6 | `rerank-3` | Voyage | *unmeasured* | 200M once · 3 RPM | cross-encoder |
+| 7 | `rerank-3-lite` | Voyage | 0.725 | its own 3 RPM | cross-encoder |
 | — | *vector alone* | — | *0.608* | — | *the line to beat* |
-| 8 | `@cf/baai/bge-reranker-base` | Cloudflare | **0.520** | ~2,840/day | cross-encoder |
-| 9 | **skip** | — | — | — | degraded, still works |
+| 8 | **skip** | — | — | — | degraded, still works |
+
+**REORDERED AND SHORTENED 2026-09-19 — read this table as the SHIPPED chain.**
+Each of rows 1-4 is built on BOTH Google accounts, so `api/reranking.py` assembles
+**eleven** tiers with Cohere at 9. Two changes, both on prior evidence, because
+the v3 re-measurement was killed — see `docs/slice8v3/DECISIONS.md` §29.
 
 **Four things to read carefully.**
 
@@ -12420,13 +12440,22 @@ Listwise: one call ranks all documents, so 30 documents cost 1 call and not 30.
 Google's quota is per MODEL, so those four are **four independent buckets** —
 1,000 + 28,800 calls a day with no shared ceiling.
 
-**Tier 8 is below the line, and that is deliberate.** `bge-reranker-base`
-measured **worse than not reranking**, and the chain already ends in `skip()`,
-so reaching it makes retrieval worse. It is kept because one corpus and one
-saturated fixture is thin evidence and its budget cannot run out. **Slice 8
-re-measures it; if the number holds, delete the tier rather than reorder it.**
-`test_only_a_named_tier_may_be_worse_than_not_reranking_at_all` makes a SECOND
-such tier break the build.
+**`bge-reranker-base` IS DELETED — 2026-09-19.** It measured **worse than not
+reranking** and was kept pending a re-check, on the argument that one saturated
+corpus is thin evidence and its ~2,840/day budget cannot run out. v1's F6 named
+the condition for removal — *"worse than not reranking on three corpora, two
+languages, three domains"* — **the condition was met and the re-check will not
+happen.** The chain already ends in `skip()`, which is strictly better than a
+tier measured below vector alone. `KNOWN_WORSE_THAN_NOT_RERANKING` is now EMPTY,
+so putting ANY such tier back breaks the build.
+
+**COHERE MOVED ABOVE VOYAGE.** Slice 6 put it below on ONE corpus — `quora`, the
+saturated 82-chunk fixture — at 0.669 against rerank-3-lite's 0.725. v2 added
+three more corpora and that did not reproduce: Cohere is the only reranker
+measured that has **never hurt a corpus**, and it rescues `gson` — flash-lite's
+worst case — by 5.8 queries. `rerank-3`, which sat above it, has never been
+scored anywhere. It stays BEHIND all eight LLM tiers, which is the budget half of
+the same finding: 1,000 calls a MONTH against flash-lite's 1,000 a day.
 
 **`rerank-3` leads `rerank-3-lite` on a single-pair probe** (0.8594 to 0.8516)
 and is otherwise unmeasured — a reason to try it first, not evidence.
@@ -15093,6 +15122,106 @@ and 2 are for.
 
 *Designed now, built at Step 2 when LangGraph exists. Step 0 slice 4 stays
 deliberately crude: one prompt, all sections, no branching.*
+
+> ### ⚠⚠⚠ STEP 2 MUST SOLVE GENERATION TIME. IT IS THE BLOCKING PROBLEM
+>
+> *The user's call, 2026-09-19, after the first end-to-end measurement.*
+>
+> **ONE ANSWER TOOK 400 SECONDS ON TIER 1, AND THAT IS NOT ACCEPTABLE.**
+> Measured the same day, three runs of the same model on the same machine:
+>
+> ```
+> STUFF  (paper + model_architecture.py)   119.02s
+> STUFF  (paper + 01-tokenizer.ipynb)      401.46s
+> SEARCH (paper + B_train.py)              496.65s      98.2% of it generation
+> ```
+>
+> **THE SLOW MODEL IS THE BEST MODEL, AND THAT IS THE WHOLE DIFFICULTY.**
+> `CHAIN` is ordered by measured capability, so tier 1 - `z-ai/glm-5.3-flash`
+> on Cline - is the strongest thing we have: Toolathlon **#1 of 42**,
+> Terminal-Bench **0.843**. It is also free, and it is the slowest. Against
+> the other measured tiers on a full report:
+>
+> ```
+> gemini-3.5-flash-lite     16.4s     and ~8 of 19 findings, gate BROKEN
+> gemini-3.6-flash          52.7s     and 13 of 19
+> glm-5.3-flash        119-488s     tier 1
+> ```
+>
+> **Reading "just use the fast one" out of that table is the trap.** Slice 8
+> job 9 measured Flash-Lite on the report: it loses 5 findings and breaks the
+> comparability gate. Speed there is bought with the product.
+>
+> **AND THINKING IS NOT THE LEVER ON THIS TIER.** `CLINE_REASONING` already
+> sets `effort: high`, which on this model **caps** reasoning to 17-60 tokens
+> (measured 2026-09-13, and note the direction - an explicit effort caps it).
+> There is nothing left to cut. The 400s is raw generation of a long report on
+> a free endpoint, not thinking burn.
+>
+> #### The four levers, in the order they are likely to pay
+>
+> 1. **SHORTER OUTPUT PER NODE.** Generation time tracks OUTPUT tokens, and
+>    today one call is given a 32,000-token budget. Step 2 splits that into
+>    ~10 nodes emitting a few hundred each. [Section 11's `max_tokens`
+>    grid](#111-max_tokens-and-max_output_tokens-are-a-grid-and-the-missing-operator-is-min)
+>    was designed for exactly this and still has no consumer.
+> 2. **RUN INDEPENDENT NODES IN PARALLEL.** `verify` over N claims is
+>    embarrassingly parallel, and so are the two `summarize` calls. Nothing in
+>    this file has ever mentioned it, and it turns "ten calls in series" into
+>    roughly the DEPTH of the graph. **This is the largest unclaimed win.**
+> 3. **ROUTE BY TASK.** Only `explain_divergence` needs tier 1 - see
+>    [model routing](#model-routing--a-chain-per-task-not-a-model-per-task).
+> 4. **A per-task time budget.** `DEFAULT_TOTAL_BUDGET` already takes one per
+>    chain. Useful as a guard on cheap nodes and **useless on the report**: a
+>    cap never makes a call faster, it only fails it - and you have still paid
+>    the wall clock before it fails.
+>
+> #### AN OPTION, NOT A RULE: asking for LENGTH in the instructions
+>
+> *Raised by the user 2026-09-19. Recorded as something Step 2 may try, not as
+> a decision - nothing here has been measured on our own prompts yet.*
+>
+> **A model has no clock.** It cannot feel seconds passing, so *"answer in
+> under 60 seconds"* is not an instruction it can obey - it will agree and then
+> write whatever it was going to write. Time cannot be asked for directly.
+>
+> **But time comes from how much it writes, and length it CAN obey:**
+>
+> ```
+> "answer in under 60 seconds"     no effect - it cannot measure time
+> "at most 300 words per section"  works, and the time follows
+> "at most 10 rows in the table"   works
+> ```
+>
+> So the prompt is an INDIRECT lever on time, through length. Two limits keep
+> it an option rather than a solution:
+>
+> - **Instructions are soft.** IFScale, already cited above: ~90% adherence at
+>   10 instructions, ~70% at 50, and models drop whole instructions rather than
+>   degrade evenly. A length it sometimes ignores is not a budget.
+> - **`max_tokens` is the only hard stop**, and it does not make the model
+>   write shorter - it CUTS mid-sentence, which is why `MAX_TOKENS` renders as
+>   a warning.
+>
+> So the honest pairing, if this is tried: **ask for a length in the prompt,
+> and keep `max_tokens` as the backstop.** And weigh it against what slice 4
+> measured going the other way - `CORE` cut sections and lost the home of five
+> of the seven misses. **Length bought back from the prompt may be coverage
+> spent**, the same trade as choosing a faster tier.
+>
+> #### What Step 2 owes, and it is not optional
+>
+> - **RANK THE WHOLE CHAIN BY LATENCY.** We have ordered 23 tiers by quality
+>   and by quota and **never once by speed**, so routing cannot prefer a fast
+>   tier deliberately - only by accident. One fixed prompt across every tier
+>   settles it. **Deferred to Step 2 by the user's call**; it is cheap and it
+>   blocks lever 3 from being done honestly.
+> - **STEP 2 MUST HANDLE ALL LLM TIERS**, not a chosen few. The chain falls
+>   back, so any tier can end up serving any node - and a design that assumes
+>   a fast tier answered is a design that breaks on the day it does not.
+> - The product constraint this serves is already written down and is now
+>   measured to be violated: *we will not ship a tool that costs ten minutes
+>   for a simple task.*
 
 ### Intent → plan, not intent → template
 
