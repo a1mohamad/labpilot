@@ -16,7 +16,12 @@ import pytest
 from labpilot.api import services
 from labpilot.api.reranking import CHAIN, PROVIDERS, RANKING_CONFIG, _listwise, rank
 from labpilot.llm import GeminiProvider, LLMResult
-from labpilot.rerank import LLM_RERANK_ORDER, RERANK_CHAIN
+from labpilot.rerank import (
+    JEV_RERANK,
+    LLM_RERANK_ORDER,
+    RERANK_CHAIN,
+    LLMReranker,
+)
 
 
 @pytest.fixture
@@ -45,7 +50,7 @@ def test_the_llm_tiers_lead_the_chain_in_the_order_rerank_measured():
     this layer ever reordered them it would silently overrule a measurement
     with a preference.
     """
-    llm = CHAIN[: len(CHAIN) - len(RERANK_CHAIN)]
+    llm = [tier for tier in CHAIN if isinstance(tier, LLMReranker)]
 
     # EVERY tier appears TWICE from 2026-09-19 - once per Google account - so
     # the order is over DISTINCT models, and the twin must sit next to its
@@ -58,6 +63,39 @@ def test_the_llm_tiers_lead_the_chain_in_the_order_rerank_measured():
         assert first.model == second.model, "a twin must be ADJACENT to its original"
 
     assert CHAIN[len(CHAIN) - len(RERANK_CHAIN) :] == RERANK_CHAIN
+
+
+def test_jev_sits_third_behind_both_flash_lite_keys():
+    """A PAID tier must never come before a FREE allowance of a better one.
+
+    Jev measured 0.770 on quora and 0.712 on geo, against flash-lite's 0.799
+    and 0.681 - one corpus each, means 0.740 and 0.741. Indistinguishable, so
+    the tie-break is budget, which is this project's own rule.
+
+    Position 2 is flash-lite ON THE SECOND GOOGLE ACCOUNT: the same model,
+    another free 500 a day. Slotting a billed tier between the two keys would
+    spend money while a free allowance sat unused, and would break the reason
+    _both_accounts keeps the twins adjacent.
+    """
+    assert CHAIN[2] is JEV_RERANK, (
+        "Jev must sit third - after BOTH flash-lite keys, ahead of everything "
+        f"else. The chain now starts {[t.name for t in CHAIN[:4]]}"
+    )
+    assert CHAIN[0].model == CHAIN[1].model == "gemini-3.5-flash-lite"
+
+
+def test_jev_is_the_only_tier_that_does_not_depend_on_google():
+    """Eight of twelve tiers are Google, and a refused VPN exit has already
+    taken every Google endpoint from this project for a week.
+
+    When that happens the rest of the chain is Cohere's 1,000 a MONTH and a
+    Voyage that cannot take a 50-document window. Jev is the independent
+    capacity, so losing it from the chain is not merely losing a rank.
+    """
+    google = [tier for tier in CHAIN if isinstance(tier, LLMReranker)]
+    assert len(google) == 2 * len(LLM_RERANK_ORDER)
+    assert JEV_RERANK in CHAIN
+    assert JEV_RERANK.api_key_env == "OPENROUTER_API_KEY"
 
 
 def test_every_llm_tier_is_tuned_for_ranking_and_not_for_generation(recorded):
@@ -73,8 +111,9 @@ def test_every_llm_tier_is_tuned_for_ranking_and_not_for_generation(recorded):
     generation, so reusing a CHAIN entry unchanged would throw most of the
     gain away - and the ranking would still look plausible.
     """
-    for tier in CHAIN[: len(LLM_RERANK_ORDER)]:
-        tier.rank("q", ["one", "two"])
+    for tier in CHAIN:
+        if isinstance(tier, LLMReranker):
+            tier.rank("q", ["one", "two"])
 
     assert recorded, "the fixture must have intercepted the calls"
     for provider in recorded:
@@ -92,7 +131,7 @@ def test_each_tier_calls_its_own_model_and_not_the_last_one(recorded):
     on - while each still reported its own name. The chain would look healthy,
     one model would answer everything, and the measured order would be fiction.
     """
-    tiers = CHAIN[: len(LLM_RERANK_ORDER)]
+    tiers = [tier for tier in CHAIN if isinstance(tier, LLMReranker)]
 
     for tier in tiers:
         tier.rank("q", ["one", "two"])
