@@ -79,11 +79,36 @@ CLOUDFLARE_RERANK = CloudflareReranker(
 #
 # `ministral-3b-2512` (CLAUDE.md's old tier 4) and the local ONNX cross-encoder
 # are DROPPED, both measured worse than not reranking: 0.440 and 0.472.
+# REORDERED AND SHORTENED 2026-09-19, on slice 8 v2's G20 and v1's F6, after
+# the v3 re-measurement was abandoned - Gemma's quota ran out and the script
+# spent five hours retrying into a spent bucket. Closing this on the evidence
+# we already had is better than a run that cannot finish.
+#
+# COHERE MOVES ABOVE VOYAGE. Slice 6 put it below on ONE corpus - `quora`, the
+# saturated 82-chunk fixture - scoring 0.669 against rerank-3-lite's 0.725. v2
+# added three more corpora and that ordering did not reproduce:
+#
+#                 corpora   mean gain   negative on
+#   cohere            3       +6.0q     0 - NONE
+#   flash-lite       13       +6.1q     3 - docs, gson, zod
+#
+# Cohere is the only reranker measured that has never hurt a corpus, and it
+# rescues `gson` - flash-lite's worst case - by 5.8 queries. `rerank-3` above it
+# has never been scored anywhere, on any corpus.
+#
+# It stays BEHIND all eight LLM tiers, and that is the budget half of v2's
+# argument: Cohere is 1,000 calls a MONTH against flash-lite's 1,000 a day
+# across two keys. Early enough to repair the primary, late enough to survive.
+#
+# CLOUDFLARE_RERANK IS DELETED. v1's F6 said so and named the condition:
+# "worse than not reranking on three corpora, two languages, three domains".
+# That condition was met and the tier was kept anyway, pending a v3 re-check
+# that will now not happen. The chain already ends in skip(), which is strictly
+# better than a tier measured below vector alone.
 RERANK_CHAIN = (
+    COHERE_RERANK,
     VOYAGE_RERANK_3,
     VOYAGE_RERANK_3_LITE,
-    COHERE_RERANK,
-    CLOUDFLARE_RERANK,
 )
 
 # The LLM tiers, in measured order, as DATA rather than objects - building them
