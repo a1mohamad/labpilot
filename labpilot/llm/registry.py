@@ -11,6 +11,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+KILO_URL = "https://api.kilo.ai/api/gateway/v1/chat/completions"
 CLOUDFLARE_URL = (
     "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
 )
@@ -443,6 +444,112 @@ GPT_OSS_120B_GROQ = OpenAICompatibleProvider(
 )
 
 
+# KILO — A SECOND FREE ALLOWANCE FOR MODELS WE ALREADY REACH, added 2026-09-19.
+#
+# Kilo resells OpenRouter under its OWN org account, proven from the error
+# body: ours reads `"user_id": "user_3HREb…"` and Kilo's `"user_id":
+# "org_2uwFc…"`. Everything else in the two responses is byte-identical.
+#
+# THE CONSEQUENCE IS MEASURED, and it is the whole reason these tiers exist:
+# three successful Kilo calls left our OpenRouter counter at 17 of 50. Kilo
+# spends KILO's allowance. So when our OpenRouter day is gone, these still
+# answer.
+#
+#     OpenRouter   50 requests per DAY      (our account)
+#     Kilo        200 requests per HOUR     (per IP, their docs)
+#
+# One hour of Kilo is four times our whole OpenRouter day, which is why a
+# Kilo route goes BEFORE its OpenRouter twin for the same model. That is this
+# project's standing rule: rank different models by capability, and within
+# ONE model prefer the provider with more usable quota.
+#
+# TWO CEILINGS, NEITHER OF THEM OURS, and both measured:
+#   * 200/hour is per IP and we are on a SHARED VPN exit, so it is split with
+#     everyone else on that address - the thing that made OVH unusable.
+#   * a per-model daily cap on OpenRouter's shared capacity sits underneath.
+#     inkling-small returned `limit_source: openrouter_shared_capacity`,
+#     X-RateLimit-Limit 5000, Remaining 0, resetting at midnight UTC.
+# Kilo returns NO rate-limit headers on a success and has no usage endpoint,
+# so the remaining allowance cannot be read. Same blindness as Cline.
+#
+# A 429 here is CHEAP - measured 0.7-1.2s, not retryable, straight to the next
+# tier. A spent OpenRouter day is not recoverable until tomorrow. That
+# asymmetry is what makes "try Kilo first" safe even when Kilo is congested.
+#
+# The key is OPTIONAL: Kilo's docs say anonymous and authenticated free
+# requests are rate-limited identically, by IP. It is sent for attribution.
+def _kilo(
+    *,
+    name: str,
+    model: str,
+    context_window: int,
+    max_output_tokens: int,
+) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        name=name,
+        tier=0,
+        url=KILO_URL,
+        model=model,
+        api_key_env="KILO_API_KEY",
+        # ONE pool for every Kilo tier: the 200/hour is per IP, shared across
+        # all of them, so a 429 on one really does mean the rest are spent.
+        quota_pool="KILO_API_KEY",
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        extra_body=OPENROUTER_REASONING,
+    )
+
+
+KILO_GLM_5_3_FLASH = _kilo(
+    name="GLM-5.3 Flash (Kilo)",
+    model="z-ai/glm-5.3-flash",
+    context_window=1_310_720,
+    max_output_tokens=131_072,
+)
+KILO_DEEPSEEK_V4_FLASH = _kilo(
+    name="DeepSeek V4 Flash (Kilo)",
+    model="deepseek/deepseek-v4-flash-0731:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+KILO_QWEN_3_8_27B = _kilo(
+    name="Qwen3.8 27B (Kilo)",
+    model="qwen/qwen3.8-27b:free",
+    context_window=262_144,
+    max_output_tokens=235_929,
+)
+KILO_GLM_5_2 = _kilo(
+    name="GLM-5.2 (Kilo)",
+    model="z-ai/glm-5.2:free",
+    context_window=32_768,
+    max_output_tokens=29_491,
+)
+KILO_LAGUNA_S_2_1 = _kilo(
+    name="Laguna S 2.1 (Kilo)",
+    model="poolside/laguna-s-2.1:free",
+    context_window=262_144,
+    max_output_tokens=32_768,
+)
+KILO_NEMOTRON_3_ULTRA = _kilo(
+    name="Nemotron 3 Ultra (Kilo)",
+    model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+KILO_NORTH_MINI_CODE = _kilo(
+    name="North Mini Code (Kilo)",
+    model="cohere/north-mini-code:free",
+    context_window=256_000,
+    max_output_tokens=64_000,
+)
+KILO_NEMOTRON_3_SUPER = _kilo(
+    name="Nemotron 3 Super (Kilo)",
+    model="nvidia/nemotron-3-super-120b-a12b:free",
+    context_window=262_144,
+    max_output_tokens=235_929,
+)
+
+
 def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
     """Tier is the POSITION, never a number somebody typed.
 
@@ -466,6 +573,7 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
 # "a weaker model on this one".
 CHAIN = _ordered(
     CLINE_GLM_5_3_FLASH,
+    KILO_GLM_5_3_FLASH,
     GEMINI_3_8_FLASH,
     _second_account(GEMINI_3_8_FLASH),
     GEMINI_3_7_FLASH,
@@ -476,10 +584,12 @@ CHAIN = _ordered(
     # FIVE TIMES faster (211.9 tok/s against 43.1) with a 1.05M context and
     # no per-day neuron budget. A 13-Elo coding edge does not buy a 5x
     # slowdown when generation is already 98.2% of an answer.
+    KILO_DEEPSEEK_V4_FLASH,
     DEEPSEEK_V4_FLASH,
     # Then the coding specialist. It ties Gemini 3.6 Flash on general
     # intelligence and beats it by 56 Elo on code, which is the task this
     # project actually does - so it goes above it.
+    KILO_QWEN_3_8_27B,
     QWEN_3_8_27B,
     # ADJACENT, for the same reason the Google twins are: once Cloudflare's
     # neurons are gone the strongest thing still available is the same model
@@ -490,15 +600,20 @@ CHAIN = _ordered(
     _second_account(GEMINI_3_6_FLASH),
     GEMINI_3_5_FLASH,
     _second_account(GEMINI_3_5_FLASH),
+    KILO_GLM_5_2,
     GLM_5_2,
     CLINE_LAGUNA_S_2_1,
+    KILO_LAGUNA_S_2_1,
+    KILO_NEMOTRON_3_ULTRA,
     NEMOTRON_3_ULTRA,
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
     MISTRAL_MEDIUM,
     GEMMA_4_31B,
     _second_account(GEMMA_4_31B),
+    KILO_NORTH_MINI_CODE,
     NORTH_MINI_CODE,
+    KILO_NEMOTRON_3_SUPER,
     NEMOTRON_3_SUPER,
     GPT_OSS_120B,
     GPT_OSS_120B_GROQ,

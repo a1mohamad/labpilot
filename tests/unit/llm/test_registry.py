@@ -36,6 +36,9 @@ OUTPUT_TOO_SMALL = (
     "Qwen3.8 27B (Groq)",
     # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
     # brought a 32,768 context with it, against the 58,000 a report needs.
+    # BOTH routes carry it - the limit belongs to the model's free serving,
+    # not to the gateway in front of it.
+    "GLM-5.2 (Kilo)",
     "GLM-5.2",
     "GPT-OSS 120B (Groq)",
     "Devstral 2",
