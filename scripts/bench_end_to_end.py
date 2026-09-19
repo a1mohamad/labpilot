@@ -22,6 +22,7 @@ and everything after it happens per question.
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -33,6 +34,28 @@ from labpilot.store import connect
 
 SAMPLES = Path("data/samples/quora_siamese")
 QUESTION = "Compare these and explain why the results diverge."
+
+# THE STUFF PATH NEEDS A PAIR THAT ACTUALLY FITS, and the committed fixture
+# does not: A_paper.md + B_train.py is 28,246 tokens against a PROMPT_BUDGET of
+# 26,000, which is why every earlier run of this script SEARCHED twice and the
+# stuff path went unmeasured.
+#
+# The evidence budget is PROMPT_BUDGET - fixed - OUTLINE_BUDGET = 21,324 tokens
+# for BOTH sides, and A_paper.md spends 4,353 of it. So side B must come in
+# under ~16,971.
+#
+#   model_architecture.py   9 chunks   2,408 tok   pair  6,761  -> STUFFS
+#   01-tokenizer.ipynb     11 chunks   2,271 tok   pair  6,624  -> STUFFS
+#   B_train.py             82 chunks  19,217 tok   pair 23,570  -> searches
+#
+# These two are not arbitrary small files: B_train.py was FLATTENED from
+# 02-train.ipynb and model_architecture.py, and A_paper.md's section 4
+# describes that architecture. So the pair genuinely corresponds, which the
+# geo row below does not - an ML paper against a spherical-geometry library
+# has nothing to explain, and a fast answer there may only mean a shallow one.
+#
+# Personal material, never committed. Same rule as every corpus in the zoo.
+QUORA_SRC = os.getenv("LABPILOT_QUORA_SRC")
 
 
 class Timed:
@@ -77,6 +100,24 @@ def main() -> int:
         b_id, b_secs, b_chunks = ingest(conn, SAMPLES / "B_train.py", "B")
         print(f"  B_train.py   {b_chunks:>5} chunks  {b_secs:>7.1f}s")
 
+        rows = []
+        if QUORA_SRC:
+            for name in ("model_architecture.py", "01-tokenizer.ipynb"):
+                path = Path(QUORA_SRC) / name
+                if not path.exists():
+                    print(f"  {name}: not found under LABPILOT_QUORA_SRC, skipped")
+                    continue
+                got_id, secs, chunks = ingest(conn, path, "B")
+                print(f"  {name:<12} {chunks:>5} chunks  {secs:>7.1f}s")
+                rows.append((f"STUFF  (paper + {name})", (a_id, got_id)))
+        else:
+            print("  LABPILOT_QUORA_SRC unset - the STUFF rows are skipped")
+
+        rows += [
+            ("SEARCH (paper + B_train.py)", (a_id, b_id)),
+            ("SEARCH (paper + 729-chunk Go repo)", (a_id, "B-bench-geo")),
+        ]
+
         # THE FIRST LABEL WAS A LIE, and the numbers were published under it.
         #
         # `A_paper.md` + `B_train.py` needs 28,246 tokens against a
@@ -88,10 +129,7 @@ def main() -> int:
         # The tell was in the output the whole time: both rows printed
         # "chunks sent 20 of 20" and a non-zero `search` span. A stuffed answer
         # sends every chunk and never calls search.
-        for label, pair in (
-            ("SEARCH (paper + one file)", (a_id, b_id)),
-            ("SEARCH (paper + 729-chunk Go repo)", (a_id, "B-bench-geo")),
-        ):
+        for label, pair in rows:
             timer = Timed()
             originals = {
                 name: getattr(services, name)
