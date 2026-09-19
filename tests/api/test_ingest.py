@@ -165,10 +165,20 @@ def test_a_corpus_too_slow_for_the_budget_is_re_sorted_by_speed():
     Google special case must not have disturbed it: a corpus large enough that
     MIGRATION[0] exceeds EMBEDDING_MINUTES_BUDGET falls back to by_speed.
     """
-    picked, minutes = _pick_embedder(tokens=400_000_000, chunks=1_000_000)
+    corpus = {"tokens": 400_000_000, "chunks": 1_000_000}
+    picked, minutes = _pick_embedder(**corpus)
 
-    assert minutes <= min(
-        e.embedding_minutes(tokens=400_000_000, chunks=1_000_000) for e in MIGRATION
+    # Assert on the EMBEDDER, not on the returned number. Since 2026-09-19
+    # `_pick_embedder` returns the whole-INGEST estimate - embedding plus our
+    # own measured 0.030s per chunk of chunking and writing - so comparing it
+    # against `embedding_minutes` compares two different quantities. The
+    # earlier version did, and started failing the moment the estimate stopped
+    # under-reporting the wait.
+    assert picked.embedding_minutes(**corpus) <= min(
+        e.embedding_minutes(**corpus) for e in MIGRATION
+    )
+    assert minutes > picked.embedding_minutes(**corpus), (
+        "the returned estimate must cover the whole ingest, not embedding alone"
     )
 
 
