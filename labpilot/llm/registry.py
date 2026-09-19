@@ -162,15 +162,37 @@ GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", model="gemini-3.7-flash")
 GEMINI_3_6_FLASH = _gemini(name="Gemini 3.6 Flash", model="gemini-3.6-flash")
 GEMINI_3_5_FLASH = _gemini(name="Gemini 3.5 Flash", model="gemini-3.5-flash")
 
+# MOVED OFF MISTRAL 2026-09-19, and the death there is now complete. This is
+# the THIRD error shape from one model, each cleaner than the last:
+#
+#   2026-08-11   answered
+#   2026-08-16   429 with x-ratelimit-limit-tokens-minute: 0  (not entitled)
+#   2026-09-19   dropped from GET /v1/models ENTIRELY, and a direct call says
+#                "This model is not available in your subscription tier"
+#
+# The wording matters: Mistral answers "Invalid model: glm-5.3" for something
+# that does not exist, so GLM-5.2 still EXISTS there and is simply behind a
+# paid tier. Not revivable for free on Mistral. Mistral's catalogue is also
+# down from 55 models to 46.
+#
+# OpenRouter serves it free instead, measured 2026-09-19: 1 call in 4
+# answered, the rest 429 `upstream_provider_shared_pool` - CONGESTION, which
+# is a different failure from `limit: 0` and one the chain already retries.
+# A tier that answers a quarter of the time strictly beats one that is dead.
+#
+# ⚠ 32,768 CONTEXT, so it can NEVER serve a report: PROMPT_BUDGET 26,000 plus
+# REPORT_MAX_TOKENS 32,000 is 58,000. _check_fits refuses it locally for
+# nothing, and it is here for Step 2's smaller jobs - where it is worth
+# having, at Code Arena #19 (1592), ahead of Gemini 3.6 Flash.
 GLM_5_2 = OpenAICompatibleProvider(
     name="GLM-5.2",
-    tier=4,
-    url=MISTRAL_URL,
-    model="glm-5-2",
-    api_key_env="MISTRAL_API_KEY",
-    context_window=1_048_576,
-    max_output_tokens=1_048_576,
-    extra_body=MISTRAL_REASONING,
+    tier=0,
+    url=OPENROUTER_URL,
+    model="z-ai/glm-5.2:free",
+    api_key_env="OPENROUTER_API_KEY",
+    context_window=32_768,
+    max_output_tokens=29_491,
+    extra_body=OPENROUTER_REASONING,
 )
 
 NEMOTRON_3_ULTRA = OpenAICompatibleProvider(

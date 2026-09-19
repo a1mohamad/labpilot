@@ -34,6 +34,9 @@ REJECTS_THINKING = ("gemma-4-31b-it",)
 # and Step 2's small code jobs fit easily at 1,000 requests a day.
 OUTPUT_TOO_SMALL = (
     "Qwen3.8 27B (Groq)",
+    # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
+    # brought a 32,768 context with it, against the 58,000 a report needs.
+    "GLM-5.2",
     "GPT-OSS 120B (Groq)",
     "Devstral 2",
 )
