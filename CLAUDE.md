@@ -67,6 +67,10 @@ Read the two rule sections first — they change *how* everything below is done.
 [Thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) ·
 [**Prompt design rules**](#prompt-design-rules-earned-2026-08-17) ·
 [**Cline — tier 1, free, zero credits**](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13) ·
+[**The gateway sweep — Zen, Kilo, Requesty**](#the-gateway-sweep--zen-kilo-requesty-2026-09-19) ·
+[**Qwen3.8-27B + DeepSeek V4 Flash**](#qwen38-27b-and-deepseek-v4-flash--added-to-the-chain-2026-09-19) ·
+[**Reviving dead tiers — GLM-5.2, Cline**](#reviving-the-dead-tiers--investigated-2026-09-19) ·
+[**Jev — a decision model, chain 3 tier 2**](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
@@ -497,6 +501,19 @@ stuffing when the pair fits and by search + fusion + gate + rerank when it does
 not. Every constant in that sentence was measured — see
 [STEP 1 IS CLOSED](#-step-1-is-closed--2026-09-19-all-nine-slices-measured-and-shipped)
 for the numbers and the four defects measuring found.
+
+**⚠ ONE THING LANDED AFTER STEP 1 CLOSED: `typesafe/jev-1.13` IS CHAIN 3's
+SECOND MODEL.** Branch `feat/jev-probe`, **879 passed, 4 skipped**, not merged.
+A **decision model, not an LLM** — it returns typed probabilities and cannot
+write a word. Measured on two corpora it beats every rerank tier except
+flash-lite, and beats flash-lite on `geo`, the unsaturated one. It is the
+**first non-Google tier** in a chain that was eight-of-eleven Google, and the
+**first PAID tier in any chain here** ($0.042/M input, and the balance does not
+report it for a minute). It costs the 512MB budget **0.6 KB** and adds no
+dependency and no env var. Read
+[Jev, the decision model](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19)
+before touching `api/reranking.py`, and note that it does **not** help the
+generation-time problem below — it cannot generate.
 
 > ### ⚠⚠⚠ STEP 2's FIRST PROBLEM IS GENERATION TIME — 400 SECONDS, MEASURED
 >
@@ -11743,6 +11760,71 @@ Three details that make it work:
 - **8,192 is the reasoning floor.** At 2,048 `mistral-medium-latest` sometimes
   spends the whole budget thinking and returns nothing — flaky, not broken.
 
+#### PARAMETRIZE OVER THE LIST THE CODE USES, NEVER OVER ITS PARTS — 2026-09-19
+
+*The third time this project has shipped a tier nobody was watching, and the
+first time the cause was named properly.*
+
+The rerank smoke run parametrized over **the two halves** of chain 3:
+
+```
+RERANK_CHAIN       the cross-encoders        3 tiers
+LLM_RERANK_ORDER   the Gemini tiers          4 models x 2 keys
+```
+
+Both lists are real, both are complete, and **neither is what the ask path
+calls**. `api/reranking.CHAIN` is — it is assembled from those two *plus*
+anything placed between them. So when Jev was shipped at **position 3**, it
+was covered by nothing, while every tier on either side of it had weekly
+liveness. A gap of exactly one tier, and the newest one.
+
+**The fix is to iterate the assembled chain**, which cannot miss a tier by
+construction:
+
+```
+before   @parametrize("reranker", RERANK_CHAIN)      3 cases
+         @parametrize("reranker", LLM_TIERS)         8 cases
+after    @parametrize("reranker", CHAIN)            12 cases, Jev included
+```
+
+> **A test that iterates the INPUTS to a structure does not test the
+> structure.** Parametrize over the object the production code actually
+> reaches for. Two lists that are each complete can still leave a hole
+> between them, and the hole is invisible — every case passes.
+
+**Three occurrences now, same shape each time:** five of fifteen generator
+models had no smoke test at all (2026-08-17); the four LLM tiers that *led*
+chain 3 had no liveness check (slice 6); and Jev (2026-09-19). Each was found
+by asking "which tier is not in this list?" rather than by anything failing.
+
+#### A FIELD TEST IS NOT THE RULE — the same review pass, 2026-09-19
+
+`test_only_known_tiers_cannot_serve_a_full_report` compares one field:
+
+```
+max_output_tokens < REPORT_MAX_TOKENS
+```
+
+The chain applies a different rule. `_check_fits` enforces the **sum against
+the context window**, so a tier with a generous `max_output` and a small
+CONTEXT passes the field test and still cannot serve a report:
+
+$$
+26{,}000\ \text{prompt} \;+\; 32{,}000\ \text{output} \;=\; 58{,}000
+$$
+
+GLM-5.2's move to OpenRouter brought exactly that shape — a 32,768 context —
+and was caught by its output cap instead, **by luck**. The next one would sit
+in the report chain and fail at the provider on every report.
+
+`test_every_tier_we_believe_can_serve_a_report_really_can` calls `_check_fits`
+with a report-sized prompt instead. Proven by the mutation that the field
+test cannot see: raise `max_output` to 32,768 and drop the name from the
+list — the old test stays green and the new one fires **alone**.
+
+> **When a test checks a FIELD and the code applies a RULE, the test is a
+> proxy.** Proxies drift. Call the rule.
+
 #### A unit test now guards the workflow file
 
 `test_every_chain_env_var_is_mapped_in_the_smoke_workflow` reads
@@ -11877,31 +11959,60 @@ added.*
 **The numbers are POSITIONS, derived by `_ordered()`, never typed.** Read this
 table by model name; a tier index in this file has gone stale three times now.
 
-| # | Model | Provider | AA | LMArena | Note |
+| # | Model | Provider | AA v4.3 | Code Arena | Note |
 |---|---|---|---|---|---|
-| 1 | **GLM-5.3 Flash (Cline)** | **Cline** | — | — | **FREE, 0 credits** · TB **0.843** · Toolathlon **#1 of 42** |
-| 2 | **Gemini 3.7 Flash** | Google | **56.0** | — | released 2026-08-13, +4 over 3.6 |
-| 3 | **Gemini 3.7 Flash (key 2)** | Google (key 2) | **56.0** | — | the same model, a separate daily allowance |
-| 4 | **Gemini 3.6 Flash** | Google | 51.6 | 1484 (#15) | the most-proven model here |
-| 5 | **Gemini 3.6 Flash (key 2)** | Google (key 2) | 51.6 | 1484 (#15) | the same model, a separate daily allowance |
-| 6 | **Gemini 3.5 Flash** | Google | 50.2 | **1480 (#4)** |  |
-| 7 | **Gemini 3.5 Flash (key 2)** | Google (key 2) | 50.2 | **1480 (#4)** | the same model, a separate daily allowance |
-| 8 | **GLM-5.2** | Mistral | 52.6 | 1465 (#13) | ❌ **dead** — see Constraints |
-| 9 | **Laguna S 2.1 (Cline)** | **Cline** | — | — | **FREE, 0 credits** · TB 0.702 · SWE-ML 0.785 · coding specialist |
-| 10 | **Nemotron 3 Ultra** | OpenRouter | 38.3 | 1426 | 550B MoE, 1M context |
-| 11 | **Gemini 3.5 Flash-Lite** | Google | 37.4 | — | **500/day · `thoughts=0`** — the workhorse |
-| 12 | **Gemini 3.5 Flash-Lite (key 2)** | Google (key 2) | 37.4 | — | the same model, a separate daily allowance |
-| 13 | **Mistral Medium** | Mistral | 30.4 | 1420 (#50) | reasoning model |
-| 14 | **Gemma 4 31B** | Google | 29.7 | **1441 (#27)** | ⏸ 16K input · rejects `thinking` |
-| 15 | **Gemma 4 31B (key 2)** | Google (key 2) | 29.7 | **1441 (#27)** | the same model, a separate daily allowance |
-| 16 | **North Mini Code** | OpenRouter | 27.6 | — | Coding Index 33.4 |
-| 17 | **Nemotron 3 Super** | OpenRouter | 25.7 | 1378 (#83) |  |
-| 18 | **GPT-OSS 120B** | Cloudflare | 24.1 | 1365 (#98) | ~11 reports/day |
-| 19 | **GPT-OSS 120B (Groq)** | Groq | 24.1 | 1365 (#98) | ⏸ 8K total budget |
-| 20 | **Magistral Small** | Mistral | — | — | reasoning · **unscored, a guess** |
-| 21 | **Devstral 2** | Mistral | 19 | — | SWE-bench 72.2 · ⏸ 16K output |
-| 22 | **Gemini 3.1 Flash-Lite** | Google | — | — | old · **unscored, a guess** |
-| 23 | **Gemini 3.1 Flash-Lite (key 2)** | Google (key 2) | — | — | the same model, a separate daily allowance |
+| 1 | GLM-5.3 Flash (Cline) | Cline | 42 | 1607 (#17) | 1,310,720 ctx / 131,072 out |
+| 2 | Gemini 3.8 Flash | Google | 41 | 1568 (#23) | 1,048,576 ctx / 65,536 out |
+| 3 | Gemini 3.8 Flash (key 2) | Google (Key 2) | 41 | 1568 (#23) | 1,048,576 ctx / 65,536 out |
+| 4 | Gemini 3.7 Flash | Google | 39 | — | 1,048,576 ctx / 65,536 out |
+| 5 | Gemini 3.7 Flash (key 2) | Google (Key 2) | 39 | — | 1,048,576 ctx / 65,536 out |
+| 6 | DeepSeek V4 Flash (Kilo) | Kilo | 35 | 1580 (#22) | 1,048,576 ctx / 393,216 out |
+| 7 | DeepSeek V4 Flash | Openrouter | 35 | 1580 (#22) | 1,048,576 ctx / 393,216 out |
+| 8 | Qwen3.8 27B (Kilo) | Kilo | 34 | 1593 (#18) | 262,144 ctx / 235,929 out |
+| 9 | Qwen3.8 27B | Cloudflare | 34 | 1593 (#18) | 262,144 ctx / 262,144 out |
+| 10 | Qwen3.8 27B (Groq) | Groq | 34 | 1593 (#18) | 8,000 ctx / 8,000 out |
+| 11 | Gemini 3.6 Flash | Google | 34 | 1537 (#32) | 1,048,576 ctx / 65,536 out |
+| 12 | Gemini 3.6 Flash (key 2) | Google (Key 2) | 34 | 1537 (#32) | 1,048,576 ctx / 65,536 out |
+| 13 | Gemini 3.5 Flash | Google | 33 | 1500 (#44) | 1,048,576 ctx / 65,536 out |
+| 14 | Gemini 3.5 Flash (key 2) | Google (Key 2) | 33 | 1500 (#44) | 1,048,576 ctx / 65,536 out |
+| 15 | GLM-5.2 (Kilo) | Kilo | 34 | 1592 (#19) | 32,768 ctx / 29,491 out |
+| 16 | GLM-5.2 | Openrouter | 34 | 1592 (#19) | 32,768 ctx / 29,491 out |
+| 17 | Laguna S 2.1 (Cline) | Cline | — | — | 262,144 ctx / 32,768 out |
+| 18 | Laguna S 2.1 (Kilo) | Kilo | — | — | 262,144 ctx / 32,768 out |
+| 19 | Nemotron 3 Ultra (Kilo) | Kilo | — | — | 1,000,000 ctx / 65,536 out |
+| 20 | Nemotron 3 Ultra | Openrouter | — | — | 1,000,000 ctx / 65,536 out |
+| 21 | Nemotron 3 Ultra (Requesty) | Requesty | — | — | 1,000,000 ctx / 65,536 out |
+| 22 | Inkling Small (Kilo) | Kilo | 26 | 1407 (#73) | 1,048,576 ctx / 131,072 out |
+| 23 | Gemini 3.5 Flash-Lite | Google | 23 | — | 1,048,576 ctx / 65,536 out |
+| 24 | Gemini 3.5 Flash-Lite (key 2) | Google (Key 2) | 23 | — | 1,048,576 ctx / 65,536 out |
+| 25 | Mistral Medium | Mistral | — | — | 262,144 ctx / 262,144 out |
+| 26 | Step 3.7 Flash (Kilo) | Kilo | 19 | — | 262,144 ctx / 65,536 out |
+| 27 | Muse Glimmer 30B (Requesty) | Requesty | 18 | — | 262,144 ctx / 32,768 out |
+| 28 | Gemma 4 31B | Google | 15 | — | 262,144 ctx / 32,768 out |
+| 29 | Gemma 4 31B (key 2) | Google (Key 2) | 15 | — | 262,144 ctx / 32,768 out |
+| 30 | Gemma 4 31B (Requesty) | Requesty | 15 | — | 262,144 ctx / 32,768 out |
+| 31 | North Mini Code (Kilo) | Kilo | — | — | 256,000 ctx / 64,000 out |
+| 32 | North Mini Code | Openrouter | — | — | 256,000 ctx / 64,000 out |
+| 33 | Nemotron 3 Super (Kilo) | Kilo | — | — | 262,144 ctx / 235,929 out |
+| 34 | Nemotron 3 Super | Openrouter | — | — | 262,144 ctx / 262,144 out |
+| 35 | GPT-OSS 120B | Cloudflare | — | — | 128,000 ctx / 128,000 out |
+| 36 | GPT-OSS 120B (Groq) | Groq | — | — | 8,000 ctx / 8,000 out |
+| 37 | Magistral Small | Mistral | — | — | 262,144 ctx / 262,144 out |
+| 38 | Devstral 2 | Mistral | — | — | 262,144 ctx / 16,384 out |
+| 39 | Gemini 3.1 Flash-Lite | Google | — | — | 1,048,576 ctx / 65,536 out |
+| 40 | Gemini 3.1 Flash-Lite (key 2) | Google (Key 2) | — | — | 1,048,576 ctx / 65,536 out |
+
+† **AA INDEX v4.3, RE-READ 2026-09-19, AND IT IS NOT THE OLD COLUMN.** Every
+number marked † comes from Artificial Analysis's own v4.3 evaluations, read
+from their per-model pages. **The un-marked rows are from an older index
+version and MUST NOT be compared with them.** The gap is not small: this file
+recorded Flash-Lite at **37.4** and v4.3 scores it **23**; Gemma 4 31B was
+**29.7** and is now **15**. LMArena numbers in this table are now **Code
+Arena** Elo, which is the leaderboard relevant to what this project does.
+
+> **An index is a measuring stick, and measuring sticks get replaced.** Two
+> scores from different versions look comparable and are not. Re-score the
+> whole column or mark which rows are which — never mix them silently.
 
 ⏸ = alive but **unreachable today**, because a report prompt exceeds its limit.
 Each is refused *locally* by `_check_fits`, so it costs no request and no time —
@@ -12212,6 +12323,661 @@ wastes exactly one request.
 - **A smoke test of its own.** `tests/smoke/test_every_tier.py` parametrizes
   over `CHAIN`, so the new tier got weekly live coverage for free — the skip
   count went 46 → 47 and nothing had to be written.
+
+### Reviving the dead tiers — investigated 2026-09-19
+
+*GLM-5.2 on Mistral, and Cline's free roster. One is replaceable, three are
+deliberately gated, and the gate is not what this file said it was.*
+
+#### MISTRAL's GLM-5.2 IS PROPERLY DEAD — a third error shape, cleanest yet
+
+```
+2026-08-11   answered
+2026-08-16   429, x-ratelimit-limit-tokens-minute: 0        "not entitled"
+2026-09-19   DROPPED from GET /v1/models entirely, and a direct call says
+             "This model is not available in your subscription tier"
+```
+
+**The wording is the whole diagnosis.** Mistral answers `Invalid model:
+glm-5.3` for something that does not exist, and *"not available in your
+subscription tier"* for `glm-5-2` and `zai-glm-5-2`. So the model still
+**exists** there and is behind a paid plan. **Not revivable for free.**
+Mistral's catalogue also shrank from 55 models to **46**.
+
+**But the MODEL is revivable — just not at Mistral.** `z-ai/glm-5.2:free` on
+OpenRouter answered 1 call in 4 on the first pass and first try on the
+second, with the rest `429 upstream_provider_shared_pool`. **That is
+congestion, not entitlement**, and the five-way rule already tells them
+apart. The tier now points there, with a 32,768 context that keeps it off
+reports and useful for Step 2's smaller jobs.
+
+> **When a tier dies, ask whether the MODEL died or the ROUTE did.** Three
+> weeks were spent treating GLM-5.2 as gone; it was Mistral that was gone.
+
+#### CLINE's FREE ROSTER ROTATES, and the gate is the NAMESPACE
+
+The list is different from the one recorded on 2026-09-13 — `longcat-2.0` is
+gone and `deepseek/deepseek-v4-flash` became `cline-free/deepseek-v4.1-flash`.
+Tested live, all five:
+
+| model | result |
+|---|---|
+| **`z-ai/glm-5.3-flash`** | ✅ 200, 2.2s — our tier 1 |
+| **`poolside/laguna-s-2.1:free`** | ✅ 200, 1.0s, cost 0 — our tier 12 |
+| `cline-free/deepseek-v4.1-flash` | ❌ 403 |
+| `cline-free/muse-spark-1.3-contributor` | ❌ 403 |
+| `cline-free/solar-pro4` | ❌ 403 |
+
+> *"X is only available via Cline product surfaces. If you are using an old
+> version of Cline, please update to the latest version."*
+
+**CORRECTION.** This file says *"the gate is per MODEL, not per namespace:
+`deepseek/deepseek-v4-flash` is an ordinary catalogue id and is still
+blocked."* With the current roster that is wrong — **every blocked model is
+under `cline-free/`, and both working ones are under a vendor namespace.**
+The old counter-example was an id that is no longer on the free list at all,
+so it was refused for not being free rather than by a per-model gate.
+
+#### THE THREE GATED MODELS WILL NOT BE REVIVED, and that is deliberate
+
+The 403 is a **client gate**, not a quota or an account problem. Getting past
+it means presenting our code as Cline's IDE, which is misrepresenting what the
+software is in order to defeat an access control the provider put there on
+purpose. **We do not do that**, and it is recorded here so nobody re-opens it
+as a clever idea.
+
+**What is legitimate is finding the same capability on another route**, and
+for the most valuable one that already worked:
+
+| Cline-gated model | elsewhere | free? |
+|---|---|---|
+| **DeepSeek V4 Flash** | **`deepseek/deepseek-v4-flash-0731:free`** on OpenRouter | ✅ **FREE — and it is now chain tier 4** |
+| Muse Spark 1.3 Contributor | `meta/muse-spark-1.3-contributor` | ❌ $0.10/$0.20 per M |
+| Solar Pro 4 | `upstage/solar-pro4` | ❌ $0.09/$0.36 per M |
+| LongCat 2.0 (dropped from the roster) | `meituan/longcat-2.0` | ❌ $0.30/$1.20 per M |
+
+**So the one that mattered is already recovered.** The other three exist only
+as paid models anywhere we can reach.
+
+#### The standing action, because the roster moves
+
+Cline's free list changed twice in six days. `test_every_cline_tier_is_a_model_the_api_actually_serves`
+pins what we use; the roster itself is worth re-reading before assuming a
+`cline-free/` model is still gated — or that a working one still works.
+
+```
+https://api.cline.bot/api/v1/ai/cline/recommended-models     public, no key
+```
+
+### The gateway sweep — Zen, Kilo, Requesty, 2026-09-19
+
+*Three platforms investigated from a proposal file, every claim tested live.
+The chain went 26 -> 40 tiers. One platform is unusable, and the biggest win
+turned out to be on a key we already held.*
+
+#### ZEN IS UNUSABLE, and it says so in a typed error
+
+Every one of its 8 free models, on the endpoints its own docs specify (Muse
+via `/v1/responses`, MiMo via `/v1/chat/completions`):
+
+```
+error type:  "FreeTierError"
+message:     "OpenCode's free tier can only be used from within OpenCode"
+```
+
+Identical with `Bearer`, with `x-api-key`, and **with no key at all** - so it
+is not auth, not the endpoint and not the model id. The paid models answer
+`401 "No payment method"`. It is the same client gate as Cline's
+`cline-free/*`, and getting past it would mean presenting our code as the
+OpenCode CLI. **We do not do that.** `ZEN_API_KEY` is not needed.
+
+That cost the two biggest prizes in the proposal: **`jev-1.13-free`** (which
+would have removed the only paid tier in the project) and **Muse Spark 1.3
+Contributor** (AA 52, free nowhere else).
+
+#### KILO RESELLS OPENROUTER — ON ITS OWN ACCOUNT, WHICH IS THE POINT
+
+The error body settles what the catalogue could not:
+
+```
+Kilo        "user_id": "org_2uwFc1szZKyZweUX7p…"    Kilo's OpenRouter ORG
+OpenRouter  "user_id": "user_3HREb0z4hSrOSnqLt…"    ours
+```
+
+Byte-identical otherwise. **An initial reading of "Kilo shares our quota" was
+WRONG**, and the measurement that corrects it is the useful part:
+
+```
+our OpenRouter free-requests BEFORE:  17
+3 successful Kilo calls
+our OpenRouter free-requests AFTER :  17     delta 0
+```
+
+**Kilo spends Kilo's allowance.** So it is a genuine second pool:
+
+```
+OpenRouter    50 requests per DAY     our account
+Kilo         200 requests per HOUR    per IP, their docs
+```
+
+One hour of Kilo is four times our whole OpenRouter day, **which is why a
+Kilo route now goes BEFORE its OpenRouter twin** - the project's standing
+rule that within one model the bigger free allowance wins.
+
+**TWO CEILINGS, NEITHER OF THEM OURS.** The 200/hour is **per IP**, and we
+work from a shared VPN exit, so it is split with everyone else on that
+address - the thing that made OVH's anonymous tier unusable. And underneath
+sits a per-model daily cap on OpenRouter's shared capacity: `inkling-small`
+refused with `limit_source: openrouter_shared_capacity`,
+`X-RateLimit-Limit 5000`, `Remaining 0`, resetting at midnight UTC, and
+*"Credits don't affect this cap"*.
+
+**Its key is OPTIONAL** - Kilo's docs say anonymous and authenticated free
+requests are rate-limited identically, by IP. It sends **no rate-limit
+headers** on a success and has no usage endpoint, so the remaining allowance
+cannot be read. Blind, like Cline.
+
+> **A gateway can be an independent business and still be a reseller.** What
+> matters is not who owns it but WHOSE ACCOUNT the request is billed to - and
+> the only way to find out was to read the `user_id` in an error body.
+
+#### WHAT CONGESTION IS, AND WHY NO ACCOUNT FIXES IT
+
+Back-to-back, same model, same minute:
+
+```
+qwen3.8-27b    OpenRouter 429 | Kilo(auth) 429 | Kilo(anon) 429    x2
+glm-5.2        OpenRouter 429 | Kilo(auth) 429 | Kilo(anon) 429    x2
+```
+
+`limit_source: upstream_provider_shared_pool` - the **GPU host** (`Decart`,
+`ModelRun`), one level below OpenRouter. Every account fails together.
+
+> **Separate the ACCOUNT layer from the UPSTREAM layer.** A second account
+> buys more requests; it buys nothing when the host behind it is full.
+
+A 429 there is cheap - 0.7-1.2s, not retryable, straight to the next tier -
+while a spent OpenRouter day lasts until tomorrow. That asymmetry is what
+makes "try the congested-but-larger pool first" safe.
+
+#### REQUESTY — a third route, independent of Google AND OpenRouter
+
+200/day, no card, no trial expiry. **7 of 12 free models answered.** Its
+value is independence rather than capability: a refused Google exit has
+already cost this project every Google tier for a week, and Requesty serves
+Gemma and Nemotron without touching Google or OpenRouter.
+
+Dead, recorded so nobody re-adds them: `ling-3.0-tiny` 404, `laguna-m.1`
+404, `laguna-xs.2` 404, `nemotron-3-nano-30b-a3b` **410 Gone**. No usage or
+credits endpoint (both 404).
+
+#### WHAT WAS ADDED, ALL SCORED ON AA v4.3
+
+| tier | AA v4.3 | why |
+|---|---|---|
+| **Gemini 3.8 Flash ×2 keys** | **41** | position 2. **Free on a key we already had** - the biggest win of the sweep, and it needed no signup |
+| Inkling Small (Kilo) | 26 | above Flash-Lite's 23. ⚠ Code Arena **#73** - weak coder |
+| Step 3.7 Flash (Kilo) | 19 | between Flash-Lite and Gemma. Kilo's only exclusive free model |
+| Muse Glimmer 30B (Requesty) | 18 | same band |
+| 8 Kilo + 2 Requesty backup routes | — | second and third routes to models already in the chain |
+
+**REJECTED, with the reason:** `ling-3.0-flash-fin` (AA 23, but **finance**-
+specialised and our domain is code - the proposal file's own warning);
+`nemotron-3-nano-omni` (AA 10, below Gemma); and `dots-3-note`, `nex-n2.5`
+×2, `lfm-2.5-2.6b`, `leanstral-1-5`, which **have no AA or Arena page at
+all** and therefore cannot be ranked. Unrankable is not unworthy - it is
+unplaceable, and this project does not invent an order.
+
+#### THE LIVE SWEEP — 29 of 40, and every failure had a sibling
+
+```
+503 overloaded   Gemini 3.8 (key 1), 3.7 x2       -> key 2 answered
+500 server       Gemma 4 31B (key 1)              -> key 2 and Requesty answered
+429 upstream     Qwen (Kilo), GLM-5.2 both routes -> Qwen: Cloudflare + Groq answered
+429 daily cap    Inkling Small, Mistral x3
+```
+
+**Only GLM-5.2 lost every route**, and Mistral's three are one spent account.
+The redundancy added today is what turned three of those into non-events.
+
+#### A REAL DEFECT, AND A TRAP I WALKED INTO WITH MY EYES OPEN
+
+**The defect.** `z-ai/glm-5.3-flash` was added as a Kilo tier by matching
+Cline's tier-1 **model id** against Kilo's **catalogue**. Wrong list - the
+catalogue is what a gateway SERVES, the free list is what it serves for
+NOTHING. Kilo charges $0.150/$0.500 per M, so it answered *"Paid Model -
+Credits Required"* on every call: a dead tier burning a request per report,
+invisible because the chain swallows it.
+
+`tests/smoke/test_gateway_tiers_are_free.py` closes it, and is a SMOKE test
+deliberately - the lasting risk is not that mistake but **a gateway quietly
+moving a model from free to paid**, and Cline's roster changed twice in six
+days. A committed snapshot would be stale before it mattered.
+
+**The trap.** After mutation-testing that guard I ran
+`git checkout -- labpilot/llm/registry.py` to undo the deliberate break. HEAD
+was an older commit, so the checkout **also reverted two uncommitted changes
+in the same file** - the Requesty tiers and the paid-tier removal. The suite
+stayed green, and a commit went out claiming work it did not contain. It was
+caught only by a live sweep showing 36 tiers with the paid model at
+position 2.
+
+> This file already says: **"Never restore a mutation with git. Copy the file
+> aside and restore from the copy."** Knowing the rule did not stop me
+> breaking it - the same way the self-fulfilling-test rule was written down
+> and violated within hours on 2026-08-17. **Take the copy; do not rely on
+> remembering why.**
+
+#### Three invariants this earned, all mutation-verified alone
+
+```
+a gateway route comes BEFORE its OpenRouter twin   200/hour beats 50/day
+each gateway shares ONE quota pool                 their limits are not per model
+every gateway tier is still FREE on its gateway    smoke, live catalogue
+```
+
+The second is the exact mirror of `test_every_google_tier_owns_a_pool_of_its_own`:
+Google bills **per model** so those pools must differ, Kilo and Requesty bill
+per account so theirs must not. **Same question, opposite answer, and getting
+it backwards is silent in both directions.**
+
+### Qwen3.8-27B and DeepSeek V4 Flash — added to the chain 2026-09-19
+
+*Three tiers, placed on TWO independent sources. The blogs were wrong twice
+and the index version was wrong once, so read the caveats before the numbers.*
+
+#### THE MEASURING STICK CHANGED, and most of this file's AA column is stale
+
+Artificial Analysis is now on **Intelligence Index v4.3**, and it is not the
+scale the chain table was built on:
+
+```
+                      this file said     AA v4.3 today
+gemini-3.5-flash-lite      37.4               23
+gemma-4-31b                29.7               15
+```
+
+> **An index is a measuring stick, and measuring sticks get replaced.** Two
+> scores from different versions look comparable and are not. The chain table
+> now marks every re-read row with †; an unmarked row may not be compared
+> with a marked one.
+
+#### Two blog claims, both wrong, both nearly repeated here
+
+| claim, from several blogs | truth, from the primary source |
+|---|---|
+| Qwen3.8-27B scores **52** on the AA Intelligence Index | **34** — AA's own page, v4.3, at `xhigh` |
+| Qwen3.8-27B is **#9 at 1595** on Code Arena | **#18 at 1593** — the leaderboard itself |
+
+A fourth source said the opposite again — that AA had **not indexed it at
+all** and every number was Alibaba's. That was also wrong: the page exists.
+**Three secondary sources, three different stories, and the primary settled
+it in two fetches.** This project's sources rule keeps earning its place.
+
+#### WHAT IS ACTUALLY MEASURED, and by whom
+
+| | Qwen3.8-27B | source |
+|---|---|---|
+| AA Intelligence Index v4.3 | **34** — and **#1 of 142** open-weights models in the 4B-40B class | **AA's own independent eval** |
+| LMArena **Code Arena** | **1593, rank #18** | **the leaderboard, independent** |
+| output speed | **43.1 tok/s** — the slowest tier here | AA |
+| SWE-bench Pro 61.7 · LiveCodeBench v6 90.3 · OSWorld 84.3 | — | ⚠ **Alibaba's own model card. NOT independently replicated.** Do not quote these as measured |
+
+#### IS IT GOOD AT CODING? Yes — and the evidence is the GAP, not the score
+
+The interesting part is not that it scores well. It is that its **coding rank
+is far better than its general rank**:
+
+```
+                     AA v4.3      Code Arena       so...
+Qwen3.8-27B            34         1593  (#18)
+Gemini 3.6 Flash       34         1537  (#32)    TIED general, +56 Elo code
+DeepSeek V4 Flash      35         1580  (#22)    AHEAD general, -13 Elo code
+GLM-5.2                34         1592  (#19)    tied on both
+```
+
+**It ties Gemini 3.6 Flash on general intelligence and beats it by 56 Elo on
+code.** That is a real specialisation, from an independent leaderboard rather
+than the vendor — so **Step 2 should ROUTE code-writing sub-tasks to it**
+instead of walking the chain, the same rule this file already applies to
+Devstral and North Mini Code.
+
+Proven live on a planted off-by-one, one short sentence each:
+
+```
+DeepSeek V4 Flash    7.9s   "window slice includes k+1 elements ... divides by k"
+Qwen 27B (Groq)      1.5s   "xs[i-k:i+1] wraps around for early indices"
+Qwen 27B (CF)       32.8s   "negative slice ... empty or incorrect early windows"
+```
+
+**Both Qwen hosts and DeepSeek found REAL bugs, and not the same one** — the
+disjoint-blind-spot pattern this file already measured across generators.
+
+#### THE WEAKNESSES, stated as plainly as the strengths
+
+| | |
+|---|---|
+| **It is the SLOWEST tier in the chain** | 43.1 tok/s against Flash-Lite's 358.4 — **8x slower**. Measured end to end: **32.8s** on Cloudflare for one short answer at `xhigh`. Against a Step 2 problem that is already 98.2% generation, that is a real cost |
+| **Cloudflare's budget is small** | 10,000 neurons/day, and **244 neurons** for one 4,860-token call — about **41 such calls a day** |
+| **Groq can never serve a report** | 1,000 requests/day but **8,000 tokens per MINUTE**, covering prompt *and* reserved output. Modelled as `context_window=8_000` so `_check_fits` refuses it locally for nothing, exactly like GPT-OSS |
+| **Its coding numbers are vendor-only** | SWE-bench Pro and LiveCodeBench are Alibaba's. Only AA and Code Arena are independent |
+| **Thinking is ON by default** | `xhigh` is Cloudflare's default, and it is what makes the 32.8s. `low` and `medium` exist and are **unscored** |
+
+#### THE SAME MODEL ON TWO HOSTS TAKES TWO DIFFERENT WORDS
+
+```
+Cloudflare  reasoning_effort=high   -> 400 "Supported types are xhigh
+                                           (default), medium, and low"
+Groq        reasoning_effort=xhigh  -> 400 "invalid Qwen3.8 reasoning_effort"
+Groq        reasoning_effort=high   -> 200
+```
+
+Neither host accepts the other's value **for the same model**, so a shared
+constant breaks one of them and `QWEN_CF_REASONING` exists. This file already
+records that *the same model on two hosts has different LIMITS*; it also has
+**different parameter vocabulary**.
+
+`xhigh` is the setting AA scored at 34, so the chain placement describes the
+configuration we actually send.
+
+#### DeepSeek V4 Flash leads the pair, and speed is why
+
+AA 35 against Qwen's 34 is **inside the ±1 interval — a tie** by this file's
+own reading rule. Qwen wins Code Arena by 13 Elo, which is small. What is not
+small:
+
+```
+DeepSeek   211.9 tok/s   1.05M context   TTFT 1.09s   free on OpenRouter
+Qwen        43.1 tok/s    262K context                ~41 calls/day on CF
+```
+
+**Five times faster, four times the context.** A 13-Elo coding edge does not
+buy a 5x slowdown when generation is already the blocking problem.
+
+#### The 25 free OpenRouter models, tested 2026-09-19
+
+**13 of 22 answered.** Worth knowing for Step 2 routing:
+
+```
+ANSWERED   deepseek-v4-flash-0731 (2.0s, 1.05M ctx) · nemotron-3-nano-omni ·
+           north-mini-code · dots-3-note-preview (512K) · ling-3.0-flash x3 ·
+           nex-n2.5-mini/pro · lfm-2.5-2.6b · openrouter/free ·
+           nemotron-3-ultra (26.7s) · nemotron-3.5-lightning (177.9s !)
+
+429        qwen3.8-27b · glm-5.2 · gemma-4-26b · gemma-4-31b · laguna-s ·
+           laguna-xs   - ALL of them "upstream_provider_shared_pool"
+403        inkling, inkling-small - "only available on agentic harnesses"
+503        nemotron-3-super - NVIDIA overloaded
+```
+
+**The 429s are NOT our quota** — they are a shared free pool, and every one is
+a popular model. `z-ai/glm-5.2:free` answered on 1 of 4 tries, which matters
+because **this file records GLM-5.2 as dead**: that was *Mistral*, with
+`limit: 0` meaning **not entitled**, and it never resets. Congestion is a
+different failure and the five-way rule already separates them.
+
+**`google/gemma-4-26b-a4b-it:free` and `gemma-4-31b-it:free` are a THIRD free
+pool** for two tiers we currently run on two Google keys. Not wired in.
+
+#### And the counter lied again
+
+Right after 13 successful free calls the counter read `used: 2`; a minute
+later, `used: 14`. **The same one-minute delay as the Jev billing counter** —
+two independent confirmations that OpenRouter's counters are not live
+instruments.
+
+#### Cerebras is STILL dead, re-tested 2026-09-19 with a real key
+
+```
+GET  /v1/models   -> 200   qwen-3.8-27b, gpt-oss-120b
+POST /v1/chat/... -> 402   "Payment required"  x-should-retry: false
+```
+
+Both models. The 2026-08-11 finding reproduced exactly, and with it the
+lesson: **an issued API key is not a working API, and a catalogue answering
+200 is not evidence.** ⚠ The variable in `.env` is spelled
+**`CREBERAS_API_KEY`** — a typo, and this project already lost scheduled runs
+to `OPENROUTE_API_KEY`.
+
+#### Where else Qwen3.8 lives, and where it does not
+
+`Qwen3.8-Flash-Next` (the 180B open checkpoint, ~125B main + 6B active) and
+its hosted twin `Qwen3.8-Flash` have **no free no-card route**: ModelScope
+serves it but needs Alibaba real-name verification, Featherless is a
+subscription, and Alibaba/DeepInfra/Novita are paid. **Only the 27B is free**,
+and only on Cloudflare, Groq and a congested OpenRouter `:free`.
+
+Checked and carrying no Qwen3.8 at all: NVIDIA NIM, SambaNova, Hyperbolic,
+Nebius, Fireworks, Mistral. **OVH AI Endpoints** has it free with no card and
+even an anonymous tier, but the anonymous bucket is **2 RPM per IP** and
+refused every call from our shared VPN exit — a free registered key would fix
+that and is untried. **Synapse Garden** authenticates our key and then answers
+**HTTP 500 `fetch failed`** on every endpoint, including `/models`; its
+`/api/health` returns 200, which is the same trap as `GET /v1beta/models`.
+
+### Jev — the decision model, and the first paid tier (2026-09-19)
+
+*Investigated at the user's request after it trended, measured on two corpora,
+and shipped into chain 3. **It is not an LLM**, which is why it is here and not
+in `CHAIN`.*
+
+**What it is.** TypeSafe's "System One" model, launched 2026-09-15. It does not
+generate text. It takes unstructured `state` plus typed `questions` and answers
+**all of them in one parallel pass**, returning probabilities. Three types
+only: `noul` (yes/no probability), `choice` (enum, max 255, plus a distribution
+and a confidence) and `score` (an ordered scale of 2-10 levels). It cannot
+rank, cannot do arithmetic, and cannot write a word.
+
+#### Why a model with no ranking type is a reranker
+
+It has `noul`, and that is the shape a cross-encoder produces:
+
+```
+s(q, d) in [0, 1]
+```
+
+So a ranking is N nouls in one call, sorted. Slice 6 proved our cross-encoders
+are pointwise, so a per-document probability is a legitimate reranker.
+
+#### The route, and the refusal that named it
+
+**No TypeSafe account, no waitlist, no proxy — it is on the OpenRouter key this
+project already has.** It is absent from `GET /api/v1/models` (447 chat models,
+**zero** hits) because its modality is `text->decisions`, and
+`/chat/completions` refuses it. That refusal is the documentation:
+
+```
+"typesafe/jev-1.13 is a decisions model and cannot be used with the
+ chat/completions endpoint. Use the /api/alpha/decisions endpoint instead."
+```
+
+A **Netlify AI Gateway proxy** was designed and built first, because Netlify
+injects `TYPESAFE_API_KEY` into its own compute and is the genuine no-card
+route. It is **not used** and is not in the repository. Keep it only as the
+fallback if OpenRouter ever refuses: Netlify Free is 300 credits/month with no
+card, 180 credits to the dollar, but AI Gateway runs **only on Netlify
+compute** — so it needs a proxy function and a second deployment target, and a
+production deploy costs 15 of those 300 credits.
+
+#### THE BALANCE LIED FOR A MINUTE, and it nearly became a false finding
+
+```
+call 1       ->  total_usage 0            identical to Cline's free tier
++60 seconds  ->  total_usage 0.000014364  to the digit, that one call
+```
+
+**It is billed.** $0.042 per million input tokens, output free. The account
+counter is **not a live instrument** — and the paid control that settled the
+Cline question did *not* discriminate here, because a free-provider control
+also reported zero. Only waiting did.
+
+> **"The balance did not move" is not evidence until it has had a minute.**
+> Cline's rule was right and its instrument was not enough.
+
+#### MEASURED — two corpora, 30-document window, codestral
+
+| reranker | quora MRR | geo MRR | quora r@1 | geo r@1 |
+|---|---|---|---|---|
+| `gemini-3.5-flash-lite` | **0.799** | 0.681 | 0.706 | 0.622 |
+| **Jev** | 0.770 | **0.712** | 0.647 | **0.644** |
+| `gemini-3.1-flash-lite` | 0.745 | — | 0.588 | — |
+| `gemma-4-26b-a4b` | 0.732 | — | 0.647 | — |
+| `rerank-3-lite` (Voyage) | 0.725 | — | 0.588 | — |
+| `rerank-v4.0-fast` (Cohere) | 0.669 | 0.621 | 0.471 | 0.511 |
+| *vector alone* | *0.608* | *0.526* | *0.412* | *0.444* |
+| `bge-reranker-base` | 0.520 | 0.355 | 0.353 | 0.244 |
+| `ms-marco-MiniLM` (local) | 0.421 | — | 0.235 | — |
+
+**One corpus each against flash-lite; the means are 0.740 and 0.741 —
+indistinguishable.** Jev is the steadier of the two and wins **geo**, the
+corpus with real headroom (vector `r@50` 0.867, not saturated at 1.000). It
+beats every remaining tier on every corpus measured.
+
+**It answers the question that killed two other rerankers: can it read code?**
+Yes — Go *and* Python, beating the purpose-built cross-encoders on both. That
+is exactly where `bge-reranker-base` and `ms-marco-MiniLM` failed.
+
+**Latency, 30 documents, through the VPN and two network hops:**
+
+```
+Jev                     1.23s quora  ·  1.55s geo
+gemini-3.5-flash-lite   1.3s
+gemini-3.1-flash-lite   5.3s
+gemma-4-26b-a4b        18.7s
+gemma-4-31b            22.8s
+```
+
+About 15x faster than either Gemma at a better MRR on both corpora. The vendor
+claims 70-500ms; ours includes the network, so that is not contradicted.
+
+#### IT IS LISTWISE, AND THE SHAPE SAYS OTHERWISE
+
+A noul per document looks pointwise, and a pointwise scorer may be cached per
+`(query, chunk)`. **Jev may not.** Every document shares one `state`, so a
+score is conditioned on its neighbours:
+
+```
+the same chunk:  0.62 among 2 documents
+                 0.85 among 10 documents      drift 2.3e-01
+```
+
+Against an effect size of about 0.15. `verify_pointwise` refused to continue
+and the cache moved to per-candidate-set — which is precisely the defect that
+voided five corpora in slice 8 v2. **That check has now paid for itself
+twice.**
+
+#### Why it sits where it sits
+
+**Tier 3 in the assembled chain, tier 2 as a model.** Assembled slot 2 is
+flash-lite on the *second Google account* — the same model, another free
+500/day. A billed tier between the two keys would spend money while a free
+allowance sat unused, and would break the reason `_both_accounts` keeps the
+twins adjacent.
+
+**And it is the first non-Google tier, which is worth as much as the rank.**
+Eight of twelve tiers are Google, and a refused VPN exit has already taken
+every Google endpoint from this project for a week. The fallback below it is
+Cohere's 1,000 a **month** and a Voyage that cannot take a 50-document window.
+Jev is the only independent rerank capacity in the chain, and a test pins that.
+
+#### It costs the 512MB budget nothing — measured, not assumed
+
+```
+marginal import cost of rerank/jev.py      0.6 KB
+widest payload, 50 docs x 2,000 chars    145 KB peak, 107 KB on the wire
+new dependencies                           NONE
+requirements / docker / .env.example       unchanged
+```
+
+**0.03% of the Render ceiling**, against ~120MB for the local ONNX reranker
+that is deliberately excluded. It needs **no new environment variable** —
+`OPENROUTER_API_KEY` already serves three generator tiers — so Step 3's
+container, `.env.example` and `smoke.yaml` are all untouched.
+
+#### The mutation that survived, and the hole it found
+
+Every other tier is *handed* a ranking by its provider. Jev is handed a
+probability per document, **so the ordering is our code** — and nothing tested
+it:
+
+```
+Jev placed first, ahead of flash-lite   -> fires ALONE
+Jev dropped from the chain              -> fires, 2 tests
+Jev pointed at a Google key             -> fires ALONE
+sort ASCENDING, worst document first    -> NOTHING. 777 tests passed.
+```
+
+A reranker that sorts backwards is worse than no reranker, and it is invisible
+downstream: the caller still receives a well-formed `Ranking` and cites the
+least relevant chunk with full confidence. `tests/unit/rerank/test_jev.py`
+closes it — re-running that mutation fires 3 tests, and reading dict insertion
+order instead of the `dN` index fires alone.
+
+#### WHERE ELSE IT FITS — Step 2, and none of it is built
+
+Reranking is the only thing Jev does here today, and it is the smallest of its
+uses. Read the capability library by OUTPUT TYPE rather than by task, and six
+Step 2 nodes stop being prose:
+
+| Step 2 node | output | Jev primitive |
+|---|---|---|
+| **the correspondence gate** | FULL / PARTIAL / NONE | `choice`, 3 options |
+| **`verify(claim, code)`** | match / mismatch / absent | `choice`, 3 options |
+| **§6 comparability** | YES / NO / CANNOT TELL | `choice`, 3 options |
+| **`find_missing`** | is this B decision in A? | `noul` per column |
+| **the `representation` check** | same idea, different language? | `noul` |
+| **the four finding axes** | kind · box · basis · direction · magnitude | 7-way, 5-way, 3-way, 3-way `choice` + `score` |
+| `summarize` · `find_bugs` · `explain_divergence` · `propose_next` | prose | ❌ impossible |
+
+**Three of those are places this project has already MEASURED a failure**,
+which is the real argument rather than the neatness:
+
+- **§6 broke and we watched it break.** Slice 8 job 9: flash-lite wrote in §6
+  that the two F1 numbers are not comparable, then compared them in §9. Prose
+  can contradict itself across sections; **a typed value read by code cannot**.
+- **The gate cannot live in a prompt** — this file's own rule: *"the model will
+  find something, being unhelpful is against its training."* Jev has no urge to
+  be helpful; it returns a distribution.
+- **`verify` batches 5 claims per call only to save quota**, and this file says
+  merging claims destroys detail. Jev removes the reason to batch.
+
+It also brings **calibrated confidence** free, which axis 4 needs and which a
+model's opinion of itself is not.
+
+**Two limits, and the first is the one that matters.** Jev cannot write the
+report, so it does **not** touch the 98.2% — it attacks the nine cheap calls,
+not the expensive one. And it is unmeasured on all six: reranking asks *"is
+this relevant?"*, `verify` asks *"does the code do what the claim says?"*, and
+that is a harder question. **Build the typed nodes behind a small interface so
+Jev is a second implementation later, not a rewrite** — that costs nothing and
+is good design regardless.
+
+#### A new instrument: `--cached-only`
+
+`scripts/score_rerank.py` can now re-derive a whole table from stored results
+and spend **nothing**. It exists because the pointwise probe costs **2 real
+calls per model**, so "just re-run from cache" would still have spent 2 of
+Cohere's 1,000 a month to reprint numbers we already had. A cache **miss
+raises** instead of quietly becoming a call — verified by asking for flash-lite
+at window 30, which is cached only at 50.
+
+#### What this does NOT settle
+
+- **Two corpora.** This project's own rule: a fixture may REJECT, never
+  CONFIRM.
+- **flash-lite's quora 0.799 is from the record, not recomputed.** Only a
+  window-50 cache exists for it, and re-running it was deliberately refused.
+- **Window 30 only.** 50 geo chunks are ~23,700 tokens against the OpenRouter
+  route's **32,000** ceiling, so `SEARCH_LIMIT` fits but barely — the same
+  corpus-dependent window finding slice 8 made about Gemma.
+- **`alpha` is in the endpoint path**, which is the provider's own warning.
+  Route, shape and billing can change without notice; a 402 falls through and
+  costs one request.
+- **Step 2 owns the rest of it.** `verify` (match/mismatch/absent), the
+  correspondence gate, §6 comparability and the four classification axes are
+  all typed decisions Jev fits, and **none is built** — the capability library
+  does not exist yet. Jev cannot write the report, so it does not touch the
+  400-second problem.
 
 ### `gemini-embedding-2` — newer, and the only entry ranked on someone else's benchmark
 
@@ -12620,17 +13386,24 @@ would be a claim about work it did not do.
 shape; every row below was scored on quora at a 30-document window against
 vector alone's MRR of **0.608**.*
 
-| # | Model | Provider | MRR | Budget | Kind |
-|---|---|---|---|---|---|
-| 1 | **`gemini-3.5-flash-lite`** | Google | **0.799** | 500/day | LLM, listwise |
-| 2 | **`gemini-3.1-flash-lite`** | Google | **0.745** | its own 500/day | LLM, listwise |
-| 3 | **`gemma-4-26b-a4b-it`** | Google | **0.732** | its own 14,400/day | LLM, listwise, MoE |
-| 4 | **`gemma-4-31b-it`** | Google | **0.732** | 14,400/day | LLM, listwise |
-| 5 | **`rerank-v4.0-fast`** | Cohere | 0.669 | 1,000/**month** | cross-encoder |
-| 6 | `rerank-3` | Voyage | *unmeasured* | 200M once · 3 RPM | cross-encoder |
-| 7 | `rerank-3-lite` | Voyage | 0.725 | its own 3 RPM | cross-encoder |
-| — | *vector alone* | — | *0.608* | — | *the line to beat* |
-| 8 | **skip** | — | — | — | degraded, still works |
+| # | Model | Provider | MRR quora | MRR geo | Budget | Kind |
+|---|---|---|---|---|---|---|
+| 1 | **`gemini-3.5-flash-lite`** | Google | **0.799** | 0.681 | 500/day | LLM, listwise |
+| **2** | **`typesafe/jev-1.13`** | **OpenRouter** | **0.770** | **0.712** | **PAID, $0.042/M in** | **decision model, listwise** |
+| 3 | **`gemini-3.1-flash-lite`** | Google | **0.745** | — | its own 500/day | LLM, listwise |
+| 4 | **`gemma-4-26b-a4b-it`** | Google | **0.732** | — | its own 14,400/day | LLM, listwise, MoE |
+| 5 | **`gemma-4-31b-it`** | Google | **0.732** | — | 14,400/day | LLM, listwise |
+| 6 | **`rerank-v4.0-fast`** | Cohere | 0.669 | 0.621 | 1,000/**month** | cross-encoder |
+| 7 | `rerank-3` | Voyage | *unmeasured* | — | 200M once · 3 RPM | cross-encoder |
+| 8 | `rerank-3-lite` | Voyage | 0.725 | — | its own 3 RPM | cross-encoder |
+| — | *vector alone* | — | *0.608* | *0.526* | — | *the line to beat* |
+| 9 | **skip** | — | — | — | — | degraded, still works |
+
+**Jev is tier 2 as a MODEL and tier 3 in the assembled chain**, because every
+Google tier is built on BOTH accounts — so assembled slot 2 is flash-lite's
+second free 500/day. A billed tier there would spend money while a free
+allowance sat unused. Twelve assembled tiers now; see
+[Jev, the decision model](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19).
 
 **REORDERED AND SHORTENED 2026-09-19 — read this table as the SHIPPED chain.**
 Each of rows 1-4 is built on BOTH Google accounts, so `api/reranking.py` assembles
@@ -15467,6 +16240,12 @@ is what makes 0-, 1- and 2-artifact sessions work through one mechanism:
 | `diff_choices(A, B)` | **2** | deliberate design differences |
 | `explain_divergence(findings)` | **2** | the causal story — **the actual product** |
 | `propose_next(findings)` | **1–2** | the experiment to run next |
+
+**Six of these nodes return a TYPED VALUE, not prose, and `typesafe/jev-1.13`
+fits every one — see
+[where else Jev fits](#where-else-it-fits--step-2-and-none-of-it-is-built).
+It is already chain 3's second model. It can write nothing, so
+`explain_divergence` is not on that list.**
 
 When a requested capability's precondition is unmet, the agent **says what is
 missing** rather than failing or improvising — see
