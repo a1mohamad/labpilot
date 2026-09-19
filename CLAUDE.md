@@ -12385,6 +12385,45 @@ least relevant chunk with full confidence. `tests/unit/rerank/test_jev.py`
 closes it — re-running that mutation fires 3 tests, and reading dict insertion
 order instead of the `dN` index fires alone.
 
+#### WHERE ELSE IT FITS — Step 2, and none of it is built
+
+Reranking is the only thing Jev does here today, and it is the smallest of its
+uses. Read the capability library by OUTPUT TYPE rather than by task, and six
+Step 2 nodes stop being prose:
+
+| Step 2 node | output | Jev primitive |
+|---|---|---|
+| **the correspondence gate** | FULL / PARTIAL / NONE | `choice`, 3 options |
+| **`verify(claim, code)`** | match / mismatch / absent | `choice`, 3 options |
+| **§6 comparability** | YES / NO / CANNOT TELL | `choice`, 3 options |
+| **`find_missing`** | is this B decision in A? | `noul` per column |
+| **the `representation` check** | same idea, different language? | `noul` |
+| **the four finding axes** | kind · box · basis · direction · magnitude | 7-way, 5-way, 3-way, 3-way `choice` + `score` |
+| `summarize` · `find_bugs` · `explain_divergence` · `propose_next` | prose | ❌ impossible |
+
+**Three of those are places this project has already MEASURED a failure**,
+which is the real argument rather than the neatness:
+
+- **§6 broke and we watched it break.** Slice 8 job 9: flash-lite wrote in §6
+  that the two F1 numbers are not comparable, then compared them in §9. Prose
+  can contradict itself across sections; **a typed value read by code cannot**.
+- **The gate cannot live in a prompt** — this file's own rule: *"the model will
+  find something, being unhelpful is against its training."* Jev has no urge to
+  be helpful; it returns a distribution.
+- **`verify` batches 5 claims per call only to save quota**, and this file says
+  merging claims destroys detail. Jev removes the reason to batch.
+
+It also brings **calibrated confidence** free, which axis 4 needs and which a
+model's opinion of itself is not.
+
+**Two limits, and the first is the one that matters.** Jev cannot write the
+report, so it does **not** touch the 98.2% — it attacks the nine cheap calls,
+not the expensive one. And it is unmeasured on all six: reranking asks *"is
+this relevant?"*, `verify` asks *"does the code do what the claim says?"*, and
+that is a harder question. **Build the typed nodes behind a small interface so
+Jev is a second implementation later, not a rewrite** — that costs nothing and
+is good design regardless.
+
 #### A new instrument: `--cached-only`
 
 `scripts/score_rerank.py` can now re-derive a whole table from stored results
@@ -15673,6 +15712,12 @@ is what makes 0-, 1- and 2-artifact sessions work through one mechanism:
 | `diff_choices(A, B)` | **2** | deliberate design differences |
 | `explain_divergence(findings)` | **2** | the causal story — **the actual product** |
 | `propose_next(findings)` | **1–2** | the experiment to run next |
+
+**Six of these nodes return a TYPED VALUE, not prose, and `typesafe/jev-1.13`
+fits every one — see
+[where else Jev fits](#where-else-it-fits--step-2-and-none-of-it-is-built).
+It is already chain 3's second model. It can write nothing, so
+`explain_divergence` is not on that list.**
 
 When a requested capability's precondition is unmet, the agent **says what is
 missing** rather than failing or improvising — see
