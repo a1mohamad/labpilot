@@ -66,10 +66,10 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 | 26 | **the rerank chain's 2nd Google account** | absent | **added** — 29,800 → 59,600 calls/day | — | **NEW — IN CODE** |
 | 27 | **a 500 is retried** | "retrying cannot change it" | **3s, then 10s** | measured | **OVERTURNED — IN CODE** |
 | 28 | **end-to-end runtime** | never measured | **50.5s searched**, retrieval is 14s of it | 2 runs | **NEW.** `WARN_MINUTES` still wrong |
-| 29 | **reranker MODEL** | 9 configs, old zoo | *running* | 4 (2) | **IN PROGRESS** |
+| 29 | **reranker MODEL** | 9 configs, old zoo | **Cohere above Voyage, bge DELETED** | v1+v2 | **CLOSED on PRIOR evidence — IN CODE** |
 
-**THIRTEEN decisions are now IN THE CODE.** Rows 1, 2, 3, 6, 7, 8, 10, 18, 21,
-23, 24, 26 and 27 changed `labpilot/`, each one mutation-verified.
+**FOURTEEN decisions are now IN THE CODE.** Rows 1, 2, 3, 6, 7, 8, 10, 18, 21,
+23, 24, 26, 27 and 29 changed `labpilot/`, each one mutation-verified.
 
 *This said "Nine" and then listed ten rows, which is how it stood for three
 sessions. Corrected 2026-09-19, when rows 1-3 were also found to be undone.*
@@ -847,12 +847,104 @@ decide what the model *sees* and they do not move the clock.
 chunks, same question, same model, 8× the generation time. Prompt size does not
 predict generation time.
 
-**`WARN_MINUTES = 2.0` is wrong and is NOT fixed.** It models embedding, which
-costs seconds, and says nothing about generation, which costs minutes. Fixing it
-needs a total, and a total needs more than two runs.
+**`WARN_MINUTES = 2.0` STAYS — the threshold was never the defect, 2026-09-19.**
+`scripts/bench_ingest.py` timed the real `ingest_source` across five corpora,
+213 to 1,506 chunks, and found the ESTIMATE 1.4–2.4× optimistic: it modelled
+embedding throughput and charged nothing for chunking or the write. Adding a
+measured `INGEST_OVERHEAD_SECONDS = 0.030` per chunk lands it within ±14%, and
+the warning then fires above ~2,150 chunks — quiet for a notebook, loud for a
+repository. **The page was showing the optimistic number**, so a user was being
+told 1.4 minutes for a 2.4-minute wait.
 
-**The STUFF path is still completely unmeasured** — the obvious fixture needs
-28,246 tokens against a 26,000 budget, so it searches instead.
+It is still **not a total**, and its label must keep saying so: generation is
+another 2–8 minutes on top.
+
+**The STUFF path is EXERCISED, 2026-09-19 — and it is not the cheap path.** The
+obvious fixture could not reach it (28,246 tokens against 26,000), so two
+genuinely corresponding smaller pairs were used instead:
+
+```
+STUFF   paper + model_architecture.py   27 of 27 chunks   119.0s
+STUFF   paper + 01-tokenizer.ipynb      29 of 29 chunks   401.5s
+SEARCH  paper + B_train.py              20 of 20 chunks   496.7s
+```
+
+Retrieval is **8.8s of that 496.7s**. So stuffing saves about nine seconds of a
+two-to-eight-minute answer, and the two STUFF rows differ from each other by
+**282 seconds** on the same path, same model and same machine. **Generation time
+does not follow the path, and it barely follows prompt size.**
+
+---
+
+## 29. THE RERANKER MODEL — CLOSED ON PRIOR EVIDENCE, not on a v3 run
+
+**The v3 re-measurement was killed, and that is the honest headline.** It ran
+for about five hours and produced nothing: Gemma's daily bucket was spent early,
+and `scripts/score_answers.py:230` retries each call up to five times, so the
+loop spent the rest of the afternoon re-asking a quota that had already said no.
+
+So this row is closed on **v1's F6 and v2's G20**, which were already measured,
+already written down, and already named the conditions under which they would
+change the code. Two changes shipped.
+
+### 29a. Cohere moves ABOVE Voyage
+
+Slice 6 put it below on **one** corpus — `quora`, the saturated 82-chunk
+fixture — at 0.669 against `rerank-3-lite`'s 0.725. v2 added three more corpora
+and that ordering did not reproduce:
+
+```
+                corpora   mean gain   negative on
+  cohere            3       +6.0q     0 - NONE
+  flash-lite       13       +6.1q     3 - docs, gson, zod
+```
+
+Cohere is the **only reranker measured here that has never hurt a corpus**, and
+it rescues `gson` — flash-lite's worst case — by **5.8 queries on a 13-query
+fixture**. `rerank-3`, which sat above it, has never been scored on any corpus
+at all.
+
+It stays **behind all eight LLM tiers**, which is the budget half of the same
+finding: 1,000 calls a MONTH against flash-lite's 1,000 a day across two keys.
+Early enough to repair the primary, late enough to survive.
+
+### 29b. `bge-reranker-base` is DELETED
+
+v1's F6 stated the condition in its own words — *"worse than not reranking on
+three corpora, two languages, three domains"* — and then kept the tier anyway,
+pending a v3 re-check. **The condition was met and the re-check will not
+happen**, so the tier goes. The chain already ends in `skip()`, which is
+strictly better than a tier measured below vector alone.
+
+### The shipped chain, eleven tiers
+
+```
+1-8   the four LLM tiers x TWO Google accounts
+9     Cohere Rerank v4 Fast
+10    Voyage Rerank 3
+11    Voyage Rerank 3 Lite
+      -> skip()
+```
+
+### What this row does NOT claim
+
+**No reranker was scored on the v3 zoo.** Every number above is v1's or v2's, on
+their corpora, and this run added none. The open item under
+*what this run did not settle* stands unchanged: `tier_reach` says Gemma serves
+10 of 10 Python corpora at a 50-document window where v2 said 4 of 13, so chain
+3's BUDGET reasoning was wrong even where its order is right.
+
+**And the reorder was unprotected when it shipped.** The first mutation —
+demoting Cohere below Voyage again — fired **nothing**, because excluding it
+from the MRR ordering test left its position pinned by no test at all. That is
+this project's own *"a decision that lives only in a comment is a decision
+nothing defends"*, arriving in the same commit that wrote the comment. A test
+now fires alone on that mutation.
+
+> **Killing a measurement is a decision, and it needs its evidence stated the
+> same way a result would.** The alternative here was not "wait for better
+> data"; it was a loop that could not finish, against a bucket that resets
+> tomorrow and a fixture that changes nothing about v2's three corpora.
 
 ---
 
@@ -860,15 +952,12 @@ needs a total, and a total needs more than two runs.
 
 | | why it is still open |
 |---|---|
-| **the reranker MODEL** | running now — the last item |
-| **the STUFF path** | never exercised; needs a pair under 26,000 tokens |
-| **`WARN_MINUTES`** | measured to be wrong in both directions, not yet fixed |
+| **GENERATION TIME** | the whole clock, and unsolved. 119s / 401s / 488s on three runs of the SAME model. Step 2 owns it — CLAUDE.md says so loudly |
 | **content-kind filtering** | parked for a final pass on ~10 corpora |
 | **N above 30** | keeps improving on 3.1-flash-lite, turns over on flash-lite |
 | **the reranker MODEL on the new Python corpora** | v2 ranked 9 configs on the old zoo. `tier_reach` now says Gemma serves 10 of 10 Python corpora at w50 where v2 said 4 of 13, so chain 3's BUDGET reasoning was wrong even where its order is right |
 | **the all-suffix corpus** | every corpus here is `.py` only. A real ingest reads 58 suffixes, so `pydantic` would be 13,377 chunks rather than 9,846 (+36%) |
 | **BGE's position in code** | row 20 is a recommendation, not a commit |
-| **end-to-end time / `WARN_MINUTES`** | still a guess, as it was in v2 |
 | **a fourth language** | 20 corpora beats 13, and is still one zoo |
 
 ---
