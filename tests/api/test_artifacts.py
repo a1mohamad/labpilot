@@ -35,7 +35,7 @@ def stored(minutes: float) -> Ingested:
             dim=3,
         ),
         chunks=7,
-        embedding_minutes=minutes,
+        ingest_minutes=minutes,
     )
 
 
