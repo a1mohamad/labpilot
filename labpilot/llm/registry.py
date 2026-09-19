@@ -158,6 +158,17 @@ CLINE_LAGUNA_S_2_1 = _cline(
     max_output_tokens=32_768,
 )
 
+# ADDED 2026-09-19. AA v4.3 = 41 at 297.8 tok/s, which puts it SECOND -
+# between GLM-5.3 Flash (42) and Gemini 3.7 Flash (39) - and it is free on the
+# key this project already holds, so it cost nothing to reach.
+#
+# Code Arena is the caveat, and it repeats a pattern: 1568 (#23) puts it BELOW
+# Qwen3.8-27B's 1593 and DeepSeek's 1580 despite a higher general score. It is
+# the strongest GENERAL tier after tier 1, not the strongest coder.
+#
+# ITS FREE QUOTA IS UNVERIFIED. Do NOT assume 3.7's 20/day - Google publishes
+# limits per model and this one is new. Read AI Studio before budgeting on it.
+GEMINI_3_8_FLASH = _gemini(name="Gemini 3.8 Flash", model="gemini-3.8-flash")
 GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", model="gemini-3.7-flash")
 GEMINI_3_6_FLASH = _gemini(name="Gemini 3.6 Flash", model="gemini-3.6-flash")
 GEMINI_3_5_FLASH = _gemini(name="Gemini 3.5 Flash", model="gemini-3.5-flash")
@@ -455,6 +466,8 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
 # "a weaker model on this one".
 CHAIN = _ordered(
     CLINE_GLM_5_3_FLASH,
+    GEMINI_3_8_FLASH,
+    _second_account(GEMINI_3_8_FLASH),
     GEMINI_3_7_FLASH,
     _second_account(GEMINI_3_7_FLASH),
     # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
