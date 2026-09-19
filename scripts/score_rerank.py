@@ -10,7 +10,9 @@ beside score_retrieval.py and score_hybrid.py.
 Embeddings come from score_hybrid's cache, so the embedder costs NOTHING here.
 Rerank scores are cached PER (query, chunk) PAIR rather than per call, which is
 what makes a re-run free: a cross-encoder scores one pair at a time, so the
-same pair needed by a different candidate set is already paid for.
+same pair needed by a different candidate set is already paid for. A LISTWISE
+reranker has no score to cache - it returns an order - so it is cached per
+candidate SET instead, and an unseen set is a fresh call rather than a guess.
 
 The instrument is Cloudflare's bge-reranker-base: ~3.52 neurons per 50-document
 call against 10,000 a DAY, which is the largest renewing budget we have. Cohere
@@ -25,6 +27,7 @@ dead. And the fixture may REJECT, never CONFIRM - the headroom at k=10 is about
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import os
 import pickle
@@ -35,12 +38,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from labpilot.llm.openai_compatible import OpenAICompatibleProvider
 from labpilot.llm.registry import (
     GEMINI_3_1_FLASH_LITE,
     GEMINI_3_5_FLASH_LITE,
     GEMMA_4_31B,
-    MISTRAL_URL,
 )
 from labpilot.rerank import (
     CLOUDFLARE_RERANK,
@@ -94,18 +95,13 @@ GEMMA_4_26B = dataclasses.replace(
     GEMMA_4_31B, name="Gemma 4 26B A4B", tier=16, model="gemma-4-26b-a4b-it"
 )
 
-# CLAUDE.md's tier 4 of chain 3. Not in labpilot/llm/registry.py for the same
-# reason - a registry entry with no consumer is dead data.
-MINISTRAL_3B = OpenAICompatibleProvider(
-    name="Ministral 3B",
-    tier=99,
-    url=MISTRAL_URL,
-    model="ministral-3b-2512",
-    api_key_env="MISTRAL_API_KEY",
-    context_window=131_072,
-    max_output_tokens=131_072,
-)
-
+# `ministral-3b-2512` WAS CLAUDE.md's tier 4 of chain 3 and is GONE from here,
+# for two reasons that agree. It measured 0.440 MRR against vector alone's
+# 0.608 - worse than not reranking - so slice 6 dropped it from the registry.
+# And building it broke this module outright: RANKING_CONFIG carries `thinking`
+# and `generation_config`, which are GEMINI fields, so
+# `dataclasses.replace(OpenAICompatibleProvider, thinking=...)` raises at
+# import. A tier nobody should use, that also stops the script loading.
 CACHE = Path(".cache/rerank")
 EMBED_CACHE = Path(".cache/hybrid")
 
@@ -136,7 +132,6 @@ def listwise(provider) -> LLMReranker:
 
 RERANKERS = {
     "local": LOCAL_RERANK,
-    "ministral": listwise(MINISTRAL_3B),
     "flashlite": listwise(GEMINI_3_5_FLASH_LITE),
     "gemma": listwise(GEMMA_4_31B),
     "gemma26": listwise(GEMMA_4_26B),
@@ -150,7 +145,7 @@ RERANKERS = {
 # Cohere's trial header reports 10 requests/minute, so pace just under it.
 BUDGET_WARNING = {"rerank-v4.0-fast": "1,000 calls a MONTH, shared with chat and embed"}
 RERANKER = CLOUDFLARE_RERANK  # main() replaces this from the command line
-WINDOWS = (1, 5, 10, 20, 50)
+WINDOWS = (1, 3, 5, 10, 15, 20, 25, 30, 50)
 
 # Seconds to wait between calls, because the provider raises on a 429 rather
 # than retrying and pacing is the caller's job - the same split score_hybrid
@@ -173,11 +168,15 @@ PACE = {
     "rerank-v4.0-fast": 7.0,
     # LLM rerankers spend GENERATION quota, which is the scarcest thing
     # here. flash-lite is 500/day, so 17 queries is 3.4% of a day.
-    "gemini-3.5-flash-lite": 2.0,
-    "ministral-3b-2512": 2.0,
-    "gemma-4-31b-it": 2.0,
-    "gemini-3.1-flash-lite": 2.0,
-    "gemma-4-26b-a4b-it": 2.0,
+    #
+    # 2.0s WAS WRONG and cost a whole run in 70-second stalls, 2026-09-16.
+    # Google's Flash-Lite tiers are 15 REQUESTS PER MINUTE, and 2.0s is 30 a
+    # minute - so every other call 429'd and then slept 70s, a wait tuned for
+    # Voyage's token bucket. 4.5s is 13 a minute, just under the ceiling.
+    "gemini-3.5-flash-lite": 4.5,
+    "gemma-4-31b-it": 2.5,
+    "gemini-3.1-flash-lite": 4.5,
+    "gemma-4-26b-a4b-it": 2.5,
 }
 # How far a pair's score may move between batch sizes before the per-pair
 # cache is unsafe. An API cross-encoder is exact - measured drift 0.0 on Voyage
@@ -202,7 +201,6 @@ POINTWISE_TOLERANCE = {"ms-marco-MiniLM-L-6-v2": 1e-2}
 LISTWISE = {
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
-    "ministral-3b-2512",
     "gemma-4-31b-it",
     "gemma-4-26b-a4b-it",
 }
@@ -234,17 +232,39 @@ GATE_GRID = (0.0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.10)
 
 # Slice 5's named candidate: a SMALL k with a SMALL keyword weight is the only
 # region that was never worse than vector alone on any run.
+# The fusion setting the rerank test uses. It was FIXED at slice 5's shipped
+# `k=5 w=0.15`, which is the most CAUTIOUS setting in the grid - the keyword
+# channel is barely switched on, so it can hardly change the candidate set and
+# "the gain does not survive reranking" was close to guaranteed.
+#
+# The 13-corpus grid says the two settings answer different questions:
+#   k=5  w=0.3   best MRR, never loses r@50     <- best WITHOUT a reranker
+#   k=30 w=0.3   best r@50, costs some ordering <- the CEILING a reranker gets
+# and a reranker repairs ordering, so the second is the one worth pairing.
+# --fusion-k and --fusion-w make that testable instead of assumed.
 FUSION_K, FUSION_WEIGHT = 5, 0.15
 
 
-def cached_vectors(corpus: str, model: str, what: str) -> list:
+def cached_vectors(corpus: str, model: str, what: str, expect: int = 0) -> list:
     path = EMBED_CACHE / f"{corpus}_{model}_{what}.pkl"
     if not path.exists():
         raise SystemExit(
             f"{path} is missing. Run score_hybrid.py for this corpus and "
             f"embedder first - it caches the embeddings this script reuses."
         )
-    return pickle.loads(path.read_bytes())
+    vectors = pickle.loads(path.read_bytes())
+    # The cache is keyed by CORPUS AND MODEL, not by the query set, so a
+    # re-drafted fixture silently reuses the vectors of the questions it used
+    # to have - and every score after that describes the old fixture. A count
+    # check is not proof of freshness, but it catches the case that actually
+    # happens, which is a fixture that changed SIZE.
+    if expect and len(vectors) != expect:
+        raise SystemExit(
+            f"{path} holds {len(vectors)} vectors but this corpus now has "
+            f"{expect} {what}. The fixture changed under the cache: delete "
+            f"that file and re-run score_hybrid.py."
+        )
+    return vectors
 
 
 def dense_orders(queries, query_vectors, chunk_vectors) -> dict[str, list]:
@@ -261,64 +281,134 @@ def dense_orders(queries, query_vectors, chunk_vectors) -> dict[str, list]:
 
 
 class PairScores:
-    """Rerank scores, cached per (query, chunk) pair.
+    """Rerank results, cached so a re-run is free - in ONE of two shapes.
 
-    Per PAIR and not per call, because a cross-encoder is pointwise: it runs
-    one forward pass per (query, document) and the other documents in the
-    request do not change the answer. That is verified below rather than
-    assumed - if a provider normalised across the set, this cache would be
-    quietly wrong and every number after it would inherit the error.
+    POINTWISE (a real cross-encoder). Scores are cached per (query, chunk),
+    because the model runs one forward pass per pair and the other documents
+    in the request do not change the answer. `verify_pointwise` proves that
+    each run rather than assuming it.
+
+    LISTWISE (an LLM that is handed the whole set and sorts it). There is no
+    score at all - the model returns an ORDER, and a place is meaningful ONLY
+    inside the call that produced it. So the cache stores the order of an
+    EXACT candidate set, and a different set is a different call.
+
+    THIS CLASS USED TO GET THE SECOND CASE WRONG, and it is worth writing down
+    because the result looked publishable. A listwise order was turned into a
+    score `len(order) - place`, cached per pair, and fetched in batches of
+    SEARCH_LIMIT. Every call therefore produced the same numbers 50..1, so two
+    calls covering different candidate sets for one query collided: the union
+    held two documents scored 50.0, two scored 49.0, and the merged order was
+    an arithmetic artifact rather than anything the model said.
+
+    It was reachable three ways, all of them ordinary - a fusion run whose
+    top-50 differs from the dense top-50, a --window larger than SEARCH_LIMIT,
+    and a re-run at a new window adding a second call to an existing cache.
+    The old comment claimed the cache "is only ever asked for the order it
+    stored". Nothing enforced that, and five of thirteen corpora were void.
+
+    So the rule is now structural instead of remembered: a listwise entry is
+    keyed by the candidate set itself, an unseen set raises rather than being
+    approximated, and a listwise call is NEVER split.
     """
 
     def __init__(self, corpus: str, tag: str = "") -> None:
         CACHE.mkdir(parents=True, exist_ok=True)
         model = RERANKER.model.replace("/", "_")
-        self.path = CACHE / f"{corpus}_{model}{tag}.json"
-        self.scores: dict[str, float] = (
+        self.listwise = RERANKER.model in LISTWISE
+        suffix = ".orders.json" if self.listwise else ".json"
+        self.path = CACHE / f"{corpus}_{model}{tag}{suffix}"
+        stored = (
             json.loads(self.path.read_text(encoding="utf-8"))
             if self.path.exists()
             else {}
         )
+        self.scores: dict[str, float] = {} if self.listwise else stored
+        self.orders: dict[str, list[int]] = stored if self.listwise else {}
         self.calls = 0
 
     def key(self, query_id: str, chunk_index: int) -> str:
         return f"{query_id}:{chunk_index}"
 
+    def set_key(self, query_id: str, chunk_indexes: list[int]) -> str:
+        """A key that names the exact candidate set, not just the query.
+
+        The digest is over the sorted indexes, so the same set asked for in a
+        different order is one cache entry - and a set differing by a single
+        document is a different one, which is the whole point.
+        """
+        digest = hashlib.sha1(
+            ",".join(str(i) for i in sorted(chunk_indexes)).encode()
+        ).hexdigest()[:12]
+        return f"{query_id}#{len(chunk_indexes)}#{digest}"
+
+    def _rank(self, query, batch: list[int], documents: list[str]):
+        if wait := PACE.get(RERANKER.model, 0.0):
+            time.sleep(wait)
+        # Back off and retry on a 429 rather than guessing a pace that is
+        # always right. Voyage's card-free ceiling is token-based, so the
+        # sustainable rate depends on how big the documents happen to be -
+        # a fixed sleep is a guess, and this discovers the real rate.
+        for attempt in range(RETRY_LIMIT):
+            try:
+                return RERANKER.rank(query.text, [documents[i] for i in batch])
+            except RerankError as exc:
+                wait = retry_wait(str(exc))
+                if wait is None or attempt == RETRY_LIMIT - 1:
+                    raise
+                print(f"    retrying in {wait:.0f}s", flush=True)
+                time.sleep(wait)
+        raise RerankError("unreachable")
+
     def fetch(self, query, chunk_indexes: list[int], documents: list[str]) -> None:
+        if self.listwise:
+            self._fetch_order(query, chunk_indexes, documents)
+            return
+
         missing = [i for i in chunk_indexes if self.key(query.id, i) not in self.scores]
         if not missing:
             return
         for start in range(0, len(missing), SEARCH_LIMIT):
             batch = missing[start : start + SEARCH_LIMIT]
-            if wait := PACE.get(RERANKER.model, 0.0):
-                time.sleep(wait)
-            # Back off and retry on a 429 rather than guessing a pace that is
-            # always right. Voyage's card-free ceiling is token-based, so the
-            # sustainable rate depends on how big the documents happen to be -
-            # a fixed sleep is a guess, and this discovers the real rate.
-            for attempt in range(RETRY_LIMIT):
-                try:
-                    ranking = RERANKER.rank(query.text, [documents[i] for i in batch])
-                    break
-                except RerankError as exc:
-                    wait = retry_wait(str(exc))
-                    if wait is None or attempt == RETRY_LIMIT - 1:
-                        raise
-                    print(f"    retrying in {wait:.0f}s", flush=True)
-                    time.sleep(wait)
+            ranking = self._rank(query, batch, documents)
             self.calls += 1
-            # A listwise reranker returns an ORDER and no scores - it never
-            # scored anything, it sorted. Synthesising a score from the place
-            # keeps one cache shape for both kinds, and the only thing the
-            # cache is ever asked for is the order back again.
-            scored = ranking.scores or tuple(
-                float(len(ranking.order) - place) for place in range(len(ranking.order))
-            )
-            for place, score in zip(ranking.order, scored, strict=True):
+            for place, score in zip(ranking.order, ranking.scores, strict=True):
                 self.scores[self.key(query.id, batch[place])] = score
         self.path.write_text(json.dumps(self.scores), encoding="utf-8")
 
+    def _fetch_order(
+        self, query, chunk_indexes: list[int], documents: list[str]
+    ) -> None:
+        """One call over the WHOLE candidate set. Never split.
+
+        Splitting is what broke this before: two calls cannot be stitched into
+        one ranking, because neither knows about the other's documents. If a
+        tier cannot take the set, that is a real constraint on that tier and it
+        must be raised, not worked around by cutting the set in half.
+        """
+        candidates = sorted(chunk_indexes)
+        key = self.set_key(query.id, candidates)
+        if key in self.orders:
+            return
+        ranking = self._rank(query, candidates, documents)
+        self.calls += 1
+        ranked = [candidates[place] for place in ranking.order]
+        # A model that declines returns nothing; retrieval's own order stands,
+        # which is what skip() means one layer down.
+        self.orders[key] = ranked + [i for i in candidates if i not in set(ranked)]
+        self.path.write_text(json.dumps(self.orders), encoding="utf-8")
+
     def order(self, query_id: str, chunk_indexes: list[int]) -> list[int]:
+        if self.listwise:
+            key = self.set_key(query_id, chunk_indexes)
+            if key not in self.orders:
+                raise KeyError(
+                    f"no listwise ranking cached for {query_id} over "
+                    f"{len(chunk_indexes)} candidates. A listwise order is only "
+                    f"valid for the exact set it was produced from - call "
+                    f"fetch() with this set first."
+                )
+            return list(self.orders[key])
         return sorted(
             chunk_indexes,
             key=lambda i: (-self.scores[self.key(query_id, i)], i),
@@ -337,8 +427,8 @@ def verify_pointwise(query, documents: list[str], candidates: list[int]) -> None
         print(
             "  pointwise check: SKIPPED - a listwise reranker ranks documents "
             "against each other by design, so a place genuinely depends on the "
-            "batch. It is scored per call, and the per-pair cache is only ever "
-            "asked for the order it stored."
+            "set. It is cached per candidate SET, and an unseen set raises "
+            "instead of being stitched together from other calls."
         )
         return
 
@@ -400,7 +490,12 @@ def main() -> int:
         )
         return 2
 
-    global RERANKER
+    global RERANKER, FUSION_K, FUSION_WEIGHT
+    for flag in sys.argv:
+        if flag.startswith("--fusion-k="):
+            FUSION_K = int(flag.split("=")[1])
+        if flag.startswith("--fusion-w="):
+            FUSION_WEIGHT = float(flag.split("=")[1])
     corpus, embedder = sys.argv[1], EMBEDDERS[sys.argv[2]]
     want_fusion = "--fusion" in sys.argv
     for name, candidate in RERANKERS.items():
@@ -439,8 +534,8 @@ def main() -> int:
         f"10,000-chunk artifact it would be {window / 10_000:.1%}"
     )
 
-    chunk_vectors = cached_vectors(corpus, embedder.model, "chunks")
-    query_vectors = cached_vectors(corpus, embedder.model, "queries")
+    chunk_vectors = cached_vectors(corpus, embedder.model, "chunks", len(chunks))
+    query_vectors = cached_vectors(corpus, embedder.model, "queries", len(queries))
     dense = dense_orders(queries, query_vectors, chunk_vectors)
 
     pairs = PairScores(corpus, "_bare" if bare else "")
@@ -466,8 +561,20 @@ def main() -> int:
 
     # --- pay for the rerank scores -----------------------------------------
     for q in queries:
-        needed = set(vector_candidates[q.id]) | set(fused_candidates.get(q.id, []))
-        pairs.fetch(q, sorted(needed), documents)
+        # ONE FETCH PER CANDIDATE SET, never one fetch over the union.
+        #
+        # A pointwise cache does not care - a pair's score is the same
+        # whichever set asked for it, so the union is simply cheaper. A
+        # LISTWISE ranking is only valid for the exact set it was produced
+        # from, so ranking the union and then reading the vector-only subset
+        # out of it is ranking 100 documents and calling it a ranking of 50.
+        #
+        # That is the shape that voided four corpora: every one of them was a
+        # --fusion run, where the fused top-50 differs from the dense top-50
+        # and the union crossed SEARCH_LIMIT.
+        for candidates in (vector_candidates[q.id], fused_candidates.get(q.id)):
+            if candidates:
+                pairs.fetch(q, sorted(candidates), documents)
     print(f"  rerank calls spent this run: {pairs.calls}")
     declined = getattr(RERANKER, "declined", 0)
     if declined:
@@ -601,6 +708,48 @@ def main() -> int:
 
     if "DATABASE_URL" not in os.environ and want_fusion:
         print("\n  (--fusion needs DATABASE_URL for the BM25 channel)")
+
+    # Machine-readable, for the same reason score_hybrid writes it: "reranking
+    # helped on 11 of 12 corpora" cannot be claimed by reading twelve printed
+    # tables, and the per-category deltas are the evidence the routing question
+    # turns on.
+    per_kind = {}
+    for asks in sorted(kinds):
+        group = kinds[asks]
+        per_kind[asks] = {
+            "n": len(group),
+            "before": statistics.mean(
+                1 / place_of([i for i, _ in dense[q.id]], truth[q.id], n) for q in group
+            ),
+            "after": statistics.mean(
+                1 / place_of(reranked[q.id], truth[q.id], n) for q in group
+            ),
+        }
+
+    out = Path(".logs/results")
+    out.mkdir(parents=True, exist_ok=True)
+    name = f"rerank_{corpus}_{embedder.model}_{RERANKER.model}_w{window}.json"
+    (out / name.replace("/", "-")).write_text(
+        json.dumps(
+            {
+                "corpus": corpus,
+                "chunks": n,
+                "queries": len(queries),
+                "embedder": embedder.model,
+                "reranker": RERANKER.model,
+                "window": window,
+                "fusion": want_fusion,
+                "calls": pairs.calls,
+                "declined": declined,
+                "results": results,
+                "gate": {str(t): gated[t] for t in GATE_GRID},
+                "skipped_at": {str(t): skipped_at[t] for t in GATE_GRID},
+                "by_kind": per_kind,
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
     return 0
 
 
