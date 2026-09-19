@@ -107,6 +107,31 @@ def test_a_real_reranker_cuts_to_the_reranked_number():
     assert len(best) < services.VECTOR_TOP_N
 
 
+def test_the_reranker_reads_only_the_WINDOW_not_everything_search_returned():
+    """RERANK_WINDOW is the measured cut, and it is invisible unless recorded.
+
+    Search returns SEARCH_LIMIT per side; the reranker is handed the top
+    RERANK_WINDOW of those. Measured 2026-09-18 on 5 Python corpora: the
+    shipped w50 is nearly half as good as w20, and w10/w20/w30 are within
+    0.17 queries of each other.
+
+    Its neighbours cannot catch this. They inject a rank() that returns a full
+    ranking and never look at the ARGUMENT, so handing the reranker all 40
+    hits breaks none of them - proven by a mutation that deleted the cut and
+    left 757 tests green.
+    """
+    hits = tuple(hit(index) for index in range(40))
+    seen: dict[str, int] = {}
+
+    def recording(question, documents, *, top_n):
+        seen["documents"] = len(documents)
+        return Ranking(order=tuple(range(len(documents))), model="rerank-3-lite")
+
+    services._best("q", hits, rank=recording)
+
+    assert seen["documents"] == services.RERANK_WINDOW
+
+
 def test_nothing_found_is_not_an_error():
     """An empty result is an answer. Reranking nothing would be a ValueError."""
     assert services._best("q", ()) == []

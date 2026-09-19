@@ -70,9 +70,21 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def fail_everything_before_google():
+    """400, NOT 500 - and that stopped being an arbitrary choice on 2026-09-19.
+
+    These tiers are scenery: the tests below measure Google, and everything in
+    front of it only has to get out of the way. A 500 used to do that in one
+    call. Since 500 joined RETRYABLE_STATUSES it costs THREE calls and a real
+    3s + 10s wait per tier, so both tests that call this ran for 13.01 seconds
+    each - green, and slow for a reason that has nothing to do with what they
+    check.
+
+    400 is the status that still means exactly "next tier, retrying cannot
+    change it", which is what the scenery is for.
+    """
     for provider in BEFORE_GOOGLE:
         responses.post(
-            url_for(provider), status=500, json={"error": "not the tier under test"}
+            url_for(provider), status=400, json={"error": "not the tier under test"}
         )
 
 
@@ -92,6 +104,12 @@ def keys(monkeypatch):
         account = getattr(provider, "account_env", None)
         if account:
             monkeypatch.setenv(account, "secret-account")
+
+    # Belt and braces after the 500 retry landed. The status above is now 400,
+    # so nothing here waits - but a unit test must never be able to sleep for
+    # real, and the next retryable status added to defaults.py should not be
+    # able to put thirteen seconds back into this file unnoticed.
+    monkeypatch.setattr("labpilot.llm.chain.time.sleep", lambda _seconds: None)
 
 
 @responses.activate

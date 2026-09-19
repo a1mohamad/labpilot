@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import pytest
@@ -60,20 +61,29 @@ def test_every_google_embedder_has_a_second_account_behind_it(model):
     assert keys == {"GOOGLE_API_KEY", "GOOGLE_API_KEY_2"}, keys
 
 
-def test_the_newer_google_embedder_outranks_the_older_one():
-    """Ranked on GOOGLE's evidence, not ours - and that is the exception.
+def test_the_measured_google_embedder_outranks_the_one_google_prefers():
+    """MEASURED AND MOVED, 2026-09-18 - this test used to assert the reverse.
 
-    `gemini-embedding-2` is version 2 against version 001 in Google's own model
-    listing, MTEB mean-by-task 69.9 against 68.32, and accepts 8,192 input
-    tokens against 2,048. It has NEVER been scored on our fixture, which makes
-    it the only entry in MIGRATION ordered by somebody else's benchmark.
+    `gemini-embedding-2` sat above 001 on GOOGLE's evidence rather than ours:
+    version 2 against version 001 in the model listing, MTEB mean-by-task 69.9
+    against 68.32. It was the only entry in MIGRATION ordered by somebody
+    else's benchmark, and the previous version of this test existed to keep
+    that deliberate - "slice 8 owes this model a score, and if it loses on our
+    data the order has to move back".
 
-    The test exists so that stays deliberate: slice 8 owes this model a score,
-    and if it loses on our data the order has to move back.
+    Slice 8 scored it and it LOST, on 3 of the 4 corpora where both ran:
+    websocket 0.530 vs 0.364, requests 0.650 vs 0.559, geo 0.493 vs 0.341, and
+    only quora the other way at 0.674 vs 0.702.
+
+    So the order moved back, which is what MIGRATION's own rule requires: order
+    by MEASURED recall. The test moved with it, and still guards the same
+    property - that this pair's order is a decision somebody took on evidence,
+    not an accident of edit history. v2's G21 reached the same verdict and the
+    code was never changed, which is exactly the failure this pins.
     """
     order = [e.model for e in MIGRATION]
 
-    assert order.index("gemini-embedding-2") < order.index("gemini-embedding-001")
+    assert order.index("gemini-embedding-001") < order.index("gemini-embedding-2")
 
 
 def test_the_newer_google_embedder_lifts_the_chunk_cap_ceiling():
@@ -113,3 +123,79 @@ def test_no_single_platform_can_empty_the_migration():
         survivors = [e for e in MIGRATION if e.api_key_env != platform]
 
         assert survivors, f"losing {platform} would leave nothing to embed with"
+
+
+def test_a_model_that_cannot_finish_today_is_skipped_not_attempted():
+    """Google counts one TEXT as one request, so a big corpus is impossible.
+
+    ADDED 2026-09-18 after the gap was found by running into it. `Rate` modelled
+    a token budget and a call budget, and Google's real limit is neither: a
+    96-text batchEmbedContents call spends 96 of the day's 1,000. So
+    `embedding_minutes` reported a plausible 163 minutes for a 20,000-chunk
+    Google ingest when the truth is twenty DAYS, the walk chose Google, started,
+    and died on a 429 part way through. Measured twice that day - a warm failed
+    on its SECOND corpus, and 001 exhausted after 943 chunks.
+
+    An inf here is what removes a model from the walk, so this is the
+    difference between refusing before the first call and failing half way
+    through an ingest that cannot be resumed.
+    """
+    google = next(e for e in MIGRATION if e.model == "gemini-embedding-001")
+    budget = google.rate.daily_text_budget
+
+    assert budget, "Google's per-TEXT daily budget must be modelled"
+    assert google.embedding_minutes(tokens=budget * 236, chunks=budget) < math.inf
+    assert (
+        google.embedding_minutes(tokens=(budget + 1) * 236, chunks=budget + 1)
+        == math.inf
+    )
+
+
+def test_the_migration_is_ordered_by_measured_strength():
+    """mistral-embed loses to every embedder it has been compared with.
+
+    Measured on the 20-corpus zoo: codestral 0.634 > gemini-001 0.602 > cohere
+    0.593 > gemini-2 0.563 > mistral 0.511. Head to head, mistral wins 1 of 7
+    against gemini-001, 3 of 13 against cohere, 4 of 11 against gemini-2.
+
+    It sat THIRD until 2026-09-18, above three better models, in a tuple whose
+    own comment called it "the strength order". It stays in the list because a
+    walk must not dead-end - it is the only model that can ingest 10,000 chunks
+    quickly - but it belongs at the back.
+    """
+    order = [e.model for e in MIGRATION]
+
+    assert order.index("codestral-embed") < order.index("mistral-embed")
+    assert order.index("gemini-embedding-001") < order.index("mistral-embed")
+    assert order.index("embed-v4.0") < order.index("mistral-embed")
+
+
+def test_the_unmeasured_platform_pick_does_not_outrank_measured_models():
+    """BGE sat SECOND for a whole project without ever being scored.
+
+    It was there on a ROBUSTNESS argument - codestral and mistral-embed share
+    one API key, so a Mistral outage would otherwise take the top two - inside
+    a tuple whose own comment calls it the strength order. Scored at last on
+    2026-09-18 it loses 4 of 4 Python corpora at a mean -0.149 MRR, worse than
+    mistral-embed, which had already been demoted for losing by far less. So
+    the fallback from our primary was the weakest model we have.
+
+    The robustness argument is satisfied by a better model instead:
+    gemini-embedding-001 is on a third platform AND scores 0.602, which
+    `test_the_two_best_embedders_do_not_share_a_platform` keeps honest.
+
+    This test exists so a future edit cannot quietly promote an unscored model
+    above scored ones again - the failure that let this sit for two runs.
+    """
+    order = [e.model for e in MIGRATION]
+    bge = "@cf/baai/bge-base-en-v1.5"
+
+    for beaten in ("codestral-embed", "gemini-embedding-001", "embed-v4.0"):
+        assert order.index(beaten) < order.index(bge), (
+            f"{beaten} is measured stronger than BGE and must come first"
+        )
+    assert order.index("mistral-embed") < order.index(bge), (
+        "BGE loses by more than mistral-embed does, and unlike mistral-embed it "
+        "cannot ingest a large corpus at all - 684,000 neurons a day stops it "
+        "at ~2,900 chunks"
+    )

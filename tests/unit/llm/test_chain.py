@@ -11,6 +11,10 @@ from labpilot.llm.chain import (
     pool_is_exhausted,
 )
 from labpilot.llm.contracts import LLMResult
+from labpilot.llm.defaults import (
+    DEFAULT_MAX_RETRIES_PER_TIER,
+    SERVER_ERROR_DELAYS,
+)
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 
 
@@ -161,8 +165,12 @@ def test_pool_is_exhausted_only_for_long_rate_limits(error, expected):
 
 def test_marks_the_pool_dead_after_a_repeated_rate_limit(no_sleep):
     busy = LLMError("busy", status=429)
+    # ONE attempt plus every retry. Written as a literal until 2026-09-19, when
+    # raising max_retries_per_tier to 2 made the list run out mid-walk and this
+    # test failed for a reason that had nothing to do with what it checks.
+    tries = 1 + DEFAULT_MAX_RETRIES_PER_TIER
     first = FakeProvider(
-        name="First", tier=1, api_key_env="POOL", outcomes=[busy, busy]
+        name="First", tier=1, api_key_env="POOL", outcomes=[busy] * tries
     )
     third = ok("Third", 3, key="POOL")
     client = LLMClient(
@@ -175,8 +183,8 @@ def test_marks_the_pool_dead_after_a_repeated_rate_limit(no_sleep):
     )
     result = client.generate("hello")
 
-    assert first.calls == 2
-    assert no_sleep == [1.0]
+    assert first.calls == tries
+    assert no_sleep == [1.0 * 2**n for n in range(DEFAULT_MAX_RETRIES_PER_TIER)]
     assert third.calls == 0
     assert result.tier == 4
 
@@ -258,7 +266,10 @@ def test_an_overloaded_service_never_kills_its_pool(no_sleep):
     client = LLMClient(
         chain=(
             FakeProvider(
-                name="Busy", tier=1, api_key_env="KEY_A", outcomes=[error, error]
+                name="Busy",
+                tier=1,
+                api_key_env="KEY_A",
+                outcomes=[error] * (1 + DEFAULT_MAX_RETRIES_PER_TIER),
             ),
             later,
         )
@@ -280,3 +291,57 @@ def test_an_unavailable_model_is_not_retried(no_sleep):
 
     assert dead.calls == 1
     assert no_sleep == []
+
+
+def test_a_server_error_is_retried_rather_than_abandoning_the_tier(no_sleep):
+    """500 was NOT retried, and that threw away the largest quota we have.
+
+    CLAUDE.md's five-way rule said *400 / 500 / empty / timeout -> next tier,
+    because retrying cannot change it*. For Gemma that premise is false, and it
+    is measured: gemma-4-31b answered HTTP 500 on TWO calls of three and 200 on
+    the third, three times running, on a trivial prompt. Retrying DOES change
+    it - so the old rule was discarding 57,600 calls a day over a fault that
+    clears by itself.
+
+    And the wait is chosen rather than derived: a 500 carries no Retry-After
+    and no reset time, so there is nothing to read. 3s then 10s, because the
+    generic 1s/2s backoff asks a struggling server the same question twice in
+    three seconds.
+    """
+    boom = LLMError("Gemma: HTTP 500", status=500)
+    flaky = FakeProvider(
+        name="Flaky", tier=1, api_key_env="KEY", outcomes=[boom, boom, "recovered"]
+    )
+
+    result = LLMClient(chain=(flaky, ok("Next", 2, key="OTHER"))).generate("hello")
+
+    assert result.tier == 1, "the tier recovered and must not have been abandoned"
+    assert result.text == "recovered"
+    assert flaky.calls == 3
+    assert list(no_sleep) == list(SERVER_ERROR_DELAYS)
+
+
+def test_a_server_error_never_kills_its_pool(no_sleep):
+    """A 500 is the SERVER failing, not the account being spent.
+
+    Only a 429 may retire a pool. If a 500 did, one bad minute on Gemma would
+    take every Gemma tier on that key with it - which is the exact mistake
+    `quota_pool` was created to prevent one level up.
+    """
+    boom = LLMError("HTTP 500", status=500)
+    sibling = ok("Sibling", 2, key="SAME")
+
+    result = LLMClient(
+        chain=(
+            FakeProvider(
+                name="Broken",
+                tier=1,
+                api_key_env="SAME",
+                outcomes=[boom] * (1 + DEFAULT_MAX_RETRIES_PER_TIER),
+            ),
+            sibling,
+        )
+    ).generate("hello")
+
+    assert result.tier == 2, "the sibling on the SAME key must still be tried"
+    assert sibling.calls == 1

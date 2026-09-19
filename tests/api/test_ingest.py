@@ -132,11 +132,57 @@ def test_no_usable_model_is_a_failure_not_a_silent_pick():
         _pick_embedder(tokens=5_000_000, chunks=15_000, candidates=(bge,))
 
 
-def test_a_small_corpus_keeps_the_strength_order():
-    """Below the budget, quality decides - MIGRATION[0] is the best model."""
+def test_a_small_corpus_takes_the_strength_order_like_any_other():
+    """THE GOOGLE SPECIAL CASE IS GONE - deleted 2026-09-18.
+
+    This test twice asserted the opposite of what it asserts now, which is the
+    point of keeping it. Originally it pinned MIGRATION[0]; v2 changed it to
+    pin Google, on three corpora; slice 8 v3 re-measured on six against
+    `gemini-embedding-001` and found THREE WINS EACH, net codestral ahead by
+    0.023 MRR - about half a query on a 20-query fixture, below what the
+    fixtures resolve.
+
+    A rule that exists to buy quality and buys none is deleted, not retuned.
+    So a small corpus is no longer special: it takes the strength order, and
+    codestral leads that on measured recall.
+    """
     picked, _ = _pick_embedder(tokens=20_000, chunks=60)
 
     assert picked is MIGRATION[0]
+
+
+def test_a_large_corpus_takes_the_strength_order_too():
+    """The same rule now applies at every size, which is the simplification."""
+    picked, _ = _pick_embedder(tokens=200_000, chunks=2_000)
+
+    assert picked is MIGRATION[0]
+
+
+def test_a_corpus_too_slow_for_the_budget_is_re_sorted_by_speed():
+    """Strength first, UNLESS the best model cannot finish in the budget.
+
+    This is the one reordering left in `_pick_embedder`, and deleting the
+    Google special case must not have disturbed it: a corpus large enough that
+    MIGRATION[0] exceeds EMBEDDING_MINUTES_BUDGET falls back to by_speed.
+    """
+    picked, minutes = _pick_embedder(tokens=400_000_000, chunks=1_000_000)
+
+    assert minutes <= min(
+        e.embedding_minutes(tokens=400_000_000, chunks=1_000_000) for e in MIGRATION
+    )
+
+
+def test_the_embedder_walk_never_dead_ends():
+    """A single candidate must still be returned, not refused.
+
+    MIGRATION is a WALK, not a pool - nothing is ever dropped, only reordered.
+    That property outlived the Google rule and is what this pins now.
+    """
+    codestral = next(e for e in MIGRATION if e.model == "codestral-embed")
+
+    picked, _ = _pick_embedder(tokens=20_000, chunks=60, candidates=(codestral,))
+
+    assert picked is codestral
 
 
 # --- _source_id: a whole repository, hashed from what was really READ --------
