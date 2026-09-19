@@ -229,3 +229,43 @@ def test_an_embedder_that_fails_is_OUR_outage_not_the_users_mistake(monkeypatch)
 
     with pytest.raises(EmbeddingUnavailable, match="codestral is down"):
         services._embed_question("a question", model="codestral-embed")
+
+
+def test_a_skip_gate_that_says_no_really_stops_the_reranker(monkeypatch):
+    """THE GATE IS WIRED, AND NOTHING PROVED IT.
+
+    `SKIP_MARGIN` is None today, so `should_rerank` always answers True and
+    deleting the call from `_best` changes no behaviour whatever. That is
+    exactly the condition under which a component quietly stops being
+    connected - and this project has shipped that failure twice already:
+
+        slice 6   the rerank chain was BUILT AND NEVER BOUND, so the ask path
+                  used only the cross-encoders and never the four tiers that
+                  beat them. Found by the user reading the code.
+        slice 8   score fusion was DECIDED and never applied for three
+                  sessions, while RESULTS.md claimed "it now has a caller".
+
+    Both were invisible because the unwired component still returned something
+    plausible. The gate would fail the same way: `retrieval/gate.py` stays
+    green, `SKIP_MARGIN` stays a documented knob, and turning it on would do
+    nothing at all.
+
+    So this forces the gate to say NO and asserts the reranker is never
+    reached. It fails the day the call is removed, which is the only day it
+    needs to.
+    """
+    called: list[str] = []
+
+    def never(question, documents, *, top_n=None):
+        called.append(question)
+        raise AssertionError("the gate said skip, so no tier may be asked")
+
+    monkeypatch.setattr(services, "should_rerank", lambda scores: False)
+
+    hits = tuple(hit(index) for index in range(services.VECTOR_TOP_N + 5))
+    kept = services._best("why do the results differ?", hits, rank=never)
+
+    assert not called, "the reranker was called although the gate said skip"
+    assert [found.chunk_index for found in kept] == [
+        FIRST_ID + index for index in range(services.VECTOR_TOP_N)
+    ], "a skipped gate must fall back to the VECTOR number, in search order"
