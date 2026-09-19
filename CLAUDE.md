@@ -12422,12 +12422,16 @@ vector alone's MRR of **0.608**.*
 | 2 | **`gemini-3.1-flash-lite`** | Google | **0.745** | its own 500/day | LLM, listwise |
 | 3 | **`gemma-4-26b-a4b-it`** | Google | **0.732** | its own 14,400/day | LLM, listwise, MoE |
 | 4 | **`gemma-4-31b-it`** | Google | **0.732** | 14,400/day | LLM, listwise |
-| 5 | `rerank-3` | Voyage | *unmeasured* | 200M once · 3 RPM | cross-encoder |
-| 6 | `rerank-3-lite` | Voyage | 0.725 | its own 3 RPM | cross-encoder |
-| 7 | `rerank-v4.0-fast` | Cohere | 0.669 | 1,000/**month** | cross-encoder |
+| 5 | **`rerank-v4.0-fast`** | Cohere | 0.669 | 1,000/**month** | cross-encoder |
+| 6 | `rerank-3` | Voyage | *unmeasured* | 200M once · 3 RPM | cross-encoder |
+| 7 | `rerank-3-lite` | Voyage | 0.725 | its own 3 RPM | cross-encoder |
 | — | *vector alone* | — | *0.608* | — | *the line to beat* |
-| 8 | `@cf/baai/bge-reranker-base` | Cloudflare | **0.520** | ~2,840/day | cross-encoder |
-| 9 | **skip** | — | — | — | degraded, still works |
+| 8 | **skip** | — | — | — | degraded, still works |
+
+**REORDERED AND SHORTENED 2026-09-19 — read this table as the SHIPPED chain.**
+Each of rows 1-4 is built on BOTH Google accounts, so `api/reranking.py` assembles
+**eleven** tiers with Cohere at 9. Two changes, both on prior evidence, because
+the v3 re-measurement was killed — see `docs/slice8v3/DECISIONS.md` §29.
 
 **Four things to read carefully.**
 
@@ -12436,13 +12440,22 @@ Listwise: one call ranks all documents, so 30 documents cost 1 call and not 30.
 Google's quota is per MODEL, so those four are **four independent buckets** —
 1,000 + 28,800 calls a day with no shared ceiling.
 
-**Tier 8 is below the line, and that is deliberate.** `bge-reranker-base`
-measured **worse than not reranking**, and the chain already ends in `skip()`,
-so reaching it makes retrieval worse. It is kept because one corpus and one
-saturated fixture is thin evidence and its budget cannot run out. **Slice 8
-re-measures it; if the number holds, delete the tier rather than reorder it.**
-`test_only_a_named_tier_may_be_worse_than_not_reranking_at_all` makes a SECOND
-such tier break the build.
+**`bge-reranker-base` IS DELETED — 2026-09-19.** It measured **worse than not
+reranking** and was kept pending a re-check, on the argument that one saturated
+corpus is thin evidence and its ~2,840/day budget cannot run out. v1's F6 named
+the condition for removal — *"worse than not reranking on three corpora, two
+languages, three domains"* — **the condition was met and the re-check will not
+happen.** The chain already ends in `skip()`, which is strictly better than a
+tier measured below vector alone. `KNOWN_WORSE_THAN_NOT_RERANKING` is now EMPTY,
+so putting ANY such tier back breaks the build.
+
+**COHERE MOVED ABOVE VOYAGE.** Slice 6 put it below on ONE corpus — `quora`, the
+saturated 82-chunk fixture — at 0.669 against rerank-3-lite's 0.725. v2 added
+three more corpora and that did not reproduce: Cohere is the only reranker
+measured that has **never hurt a corpus**, and it rescues `gson` — flash-lite's
+worst case — by 5.8 queries. `rerank-3`, which sat above it, has never been
+scored anywhere. It stays BEHIND all eight LLM tiers, which is the budget half of
+the same finding: 1,000 calls a MONTH against flash-lite's 1,000 a day.
 
 **`rerank-3` leads `rerank-3-lite` on a single-pair probe** (0.8594 to 0.8516)
 and is otherwise unmeasured — a reason to try it first, not evidence.
