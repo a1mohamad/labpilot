@@ -1,11 +1,24 @@
 """TypeSafe Jev as a reranker, reached through a Netlify AI Gateway proxy.
 
-WHY A PROXY, AND WHY THIS LIVES IN scripts/
-===========================================
-Netlify's AI Gateway injects TYPESAFE_API_KEY only into code running ON
-Netlify, so a tiny pass-through function stands between us and Jev. That is
-also what makes Jev reachable at all without a card: Netlify supplies the
-credential, so no TypeSafe account and no waitlist are needed.
+HOW IT IS REACHED, AND WHAT THAT COST TO FIND
+=============================================
+Through OpenRouter, on the key this project already has - no TypeSafe
+account, no waitlist, and no Netlify proxy. Jev does NOT appear in
+`GET /api/v1/models` (447 chat models, zero hits) because its modality is
+`text->decisions`, and it is refused by `/chat/completions`. The refusal is
+what named the route:
+
+    "typesafe/jev-1.13 is a decisions model and cannot be used with the
+     chat/completions endpoint. Use the /api/alpha/decisions endpoint"
+
+IT IS BILLED, and the balance did not say so for a full minute. A first call
+left `total_usage` at 0, which looks exactly like Cline's genuinely-free
+tier; sixty seconds later it read 0.000014364 - to the digit, that call. So
+the account counter is NOT a live instrument, and "the balance did not move"
+means nothing until it has had a minute.
+
+`alpha` in the path is a warning: the route, its shape and its billing can
+change without notice.
 
 It sits in scripts/ for the same reason local_reranker.py does. It is a
 MEASUREMENT instrument, not a tier. Nothing in labpilot/ may depend on a
@@ -26,8 +39,7 @@ in a single parallel pass - so a document's score COULD move when its
 neighbours change. score_rerank's verify_pointwise answers that rather than
 assuming it, which is the only reason the per-pair cache is safe.
 
-    JEV_PROXY_URL      https://<site>.netlify.app/api/jev
-    JEV_PROXY_SECRET   the shared secret set in the Netlify UI
+    OPENROUTER_API_KEY   the key this project already uses for tiers 10/16/17
 """
 
 from __future__ import annotations
@@ -43,7 +55,11 @@ from labpilot.rerank import Ranking, RerankError
 # The alias, not a pinned version: TypeSafe moves `jev-latest` forward and a
 # re-measurement should follow it. The pinned id `jev-1.13` exists if a number
 # ever has to be reproduced exactly.
-MODEL = "jev-latest"
+URL = "https://openrouter.ai/api/alpha/decisions"
+
+# The PINNED id, not the `jev-latest` alias. A measurement that cannot be
+# reproduced is a number, and an alias moves underneath one.
+MODEL = "typesafe/jev-1.13"
 
 # Connect, then read. Jev claims 70-500ms; 60s of read is generous enough that
 # a timeout means something is wrong rather than merely slow.
@@ -56,6 +72,10 @@ class JevReranker:
 
     name: str = "Jev (TypeSafe)"
     model: str = MODEL
+    # 32,000 on the OpenRouter route, against 64,000 on TypeSafe direct. The
+    # window a tier can really take is a property of the CORPUS as well as the
+    # provider - slice 8 measured Gemma serving 50 Python chunks and refusing
+    # 30 Go ones - so this is a ceiling, not a promise.
     max_documents: int = 50
     # Filled per call so the run can report the provider's own latency apart
     # from our network round trip to Netlify and Netlify's to TypeSafe.
@@ -75,10 +95,9 @@ class JevReranker:
                 f"{self.max_documents} this tier accepts"
             )
 
-        url = os.environ.get("JEV_PROXY_URL")
-        secret = os.environ.get("JEV_PROXY_SECRET")
-        if not url or not secret:
-            raise RerankError("JEV_PROXY_URL / JEV_PROXY_SECRET are not set")
+        key = os.environ.get("OPENROUTER_API_KEY")
+        if not key:
+            raise RerankError("OPENROUTER_API_KEY is not set")
 
         keys = [f"d{i}" for i in range(len(documents))]
         state = {"question": query} | dict(zip(keys, documents, strict=True))
@@ -97,13 +116,15 @@ class JevReranker:
         started = time.monotonic()
         try:
             response = requests.post(
-                url,
+                URL,
                 json={"model": self.model, "state": state, "questions": questions},
-                headers={"x-jev-proxy-key": secret},
+                headers={"Authorization": f"Bearer {key}"},
                 timeout=TIMEOUT,
             )
         except requests.RequestException as exc:
-            raise RerankError(f"{self.name}: could not reach the proxy: {exc}") from exc
+            raise RerankError(
+                f"{self.name}: could not reach OpenRouter: {exc}"
+            ) from exc
         elapsed = time.monotonic() - started
 
         if response.status_code != 200:
@@ -127,11 +148,13 @@ class JevReranker:
                 raise RerankError(f"{self.name}: no noul returned for {key}")
             scores.append(float(answer["noul"]))
 
+        usage = response.json().get("usage", {})
         self.timings.append(
             {
                 "documents": len(documents),
                 "round_trip": elapsed,
-                "upstream": float(response.headers.get("x-jev-upstream-ms", 0)) / 1000,
+                "input_tokens": float(usage.get("input_tokens", 0)),
+                "cost": float(usage.get("cost", 0.0)),
             }
         )
 

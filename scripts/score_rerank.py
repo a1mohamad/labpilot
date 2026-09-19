@@ -210,6 +210,14 @@ POINTWISE_TOLERANCE = {"ms-marco-MiniLM-L-6-v2": 1e-2}
 # was sent with. The pointwise check and the per-pair cache are both
 # meaningless for it, so it is scored per call instead.
 LISTWISE = {
+    # MEASURED 2026-09-19, and it was not the expected answer. Jev returns a
+    # `noul` PROBABILITY per document, which is the shape of a pointwise
+    # cross-encoder - but every document shares one `state` and all the
+    # questions are answered in a single parallel pass, so a document's score
+    # is conditioned on its neighbours. The same chunk scored 0.62 among 2
+    # documents and 0.85 among 10: drift 2.3e-01, against an effect size of
+    # about 0.15. Per-pair caching would have been silently wrong.
+    "typesafe/jev-1.13",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
     "gemma-4-31b-it",
@@ -224,7 +232,20 @@ LISTWISE = {
 #
 # The same shape as the quota_pool mistake one layer down: a single field
 # answering two different questions is wrong for at least one of them.
-RETRY_WAIT = {"429": 70.0, "HTTP 500": 5.0, "HTTP 503": 5.0, "timed out": 10.0}
+RETRY_WAIT = {
+    "429": 70.0,
+    "HTTP 500": 5.0,
+    "HTTP 502": 5.0,
+    "HTTP 503": 5.0,
+    "HTTP 504": 5.0,
+    # 520 is Cloudflare's "the origin did something unexpected", seen from
+    # OpenRouter's edge on a 30-document Jev call. The six-way rule already
+    # settled the principle: a 5xx is the server FAILING rather than refusing,
+    # and it recovers. Treating it as "next tier" is how this project nearly
+    # threw away its largest quota over a fault that clears in seconds.
+    "HTTP 520": 5.0,
+    "timed out": 10.0,
+}
 RETRY_LIMIT = 8
 
 
