@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
@@ -47,7 +48,7 @@ from labpilot.prompts import (
     reserve,
 )
 from labpilot.rerank import RERANK_TOP_N, SKIP, Ranking
-from labpilot.retrieval import LABEL_TOKENS, select, should_rerank
+from labpilot.retrieval import LABEL_TOKENS, score_fusion, select, should_rerank
 from labpilot.sources import Source, walk
 from labpilot.store import (
     SEARCH_LIMIT,
@@ -57,13 +58,17 @@ from labpilot.store import (
     SearchHit,
     StoredArtifact,
     StoredChunk,
+    StoreError,
     UnknownArtifact,
+    bm25_search,
     measure,
     read_chunks,
     search,
     write_artifact,
 )
 from labpilot.tokens import CHARS_PER_TOKEN, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 # How long an ingest may take before we stop optimising for QUALITY and start
 # optimising for TIME. NOT a refusal: past this line the same list is sorted by
@@ -458,7 +463,7 @@ VECTOR_TOP_N = 15
 #   SEARCH_LIMIT   50   what search returns          per side
 #   RERANK_WINDOW  20   what the reranker reads      per side   <- this
 #   RERANK_TOP_N   10   what survives reranking      per side
-#   VECTOR_TOP_N   30   what we send when NO reranker ran
+#   VECTOR_TOP_N   15   what we send when NO reranker ran
 #
 # MEASURED 2026-09-18, slice 8 v3: six windows on 5 corpora that are 100%
 # Python, 89 to 9,846 chunks, flash-lite. Mean MRR gain over vector alone:
@@ -476,8 +481,18 @@ VECTOR_TOP_N = 15
 # EVERY corpus, so there is nothing left for a per-tier rule to arbitrate.
 # rerank/'s own max_documents stays as the lower-level guard.
 #
-# Note it sits BELOW VECTOR_TOP_N on purpose. The two are different paths with
-# different recall curves: the reranked path is sharper, so it can cut harder.
+# Note the window sits ABOVE VECTOR_TOP_N (20 against 15) and that is not a
+# contradiction: this is what the reranker READS, and VECTOR_TOP_N is what we
+# SEND when it never ran. Reading more than we would have sent is the point -
+# the reranker earns its place by reordering candidates the degraded path
+# would have dropped.
+#
+# What does sit BELOW VECTOR_TOP_N is RERANK_TOP_N, 10 against 15: the two are
+# different paths with different recall curves, and the reranked one is
+# sharper, so it can cut harder.
+#
+# (This paragraph said "it sits BELOW VECTOR_TOP_N" until 2026-09-19, which was
+# true only while VECTOR_TOP_N was still the unit-error 30.)
 # docs/slice8v3/DECISIONS.md row 10, FINDINGS H12.
 RERANK_WINDOW = 20
 
@@ -625,10 +640,66 @@ def _retrieved(
             ) from exc
 
         chunks.extend(
-            _as_chunk(hit, side, artifact.id) for hit in _best(question, hits)
+            _as_chunk(hit, side, artifact.id)
+            for hit in _best(question, _fused(conn, artifact.id, question, hits))
         )
 
     return tuple(chunks)
+
+
+def _fused(
+    conn: psycopg.Connection,
+    artifact_id: str,
+    question: str,
+    dense: tuple[SearchHit, ...],
+) -> tuple[SearchHit, ...]:
+    """Add the KEYWORD channel and fuse. Always on, never conditional.
+
+    v2 shipped the rule *"fuse below r@50 ~ 0.95 and not above"*, and v3 threw
+    it out for a reason no amount of measuring could fix: **r@50 needs ground
+    truth, and a user's repository has none, ever.** The condition can be
+    evaluated on a benchmark and never at run time, and no proxy stands in for
+    it - pydantic at 9,846 chunks is saturated while geo at 729 is not.
+
+    So the channel is permanently on, which is only safe because of what was
+    measured over 20 corpora and 423 queries: it gains a query or more on 5
+    corpora and loses a query or more on NONE.
+
+    Vectors are good at meaning, keywords are good at names, and code is mostly
+    names. `D2` is the case that pays for this: the constant CLIP_NORM = 1.5
+    sits at place 46 on cosine and place 4 on BM25.
+
+    BM25, never ts_rank: Postgres hands ts_rank ONE document, so it cannot know
+    document frequency and has no IDF at all. We compute BM25 in Python over
+    the stored lexemes, which is the 4-5 extra round trips this costs.
+    """
+    try:
+        sparse = bm25_search(conn, artifact_id, question, limit=SEARCH_LIMIT)
+    except StoreError:
+        # DEGRADE, LOUDLY. The keyword channel is worth +8.7 queries out of
+        # 423; the vector channel is worth the whole answer. A keyword fault
+        # must never take a working search down with it - the same shape as
+        # skip() when no reranker is available.
+        logger.warning(
+            "keyword channel failed for %s, answering on vector alone",
+            artifact_id,
+            exc_info=True,
+        )
+        return dense
+
+    if not sparse:
+        return dense
+
+    by_index = {hit.chunk_index: hit for hit in (*sparse, *dense)}
+    order = score_fusion(
+        [(hit.chunk_index, hit.score) for hit in dense],
+        [(hit.chunk_index, hit.score) for hit in sparse],
+    )
+
+    # Back to SEARCH_LIMIT: the union of two 50-hit channels can reach 100, and
+    # everything downstream - RERANK_WINDOW, VECTOR_TOP_N - is calibrated
+    # against a 50-candidate window per side.
+    return tuple(by_index[index] for index in order[:SEARCH_LIMIT])
 
 
 def _best(
