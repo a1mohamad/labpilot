@@ -67,6 +67,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Thinking burn](#thinking-burn-high-is-not-better-measured-2026-08-17) ·
 [**Prompt design rules**](#prompt-design-rules-earned-2026-08-17) ·
 [**Cline — tier 1, free, zero credits**](#cline--the-eighth-platform-and-the-free-tier-that-costs-no-credits-2026-09-13) ·
+[**Jev — a decision model, chain 3 tier 2**](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19) ·
 [Model Ranking](#model-ranking--how-the-order-was-decided-2026-08-11) ·
 [Platform Accounts](#platform-accounts--verified-august-2026) ·
 [Retrieval Design](#retrieval-design--recorded-2026-08-13) · [Chunking](#chunking--decided-2026-08-13-built-in-slice-3) ·
@@ -497,6 +498,19 @@ stuffing when the pair fits and by search + fusion + gate + rerank when it does
 not. Every constant in that sentence was measured — see
 [STEP 1 IS CLOSED](#-step-1-is-closed--2026-09-19-all-nine-slices-measured-and-shipped)
 for the numbers and the four defects measuring found.
+
+**⚠ ONE THING LANDED AFTER STEP 1 CLOSED: `typesafe/jev-1.13` IS CHAIN 3's
+SECOND MODEL.** Branch `feat/jev-probe`, **879 passed, 4 skipped**, not merged.
+A **decision model, not an LLM** — it returns typed probabilities and cannot
+write a word. Measured on two corpora it beats every rerank tier except
+flash-lite, and beats flash-lite on `geo`, the unsaturated one. It is the
+**first non-Google tier** in a chain that was eight-of-eleven Google, and the
+**first PAID tier in any chain here** ($0.042/M input, and the balance does not
+report it for a minute). It costs the 512MB budget **0.6 KB** and adds no
+dependency and no env var. Read
+[Jev, the decision model](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19)
+before touching `api/reranking.py`, and note that it does **not** help the
+generation-time problem below — it cannot generate.
 
 > ### ⚠⚠⚠ STEP 2's FIRST PROBLEM IS GENERATION TIME — 400 SECONDS, MEASURED
 >
@@ -12213,6 +12227,191 @@ wastes exactly one request.
   over `CHAIN`, so the new tier got weekly live coverage for free — the skip
   count went 46 → 47 and nothing had to be written.
 
+### Jev — the decision model, and the first paid tier (2026-09-19)
+
+*Investigated at the user's request after it trended, measured on two corpora,
+and shipped into chain 3. **It is not an LLM**, which is why it is here and not
+in `CHAIN`.*
+
+**What it is.** TypeSafe's "System One" model, launched 2026-09-15. It does not
+generate text. It takes unstructured `state` plus typed `questions` and answers
+**all of them in one parallel pass**, returning probabilities. Three types
+only: `noul` (yes/no probability), `choice` (enum, max 255, plus a distribution
+and a confidence) and `score` (an ordered scale of 2-10 levels). It cannot
+rank, cannot do arithmetic, and cannot write a word.
+
+#### Why a model with no ranking type is a reranker
+
+It has `noul`, and that is the shape a cross-encoder produces:
+
+```
+s(q, d) in [0, 1]
+```
+
+So a ranking is N nouls in one call, sorted. Slice 6 proved our cross-encoders
+are pointwise, so a per-document probability is a legitimate reranker.
+
+#### The route, and the refusal that named it
+
+**No TypeSafe account, no waitlist, no proxy — it is on the OpenRouter key this
+project already has.** It is absent from `GET /api/v1/models` (447 chat models,
+**zero** hits) because its modality is `text->decisions`, and
+`/chat/completions` refuses it. That refusal is the documentation:
+
+```
+"typesafe/jev-1.13 is a decisions model and cannot be used with the
+ chat/completions endpoint. Use the /api/alpha/decisions endpoint instead."
+```
+
+A **Netlify AI Gateway proxy** was designed and built first, because Netlify
+injects `TYPESAFE_API_KEY` into its own compute and is the genuine no-card
+route. It is **not used** and is not in the repository. Keep it only as the
+fallback if OpenRouter ever refuses: Netlify Free is 300 credits/month with no
+card, 180 credits to the dollar, but AI Gateway runs **only on Netlify
+compute** — so it needs a proxy function and a second deployment target, and a
+production deploy costs 15 of those 300 credits.
+
+#### THE BALANCE LIED FOR A MINUTE, and it nearly became a false finding
+
+```
+call 1       ->  total_usage 0            identical to Cline's free tier
++60 seconds  ->  total_usage 0.000014364  to the digit, that one call
+```
+
+**It is billed.** $0.042 per million input tokens, output free. The account
+counter is **not a live instrument** — and the paid control that settled the
+Cline question did *not* discriminate here, because a free-provider control
+also reported zero. Only waiting did.
+
+> **"The balance did not move" is not evidence until it has had a minute.**
+> Cline's rule was right and its instrument was not enough.
+
+#### MEASURED — two corpora, 30-document window, codestral
+
+| reranker | quora MRR | geo MRR | quora r@1 | geo r@1 |
+|---|---|---|---|---|
+| `gemini-3.5-flash-lite` | **0.799** | 0.681 | 0.706 | 0.622 |
+| **Jev** | 0.770 | **0.712** | 0.647 | **0.644** |
+| `gemini-3.1-flash-lite` | 0.745 | — | 0.588 | — |
+| `gemma-4-26b-a4b` | 0.732 | — | 0.647 | — |
+| `rerank-3-lite` (Voyage) | 0.725 | — | 0.588 | — |
+| `rerank-v4.0-fast` (Cohere) | 0.669 | 0.621 | 0.471 | 0.511 |
+| *vector alone* | *0.608* | *0.526* | *0.412* | *0.444* |
+| `bge-reranker-base` | 0.520 | 0.355 | 0.353 | 0.244 |
+| `ms-marco-MiniLM` (local) | 0.421 | — | 0.235 | — |
+
+**One corpus each against flash-lite; the means are 0.740 and 0.741 —
+indistinguishable.** Jev is the steadier of the two and wins **geo**, the
+corpus with real headroom (vector `r@50` 0.867, not saturated at 1.000). It
+beats every remaining tier on every corpus measured.
+
+**It answers the question that killed two other rerankers: can it read code?**
+Yes — Go *and* Python, beating the purpose-built cross-encoders on both. That
+is exactly where `bge-reranker-base` and `ms-marco-MiniLM` failed.
+
+**Latency, 30 documents, through the VPN and two network hops:**
+
+```
+Jev                     1.23s quora  ·  1.55s geo
+gemini-3.5-flash-lite   1.3s
+gemini-3.1-flash-lite   5.3s
+gemma-4-26b-a4b        18.7s
+gemma-4-31b            22.8s
+```
+
+About 15x faster than either Gemma at a better MRR on both corpora. The vendor
+claims 70-500ms; ours includes the network, so that is not contradicted.
+
+#### IT IS LISTWISE, AND THE SHAPE SAYS OTHERWISE
+
+A noul per document looks pointwise, and a pointwise scorer may be cached per
+`(query, chunk)`. **Jev may not.** Every document shares one `state`, so a
+score is conditioned on its neighbours:
+
+```
+the same chunk:  0.62 among 2 documents
+                 0.85 among 10 documents      drift 2.3e-01
+```
+
+Against an effect size of about 0.15. `verify_pointwise` refused to continue
+and the cache moved to per-candidate-set — which is precisely the defect that
+voided five corpora in slice 8 v2. **That check has now paid for itself
+twice.**
+
+#### Why it sits where it sits
+
+**Tier 3 in the assembled chain, tier 2 as a model.** Assembled slot 2 is
+flash-lite on the *second Google account* — the same model, another free
+500/day. A billed tier between the two keys would spend money while a free
+allowance sat unused, and would break the reason `_both_accounts` keeps the
+twins adjacent.
+
+**And it is the first non-Google tier, which is worth as much as the rank.**
+Eight of twelve tiers are Google, and a refused VPN exit has already taken
+every Google endpoint from this project for a week. The fallback below it is
+Cohere's 1,000 a **month** and a Voyage that cannot take a 50-document window.
+Jev is the only independent rerank capacity in the chain, and a test pins that.
+
+#### It costs the 512MB budget nothing — measured, not assumed
+
+```
+marginal import cost of rerank/jev.py      0.6 KB
+widest payload, 50 docs x 2,000 chars    145 KB peak, 107 KB on the wire
+new dependencies                           NONE
+requirements / docker / .env.example       unchanged
+```
+
+**0.03% of the Render ceiling**, against ~120MB for the local ONNX reranker
+that is deliberately excluded. It needs **no new environment variable** —
+`OPENROUTER_API_KEY` already serves three generator tiers — so Step 3's
+container, `.env.example` and `smoke.yaml` are all untouched.
+
+#### The mutation that survived, and the hole it found
+
+Every other tier is *handed* a ranking by its provider. Jev is handed a
+probability per document, **so the ordering is our code** — and nothing tested
+it:
+
+```
+Jev placed first, ahead of flash-lite   -> fires ALONE
+Jev dropped from the chain              -> fires, 2 tests
+Jev pointed at a Google key             -> fires ALONE
+sort ASCENDING, worst document first    -> NOTHING. 777 tests passed.
+```
+
+A reranker that sorts backwards is worse than no reranker, and it is invisible
+downstream: the caller still receives a well-formed `Ranking` and cites the
+least relevant chunk with full confidence. `tests/unit/rerank/test_jev.py`
+closes it — re-running that mutation fires 3 tests, and reading dict insertion
+order instead of the `dN` index fires alone.
+
+#### A new instrument: `--cached-only`
+
+`scripts/score_rerank.py` can now re-derive a whole table from stored results
+and spend **nothing**. It exists because the pointwise probe costs **2 real
+calls per model**, so "just re-run from cache" would still have spent 2 of
+Cohere's 1,000 a month to reprint numbers we already had. A cache **miss
+raises** instead of quietly becoming a call — verified by asking for flash-lite
+at window 30, which is cached only at 50.
+
+#### What this does NOT settle
+
+- **Two corpora.** This project's own rule: a fixture may REJECT, never
+  CONFIRM.
+- **flash-lite's quora 0.799 is from the record, not recomputed.** Only a
+  window-50 cache exists for it, and re-running it was deliberately refused.
+- **Window 30 only.** 50 geo chunks are ~23,700 tokens against the OpenRouter
+  route's **32,000** ceiling, so `SEARCH_LIMIT` fits but barely — the same
+  corpus-dependent window finding slice 8 made about Gemma.
+- **`alpha` is in the endpoint path**, which is the provider's own warning.
+  Route, shape and billing can change without notice; a 402 falls through and
+  costs one request.
+- **Step 2 owns the rest of it.** `verify` (match/mismatch/absent), the
+  correspondence gate, §6 comparability and the four classification axes are
+  all typed decisions Jev fits, and **none is built** — the capability library
+  does not exist yet. Jev cannot write the report, so it does not touch the
+  400-second problem.
+
 ### `gemini-embedding-2` — newer, and the only entry ranked on someone else's benchmark
 
 *Read from Google's own model listing and docs on 2026-09-11. **No call was
@@ -12620,17 +12819,24 @@ would be a claim about work it did not do.
 shape; every row below was scored on quora at a 30-document window against
 vector alone's MRR of **0.608**.*
 
-| # | Model | Provider | MRR | Budget | Kind |
-|---|---|---|---|---|---|
-| 1 | **`gemini-3.5-flash-lite`** | Google | **0.799** | 500/day | LLM, listwise |
-| 2 | **`gemini-3.1-flash-lite`** | Google | **0.745** | its own 500/day | LLM, listwise |
-| 3 | **`gemma-4-26b-a4b-it`** | Google | **0.732** | its own 14,400/day | LLM, listwise, MoE |
-| 4 | **`gemma-4-31b-it`** | Google | **0.732** | 14,400/day | LLM, listwise |
-| 5 | **`rerank-v4.0-fast`** | Cohere | 0.669 | 1,000/**month** | cross-encoder |
-| 6 | `rerank-3` | Voyage | *unmeasured* | 200M once · 3 RPM | cross-encoder |
-| 7 | `rerank-3-lite` | Voyage | 0.725 | its own 3 RPM | cross-encoder |
-| — | *vector alone* | — | *0.608* | — | *the line to beat* |
-| 8 | **skip** | — | — | — | degraded, still works |
+| # | Model | Provider | MRR quora | MRR geo | Budget | Kind |
+|---|---|---|---|---|---|---|
+| 1 | **`gemini-3.5-flash-lite`** | Google | **0.799** | 0.681 | 500/day | LLM, listwise |
+| **2** | **`typesafe/jev-1.13`** | **OpenRouter** | **0.770** | **0.712** | **PAID, $0.042/M in** | **decision model, listwise** |
+| 3 | **`gemini-3.1-flash-lite`** | Google | **0.745** | — | its own 500/day | LLM, listwise |
+| 4 | **`gemma-4-26b-a4b-it`** | Google | **0.732** | — | its own 14,400/day | LLM, listwise, MoE |
+| 5 | **`gemma-4-31b-it`** | Google | **0.732** | — | 14,400/day | LLM, listwise |
+| 6 | **`rerank-v4.0-fast`** | Cohere | 0.669 | 0.621 | 1,000/**month** | cross-encoder |
+| 7 | `rerank-3` | Voyage | *unmeasured* | — | 200M once · 3 RPM | cross-encoder |
+| 8 | `rerank-3-lite` | Voyage | 0.725 | — | its own 3 RPM | cross-encoder |
+| — | *vector alone* | — | *0.608* | *0.526* | — | *the line to beat* |
+| 9 | **skip** | — | — | — | — | degraded, still works |
+
+**Jev is tier 2 as a MODEL and tier 3 in the assembled chain**, because every
+Google tier is built on BOTH accounts — so assembled slot 2 is flash-lite's
+second free 500/day. A billed tier there would spend money while a free
+allowance sat unused. Twelve assembled tiers now; see
+[Jev, the decision model](#jev--the-decision-model-and-the-first-paid-tier-2026-09-19).
 
 **REORDERED AND SHORTENED 2026-09-19 — read this table as the SHIPPED chain.**
 Each of rows 1-4 is built on BOTH Google accounts, so `api/reranking.py` assembles
