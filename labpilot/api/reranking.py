@@ -26,6 +26,7 @@ from labpilot.llm import (
 )
 from labpilot.llm.registry import GOOGLE_KEYS
 from labpilot.rerank import (
+    JEV_RERANK,
     LLM_RERANK_ORDER,
     RERANK_CHAIN,
     LLMReranker,
@@ -125,11 +126,43 @@ def _both_accounts(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
 # never hurt a corpus and repairs flash-lite's worst case, so it belongs early
 # among the CROSS-ENCODERS - and it is 1,000 calls a MONTH against flash-lite's
 # 1,000 a day across two keys, so it belongs behind every LLM tier.
+# JEV SITS THIRD, AND THE THIRD IS DELIBERATE - it was asked for second.
+#
+# Position 2 is flash-lite ON THE SECOND GOOGLE ACCOUNT: the same model, a
+# separate free allowance. Putting a PAID tier between two keys of one free
+# model would spend money before spending an allowance we already have, and
+# it would break the reason `_both_accounts` keeps the twins adjacent. So
+# "the second option" and "the third tier" are the same place here: after
+# flash-lite, both keys, and ahead of everything else.
+#
+# The measurement says third and nothing stronger. Two corpora, 30-document
+# window, against vector alone:
+#
+#                          quora        geo        wins
+#   gemini-3.5-flash-lite  0.799      0.681         quora
+#   JEV                    0.770      0.712         geo
+#
+# One each, means 0.740 and 0.741 - indistinguishable. Jev is the steadier of
+# the two and wins the corpus with real headroom; flash-lite leads on budget,
+# which is this project's own tie-break (it is why Cohere sits above Voyage).
+# Below them, Jev beats every remaining tier on every corpus measured.
+#
+# IT IS THE FIRST NON-GOOGLE TIER, and that is worth as much as the ranking.
+# Eight of the eleven tiers here are Google, and this project has already lost
+# every Google endpoint for a week to a refused VPN exit. When that happens
+# the rerank chain falls to Cohere's 1,000 a MONTH and a Voyage that cannot
+# take a 50-document window. Jev is the only independent capacity in it.
+#
+# IT IS ALSO THE FIRST PAID TIER IN ANY CHAIN HERE. If the balance runs out it
+# answers 402, the chain moves on, and the cost is one wasted request - the
+# same shape as a spent pool. See rerank/jev.py for the billing detail.
+LEAD_MODEL, *REMAINING_MODELS = LLM_RERANK_ORDER
+
 CHAIN: tuple[Reranker, ...] = (
-    tuple(
-        tier for model in LLM_RERANK_ORDER for tier in _both_accounts(PROVIDERS[model])
-    )
-    + RERANK_CHAIN
+    *_both_accounts(PROVIDERS[LEAD_MODEL]),
+    JEV_RERANK,
+    *(tier for model in REMAINING_MODELS for tier in _both_accounts(PROVIDERS[model])),
+    *RERANK_CHAIN,
 )
 
 
