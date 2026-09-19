@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from labpilot.rerank.cloudflare import CloudflareReranker
 from labpilot.rerank.cohere import CohereReranker
+from labpilot.rerank.jev import JevReranker
 from labpilot.rerank.voyage import VoyageReranker
 
 COHERE_URL = "https://api.cohere.com/v2/rerank"
 VOYAGE_URL = "https://api.voyageai.com/v1/rerank"
 CLOUDFLARE_URL = "https://api.cloudflare.com/client/v4/accounts"
+# Jev is absent from GET /api/v1/models - 447 chat models, zero hits -
+# because its modality is `text->decisions`, and /chat/completions refuses
+# it. That refusal is what named this route.
+JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 
 # 1,000 calls a MONTH, and that bucket is shared with chat and embed. Tests
 # must never reach it: they mock HTTP at the `responses` boundary, and the one
@@ -46,6 +51,29 @@ VOYAGE_RERANK_3_LITE = VoyageReranker(
     name="Voyage Rerank 3 Lite",
     url=VOYAGE_URL,
     model="rerank-3-lite",
+)
+
+# MEASURED 2026-09-19 on two corpora at a 30-document window. It beats every
+# cross-encoder below and every LLM tier except flash-lite, and it BEATS
+# flash-lite on geo - the corpus with real headroom.
+#
+#                        quora MRR    geo MRR
+#   gemini-3.5-flash-lite   0.799       0.681
+#   JEV                     0.770       0.712   <- wins the unsaturated one
+#   gemini-3.1-flash-lite   0.745         -
+#   rerank-v4.0-fast        0.669       0.621
+#   vector alone            0.608       0.526
+#
+# The PINNED id, not the `jev-latest` alias: a measurement that cannot be
+# reproduced is a number, and an alias moves underneath one.
+#
+# IT IS BILLED - the first paid tier in any chain here. See jev.py for the
+# cost, the one-minute reporting delay that makes it look free, and why it is
+# listwise despite returning a probability per document.
+JEV_RERANK = JevReranker(
+    name="Jev (TypeSafe)",
+    url=JEV_URL,
+    model="typesafe/jev-1.13",
 )
 
 # ~2,840 calls a DAY, which is the largest renewing budget here by a wide
