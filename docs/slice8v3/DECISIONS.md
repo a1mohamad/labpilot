@@ -38,9 +38,9 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 
 | # | decision | v2 said | **v3 says** | corpora (Python) | verdict |
 |---|---|---|---|---|---|
-| 1 | **fusion: on or off** | fuse when `r@50` < 0.95 | **ALWAYS ON** | 20 (10) | **CHANGED** |
-| 2 | **fusion method** | score fusion | `score a=0.85`, **#1 of 51** | 20 (10) | **CONFIRMED** |
-| 3 | **keyword ranker** | BM25, not `ts_rank` | BM25 | 20 (10) | **CONFIRMED** |
+| 1 | **fusion: on or off** | fuse when `r@50` < 0.95 | **ALWAYS ON** | 20 (10) | **CHANGED — IN CODE** |
+| 2 | **fusion method** | score fusion | `score a=0.85`, **#1 of 51** | 20 (10) | **CONFIRMED — IN CODE** |
+| 3 | **keyword ranker** | BM25, not `ts_rank` | BM25 | 20 (10) | **CONFIRMED — IN CODE** |
 | 4 | **BM25 `k1` / `b`** | `1.2 / 0.75`, never swept | `1.2 / 0.75` — all six within 0.0037 | 20 (10) | **CONFIRMED, and shown not to matter** |
 | 5 | **embedder primary** | `codestral-embed` | codestral, **19–0–1** | 20 (10) | **CONFIRMED** |
 | 6 | **`MIGRATION` order** | gemini-2 above 001; mistral third | 001 above 2; mistral second-last | 20 (10) | **CHANGED — IN CODE** |
@@ -68,8 +68,11 @@ query is 0.050 MRR; the bar used throughout is **1.5 queries**.
 | 28 | **end-to-end runtime** | never measured | **50.5s searched**, retrieval is 14s of it | 2 runs | **NEW.** `WARN_MINUTES` still wrong |
 | 29 | **reranker MODEL** | 9 configs, old zoo | *running* | 4 (2) | **IN PROGRESS** |
 
-**Nine decisions are now IN THE CODE.** Rows 6, 7, 8, 10, 18, 21, 23, 24, 26 and
-27 changed `labpilot/`, each one mutation-verified.
+**THIRTEEN decisions are now IN THE CODE.** Rows 1, 2, 3, 6, 7, 8, 10, 18, 21,
+23, 24, 26 and 27 changed `labpilot/`, each one mutation-verified.
+
+*This said "Nine" and then listed ten rows, which is how it stood for three
+sessions. Corrected 2026-09-19, when rows 1-3 were also found to be undone.*
 
 ---
 
@@ -97,6 +100,33 @@ net                   +8.7 queries MRR   +6.0 queries r@50
 permanently-on channel has to have. Cost: ~1,022 bytes per chunk (+12% of a
 1536-dim row) and 4–5 database round trips, because Postgres has no BM25 and we
 compute it in Python.
+
+### IT REACHED THE CODE ON 2026-09-19, and not before
+
+This decision was recorded as CHANGED and then **not applied for three
+sessions**, which is worth writing down because nothing reported it:
+
+```
+labpilot/api/services.py   no reference to bm25_search, fusion or BM25
+bm25_search / keyword_search   re-exported from store/__init__.py, NO CALLER
+weighted_rrf                   re-exported from retrieval/__init__.py, NO CALLER
+```
+
+Slice 8 v1's RESULTS.md had already claimed *"the keyword channel is switched
+ON ... it now has a caller"*. That sentence was false when written. Retrieval
+shipped vector-alone the whole time, and **a vector-only answer looks exactly
+like a fused one from the outside**, so no test, no lint and no reading of the
+docs could have caught it. Only grepping for the caller did.
+
+The same defect as slice 7's rerank chain - BUILT BUT NEVER BOUND - and the
+same lesson: *a decision recorded is not a decision applied.*
+
+`retrieval/fusion.py` also gained `score_fusion`, because row 2's winner did
+not exist in the product at all: the only fusion in `labpilot/` was
+`weighted_rrf`, which this run measured as **not** the best method. So
+switching the channel on without writing it would have shipped the wrong one.
+It is verified against `scripts/score_hybrid.py` on 400 random rankings, so
+what ships is byte-for-byte the method that was measured.
 
 ---
 
