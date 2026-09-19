@@ -490,6 +490,22 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 **Phase: STEP 1 IS COMPLETE. ALL NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 —
 ARE DONE. STEP 2, THE AGENT, IS NEXT.**
 
+> ### ⚠⚠⚠ STEP 2's FIRST PROBLEM IS GENERATION TIME — 400 SECONDS, MEASURED
+>
+> One answer took **401s**, another **497s**, and generation was **98.2%** of
+> it. The slow model is the BEST model: tier 1 `glm-5.3-flash` is Toolathlon
+> #1 of 42, and `gemini-3.5-flash-lite` answers in 16.4s while losing 5 of 19
+> findings. Thinking is NOT the lever — tier 1's reasoning is already capped
+> at 17-60 tokens.
+>
+> **The levers are shorter per-node output, PARALLEL nodes, and routing.**
+> Step 2 also owes the first LATENCY ranking of the chain — 23 tiers ordered
+> by quality and quota, never once by speed — and it must handle EVERY tier,
+> because the chain falls back and any tier can serve any node.
+>
+> **Read [the Step 2 time block](#agent-design--step-2-recorded-2026-08-11)
+> before designing a single node.**
+
 > ### ⚠⚠ SLICE 8 v3 IS ALMOST DONE — READ `docs/slice8v3/DECISIONS.md` FIRST
 >
 > **THE ZOO WAS REBUILT: 20 corpora, 10 PYTHON (50%), 423 queries**, against
@@ -15093,6 +15109,73 @@ and 2 are for.
 
 *Designed now, built at Step 2 when LangGraph exists. Step 0 slice 4 stays
 deliberately crude: one prompt, all sections, no branching.*
+
+> ### ⚠⚠⚠ STEP 2 MUST SOLVE GENERATION TIME. IT IS THE BLOCKING PROBLEM
+>
+> *The user's call, 2026-09-19, after the first end-to-end measurement.*
+>
+> **ONE ANSWER TOOK 400 SECONDS ON TIER 1, AND THAT IS NOT ACCEPTABLE.**
+> Measured the same day, three runs of the same model on the same machine:
+>
+> ```
+> STUFF  (paper + model_architecture.py)   119.02s
+> STUFF  (paper + 01-tokenizer.ipynb)      401.46s
+> SEARCH (paper + B_train.py)              496.65s      98.2% of it generation
+> ```
+>
+> **THE SLOW MODEL IS THE BEST MODEL, AND THAT IS THE WHOLE DIFFICULTY.**
+> `CHAIN` is ordered by measured capability, so tier 1 - `z-ai/glm-5.3-flash`
+> on Cline - is the strongest thing we have: Toolathlon **#1 of 42**,
+> Terminal-Bench **0.843**. It is also free, and it is the slowest. Against
+> the other measured tiers on a full report:
+>
+> ```
+> gemini-3.5-flash-lite     16.4s     and ~8 of 19 findings, gate BROKEN
+> gemini-3.6-flash          52.7s     and 13 of 19
+> glm-5.3-flash        119-488s     tier 1
+> ```
+>
+> **Reading "just use the fast one" out of that table is the trap.** Slice 8
+> job 9 measured Flash-Lite on the report: it loses 5 findings and breaks the
+> comparability gate. Speed there is bought with the product.
+>
+> **AND THINKING IS NOT THE LEVER ON THIS TIER.** `CLINE_REASONING` already
+> sets `effort: high`, which on this model **caps** reasoning to 17-60 tokens
+> (measured 2026-09-13, and note the direction - an explicit effort caps it).
+> There is nothing left to cut. The 400s is raw generation of a long report on
+> a free endpoint, not thinking burn.
+>
+> #### The four levers, in the order they are likely to pay
+>
+> 1. **SHORTER OUTPUT PER NODE.** Generation time tracks OUTPUT tokens, and
+>    today one call is given a 32,000-token budget. Step 2 splits that into
+>    ~10 nodes emitting a few hundred each. [Section 11's `max_tokens`
+>    grid](#111-max_tokens-and-max_output_tokens-are-a-grid-and-the-missing-operator-is-min)
+>    was designed for exactly this and still has no consumer.
+> 2. **RUN INDEPENDENT NODES IN PARALLEL.** `verify` over N claims is
+>    embarrassingly parallel, and so are the two `summarize` calls. Nothing in
+>    this file has ever mentioned it, and it turns "ten calls in series" into
+>    roughly the DEPTH of the graph. **This is the largest unclaimed win.**
+> 3. **ROUTE BY TASK.** Only `explain_divergence` needs tier 1 - see
+>    [model routing](#model-routing--a-chain-per-task-not-a-model-per-task).
+> 4. **A per-task time budget.** `DEFAULT_TOTAL_BUDGET` already takes one per
+>    chain. Useful as a guard on cheap nodes and **useless on the report**: a
+>    cap never makes a call faster, it only fails it - and you have still paid
+>    the wall clock before it fails.
+>
+> #### What Step 2 owes, and it is not optional
+>
+> - **RANK THE WHOLE CHAIN BY LATENCY.** We have ordered 23 tiers by quality
+>   and by quota and **never once by speed**, so routing cannot prefer a fast
+>   tier deliberately - only by accident. One fixed prompt across every tier
+>   settles it. **Deferred to Step 2 by the user's call**; it is cheap and it
+>   blocks lever 3 from being done honestly.
+> - **STEP 2 MUST HANDLE ALL LLM TIERS**, not a chosen few. The chain falls
+>   back, so any tier can end up serving any node - and a design that assumes
+>   a fast tier answered is a design that breaks on the day it does not.
+> - The product constraint this serves is already written down and is now
+>   measured to be violated: *we will not ship a tool that costs ten minutes
+>   for a simple task.*
 
 ### Intent → plan, not intent → template
 
