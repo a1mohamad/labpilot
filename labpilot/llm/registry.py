@@ -11,6 +11,8 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+KILO_URL = "https://api.kilo.ai/api/gateway/v1/chat/completions"
+REQUESTY_URL = "https://router.requesty.ai/v1/chat/completions"
 CLOUDFLARE_URL = (
     "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
 )
@@ -158,19 +160,52 @@ CLINE_LAGUNA_S_2_1 = _cline(
     max_output_tokens=32_768,
 )
 
+# ADDED 2026-09-19. AA v4.3 = 41 at 297.8 tok/s, which puts it SECOND -
+# between GLM-5.3 Flash (42) and Gemini 3.7 Flash (39) - and it is free on the
+# key this project already holds, so it cost nothing to reach.
+#
+# Code Arena is the caveat, and it repeats a pattern: 1568 (#23) puts it BELOW
+# Qwen3.8-27B's 1593 and DeepSeek's 1580 despite a higher general score. It is
+# the strongest GENERAL tier after tier 1, not the strongest coder.
+#
+# ITS FREE QUOTA IS UNVERIFIED. Do NOT assume 3.7's 20/day - Google publishes
+# limits per model and this one is new. Read AI Studio before budgeting on it.
+GEMINI_3_8_FLASH = _gemini(name="Gemini 3.8 Flash", model="gemini-3.8-flash")
 GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", model="gemini-3.7-flash")
 GEMINI_3_6_FLASH = _gemini(name="Gemini 3.6 Flash", model="gemini-3.6-flash")
 GEMINI_3_5_FLASH = _gemini(name="Gemini 3.5 Flash", model="gemini-3.5-flash")
 
+# MOVED OFF MISTRAL 2026-09-19, and the death there is now complete. This is
+# the THIRD error shape from one model, each cleaner than the last:
+#
+#   2026-08-11   answered
+#   2026-08-16   429 with x-ratelimit-limit-tokens-minute: 0  (not entitled)
+#   2026-09-19   dropped from GET /v1/models ENTIRELY, and a direct call says
+#                "This model is not available in your subscription tier"
+#
+# The wording matters: Mistral answers "Invalid model: glm-5.3" for something
+# that does not exist, so GLM-5.2 still EXISTS there and is simply behind a
+# paid tier. Not revivable for free on Mistral. Mistral's catalogue is also
+# down from 55 models to 46.
+#
+# OpenRouter serves it free instead, measured 2026-09-19: 1 call in 4
+# answered, the rest 429 `upstream_provider_shared_pool` - CONGESTION, which
+# is a different failure from `limit: 0` and one the chain already retries.
+# A tier that answers a quarter of the time strictly beats one that is dead.
+#
+# ⚠ 32,768 CONTEXT, so it can NEVER serve a report: PROMPT_BUDGET 26,000 plus
+# REPORT_MAX_TOKENS 32,000 is 58,000. _check_fits refuses it locally for
+# nothing, and it is here for Step 2's smaller jobs - where it is worth
+# having, at Code Arena #19 (1592), ahead of Gemini 3.6 Flash.
 GLM_5_2 = OpenAICompatibleProvider(
     name="GLM-5.2",
-    tier=4,
-    url=MISTRAL_URL,
-    model="glm-5-2",
-    api_key_env="MISTRAL_API_KEY",
-    context_window=1_048_576,
-    max_output_tokens=1_048_576,
-    extra_body=MISTRAL_REASONING,
+    tier=0,
+    url=OPENROUTER_URL,
+    model="z-ai/glm-5.2:free",
+    api_key_env="OPENROUTER_API_KEY",
+    context_window=32_768,
+    max_output_tokens=29_491,
+    extra_body=OPENROUTER_REASONING,
 )
 
 NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
@@ -317,6 +352,87 @@ GEMMA_4_26B = _gemini(
 )
 
 
+# ADDED 2026-09-19, and the placement rests on TWO independent sources
+# because one of them contradicted the blogs badly. See CLAUDE.md.
+#
+#                        AA v4.3   Code Arena     out tok/s
+#   GLM-5.3 Flash          42      1607  (#17)       94.6
+#   Gemini 3.7 Flash       39         -             288.3
+#   DeepSeek V4 Flash      35      1580  (#22)      211.9
+#   Gemini 3.6 Flash       34      1537  (#32)      182.5
+#   Qwen3.8-27B            34      1593  (#18)       43.1
+#   Gemini 3.5 Flash       33      1500  (#44)      207.8
+#
+# ⚠ EVERY OTHER AA NUMBER IN THIS FILE IS FROM AN OLDER INDEX VERSION and is
+# NOT comparable with these. v4.3 scores Flash-Lite at 23, where the table
+# above the chain still says 37.4. Only re-scored models may be compared.
+# THE SAME MODEL ON TWO HOSTS TAKES TWO DIFFERENT WORDS, measured:
+#
+#   Cloudflare  "Unexpected reasoning effort high. Supported types are
+#                xhigh (default), medium, and low."
+#   Groq        "invalid Qwen3.8 reasoning_effort" for xhigh; `high` is fine.
+#
+# So neither host accepts the other's value, and a single shared constant
+# would break one of them. This file already records that the same model on
+# two hosts has different LIMITS; it also has different PARAMETER VOCABULARY.
+#
+# xhigh is Cloudflare's default AND the setting Artificial Analysis scored at
+# 34, so the placement in CHAIN describes the configuration we actually send.
+QWEN_CF_REASONING = {"reasoning_effort": "xhigh"}
+
+DEEPSEEK_V4_FLASH = OpenAICompatibleProvider(
+    name="DeepSeek V4 Flash",
+    tier=0,
+    url=OPENROUTER_URL,
+    model="deepseek/deepseek-v4-flash-0731:free",
+    api_key_env="OPENROUTER_API_KEY",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+    extra_body=OPENROUTER_REASONING,
+)
+
+# THE CODING SPECIALIST, and that is a measured claim rather than a vendor
+# one. On general intelligence it TIES Gemini 3.6 Flash (34 = 34); on Code
+# Arena it beats it by 56 Elo (1593 against 1537) and beats DeepSeek V4 Flash
+# too (#18 against #22). AA also ranks it #1 of 142 open-weights models in the
+# 4B-40B class. Step 2 should ROUTE code-writing sub-tasks here rather than
+# walking the chain - the same rule this file already applies to Devstral.
+#
+# Cloudflare FIRST because it is the only one of the two that can serve a
+# report: 262,144 context against Groq's binding 8,000 tokens per MINUTE.
+# Measured cost: 244 neurons for a 4,860-token call, so ~41 such calls a day
+# out of 10,000. Slow, though - 43.1 tok/s is the lowest of any tier here.
+QWEN_3_8_27B = OpenAICompatibleProvider(
+    name="Qwen3.8 27B",
+    tier=0,
+    url=CLOUDFLARE_URL,
+    model="@cf/qwen/qwen3.8-27b",
+    api_key_env="CLOUDFLARE_API_KEY",
+    account_env="CLOUDFLARE_ACCOUNT_ID",
+    context_window=262_144,
+    max_output_tokens=262_144,
+    extra_body=QWEN_CF_REASONING,
+)
+
+# The SAME model on Groq, and modelled at 8,000 like GPT-OSS is - because the
+# binding limit is a per-minute budget covering prompt AND reserved output,
+# not the 131,042 context Groq advertises. Read from its own headers:
+# x-ratelimit-limit-requests 1000, x-ratelimit-limit-tokens 8000.
+#
+# So it can NEVER serve a report and _check_fits refuses it locally for free.
+# It is here for Step 2's small code jobs, where 1,000 requests a day and a
+# 0.6s round trip are worth more than a context it cannot fill.
+QWEN_3_8_27B_GROQ = OpenAICompatibleProvider(
+    name="Qwen3.8 27B (Groq)",
+    tier=0,
+    url=GROQ_URL,
+    model="qwen/qwen3.8-27b",
+    api_key_env="GROQ_API_KEY",
+    context_window=8_000,
+    max_output_tokens=8_000,
+    extra_body=OPENAI_REASONING,
+)
+
 GPT_OSS_120B_GROQ = OpenAICompatibleProvider(
     name="GPT-OSS 120B (Groq)",
     tier=12,
@@ -326,6 +442,193 @@ GPT_OSS_120B_GROQ = OpenAICompatibleProvider(
     context_window=8_000,
     max_output_tokens=8_000,
     extra_body=OPENAI_REASONING,
+)
+
+
+# KILO — A SECOND FREE ALLOWANCE FOR MODELS WE ALREADY REACH, added 2026-09-19.
+#
+# Kilo resells OpenRouter under its OWN org account, proven from the error
+# body: ours reads `"user_id": "user_3HREb…"` and Kilo's `"user_id":
+# "org_2uwFc…"`. Everything else in the two responses is byte-identical.
+#
+# THE CONSEQUENCE IS MEASURED, and it is the whole reason these tiers exist:
+# three successful Kilo calls left our OpenRouter counter at 17 of 50. Kilo
+# spends KILO's allowance. So when our OpenRouter day is gone, these still
+# answer.
+#
+#     OpenRouter   50 requests per DAY      (our account)
+#     Kilo        200 requests per HOUR     (per IP, their docs)
+#
+# One hour of Kilo is four times our whole OpenRouter day, which is why a
+# Kilo route goes BEFORE its OpenRouter twin for the same model. That is this
+# project's standing rule: rank different models by capability, and within
+# ONE model prefer the provider with more usable quota.
+#
+# TWO CEILINGS, NEITHER OF THEM OURS, and both measured:
+#   * 200/hour is per IP and we are on a SHARED VPN exit, so it is split with
+#     everyone else on that address - the thing that made OVH unusable.
+#   * a per-model daily cap on OpenRouter's shared capacity sits underneath.
+#     inkling-small returned `limit_source: openrouter_shared_capacity`,
+#     X-RateLimit-Limit 5000, Remaining 0, resetting at midnight UTC.
+# Kilo returns NO rate-limit headers on a success and has no usage endpoint,
+# so the remaining allowance cannot be read. Same blindness as Cline.
+#
+# A 429 here is CHEAP - measured 0.7-1.2s, not retryable, straight to the next
+# tier. A spent OpenRouter day is not recoverable until tomorrow. That
+# asymmetry is what makes "try Kilo first" safe even when Kilo is congested.
+#
+# The key is OPTIONAL: Kilo's docs say anonymous and authenticated free
+# requests are rate-limited identically, by IP. It is sent for attribution.
+def _kilo(
+    *,
+    name: str,
+    model: str,
+    context_window: int,
+    max_output_tokens: int,
+) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        name=name,
+        tier=0,
+        url=KILO_URL,
+        model=model,
+        api_key_env="KILO_API_KEY",
+        # ONE pool for every Kilo tier: the 200/hour is per IP, shared across
+        # all of them, so a 429 on one really does mean the rest are spent.
+        quota_pool="KILO_API_KEY",
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        extra_body=OPENROUTER_REASONING,
+    )
+
+
+# NOT HERE: z-ai/glm-5.3-flash. Kilo carries it and it is PAID there -
+# $0.150/$0.500 per M - so it answered "Paid Model - Credits Required" and
+# was a dead tier burning a request on every report. It was added by matching
+# Cline's tier-1 MODEL ID against Kilo's CATALOGUE, which is the wrong list:
+# the catalogue is what Kilo SERVES, the free list is what it serves for
+# NOTHING. tests/smoke/test_gateway_tiers_are_free.py now pins that.
+KILO_DEEPSEEK_V4_FLASH = _kilo(
+    name="DeepSeek V4 Flash (Kilo)",
+    model="deepseek/deepseek-v4-flash-0731:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+KILO_QWEN_3_8_27B = _kilo(
+    name="Qwen3.8 27B (Kilo)",
+    model="qwen/qwen3.8-27b:free",
+    context_window=262_144,
+    max_output_tokens=235_929,
+)
+KILO_GLM_5_2 = _kilo(
+    name="GLM-5.2 (Kilo)",
+    model="z-ai/glm-5.2:free",
+    context_window=32_768,
+    max_output_tokens=29_491,
+)
+KILO_LAGUNA_S_2_1 = _kilo(
+    name="Laguna S 2.1 (Kilo)",
+    model="poolside/laguna-s-2.1:free",
+    context_window=262_144,
+    max_output_tokens=32_768,
+)
+KILO_NEMOTRON_3_ULTRA = _kilo(
+    name="Nemotron 3 Ultra (Kilo)",
+    model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+KILO_NORTH_MINI_CODE = _kilo(
+    name="North Mini Code (Kilo)",
+    model="cohere/north-mini-code:free",
+    context_window=256_000,
+    max_output_tokens=64_000,
+)
+KILO_NEMOTRON_3_SUPER = _kilo(
+    name="Nemotron 3 Super (Kilo)",
+    model="nvidia/nemotron-3-super-120b-a12b:free",
+    context_window=262_144,
+    max_output_tokens=235_929,
+)
+
+
+# REQUESTY — a third free route, INDEPENDENT of Google and OpenRouter.
+#
+# 200 requests a DAY, no card, no trial expiry. Its value is not new
+# capability, it is INDEPENDENCE: a refused Google exit has already taken
+# every Google tier from this project for a week, and Requesty serves Gemma
+# and Nemotron without touching Google or OpenRouter.
+#
+# Measured 2026-09-19, 7 of its 12 free models answered. The five that did
+# not are recorded so nobody re-adds them: ling-3.0-tiny 404, laguna-m.1 404,
+# laguna-xs.2 404, nemotron-3-nano-30b-a3b 410 GONE, nemotron-3-super 503.
+#
+# It exposes NO usage or credits endpoint (both 404), so the remaining daily
+# allowance cannot be read - the same blindness as Kilo and Cline.
+def _requesty(
+    *,
+    name: str,
+    model: str,
+    context_window: int,
+    max_output_tokens: int,
+) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        name=name,
+        tier=0,
+        url=REQUESTY_URL,
+        model=model,
+        api_key_env="REQUESTY_API_KEY",
+        # ONE pool: the 200/day is account-wide across every free model.
+        quota_pool="REQUESTY_API_KEY",
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        extra_body=OPENROUTER_REASONING,
+    )
+
+
+REQUESTY_GEMMA_4_31B = _requesty(
+    name="Gemma 4 31B (Requesty)",
+    model="google/gemma-4-31b-it",
+    context_window=262_144,
+    max_output_tokens=32_768,
+)
+REQUESTY_NEMOTRON_3_ULTRA = _requesty(
+    name="Nemotron 3 Ultra (Requesty)",
+    model="nvidia/nemotron-3-ultra-550b-a55b",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+
+# NEW CAPABILITY, not a backup route. AA v4.3 = 18 at 91.3 tok/s, which sits
+# between Gemini 3.5 Flash-Lite (23) and Gemma 4 31B (15). Live 2.3s.
+REQUESTY_MUSE_GLIMMER = _requesty(
+    name="Muse Glimmer 30B (Requesty)",
+    model="nvidia/muse-glimmer-30b",
+    context_window=262_144,
+    max_output_tokens=32_768,
+)
+
+# AA v4.3 = 26 at 173.9 tok/s - ABOVE Gemini 3.5 Flash-Lite's 23, which is
+# why it earns a slot at all. Code Arena is the caveat and it is a real one:
+# 1407, rank #73, so it is a weak coder for a strong general score.
+#
+# ⚠ It was 429 when measured, and the reason is worth keeping: the refusal
+# carried `limit_source: openrouter_shared_capacity`, X-RateLimit-Limit 5000,
+# Remaining 0, resetting at midnight UTC. That is a per-model DAILY cap over
+# every OpenRouter user, not our allowance - "Credits don't affect this cap".
+KILO_INKLING_SMALL = _kilo(
+    name="Inkling Small (Kilo)",
+    model="thinkingmachines/inkling-small:free",
+    context_window=1_048_576,
+    max_output_tokens=131_072,
+)
+
+# AA v4.3 = 19 at 152.1 tok/s, between Flash-Lite (23) and Gemma (15). The
+# only free model Kilo serves that OpenRouter does not. Live 4.5s.
+KILO_STEP_3_7_FLASH = _kilo(
+    name="Step 3.7 Flash (Kilo)",
+    model="stepfun/step-3.7-flash:free",
+    context_window=262_144,
+    max_output_tokens=65_536,
 )
 
 
@@ -352,21 +655,51 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
 # "a weaker model on this one".
 CHAIN = _ordered(
     CLINE_GLM_5_3_FLASH,
+    GEMINI_3_8_FLASH,
+    _second_account(GEMINI_3_8_FLASH),
     GEMINI_3_7_FLASH,
     _second_account(GEMINI_3_7_FLASH),
+    # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
+    # DeepSeek first of the three: it and Qwen TIE on AA (35 vs 34, inside
+    # the +-1 interval), Qwen wins Code Arena by 13 Elo, and DeepSeek is
+    # FIVE TIMES faster (211.9 tok/s against 43.1) with a 1.05M context and
+    # no per-day neuron budget. A 13-Elo coding edge does not buy a 5x
+    # slowdown when generation is already 98.2% of an answer.
+    KILO_DEEPSEEK_V4_FLASH,
+    DEEPSEEK_V4_FLASH,
+    # Then the coding specialist. It ties Gemini 3.6 Flash on general
+    # intelligence and beats it by 56 Elo on code, which is the task this
+    # project actually does - so it goes above it.
+    KILO_QWEN_3_8_27B,
+    QWEN_3_8_27B,
+    # ADJACENT, for the same reason the Google twins are: once Cloudflare's
+    # neurons are gone the strongest thing still available is the same model
+    # on Groq, not a weaker one. It can never serve a report (8,000 tokens a
+    # MINUTE), and _check_fits refuses it locally for free.
+    QWEN_3_8_27B_GROQ,
     GEMINI_3_6_FLASH,
     _second_account(GEMINI_3_6_FLASH),
     GEMINI_3_5_FLASH,
     _second_account(GEMINI_3_5_FLASH),
+    KILO_GLM_5_2,
     GLM_5_2,
     CLINE_LAGUNA_S_2_1,
+    KILO_LAGUNA_S_2_1,
+    KILO_NEMOTRON_3_ULTRA,
     NEMOTRON_3_ULTRA,
+    REQUESTY_NEMOTRON_3_ULTRA,
+    KILO_INKLING_SMALL,
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
     MISTRAL_MEDIUM,
+    KILO_STEP_3_7_FLASH,
+    REQUESTY_MUSE_GLIMMER,
     GEMMA_4_31B,
     _second_account(GEMMA_4_31B),
+    REQUESTY_GEMMA_4_31B,
+    KILO_NORTH_MINI_CODE,
     NORTH_MINI_CODE,
+    KILO_NEMOTRON_3_SUPER,
     NEMOTRON_3_SUPER,
     GPT_OSS_120B,
     GPT_OSS_120B_GROQ,
