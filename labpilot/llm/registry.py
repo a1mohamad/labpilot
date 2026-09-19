@@ -12,6 +12,7 @@ GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 KILO_URL = "https://api.kilo.ai/api/gateway/v1/chat/completions"
+REQUESTY_URL = "https://router.requesty.ai/v1/chat/completions"
 CLOUDFLARE_URL = (
     "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
 )
@@ -500,12 +501,12 @@ def _kilo(
     )
 
 
-KILO_GLM_5_3_FLASH = _kilo(
-    name="GLM-5.3 Flash (Kilo)",
-    model="z-ai/glm-5.3-flash",
-    context_window=1_310_720,
-    max_output_tokens=131_072,
-)
+# NOT HERE: z-ai/glm-5.3-flash. Kilo carries it and it is PAID there -
+# $0.150/$0.500 per M - so it answered "Paid Model - Credits Required" and
+# was a dead tier burning a request on every report. It was added by matching
+# Cline's tier-1 MODEL ID against Kilo's CATALOGUE, which is the wrong list:
+# the catalogue is what Kilo SERVES, the free list is what it serves for
+# NOTHING. tests/smoke/test_gateway_tiers_are_free.py now pins that.
 KILO_DEEPSEEK_V4_FLASH = _kilo(
     name="DeepSeek V4 Flash (Kilo)",
     model="deepseek/deepseek-v4-flash-0731:free",
@@ -550,6 +551,87 @@ KILO_NEMOTRON_3_SUPER = _kilo(
 )
 
 
+# REQUESTY — a third free route, INDEPENDENT of Google and OpenRouter.
+#
+# 200 requests a DAY, no card, no trial expiry. Its value is not new
+# capability, it is INDEPENDENCE: a refused Google exit has already taken
+# every Google tier from this project for a week, and Requesty serves Gemma
+# and Nemotron without touching Google or OpenRouter.
+#
+# Measured 2026-09-19, 7 of its 12 free models answered. The five that did
+# not are recorded so nobody re-adds them: ling-3.0-tiny 404, laguna-m.1 404,
+# laguna-xs.2 404, nemotron-3-nano-30b-a3b 410 GONE, nemotron-3-super 503.
+#
+# It exposes NO usage or credits endpoint (both 404), so the remaining daily
+# allowance cannot be read - the same blindness as Kilo and Cline.
+def _requesty(
+    *,
+    name: str,
+    model: str,
+    context_window: int,
+    max_output_tokens: int,
+) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        name=name,
+        tier=0,
+        url=REQUESTY_URL,
+        model=model,
+        api_key_env="REQUESTY_API_KEY",
+        # ONE pool: the 200/day is account-wide across every free model.
+        quota_pool="REQUESTY_API_KEY",
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        extra_body=OPENROUTER_REASONING,
+    )
+
+
+REQUESTY_GEMMA_4_31B = _requesty(
+    name="Gemma 4 31B (Requesty)",
+    model="google/gemma-4-31b-it",
+    context_window=262_144,
+    max_output_tokens=32_768,
+)
+REQUESTY_NEMOTRON_3_ULTRA = _requesty(
+    name="Nemotron 3 Ultra (Requesty)",
+    model="nvidia/nemotron-3-ultra-550b-a55b",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+
+# NEW CAPABILITY, not a backup route. AA v4.3 = 18 at 91.3 tok/s, which sits
+# between Gemini 3.5 Flash-Lite (23) and Gemma 4 31B (15). Live 2.3s.
+REQUESTY_MUSE_GLIMMER = _requesty(
+    name="Muse Glimmer 30B (Requesty)",
+    model="nvidia/muse-glimmer-30b",
+    context_window=262_144,
+    max_output_tokens=32_768,
+)
+
+# AA v4.3 = 26 at 173.9 tok/s - ABOVE Gemini 3.5 Flash-Lite's 23, which is
+# why it earns a slot at all. Code Arena is the caveat and it is a real one:
+# 1407, rank #73, so it is a weak coder for a strong general score.
+#
+# ⚠ It was 429 when measured, and the reason is worth keeping: the refusal
+# carried `limit_source: openrouter_shared_capacity`, X-RateLimit-Limit 5000,
+# Remaining 0, resetting at midnight UTC. That is a per-model DAILY cap over
+# every OpenRouter user, not our allowance - "Credits don't affect this cap".
+KILO_INKLING_SMALL = _kilo(
+    name="Inkling Small (Kilo)",
+    model="thinkingmachines/inkling-small:free",
+    context_window=1_048_576,
+    max_output_tokens=131_072,
+)
+
+# AA v4.3 = 19 at 152.1 tok/s, between Flash-Lite (23) and Gemma (15). The
+# only free model Kilo serves that OpenRouter does not. Live 4.5s.
+KILO_STEP_3_7_FLASH = _kilo(
+    name="Step 3.7 Flash (Kilo)",
+    model="stepfun/step-3.7-flash:free",
+    context_window=262_144,
+    max_output_tokens=65_536,
+)
+
+
 def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
     """Tier is the POSITION, never a number somebody typed.
 
@@ -573,7 +655,6 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
 # "a weaker model on this one".
 CHAIN = _ordered(
     CLINE_GLM_5_3_FLASH,
-    KILO_GLM_5_3_FLASH,
     GEMINI_3_8_FLASH,
     _second_account(GEMINI_3_8_FLASH),
     GEMINI_3_7_FLASH,
@@ -606,11 +687,16 @@ CHAIN = _ordered(
     KILO_LAGUNA_S_2_1,
     KILO_NEMOTRON_3_ULTRA,
     NEMOTRON_3_ULTRA,
+    REQUESTY_NEMOTRON_3_ULTRA,
+    KILO_INKLING_SMALL,
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
     MISTRAL_MEDIUM,
+    KILO_STEP_3_7_FLASH,
+    REQUESTY_MUSE_GLIMMER,
     GEMMA_4_31B,
     _second_account(GEMMA_4_31B),
+    REQUESTY_GEMMA_4_31B,
     KILO_NORTH_MINI_CODE,
     NORTH_MINI_CODE,
     KILO_NEMOTRON_3_SUPER,
