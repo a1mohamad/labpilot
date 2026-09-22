@@ -16198,7 +16198,7 @@ Claude Code indexing (vadim.blog) · Cursor indexing
 |---|---|
 | **D1** | **Step 2 is PLAN-AND-EXECUTE, not ReAct.** This confirms the existing LangGraph choice — but it was taste before and it is evidence now (F9). LabPilot is report generation with a knowable structure and independent, parallelizable steps, which is the exact case the benchmark gives to plan-and-execute |
 | **D2** | **THE PLANNER WRITES THE QUERIES**, from the user's question. Queries are NOT fixed. `extract_claims` stops being the front door and becomes ONE node the planner may choose |
-| **D3** | The asking channel is **STRUCTURED OUTPUT, not function calling.** Schema-enforced where the tier supports it, first-valid-JSON parsing everywhere else |
+| **D3** | **REVISED BY D13 — read that first.** The asking channel is **STRUCTURED OUTPUT, not function calling.** Schema-enforced where the tier supports it, first-valid-JSON parsing everywhere else |
 | **D4** | **Exactly ONE ReAct loop**: re-search when `verify` reports *not found*. **Max 2 retries**, against a budget (F12) |
 | **D5** | A **decontextualization node** for turn 2 onward, rewriting a follow-up into a standalone query (F11) |
 | **D6** | A **specific** user question goes to search **RAW**. Do not rewrite it (F3) |
@@ -16370,6 +16370,118 @@ spans (prompt ids do not exist yet).
 **And it inherits the same scaling problem**: `defines:` costs **44.9 tokens
 per file** and compresses only **1.5x** (410 chunks to 270 labels), so a
 500-file repository is ~22,000 tokens — nearly the whole prompt budget.
+
+### 5b. THE MAP — ranked and elided, and D3 was revised
+
+*Added later the same session. The first version of section 5 described the map
+as a flat per-file list and gave it `OUTLINE_BUDGET`. The user rejected both:*
+
+> *"only lines + defines... maybe of them has same defines... i think worth to
+> increase it cuz its one call and worth be detailed."*
+
+*He was right that the rows are too thin, and the research says he was wrong
+about the fix. Both halves are recorded.*
+
+#### What people actually build — aider's repo map is the reference
+
+Three stages: **parse, rank, fit.**
+
+```
+1  tree-sitter parses every file, extracting definitions and references
+   (130+ languages)
+2  build a GRAPH - file A references a symbol defined in file B
+3  PageRank over it, so heavily-referenced code floats up. The current chat
+   biases the restart vector, 50x
+4  render the top symbols as SIGNATURES with bodies collapsed to a marker
+5  binary-search the ranked list for the largest slice that fits the budget
+```
+
+And the rendering is far richer than a name list:
+
+```
+aider/coders/base_coder.py:
+...
+ class Coder:
+     abs_fnames = None
+...
+     @classmethod
+     def create(
+         self,
+         main_model,
+         edit_format,
+         io,
+...
+     def abs_root_path(self, path):
+...
+```
+
+#### THE NUMBER THAT ARGUES AGAINST A BIG BUDGET
+
+> **aider's repo map defaults to `--map-tokens 1000`.**
+
+One thousand, for a whole codebase, in a top-tier coding agent. It can afford
+that because it **ranks** and sends only the best rows.
+
+And the reason is measured. Context rot, 2026, across 18 frontier models:
+
+```
+accuracy falls 30-50%   well before the documented limit
+lost-in-the-middle      20 documents (~4,000 tokens) took accuracy from
+                        70-75% down to 55-60%
+past 200K tokens        30-60 point losses on multi-fact retrieval, on
+                        models advertising a 1M window
+same-topic junk         measured as ACTIVE DISTRACTORS, not inert filler
+```
+
+**A long flat file list is exactly same-topic junk** - hundreds of rows that
+look alike, most of them irrelevant. It is the worst possible shape for
+attention, and it is what the first version of section 5 proposed.
+
+> **The axis was wrong on both sides.** The fix for a thin map is not MORE
+> tokens and not FEWER. It is **richer rows, ordered by importance**.
+
+#### What we can build with no new dependency
+
+We already store more than section 5 used. A chunk header is:
+
+```
+[B_train.py · class Trainer · def fit · part 1/5 · lines 1189-1215]
+```
+
+That is a **signature-level label per chunk**, produced by our own AST
+splitter. So an aider-shaped map is mostly available already:
+
+```
+B_train.py   78 parts, lines 1-1420
+  class QuoraTokenizer   lines 425-520    __init__, encode, _build_stop_mask
+  class Trainer          lines 920-1317   fit, _backprop_with_scaler, evaluate
+  (module level)         lines 1-120      config, imports
+```
+
+Class and method nesting kept, line numbers kept. Measured cost on this
+repository: **410 chunks compress to 270 distinct labels**, roughly **2,700
+tokens for 94 files** - far richer than `defines:` and about the same price.
+
+**Ranking is the part we do not have.** Aider ranks with a symbol graph; we
+store no cross-file references. But we own something aider does not: **the
+user's question and an embedder.** Ranking files by cosine against the question
+costs **zero extra calls**, because the question is embedded for search anyway.
+
+#### D10 to D13
+
+| # | decision |
+|---|---|
+| **D10** | The planner gets its **own budget**, `PLANNER_BUDGET`, not `OUTLINE_BUDGET` - the two compete with different things. Applied **per tier** as `min(PLANNER_BUDGET, what this tier can take)`, which is section 11.1's grid. **35 of 40 tiers hold 250,000+**; the line that matters is **16,000, Gemma's input cap**, which is the largest free quota in the project |
+| **D11** | The map is **RANKED and ELIDED**, aider-style, built from headers we already store. **Rank only when it does not fit** - most repositories fit, and then ranking is a cost with no benefit. **Cosine first (free), a reranker as a measured upgrade.** And **BIAS, never filter**: every file keeps at least one row, because hiding what the question does not mention is the one failure the map exists to prevent |
+| **D12** | Check the **Jev family and any new decision-model providers** in the catalogue, with M3. Jev is listwise, typed and ~1.2s, so it is a natural ranker for map rows as well as for chunks |
+| **D13** | **D3 IS REVISED, at the user's instruction: use FUNCTION CALLING where the tier supports it, and STRUCTURED OUTPUT where it does not.** The honest cost is **two code paths** in the LLM layer instead of one, and a per-tier capability flag that has to stay true. The honest gain is provider-enforced arguments on the tiers that have them. **M3 decides how many tiers that actually is** - if it is most of them the hybrid is worth it, and if it is few, D3 stands as written |
+
+**The knob is a knob.** `PLANNER_BUDGET` is a guess until **M5** sweeps it, and
+the sweep must include a **1,000-token control**, because that is what aider
+ships and it is the strongest argument on the other side.
+
+Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
+(agentpatterns.ai) · Context Rot (tinyfish.ai, redis.io).
 
 ### 6. MEASUREMENTS OWED
 
