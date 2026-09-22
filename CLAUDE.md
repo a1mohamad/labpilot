@@ -16095,6 +16095,275 @@ and 2 are for.
 
 ---
 
+## STEP 2 — the plan, recorded 2026-09-22
+
+*Session 27 wrote no source on purpose, and the plan below is not the one the
+session started with. The user refused three of my framings in a row and was
+right each time, so most of what follows came out of research rather than out
+of this file's existing design notes. Sources are named; each finding carries
+how strong it is.*
+
+**No ISP probe was needed: nothing here called a model.**
+
+### 0. Why the research happened at all
+
+The session opened by teaching what an agent is, and the plan was to build
+`extract_claims` as the front door: turn side A into ~14 claims, and search
+with those instead of with the user's question. The user rejected it:
+
+> *"it doesn't make any sense for me to convert any question to fixed 14
+> queries... user question may vary too much... i want to know what pro do?"*
+
+That objection is correct, and checking it overturned part of this file.
+
+### 1. THE RESEARCH — twelve findings, with their strength
+
+| # | finding | strength |
+|---|---|---|
+| **F1** | **Dense retrievers COLLAPSE on reasoning questions.** `SFR-Embedding-Mistral` scores **59.0 on BEIR** and **18.3 nDCG@10 on BRIGHT** | ✅ peer-reviewed benchmark |
+| **F2** | Letting an LLM reason about the query **before** retrieving is worth **+12.2 nDCG** on BRIGHT | ✅ published |
+| **F3** | Rewriting a GOOD query can HURT: **-10.8 NDCG@5** when HyDE is stacked on a query-trained encoder | ✅ published |
+| **F4** | Multi-query **lost to naive RAG** in the ARAGOG benchmark | ✅ published |
+| **F5** | The 2026 production pattern is **agentic search** — the model writes its own queries, in a loop | ⚠ vendor docs + blogs |
+| **F6** | **Claude Code has NO vector index.** grep, glob and file reads, chosen turn by turn, so it always works from live code rather than a snapshot | ⚠ third-party writing, not Anthropic's own docs |
+| **F7** | Agentic keyword search reached **over 90% of RAG-level performance with no vector database** (Amazon Science, Feb 2026) | ⚠ reached us through a blog, not the paper |
+| **F8** | **Exact match beats semantic search on well-named code.** Cursor's own figure for semantic search is **+12.5%** over keyword | ⚠ blogs |
+| **F9** | **Plan-and-execute beats ReAct** where the structure is knowable: **92% vs 85%** completion, **$1.24 vs $2.87**, **38.6K vs 47.2K** input tokens. ReAct wins on SHORT tasks; plan-and-execute wins on long tasks with parallel steps | ⚠ one 2026 benchmark |
+| **F10** | For mixed providers the recommended shape is **structured output, with a text-parse fallback** | ⚠ guidance |
+| **F11** | **Over 60% of multi-turn follow-ups** carry unresolved pronouns, so decontextualization is near-universal in production | ⚠ one production study |
+| **F12** | Agentic retrieval loops need a **hard search budget** or they loop forever | ⚠ guidance |
+
+**F1 is the one that settles the argument this session was about.** The same
+model scores 59 on ordinary lookup questions and 18 on reasoning questions.
+*"Why do the results diverge?"* is the second kind. So the instinct *"a modern
+embedder handles a raw question, so it will handle ours too"* is exactly what
+the benchmark disproves — and the fix that works on BRIGHT is F2, reasoning
+before retrieval.
+
+Sources: BRIGHT (arXiv 2407.12883, and the reproducible-baselines paper
+2509.02558) · *Not All Queries Need Rewriting* (2603.13301) · ARAGOG
+(2404.01037) · *ReAct vs Plan-and-Execute* (atlan.com, dev.to) ·
+*Structured Outputs vs Function Calling* (machinelearningmastery.com) ·
+Claude Code indexing (vadim.blog) · Cursor indexing
+(towardsdatascience.com) · *Agentic RAG Needs a Search Budget* (hackernoon).
+
+### 2. NINE DECISIONS
+
+| # | decision |
+|---|---|
+| **D1** | **Step 2 is PLAN-AND-EXECUTE, not ReAct.** This confirms the existing LangGraph choice — but it was taste before and it is evidence now (F9). LabPilot is report generation with a knowable structure and independent, parallelizable steps, which is the exact case the benchmark gives to plan-and-execute |
+| **D2** | **THE PLANNER WRITES THE QUERIES**, from the user's question. Queries are NOT fixed. `extract_claims` stops being the front door and becomes ONE node the planner may choose |
+| **D3** | The asking channel is **STRUCTURED OUTPUT, not function calling.** Schema-enforced where the tier supports it, first-valid-JSON parsing everywhere else |
+| **D4** | **Exactly ONE ReAct loop**: re-search when `verify` reports *not found*. **Max 2 retries**, against a budget (F12) |
+| **D5** | A **decontextualization node** for turn 2 onward, rewriting a follow-up into a standalone query (F11) |
+| **D6** | A **specific** user question goes to search **RAW**. Do not rewrite it (F3) |
+| **D7** | `agent/` is **CORE**, so it may not import `llm/`, `store/`, `embed/` or `rerank/`. Nodes take **injected callables** |
+| **D8** | **CANDIDATE, not committed:** an exact-match / symbol lookup tool beside vector and BM25 (F6, F7, F8) |
+| **D9** | Graph state needs **reducers**: `findings` and `attempts` APPEND, everything else replaces |
+
+#### D2, and why the shape the user asked for is the right one
+
+The user described it before it had a name:
+
+> *"if our system was good, it must create 14 different queries based on the
+> question user ask... its kinda like what the UI sent in agents like claude
+> code or even chatbots like chatGPT."*
+
+That is plan-and-execute with structured output. One cheap call reads the
+question plus a map of what the artifacts contain, and returns JSON:
+
+```
+IN    the user's question + a per-file map of A and B
+
+OUT   {"nodes":   ["extract_claims", "verify", "explain_divergence"],
+       "queries": [{"side": "B", "text": "gradient clipping global norm"},
+                   {"side": "B", "text": "learning rate schedule and warmup"}]}
+```
+
+Three different questions produce three different plans, which is the whole
+point:
+
+```
+"why are my results diverging?"   claims + verify + outcomes + explain
+"why did the paper get that?"     summarize A + extract_outcomes. B barely touched
+"what is wrong in my code?"       claims + verify + find_bugs
+```
+
+#### D3, and why it is not the weak option
+
+`rerank/` already proves the mechanism: `api/reranking.py` sends Gemini a
+`responseSchema` for an integer array, and that one setting took gemma from
+**45.5s to 14.4s** and stopped the reply being prose wrapped around an answer.
+The planner is the same trick one level up.
+
+Function calling is the tidier protocol and is what a single-provider product
+should use. It is wrong HERE for a specific reason: **the chain falls back
+across 40 tiers, and a tier without a `tools` field does not answer worse — the
+request shape is invalid and the call fails.** Fallback is the thing our chain
+exists for. It would also mean changing `_payload` and `_extract_message` on
+every provider, plus a new contract, in the most heavily tested layer we have.
+
+**Which tiers actually support function calling is UNVERIFIED** and is M3
+below. Gemma is not a Gemini model and its feature set differs.
+
+#### D7, found by reading our own test rather than by design
+
+`tests/unit/test_architecture.py` line 12 already classifies `agent` as core,
+and core may import only shared and core. So the first node that calls
+`LLMClient` directly turns the build red.
+
+That is not an obstacle, it is the shape `rerank/` already solved:
+`LLMReranker` takes a `complete` callable instead of a provider, and the entry
+layer wires it. Nodes take the same treatment:
+
+```
+generate(prompt, max_tokens) -> str
+retrieve(side, query)        -> chunks
+rank(query, documents)       -> order
+```
+
+Two things this buys: `api/` stays the only wiring place, and **every node is
+testable with no provider, no quota and no network.**
+
+### 3. FIVE CORRECTIONS
+
+| # | what was wrong |
+|---|---|
+| **C1** | *"Most embedders are trained only on (sentence, similar sentence) pairs"* — **false.** Modern retrieval embedders are trained on BOTH symmetric and asymmetric data. That is exactly WHY the `task` flag exists: a model that knows both relations has to be told which one you want |
+| **C2** | Framing `extract_claims` as *query rewriting* — **wrong.** It reads side A and never touches the user's question. The published negative results about rewriting (F3, F4) are about a different operation |
+| **C3** | **"13 of 19" says nothing about retrieval.** See below — it is the worst of the five |
+| **C4** | *"The user's question is never the search query"* is **TOO STRONG.** True for the default prompt, which carries no content at all. False for a specific question, where F3 says rewriting is likely to HURT |
+| **C5** | The status block said Jev was on `feat/jev-probe` and not merged. `git diff --stat main feat/jev-probe` is **empty** — it is on `main` |
+
+#### C3 — NO FINDINGS SCORE HAS EVER BEEN MEASURED ON THE SEARCH PATH
+
+Every findings number in this file — 10, 11 and **13 of 19** — was produced
+with the corpus **STUFFED**. Read from the saved run:
+
+```
+artifacts/2026-08-17_04-36_report-stuffed_medium.md
+    chunks sent: 96 of 96
+```
+
+Retrieval did not run, so the query was not a variable and the number is not
+evidence about it either way.
+
+And the runs that DID send partial context are worse than useless for this:
+
+```
+21 scored runs carry a chunk count
+  9 at 96 of 96        stuffed
+ 12 at 60-65 of 96     the DUMB POSITIONAL SELECTOR
+ every partial run is dated 2026-08-14 to 08-16
+```
+
+pgvector did not exist until 2026-09-04 and `ask()` until slice 7. So every
+partial run predates vector search entirely, and used the throwaway 50/50
+selector that slice 7 deleted.
+
+> **The whole findings record describes a path we do not ship.** Step 2's
+> baseline therefore has to be measured before Step 2 can be said to beat
+> anything — M6 below.
+
+### 4. THE EIGHT SLICES
+
+| # | slice | what it must prove | teaching |
+|---|---|---|---|
+| **0** | **does LangGraph fit?** | the real install tree and resident size against the 512MB ceiling | none |
+| 1 | **latency ranking** | how fast each of the 40 tiers is, and which support function calling | none — measurement |
+| 2 | **the skeleton** | a graph replaces `ask()` and nothing else moves | **heavy** — state, nodes, edges, reducers, checkpoints |
+| 3 | **parallel nodes** | two independent nodes really run at once | medium — fan-out / fan-in |
+| 4 | **the gate** | a node can HALT the graph, on a calibrated threshold | medium — and Jev's typed `choice` fits it exactly |
+| 5 | **claims + verify** | the LOOP: N claims, N retrievals, N verdicts, bounded retry | **heavy** — the thing only a graph can do |
+| 6 | **the planner** | nodes AND queries chosen from the question plus a corpus map | medium |
+| 7 | **routing** | a chain, a `max_tokens` and a thinking level PER TASK | light — every number already exists |
+| 8 | **measure** | findings against `EXPECTED.md`, and the wall clock | none |
+
+**Slice 0 is first because it can change the plan.** If LangGraph is 200MB
+resident we write the graph in plain Python instead. Check the gate before the
+quality work — the same rule that checked pgvector's 2000-dimension ceiling
+before scoring five embedders.
+
+**Parallelism is slice 3, not slice 8.** Generation is 98.2% of a 497-second
+answer, so the shape must be proven early rather than bolted on.
+
+### 5. THE OUTLINE GAP — the planner cannot use the outline we have
+
+The user asked whether the planner can see an outline of A and B, given that
+artifacts arrive whenever the user chooses. Reading the code says: **not with
+today's function.**
+
+`build_context` builds its outline **from the chunks already in hand**. On the
+search path that is the ~20 retrieved ones, plus a `totals` sentence saying
+*"20 of 8333 parts were retrieved"*. It never knew the other 8,313.
+
+**The planner runs BEFORE retrieval and has zero chunks.** So it needs a
+different thing: a **corpus map**, read from the database without pulling text.
+
+```
+select source, count(*), min(start_line), max(end_line)
+from chunks where artifact_id = $1
+group by source order by min(chunk_index)
+```
+
+A few dozen rows for an 8,333-chunk repository, no `text`, no vector — the same
+shape as `measure()`: ask the database a question, move no rows.
+
+**And the two documents answer different questions**, so the template is not
+reusable as it stands:
+
+| | today's outline | the planner's map |
+|---|---|---|
+| runs | AFTER retrieval | BEFORE retrieval |
+| answers | *"what did you NOT get?"* | *"what is in here?"* |
+| purpose | stop a false *"the code does not do X"* | decide what to search for |
+
+Reuse the **ladder**, `_by_file`'s consecutive grouping, and `defines:`. Drop
+the included/not-included column (meaningless before retrieval) and the id
+spans (prompt ids do not exist yet).
+
+**And it inherits the same scaling problem**: `defines:` costs **44.9 tokens
+per file** and compresses only **1.5x** (410 chunks to 270 labels), so a
+500-file repository is ~22,000 tokens — nearly the whole prompt budget.
+
+### 6. MEASUREMENTS OWED
+
+| # | measure | slice |
+|---|---|---|
+| M1 | does **LangGraph** fit 512MB — real tree, real resident size | 0 |
+| M2 | **latency ranking of all 40 tiers** — we have ordered them by quality and by quota and never once by speed | 1 |
+| M3 | **which tiers support function calling** — decides whether D3 can ever be revisited | 1 |
+| M4 | the raw question **vs** planner-written queries **vs** claims, scored against `EXPECTED.md` | 5 |
+| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does | 6 |
+| M6 | **a findings score on the SEARCH path** — never once measured, see C3. This is the baseline Step 2 must beat | 8 |
+| M7 | an exact-match tool vs vector alone (D8) | 8 |
+| M8 | **per-node output tokens and latency** — every time estimate in this section rests on an assumed 40s per node | 8 |
+
+**The cache pays for most of this.** `.cache/` holds 2.4GB: 26 corpora already
+embedded, 50 rerank result files, 18 top-N runs. M4 and M7 can reuse it instead
+of spending quota.
+
+### 7. CODE OWED
+
+| # | change | where |
+|---|---|---|
+| CC1 | `outline_of(conn, artifact_id)` — the per-file map, no text, no vectors | `store/reader.py` |
+| CC2 | a SECOND renderer for that map — reuse the ladder and `_by_file`, drop two columns | `prompts/` |
+| CC3 | the `agent/` package — core layer, injected callables | `labpilot/agent/` |
+| CC4 | a JSON helper: ask with a schema, parse, retry. Extend `generation_config` past reranking | `llm/` |
+| CC5 | wiring — build the graph, inject the callables, map the new errors | `api/` |
+| CC6 | `requirements.txt` and `test_packaging.py`, if LangGraph is added | root |
+| CC7 | a budget ladder for the map, for the 500-file case | `prompts/` |
+
+### 8. NOT STEP 2
+
+MCP and web search are **Step 2.5**. The UI, SSE progress and the TypeScript
+rewrite are **Step 3** — and note that *"Searching the web..."* in a chat
+product is nothing but the app rendering the plan steps as they run, so the
+planner's JSON gives us those labels for free. Fine-tuning is **Step 4**.
+
+---
+
 ## Agent Design — Step 2, recorded 2026-08-11
 
 *Designed now, built at Step 2 when LangGraph exists. Step 0 slice 4 stays
