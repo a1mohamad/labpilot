@@ -502,8 +502,11 @@ not. Every constant in that sentence was measured — see
 [STEP 1 IS CLOSED](#-step-1-is-closed--2026-09-19-all-nine-slices-measured-and-shipped)
 for the numbers and the four defects measuring found.
 
-**⚠ ONE THING LANDED AFTER STEP 1 CLOSED: `typesafe/jev-1.13` IS CHAIN 3's
-SECOND MODEL.** Branch `feat/jev-probe`, **879 passed, 4 skipped**, not merged.
+**ONE THING LANDED AFTER STEP 1 CLOSED: `typesafe/jev-1.13` IS CHAIN 3's
+SECOND MODEL** — **on `main`, and `feat/jev-probe` is byte-identical to it**
+(`git diff --stat main feat/jev-probe` is empty, checked 2026-09-22). This block
+read *"not merged"* for three days after it was; the gateway sweep, Qwen,
+DeepSeek and the GLM-5.2 move are all on `main` too.
 A **decision model, not an LLM** — it returns typed probabilities and cannot
 write a word. Measured on two corpora it beats every rerank tier except
 flash-lite, and beats flash-lite on `geo`, the unsaturated one. It is the
@@ -1460,7 +1463,10 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > delivered, and the decisions they produced are recorded in two new sections,
 > [Retrieval Design](#retrieval-design--recorded-2026-08-13) and
 > [Chunking](#chunking--decided-2026-08-13-built-in-slice-3). The headline
-> decisions: **the user's question is never the search query**; query source is a
+> decisions: **the user's question is never the search query** — **NARROWED
+> 2026-09-22, see [Step 2](#step-2--the-plan-recorded-2026-09-22) C4: true for the
+> default prompt, which carries no content at all, and FALSE for a specific
+> question, where rewriting is measured to hurt**; query source is a
 > field on each capability; code-vs-code uses a fixed checklist instead of paper
 > claims; one similarity matrix serves `verify`, `find_missing` *and* the gate;
 > `find_bugs` is a scan, not a search; small artifacts are stuffed, not
