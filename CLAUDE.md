@@ -16523,9 +16523,35 @@ no honest way to answer without it.*
 CALLED         23   a real tool call, with the right argument
 IGNORED         1   HTTP 200, no tool_call, no content
 REAL "NO"       2   GLM-5.2, both routes
-NOT MEASURED   14   503 x6 (transient) · 429 x5 (quota) · 403 x2 (Groq) ·
+NOT MEASURED   14   503 x5 (transient) · 429 x5 (quota) · 403 x2 (Groq) ·
                     404 x2 (the model is gone)
+
+  503   Gemini 3.8 Flash k1 · 3.7 Flash k1 · 3.5 Flash k1 AND k2 · Gemma k1
+  429   Qwen (Kilo, upstream pool) · Inkling (daily) · Mistral Medium ·
+        Magistral Small · Devstral 2
+  403   both Groq tiers - the exit
+  404   both DeepSeek tiers - the free model is gone
 ```
+
+**Every 503 tier has a twin that CALLED, except `Gemini 3.5 Flash`**, which
+503'd on both keys and then timed out at 90s on retry. Its capability is the
+one genuine blank in the table.
+
+**And Gemma proved the retry rule twice, in opposite directions, minutes
+apart:**
+
+```
+first run    key 1  CALLED (80.2s)      key 2  503
+second run   key 1  503    (65.6s)      key 2  CALLED (44.0s)
+```
+
+Same two tiers, swapped. That is precisely why *"503 -> retry the SAME tier"*
+is in the five-way rule, and it is why a 503 in this table is never evidence
+about capability.
+
+**All three Mistral tiers were rate-limited together**, so Mistral is
+unmeasured here - and it is worth measuring, because Mistral documents
+function calling.
 
 **Function calling is close to universal here — 23 of the 24 tiers that gave a
 capability answer.** So **D13 stands**, and the hybrid is worth its two code
