@@ -79,6 +79,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Slice 4 Result](#the-measurement--five-runs-all-saved) ·
 [**Next: Coverage**](#why-coverage-is-stuck--diagnosed-2026-08-14) ·
 [Comparison Template](#the-comparison-template--designed-2026-08-14) ·
+[**STEP 2 — THE PLAN, 8 slices**](#step-2--the-plan-recorded-2026-09-22) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -491,9 +492,12 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 IS COMPLETE AND CLOSED — 2026-09-19. ALL NINE SLICES — 1, 1b,
-2, 3, 4, 5, 6, 7 AND 8 — ARE DONE, AND SLICE 8 RAN THREE TIMES (v1, v2, v3).
-STEP 2, THE AGENT, IS NEXT.**
+**Phase: STEP 2 HAS STARTED — 2026-09-22. STEP 1 IS COMPLETE AND CLOSED; ALL
+NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 — ARE DONE, AND SLICE 8 RAN THREE
+TIMES (v1, v2, v3). STEP 2 IS PLANNED AS EIGHT SLICES AND NO CODE IS WRITTEN:
+read [STEP 2 — the plan](#step-2--the-plan-recorded-2026-09-22) before anything
+else, because it OVERTURNS this file in two places — no findings score has ever
+been measured on the search path, and the planner cannot use `build_context`.**
 
 **871 passed, 4 skipped, 0 xfailed, ruff clean.** The RAG system ingests a
 file, a `.zip` or a git URL; stores it in pgvector; and answers a question by
@@ -973,6 +977,41 @@ providers' own docs. 595 passed, 28 skipped, 1 xfailed, confirmed at the start o
 see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
+>
+>
+> > ## STEP 2 IS PLANNED, AND NOTHING IS BUILT — 2026-09-22
+> >
+> > **Read [STEP 2 — the plan](#step-2--the-plan-recorded-2026-09-22) first.**
+> > Twelve findings with their strength, nine decisions, five corrections,
+> > eight slices, eight measurements owed and seven code debts. Branch
+> > `docs/step2-plan`. **DO NOT COMMIT TO `main`.**
+> >
+> > **The four things that change what you would otherwise do:**
+> >
+> > ```
+> > D1  PLAN-AND-EXECUTE, not ReAct. 92% vs 85% completion, half the cost,
+> >     and it is the pattern for report generation with parallel steps
+> > D2  THE PLANNER WRITES THE QUERIES from the user's question. They are NOT
+> >     fixed, and extract_claims is one node it may choose, not the door
+> > D3  STRUCTURED OUTPUT, never function calling - a tier without a `tools`
+> >     field does not answer worse, the request is INVALID and the call fails
+> > D7  agent/ is CORE, so it may not import llm/, store/, embed/ or rerank/.
+> >     Nodes take INJECTED CALLABLES, exactly as LLMReranker does
+> > ```
+> >
+> > **And two things in this file are now wrong:**
+> >
+> > ```
+> > C3  NO FINDINGS SCORE HAS EVER BEEN MEASURED ON THE SEARCH PATH. 13 of 19
+> >     was chunks sent: 96 of 96, and every partial run is dated 08-14 to
+> >     08-16 - before pgvector existed. Step 2 has no baseline yet
+> > C5  the outline the planner needs DOES NOT EXIST. build_context builds it
+> >     from chunks already in hand, and the planner runs BEFORE retrieval
+> > ```
+> >
+> > **Next is slice 0**: does LangGraph fit the 512MB box? Local, no quota, and
+> > it can change the plan - if it is 200MB resident we write the graph in
+> > plain Python instead.
 >
 > > ## ✅ STEP 1 IS DONE — 2026-09-19. STEP 2, THE AGENT, IS NEXT
 > >
