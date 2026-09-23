@@ -2,6 +2,9 @@
 #     docker build -f docker/Dockerfile -t labpilot .
 #     docker run --rm -p 8000:8000 --env-file .env labpilot
 FROM python:3.13-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
