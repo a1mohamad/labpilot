@@ -79,6 +79,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Slice 4 Result](#the-measurement--five-runs-all-saved) ·
 [**Next: Coverage**](#why-coverage-is-stuck--diagnosed-2026-08-14) ·
 [Comparison Template](#the-comparison-template--designed-2026-08-14) ·
+[**STEP 2 — THE PLAN, 8 slices**](#step-2--the-plan-recorded-2026-09-22) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -491,9 +492,12 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 1 IS COMPLETE AND CLOSED — 2026-09-19. ALL NINE SLICES — 1, 1b,
-2, 3, 4, 5, 6, 7 AND 8 — ARE DONE, AND SLICE 8 RAN THREE TIMES (v1, v2, v3).
-STEP 2, THE AGENT, IS NEXT.**
+**Phase: STEP 2 HAS STARTED — 2026-09-22. STEP 1 IS COMPLETE AND CLOSED; ALL
+NINE SLICES — 1, 1b, 2, 3, 4, 5, 6, 7 AND 8 — ARE DONE, AND SLICE 8 RAN THREE
+TIMES (v1, v2, v3). STEP 2 IS PLANNED AS EIGHT SLICES AND NO CODE IS WRITTEN:
+read [STEP 2 — the plan](#step-2--the-plan-recorded-2026-09-22) before anything
+else, because it OVERTURNS this file in two places — no findings score has ever
+been measured on the search path, and the planner cannot use `build_context`.**
 
 **871 passed, 4 skipped, 0 xfailed, ruff clean.** The RAG system ingests a
 file, a `.zip` or a git URL; stores it in pgvector; and answers a question by
@@ -502,8 +506,11 @@ not. Every constant in that sentence was measured — see
 [STEP 1 IS CLOSED](#-step-1-is-closed--2026-09-19-all-nine-slices-measured-and-shipped)
 for the numbers and the four defects measuring found.
 
-**⚠ ONE THING LANDED AFTER STEP 1 CLOSED: `typesafe/jev-1.13` IS CHAIN 3's
-SECOND MODEL.** Branch `feat/jev-probe`, **879 passed, 4 skipped**, not merged.
+**ONE THING LANDED AFTER STEP 1 CLOSED: `typesafe/jev-1.13` IS CHAIN 3's
+SECOND MODEL** — **on `main`, and `feat/jev-probe` is byte-identical to it**
+(`git diff --stat main feat/jev-probe` is empty, checked 2026-09-22). This block
+read *"not merged"* for three days after it was; the gateway sweep, Qwen,
+DeepSeek and the GLM-5.2 move are all on `main` too.
 A **decision model, not an LLM** — it returns typed probabilities and cannot
 write a word. Measured on two corpora it beats every rerank tier except
 flash-lite, and beats flash-lite on `geo`, the unsaturated one. It is the
@@ -970,6 +977,51 @@ providers' own docs. 595 passed, 28 skipped, 1 xfailed, confirmed at the start o
 see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 
 > ### START HERE IN A NEW SESSION
+>
+>
+> > ## STEP 2 IS PLANNED, AND NOTHING IS BUILT — 2026-09-22
+> >
+> > **Read [STEP 2 — the plan](#step-2--the-plan-recorded-2026-09-22) first.**
+> > Twelve findings with their strength, nine decisions, five corrections,
+> > eight slices, eight measurements owed and seven code debts. Branch
+> > `docs/step2-plan`. **DO NOT COMMIT TO `main`.**
+> >
+> > **The four things that change what you would otherwise do:**
+> >
+> > ```
+> > D1  PLAN-AND-EXECUTE, not ReAct. 92% vs 85% completion, half the cost,
+> >     and it is the pattern for report generation with parallel steps
+> > D2  THE PLANNER WRITES THE QUERIES from the user's question. They are NOT
+> >     fixed, and extract_claims is one node it may choose, not the door
+> > D3  STRUCTURED OUTPUT, never function calling - a tier without a `tools`
+> >     field does not answer worse, the request is INVALID and the call fails
+> > D7  agent/ is CORE, so it may not import llm/, store/, embed/ or rerank/.
+> >     Nodes take INJECTED CALLABLES, exactly as LLMReranker does
+> > ```
+> >
+> > **And two things in this file are now wrong:**
+> >
+> > ```
+> > C3  NO FINDINGS SCORE HAS EVER BEEN MEASURED ON THE SEARCH PATH. 13 of 19
+> >     was chunks sent: 96 of 96, and every partial run is dated 08-14 to
+> >     08-16 - before pgvector existed. Step 2 has no baseline yet
+> > C5  the outline the planner needs DOES NOT EXIST. build_context builds it
+> >     from chunks already in hand, and the planner runs BEFORE retrieval
+> > ```
+> >
+> > **SLICE 0 IS CLOSED - 2026-09-23. LANGGRAPH SHIPS.** ~55MB imported, no
+> > torch, and the whole container measures **74 MiB under a 928-chunk repo
+> > ingest** against CLAUDE.md's estimate of 290-370MB. **That estimate was 6x
+> > wrong**, which also re-opens the local-reranker exclusion. **M3 is closed
+> > too**: function calling works on 23 of the 24 tiers that answered.
+> >
+> > **Read [section 10](#10-slice-0-is-closed-and-the-memory-budget-was-6x-wrong--2026-09-23)**
+> > for the numbers, the `git` defect, five measured gateway platforms, and
+> > D14-D16.
+> >
+> > **Next is slice 1** (latency ranking) or **slice 2** (the skeleton - and it
+> > must ship a CHECKPOINTER and a `thread_id`, per D15, or the product cannot
+> > have a second turn).
 >
 > > ## ✅ STEP 1 IS DONE — 2026-09-19. STEP 2, THE AGENT, IS NEXT
 > >
@@ -1460,7 +1512,10 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > delivered, and the decisions they produced are recorded in two new sections,
 > [Retrieval Design](#retrieval-design--recorded-2026-08-13) and
 > [Chunking](#chunking--decided-2026-08-13-built-in-slice-3). The headline
-> decisions: **the user's question is never the search query**; query source is a
+> decisions: **the user's question is never the search query** — **NARROWED
+> 2026-09-22, see [Step 2](#step-2--the-plan-recorded-2026-09-22) C4: true for the
+> default prompt, which carries no content at all, and FALSE for a specific
+> question, where rewriting is measured to hurt**; query source is a
 > field on each capability; code-vs-code uses a fixed checklist instead of paper
 > claims; one similarity matrix serves `verify`, `find_missing` *and* the gate;
 > `find_bugs` is a scan, not a search; small artifacts are stuffed, not
@@ -16092,6 +16147,752 @@ mention`"* — so stopping early becomes visible and countable.
 **The honest Step 0 limit:** every `not in context` in §7 may be a false alarm
 caused by the deliberately bad selector. Removing that is exactly what Steps 1
 and 2 are for.
+
+---
+
+## STEP 2 — the plan, recorded 2026-09-22
+
+*Session 27 wrote no source on purpose, and the plan below is not the one the
+session started with. The user refused three of my framings in a row and was
+right each time, so most of what follows came out of research rather than out
+of this file's existing design notes. Sources are named; each finding carries
+how strong it is.*
+
+**No ISP probe was needed: nothing here called a model.**
+
+### 0. Why the research happened at all
+
+The session opened by teaching what an agent is, and the plan was to build
+`extract_claims` as the front door: turn side A into ~14 claims, and search
+with those instead of with the user's question. The user rejected it:
+
+> *"it doesn't make any sense for me to convert any question to fixed 14
+> queries... user question may vary too much... i want to know what pro do?"*
+
+That objection is correct, and checking it overturned part of this file.
+
+### 1. THE RESEARCH — twelve findings, with their strength
+
+| # | finding | strength |
+|---|---|---|
+| **F1** | **Dense retrievers COLLAPSE on reasoning questions.** `SFR-Embedding-Mistral` scores **59.0 on BEIR** and **18.3 nDCG@10 on BRIGHT** | ✅ peer-reviewed benchmark |
+| **F2** | Letting an LLM reason about the query **before** retrieving is worth **+12.2 nDCG** on BRIGHT | ✅ published |
+| **F3** | Rewriting a GOOD query can HURT: **-10.8 NDCG@5** when HyDE is stacked on a query-trained encoder | ✅ published |
+| **F4** | Multi-query **lost to naive RAG** in the ARAGOG benchmark | ✅ published |
+| **F5** | The 2026 production pattern is **agentic search** — the model writes its own queries, in a loop | ⚠ vendor docs + blogs |
+| **F6** | **Claude Code has NO vector index.** grep, glob and file reads, chosen turn by turn, so it always works from live code rather than a snapshot | ⚠ third-party writing, not Anthropic's own docs |
+| **F7** | Agentic keyword search reached **over 90% of RAG-level performance with no vector database** (Amazon Science, Feb 2026) | ⚠ reached us through a blog, not the paper |
+| **F8** | **Exact match beats semantic search on well-named code.** Cursor's own figure for semantic search is **+12.5%** over keyword | ⚠ blogs |
+| **F9** | **Plan-and-execute beats ReAct** where the structure is knowable: **92% vs 85%** completion, **$1.24 vs $2.87**, **38.6K vs 47.2K** input tokens. ReAct wins on SHORT tasks; plan-and-execute wins on long tasks with parallel steps | ⚠ one 2026 benchmark |
+| **F10** | For mixed providers the recommended shape is **structured output, with a text-parse fallback** | ⚠ guidance |
+| **F11** | **Over 60% of multi-turn follow-ups** carry unresolved pronouns, so decontextualization is near-universal in production | ⚠ one production study |
+| **F12** | Agentic retrieval loops need a **hard search budget** or they loop forever | ⚠ guidance |
+
+**F1 is the one that settles the argument this session was about.** The same
+model scores 59 on ordinary lookup questions and 18 on reasoning questions.
+*"Why do the results diverge?"* is the second kind. So the instinct *"a modern
+embedder handles a raw question, so it will handle ours too"* is exactly what
+the benchmark disproves — and the fix that works on BRIGHT is F2, reasoning
+before retrieval.
+
+Sources: BRIGHT (arXiv 2407.12883, and the reproducible-baselines paper
+2509.02558) · *Not All Queries Need Rewriting* (2603.13301) · ARAGOG
+(2404.01037) · *ReAct vs Plan-and-Execute* (atlan.com, dev.to) ·
+*Structured Outputs vs Function Calling* (machinelearningmastery.com) ·
+Claude Code indexing (vadim.blog) · Cursor indexing
+(towardsdatascience.com) · *Agentic RAG Needs a Search Budget* (hackernoon).
+
+### 2. NINE DECISIONS
+
+| # | decision |
+|---|---|
+| **D1** | **Step 2 is PLAN-AND-EXECUTE, not ReAct.** This confirms the existing LangGraph choice — but it was taste before and it is evidence now (F9). LabPilot is report generation with a knowable structure and independent, parallelizable steps, which is the exact case the benchmark gives to plan-and-execute |
+| **D2** | **THE PLANNER WRITES THE QUERIES**, from the user's question. Queries are NOT fixed. `extract_claims` stops being the front door and becomes ONE node the planner may choose |
+| **D3** | **REVISED BY D13 — read that first.** The asking channel is **STRUCTURED OUTPUT, not function calling.** Schema-enforced where the tier supports it, first-valid-JSON parsing everywhere else |
+| **D4** | **Exactly ONE ReAct loop**: re-search when `verify` reports *not found*. **Max 2 retries**, against a budget (F12) |
+| **D5** | A **decontextualization node** for turn 2 onward, rewriting a follow-up into a standalone query (F11) |
+| **D6** | A **specific** user question goes to search **RAW**. Do not rewrite it (F3) |
+| **D7** | `agent/` is **CORE**, so it may not import `llm/`, `store/`, `embed/` or `rerank/`. Nodes take **injected callables** |
+| **D8** | **CANDIDATE, not committed:** an exact-match / symbol lookup tool beside vector and BM25 (F6, F7, F8) |
+| **D9** | Graph state needs **reducers**: `findings` and `attempts` APPEND, everything else replaces |
+
+#### D2, and why the shape the user asked for is the right one
+
+The user described it before it had a name:
+
+> *"if our system was good, it must create 14 different queries based on the
+> question user ask... its kinda like what the UI sent in agents like claude
+> code or even chatbots like chatGPT."*
+
+That is plan-and-execute with structured output. One cheap call reads the
+question plus a map of what the artifacts contain, and returns JSON:
+
+```
+IN    the user's question + a per-file map of A and B
+
+OUT   {"nodes":   ["extract_claims", "verify", "explain_divergence"],
+       "queries": [{"side": "B", "text": "gradient clipping global norm"},
+                   {"side": "B", "text": "learning rate schedule and warmup"}]}
+```
+
+Three different questions produce three different plans, which is the whole
+point:
+
+```
+"why are my results diverging?"   claims + verify + outcomes + explain
+"why did the paper get that?"     summarize A + extract_outcomes. B barely touched
+"what is wrong in my code?"       claims + verify + find_bugs
+```
+
+#### D3, and why it is not the weak option
+
+`rerank/` already proves the mechanism: `api/reranking.py` sends Gemini a
+`responseSchema` for an integer array, and that one setting took gemma from
+**45.5s to 14.4s** and stopped the reply being prose wrapped around an answer.
+The planner is the same trick one level up.
+
+Function calling is the tidier protocol and is what a single-provider product
+should use. It is wrong HERE for a specific reason: **the chain falls back
+across 40 tiers, and a tier without a `tools` field does not answer worse — the
+request shape is invalid and the call fails.** Fallback is the thing our chain
+exists for. It would also mean changing `_payload` and `_extract_message` on
+every provider, plus a new contract, in the most heavily tested layer we have.
+
+**Which tiers actually support function calling is UNVERIFIED** and is M3
+below. Gemma is not a Gemini model and its feature set differs.
+
+#### D7, found by reading our own test rather than by design
+
+`tests/unit/test_architecture.py` line 12 already classifies `agent` as core,
+and core may import only shared and core. So the first node that calls
+`LLMClient` directly turns the build red.
+
+That is not an obstacle, it is the shape `rerank/` already solved:
+`LLMReranker` takes a `complete` callable instead of a provider, and the entry
+layer wires it. Nodes take the same treatment:
+
+```
+generate(prompt, max_tokens) -> str
+retrieve(side, query)        -> chunks
+rank(query, documents)       -> order
+```
+
+Two things this buys: `api/` stays the only wiring place, and **every node is
+testable with no provider, no quota and no network.**
+
+### 3. FIVE CORRECTIONS
+
+| # | what was wrong |
+|---|---|
+| **C1** | *"Most embedders are trained only on (sentence, similar sentence) pairs"* — **false.** Modern retrieval embedders are trained on BOTH symmetric and asymmetric data. That is exactly WHY the `task` flag exists: a model that knows both relations has to be told which one you want |
+| **C2** | Framing `extract_claims` as *query rewriting* — **wrong.** It reads side A and never touches the user's question. The published negative results about rewriting (F3, F4) are about a different operation |
+| **C3** | **"13 of 19" says nothing about retrieval.** See below — it is the worst of the five |
+| **C4** | *"The user's question is never the search query"* is **TOO STRONG.** True for the default prompt, which carries no content at all. False for a specific question, where F3 says rewriting is likely to HURT |
+| **C5** | The status block said Jev was on `feat/jev-probe` and not merged. `git diff --stat main feat/jev-probe` is **empty** — it is on `main` |
+
+#### C3 — NO FINDINGS SCORE HAS EVER BEEN MEASURED ON THE SEARCH PATH
+
+Every findings number in this file — 10, 11 and **13 of 19** — was produced
+with the corpus **STUFFED**. Read from the saved run:
+
+```
+artifacts/2026-08-17_04-36_report-stuffed_medium.md
+    chunks sent: 96 of 96
+```
+
+Retrieval did not run, so the query was not a variable and the number is not
+evidence about it either way.
+
+And the runs that DID send partial context are worse than useless for this:
+
+```
+21 scored runs carry a chunk count
+  9 at 96 of 96        stuffed
+ 12 at 60-65 of 96     the DUMB POSITIONAL SELECTOR
+ every partial run is dated 2026-08-14 to 08-16
+```
+
+pgvector did not exist until 2026-09-04 and `ask()` until slice 7. So every
+partial run predates vector search entirely, and used the throwaway 50/50
+selector that slice 7 deleted.
+
+> **The whole findings record describes a path we do not ship.** Step 2's
+> baseline therefore has to be measured before Step 2 can be said to beat
+> anything — M6 below.
+
+### 4. THE EIGHT SLICES
+
+| # | slice | what it must prove | teaching |
+|---|---|---|---|
+| **0** | **does LangGraph fit?** | the real install tree and resident size against the 512MB ceiling | none |
+| 1 | **latency ranking** | how fast each of the 40 tiers is, and which support function calling | none — measurement |
+| 2 | **the skeleton** | a graph replaces `ask()` and nothing else moves | **heavy** — state, nodes, edges, reducers, checkpoints |
+| 3 | **parallel nodes** | two independent nodes really run at once | medium — fan-out / fan-in |
+| 4 | **the gate** | a node can HALT the graph, on a calibrated threshold | medium — and Jev's typed `choice` fits it exactly |
+| 5 | **claims + verify** | the LOOP: N claims, N retrievals, N verdicts, bounded retry | **heavy** — the thing only a graph can do |
+| 6 | **the planner** | nodes AND queries chosen from the question plus a corpus map | medium |
+| 7 | **routing** | a chain, a `max_tokens` and a thinking level PER TASK | light — every number already exists |
+| 8 | **measure** | findings against `EXPECTED.md`, and the wall clock | none |
+
+**Slice 0 is first because it can change the plan.** If LangGraph is 200MB
+resident we write the graph in plain Python instead. Check the gate before the
+quality work — the same rule that checked pgvector's 2000-dimension ceiling
+before scoring five embedders.
+
+**Parallelism is slice 3, not slice 8.** Generation is 98.2% of a 497-second
+answer, so the shape must be proven early rather than bolted on.
+
+### 5. THE OUTLINE GAP — the planner cannot use the outline we have
+
+The user asked whether the planner can see an outline of A and B, given that
+artifacts arrive whenever the user chooses. Reading the code says: **not with
+today's function.**
+
+`build_context` builds its outline **from the chunks already in hand**. On the
+search path that is the ~20 retrieved ones, plus a `totals` sentence saying
+*"20 of 8333 parts were retrieved"*. It never knew the other 8,313.
+
+**The planner runs BEFORE retrieval and has zero chunks.** So it needs a
+different thing: a **corpus map**, read from the database without pulling text.
+
+```
+select source, count(*), min(start_line), max(end_line)
+from chunks where artifact_id = $1
+group by source order by min(chunk_index)
+```
+
+A few dozen rows for an 8,333-chunk repository, no `text`, no vector — the same
+shape as `measure()`: ask the database a question, move no rows.
+
+**And the two documents answer different questions**, so the template is not
+reusable as it stands:
+
+| | today's outline | the planner's map |
+|---|---|---|
+| runs | AFTER retrieval | BEFORE retrieval |
+| answers | *"what did you NOT get?"* | *"what is in here?"* |
+| purpose | stop a false *"the code does not do X"* | decide what to search for |
+
+Reuse the **ladder**, `_by_file`'s consecutive grouping, and `defines:`. Drop
+the included/not-included column (meaningless before retrieval) and the id
+spans (prompt ids do not exist yet).
+
+**And it inherits the same scaling problem**: `defines:` costs **44.9 tokens
+per file** and compresses only **1.5x** (410 chunks to 270 labels), so a
+500-file repository is ~22,000 tokens — nearly the whole prompt budget.
+
+### 5b. THE MAP — ranked and elided, and D3 was revised
+
+*Added later the same session. The first version of section 5 described the map
+as a flat per-file list and gave it `OUTLINE_BUDGET`. The user rejected both:*
+
+> *"only lines + defines... maybe of them has same defines... i think worth to
+> increase it cuz its one call and worth be detailed."*
+
+*He was right that the rows are too thin, and the research says he was wrong
+about the fix. Both halves are recorded.*
+
+#### What people actually build — aider's repo map is the reference
+
+Three stages: **parse, rank, fit.**
+
+```
+1  tree-sitter parses every file, extracting definitions and references
+   (130+ languages)
+2  build a GRAPH - file A references a symbol defined in file B
+3  PageRank over it, so heavily-referenced code floats up. The current chat
+   biases the restart vector, 50x
+4  render the top symbols as SIGNATURES with bodies collapsed to a marker
+5  binary-search the ranked list for the largest slice that fits the budget
+```
+
+And the rendering is far richer than a name list:
+
+```
+aider/coders/base_coder.py:
+...
+ class Coder:
+     abs_fnames = None
+...
+     @classmethod
+     def create(
+         self,
+         main_model,
+         edit_format,
+         io,
+...
+     def abs_root_path(self, path):
+...
+```
+
+#### THE NUMBER THAT ARGUES AGAINST A BIG BUDGET
+
+> **aider's repo map defaults to `--map-tokens 1000`.**
+
+One thousand, for a whole codebase, in a top-tier coding agent. It can afford
+that because it **ranks** and sends only the best rows.
+
+And the reason is measured. Context rot, 2026, across 18 frontier models:
+
+```
+accuracy falls 30-50%   well before the documented limit
+lost-in-the-middle      20 documents (~4,000 tokens) took accuracy from
+                        70-75% down to 55-60%
+past 200K tokens        30-60 point losses on multi-fact retrieval, on
+                        models advertising a 1M window
+same-topic junk         measured as ACTIVE DISTRACTORS, not inert filler
+```
+
+**A long flat file list is exactly same-topic junk** - hundreds of rows that
+look alike, most of them irrelevant. It is the worst possible shape for
+attention, and it is what the first version of section 5 proposed.
+
+> **The axis was wrong on both sides.** The fix for a thin map is not MORE
+> tokens and not FEWER. It is **richer rows, ordered by importance**.
+
+#### What we can build with no new dependency
+
+We already store more than section 5 used. A chunk header is:
+
+```
+[B_train.py · class Trainer · def fit · part 1/5 · lines 1189-1215]
+```
+
+That is a **signature-level label per chunk**, produced by our own AST
+splitter. So an aider-shaped map is mostly available already:
+
+```
+B_train.py   78 parts, lines 1-1420
+  class QuoraTokenizer   lines 425-520    __init__, encode, _build_stop_mask
+  class Trainer          lines 920-1317   fit, _backprop_with_scaler, evaluate
+  (module level)         lines 1-120      config, imports
+```
+
+Class and method nesting kept, line numbers kept. Measured cost on this
+repository: **410 chunks compress to 270 distinct labels**, roughly **2,700
+tokens for 94 files** - far richer than `defines:` and about the same price.
+
+**Ranking is the part we do not have.** Aider ranks with a symbol graph; we
+store no cross-file references. But we own something aider does not: **the
+user's question and an embedder.** Ranking files by cosine against the question
+costs **zero extra calls**, because the question is embedded for search anyway.
+
+#### D10 to D13
+
+| # | decision |
+|---|---|
+| **D10** | The planner gets its **own budget**, `PLANNER_BUDGET`, not `OUTLINE_BUDGET` - the two compete with different things. Applied **per tier** as `min(PLANNER_BUDGET, what this tier can take)`, which is section 11.1's grid. **35 of 40 tiers hold 250,000+**; the line that matters is **16,000, Gemma's input cap**, which is the largest free quota in the project |
+| **D11** | The map is **RANKED and ELIDED**, aider-style, built from headers we already store. **Rank only when it does not fit** - most repositories fit, and then ranking is a cost with no benefit. **Cosine first (free), a reranker as a measured upgrade.** And **BIAS, never filter**: every file keeps at least one row, because hiding what the question does not mention is the one failure the map exists to prevent |
+| **D12** | Check the **Jev family and any new decision-model providers** in the catalogue, with M3. Jev is listwise, typed and ~1.2s, so it is a natural ranker for map rows as well as for chunks |
+| **D13** | **D3 IS REVISED, at the user's instruction: use FUNCTION CALLING where the tier supports it, and STRUCTURED OUTPUT where it does not.** The honest cost is **two code paths** in the LLM layer instead of one, and a per-tier capability flag that has to stay true. The honest gain is provider-enforced arguments on the tiers that have them. **M3 decides how many tiers that actually is** - if it is most of them the hybrid is worth it, and if it is few, D3 stands as written |
+
+**The knob is a knob.** `PLANNER_BUDGET` is a guess until **M5** sweeps it, and
+the sweep must include a **1,000-token control**, because that is what aider
+ships and it is the strongest argument on the other side.
+
+Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
+(agentpatterns.ai) · Context Rot (tinyfish.ai, redis.io).
+
+### 6. MEASUREMENTS OWED
+
+| # | measure | slice |
+|---|---|---|
+| M1 | ~~does LangGraph fit 512MB~~ **MEASURED 2026-09-23 — yes, ~55MB imported and the whole container is 74 MiB under load. See [section 10](#10-slice-0-is-closed-and-the-memory-budget-was-6x-wrong--2026-09-23)** | done |
+| M2 | **latency ranking of all 40 tiers** — we have ordered them by quality and by quota and never once by speed | 1 |
+| M3 | ~~which tiers support function calling~~ **MEASURED 2026-09-23 — 23 of the 24 tiers that answered. See [section 9](#9-m3-is-measured--function-calling-2026-09-23)** | done |
+| M4 | the raw question **vs** planner-written queries **vs** claims, scored against `EXPECTED.md` | 5 |
+| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does | 6 |
+| M6 | **a findings score on the SEARCH path** — never once measured, see C3. This is the baseline Step 2 must beat | 8 |
+| M7 | an exact-match tool vs vector alone (D8) | 8 |
+| M8 | **per-node output tokens and latency** — every time estimate in this section rests on an assumed 40s per node | 8 |
+
+**The cache pays for most of this.** `.cache/` holds 2.4GB: 26 corpora already
+embedded, 50 rerank result files, 18 top-N runs. M4 and M7 can reuse it instead
+of spending quota.
+
+### 7. CODE OWED
+
+| # | change | where |
+|---|---|---|
+| CC1 | `outline_of(conn, artifact_id)` — the per-file map, no text, no vectors | `store/reader.py` |
+| CC2 | a SECOND renderer for that map — reuse the ladder and `_by_file`, drop two columns | `prompts/` |
+| CC3 | the `agent/` package — core layer, injected callables | `labpilot/agent/` |
+| CC4 | a JSON helper: ask with a schema, parse, retry. Extend `generation_config` past reranking | `llm/` |
+| CC5 | wiring — build the graph, inject the callables, map the new errors | `api/` |
+| CC6 | `requirements.txt` and `test_packaging.py`, if LangGraph is added | root |
+| CC7 | a budget ladder for the map, for the 500-file case | `prompts/` |
+
+### 9. M3 IS MEASURED — function calling, 2026-09-23
+
+*One request per tier, 40 tiers, on exit `185.209.196.192`, **AS39351 31173
+Services AB**, Frankfurt, with Google probed at 200 first. The prompt can only
+be answered by calling the tool, so a tier that supports function calling has
+no honest way to answer without it.*
+
+```
+CALLED         23   a real tool call, with the right argument
+IGNORED         1   HTTP 200, no tool_call, no content
+REAL "NO"       2   GLM-5.2, both routes
+NOT MEASURED   14   503 x5 (transient) · 429 x5 (quota) · 403 x2 (Groq) ·
+                    404 x2 (the model is gone)
+
+  503   Gemini 3.8 Flash k1 · 3.7 Flash k1 · 3.5 Flash k1 AND k2 · Gemma k1
+  429   Qwen (Kilo, upstream pool) · Inkling (daily) · Mistral Medium ·
+        Magistral Small · Devstral 2
+  403   both Groq tiers - the exit
+  404   both DeepSeek tiers - the free model is gone
+```
+
+**Every 503 tier has a twin that CALLED, except `Gemini 3.5 Flash`**, which
+503'd on both keys and then timed out at 90s on retry. Its capability is the
+one genuine blank in the table.
+
+**And Gemma proved the retry rule twice, in opposite directions, minutes
+apart:**
+
+```
+first run    key 1  CALLED (80.2s)      key 2  503
+second run   key 1  503    (65.6s)      key 2  CALLED (44.0s)
+```
+
+Same two tiers, swapped. That is precisely why *"503 -> retry the SAME tier"*
+is in the five-way rule, and it is why a 503 in this table is never evidence
+about capability.
+
+**All three Mistral tiers were rate-limited together**, so Mistral is
+unmeasured here - and it is worth measuring, because Mistral documents
+function calling.
+
+**Function calling is close to universal here — 23 of the 24 tiers that gave a
+capability answer.** So **D13 stands**, and the hybrid is worth its two code
+paths.
+
+#### The assumption in D13 was wrong, and it was mine
+
+D13 said *"Gemma is not a Gemini model and its feature set differs."* Gemma
+**calls the tool cleanly**, on both the second Google key and on Requesty. And
+every tier a cheap planner call would actually land on supports it:
+
+```
+Gemini 3.5 Flash-Lite   x2 keys    CALLED      1,000/day
+Gemini 3.1 Flash-Lite   x2 keys    CALLED      1,000/day
+Gemma 4 31B             x3 routes  CALLED     28,800/day
+```
+
+The only definite refusal is **GLM-5.2**, and it is explicit on both routes:
+`404 "No endpoints found that support tool use."`
+
+#### THE RESULT THAT CHANGES HOW D13 IS BUILT
+
+**Kilo's Nemotron 3 Super answered HTTP 200 with no `tool_calls` AND no
+`content`.** It accepted the field and silently produced nothing.
+
+That is the shape this project has met before - Cloudflare accepting an
+unknown field and ignoring it, OpenRouter silently dropping
+`reasoning_effort`. A capability table would record that tier as "supports
+tools" and never learn otherwise.
+
+> **DETECT, NEVER CONFIGURE.** Always send `tools`. If the reply carries a
+> tool call, use it. If it does not, parse the body as JSON. One path with a
+> fallback, not a per-tier flag that goes stale.
+
+That is strictly better than what D13 proposed, and it removes the "capability
+flag that has to stay true" cost from the decision.
+
+#### TWO DEFECTS FOUND BY ACCIDENT
+
+**1. `deepseek/deepseek-v4-flash-0731:free` IS GONE.** Confirmed with a plain
+call carrying no tools at all:
+
+```
+{"error":{"message":"This model is unavailable for free.
+           The paid version is available now","code":404}}
+```
+
+Kilo answers `404 the requested model does not exist`. **Both DeepSeek tiers
+are dead**, and they were added on 2026-09-19 - four days before this probe.
+
+**2. BOTH GROQ TIERS ANSWER 403 FROM THIS EXIT:**
+
+```
+{"error":{"message":"Access denied. Please check your network settings."}}
+```
+
+Not quota, not tools - Groq is refusing the VPN exit. **The network
+precondition only probes Google**, so a Google 200 says nothing about Groq.
+
+> **A capability probe is also a liveness probe.** We went looking for tool
+> support and found two dead tiers and a blocked provider. Any sweep across
+> the whole chain is worth running for that reason alone.
+
+#### What is still unmeasured, and why
+
+```
+Mistral x3     429 rate-limited on all three. Mistral DOCUMENTS function
+               calling; we did not measure it
+Gemini 3.5 Flash   503 on both keys, then a 90s timeout on retry
+Qwen (Kilo)    429 upstream_provider_shared_pool - congestion, not capability
+Inkling (Kilo) 429 daily limit reached
+Groq x2        403, the exit
+```
+
+Every 503 tier has a twin that CALLED, except `Gemini 3.5 Flash`. So the gap
+in the table is one model, not a class of them.
+
+The instrument is `scripts/` material and currently lives in the session
+scratchpad - **commit it before it is lost**, the same lesson
+`score_retrieval.py` and the three lost fusion methods already taught.
+
+### 10. SLICE 0 IS CLOSED, AND THE MEMORY BUDGET WAS 6x WRONG — 2026-09-23
+
+*Measured in the real container, not in a venv, because the 512MB rule is about
+a process and an image already existed. Exit `185.209.196.192`, **AS39351
+31173 Services AB**, Frankfurt, Google probed at 200 first.*
+
+#### 10.1 SLICE 0 — USE LANGGRAPH
+
+```
+langgraph 1.2.12 requires:
+  langchain-core · langgraph-checkpoint · langgraph-prebuilt
+  langgraph-sdk · pydantic · xxhash
+```
+
+**CLAUDE.md's guess was right and it was marked as a guess** - *"the tree above
+is from memory, not from an install"*. It named all five and missed only
+`xxhash`. **No `torch`, no `numpy`, no `langchain-community`**, so the reject
+condition never fires and
+`test_no_runtime_requirement_would_blow_the_memory_budget` stays green.
+
+```
+idle, WITH langgraph installed   52.39 MiB   (51.61 without -> +0.78)
+a fresh process that IMPORTS it  67.65 MB peak, against ~10-12 for bare python
+                                 -> about 55 MB, and LESS inside our app
+                                    because FastAPI already loads pydantic
+```
+
+**The rule was fixed before the measurement: 70 MB use it, above that write the
+graph in plain Python.** 55 MB worst case, so **LangGraph ships.**
+
+**And the reducer behaves exactly as taught.** Two nodes, each returning one
+finding, with `Annotated[list, operator.add]`:
+
+```
+{'findings': ['c1 mismatch', 'c2 match']}
+```
+
+Change it to a plain `list` and the second write erases the first, silently.
+That is the whole lesson in one runnable line.
+
+**Still unmeasured:** uvicorn with the graph actually imported. That needs
+slice 2, because nothing in `labpilot/` imports langgraph yet.
+
+#### 10.2 THE MEMORY ESTIMATE WAS 6x TOO HIGH
+
+CLAUDE.md has carried *"~290-370MB against a hard 512MB ceiling"* since
+2026-08-11, **labelled as an estimate and never checked** - the file itself says
+*"verify at Step 3 with `docker stats` on a real ingest."*
+
+```
+idle                                   51.61 MiB
+after an 18-chunk paper                57.63 MiB
+after a 928-CHUNK REPOSITORY ingest    74.27 MiB
+after a second upload on top of that   73.50 MiB   <- it went DOWN
+```
+
+**74 MiB, not 370.** Headroom is **~438 MB**, not ~142.
+
+Three things follow, and the third is the biggest:
+
+1. **Streaming is CONFIRMED, not merely argued.** 928 chunks cost **+22 MiB**,
+   and the next upload *reduced* memory - `_records()` yields per batch and the
+   GC reclaims it. The rule that ingest must stream is now measured.
+2. **The first upload costs ~6 MiB and the second costs nothing.** That 6 MiB is
+   `psycopg`, SSL, the embed client and the chunker being imported on first use
+   - code, not data. `/health` never touches them.
+3. **THE LOCAL RERANKER EXCLUSION SHOULD BE RE-OPENED.** CLAUDE.md keeps
+   `ms-marco-MiniLM` (~120MB resident) out of the container *specifically* to
+   protect this budget, and calls it *"the correct thing to drop first"*. At 74
+   MiB used it would fit with ~300MB to spare - and it is **the only reranker
+   that can BATCH**, which is exactly what `verify` needs at one call per claim.
+   That decision rested on a number that is wrong by 6x.
+
+**Image size, for completeness:** 204MB -> 442MB on disk. Most of that is
+**git**, not langgraph - apt pulls perl and git-man onto slim. Image size is
+disk; the 512MB rule is RSS. Do not confuse them, which is what the first
+reading of this measurement did.
+
+#### 10.3 DEFECT: THE CONTAINER HAD NO `git`
+
+`POST /artifacts` with `url=` has shipped since slice 7 step 7. In Docker it
+answered:
+
+```
+{"code":"unreadable_source","message":"git is not installed on this machine"}
+```
+
+`python:3.13-slim` carries no git, so **the repository door could never work in
+the deployed container** - only on a developer machine. The code behaved
+correctly: a typed error with a request id, not a crash.
+
+**Fixed in `docker/Dockerfile`** with an apt layer above the pip install, and
+proven: `https://github.com/psf/requests` ingested as **928 chunks** through
+the container.
+
+**And a stale line was corrected with it.** CLAUDE.md says the Dockerfile
+*"has NEVER been built"*. An image dated 27 days earlier existed the whole
+time - which is also why the door's absence went unnoticed: the image predated
+slice 7 and had no `/api/v1/artifacts` at all.
+
+> **An unbuilt image and a stale image fail the same way: the thing you are
+> running is not the thing you wrote.** The 404 on a shipped endpoint was the
+> tell.
+
+#### 10.4 TWO LIMITS WE DO NOT MODEL, AND BOTH BIT TODAY
+
+**TIMEOUT belongs on the provider.** We already model `context_window`,
+`max_output_tokens`, `max_input_tokens` and `quota_pool` per provider. Timeout
+is global: `DEFAULT_TIMEOUT = (10.0, 600.0)` against a 900s budget.
+
+Token Harbor's failure mode is **a HANG, not an error**. One hung call would
+spend **600 of the 900 seconds** on a single dead tier and leave the chain
+almost nothing. A 3s cap makes the same tier one of the fastest we have.
+
+> Same shape as `quota_pool`: **a limit that belongs to one provider must be
+> modelled on that provider, never averaged into the pipeline.**
+
+**CONCURRENCY is a limit nobody here models at all.** LiteRouter answers
+
+```
+403  "[LiteRouter] Too many concurrent requests"
+```
+
+and it did so on **sequential** calls - because two earlier requests had timed
+out on OUR side while still running on THEIRS, holding the slots. Its published
+free plan allows **one concurrent request**.
+
+We model requests-per-day and tokens-per-minute. A chain that fans out - which
+is exactly what slice 3's parallel nodes will do - can exceed a concurrency
+cap while being far inside every quota we track.
+
+#### 10.5 FIVE GATEWAY PLATFORMS, MEASURED
+
+*Every number below is a live call, not a docs page.*
+
+| platform | free models | quota | measured |
+|---|---|---|---|
+| **LiteRouter** | **42** | **not published** - no headers, every quota endpoint 404s | **7 of 10 tested work.** Function calling **3 of 3** |
+| **OrcaRouter** | 4 + an auto-router alias | **10 rpm / 50 rpd**, from its own `GET /api/free-package/public` | **4 of 4**, 2.4-4.5s |
+| **Routeway** | 3 | **5 rpm / 200 rpd**, stated in response headers | DeepSeek **3 of 3** |
+| **Token Harbor** | 5 | not published | **8 of 20 rounds** - see below |
+| **TeamoRouter** | 3 advertised | advertised 50/day | **0** - `400 "wallet balance is insufficient"` on all three |
+
+**LiteRouter is the strongest find, and three of its models are dead or
+unreachable elsewhere:**
+
+```
+deepseek-v4-flash-0731:free   11.6s   the EXACT model that died on OpenRouter today
+glm-5.3-flash:free             8.1s   OUR TIER 1 - elsewhere only on Cline, blind quota
+glm-5.2:free                   7.5s   dead on Mistral (tier_not_allowed), congested on OpenRouter
+qwen3.8-27b:free               1.0s   the fastest call measured today
+mistral-medium-2508:free       1.5s
+gemini-2.5-flash:free          3.7s
+deepseek-v4-flash:free         7.7s
+```
+
+Failing there: `gpt-oss-120b:free` and `gemma-4-31b-it:free` time out, and
+`gemma-4-26b-a4b-it:free` answers `502 "All providers failed. Attempts: 5x.
+Last response: Provider returned empty content"`.
+
+**AND ITS FREE ROUTE TAKES A FULL REPORT PROMPT.** A second model claimed the
+free 0731 route was capped at a 5,000-token context. Measured:
+
+```
+deepseek-v4-flash-0731:free   48,011 real prompt tokens -> 200
+glm-5.3-flash:free            27,010 real prompt tokens -> 200
+our report prompt             ~15,700 real - fits on BOTH
+```
+
+**Wrong by about 10x.** Of that model's five claims about LiteRouter, one was
+right (*one concurrent request* - which we had already hit independently), one
+is untestable as stated (a *7-second cooldown* hides behind calls that take
+7-9s), two were unverified, and one was wrong.
+
+> **Another model's summary is a blog-grade source.** The sources rule already
+> says only the provider's own page and the actual flow count. An AI's answer
+> is neither.
+
+**OrcaRouter reproduces a finding on a third platform.** `z-ai/glm-5.3-flash`
+returns **empty content** without `reasoning.effort`, and `'ok'` with it -
+exactly as recorded for Cline. So that is a property of **the model**, not of
+Cline, and any new route to GLM-5.3 needs the same setting.
+
+**OrcaRouter also takes a report prompt**: 15,691 real tokens accepted. Note
+our `chars/3` estimator called that same text 26,000 - it **over-counts by
+~1.66x** against these tokenizers, which is the safe direction and worth
+remembering before trusting any budget arithmetic built on it.
+
+#### 10.6 TOKEN HARBOR: WHY "RETRY" IS THE WRONG FIX
+
+Its failure mode is unusual and it took four runs to characterise honestly:
+
+```
+single calls, 30s cap     3 of 10       successes all 1.2-1.6s
+retry policy, 10 rounds   10 of 10      looked perfect
+retry policy, 20 rounds   8 of 20       and the shape is the finding:
+
+    rounds  1-13    1 success out of 13   <- a bad window, minutes long
+    rounds 14-20    7 successes out of 7  <- healthy, mostly first try
+```
+
+**Failures are TIME-CORRELATED, not independent.** During a bad window six
+retries fail exactly as surely as one - rounds 1-13 spent **78 calls for 1
+answer**. The 10/10 run simply landed inside a healthy window.
+
+So the independent-failure arithmetic (*"4 tries gives 87%"*) is fiction here,
+and **more retries is the wrong lever**. The right one is the mechanism we
+already have for a spent quota:
+
+```
+1 try · ~3s cap · on failure mark the tier dead for a few minutes
+```
+
+`dead_pools` in `llm/chain.py` already does exactly this shape. A 2s cap was
+considered and rejected: real answers were measured at 2.86, 3.21, 3.99 and
+4.44s, so 2s would discard about one success in five.
+
+#### 10.7 THREE MORE DECISIONS
+
+| # | decision |
+|---|---|
+| **D14** | **Jargon and acronym expansion is a NAMED GAP.** The research listed three cases where professionals rewrite a query; D5 covers multi-turn and D2 covers decomposition, and **nothing covers the third**. It is the one that fits us worst: a claim from A is written in the paper's words (*"attention pooling over hidden states"*) and B is written in the programmer's (`_attn_pool`, `CLIP_NORM`). BM25 and the reranker compensate by accident; nothing bridges the two vocabularies on purpose |
+| **D15** | **SLICE 2 MUST SHIP A CHECKPOINTER AND A `thread_id`, not only nodes and edges.** LabPilot is a CHAT, and no slice built conversation state. D5 would have a node with nothing to read, and CLAUDE.md's own UI example - *"now compare **it** with my code"* - cannot work without it. LangGraph's checkpointer is the mechanism: `compile(checkpointer=...)` plus `config={"configurable": {"thread_id": ...}}` makes turn 2 read turn 1's state |
+| **D16** | **Adding a gateway is not just a registry entry.** Each new platform needs its provider wiring, its place in `CHAIN` argued on measured capability, its env var in `.env.example` AND in `smoke.yaml` (which `test_every_chain_env_var_is_mapped_in_the_smoke_workflow` enforces), and a liveness case. `test_every_gateway_tier_is_free` already exists for exactly this class of drift |
+
+#### 10.8 THE METHOD LESSON, EARNED THREE TIMES IN ONE SESSION
+
+Three times today a single call was read as a verdict, and three times the
+larger sample overturned it:
+
+```
+Qwen (Kilo) 429            "overloaded"       -> works on retry, both accounts
+Routeway DeepSeek 429      "unusable"         -> 3 of 3 on retry
+Token Harbor              "works with curl"   -> one lucky sample; curl hangs too
+Token Harbor              "100% with retry"   -> 40% over twice as many rounds
+```
+
+This file already carries the rule in another form - *a fixture may REJECT,
+never CONFIRM* - and it applies to providers exactly as it applies to corpora.
+
+> **A single success and a single failure are both samples of one.** Before
+> writing a provider verdict, run it enough times to see a rate, and print the
+> denominator beside it.
+
+### 11. NOT STEP 2
+
+MCP and web search are **Step 2.5**. The UI, SSE progress and the TypeScript
+rewrite are **Step 3** — and note that *"Searching the web..."* in a chat
+product is nothing but the app rendering the plan steps as they run, so the
+planner's JSON gives us those labels for free. Fine-tuning is **Step 4**.
 
 ---
 
