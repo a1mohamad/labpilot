@@ -16,6 +16,7 @@ import pytest
 
 from labpilot.api.errors import EmptyArtifact
 from labpilot.api.services import ingest_source
+from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.sources import open_folder
 from labpilot.store import search
@@ -27,6 +28,9 @@ class FakeEmbedder:
     """No provider is called. These tests are about the WIRING, not the model."""
 
     name, model, dim = "Fake", "fake-embed", 3
+
+    max_batch_size = MAX_BATCH_SIZE
+    pace = None
 
     def embed(self, texts, *, task="document"):
         return EmbeddingBatch(
