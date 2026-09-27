@@ -53,6 +53,25 @@ class Rate:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class Pace:
+    """Limits a provider ENFORCES, so we must keep under them ourselves.
+
+    Not the same thing as Rate. Rate is what a provider PUBLISHES, and Mistral
+    runs 11x past its published number with no refusal - pacing to it would
+    make the fastest model 11x slower for nothing. Pace is set only where a
+    refusal was MEASURED: Google answered 429 to a second 40-text batch sent
+    inside one minute, 2026-09-24.
+
+    None means we do not pace on that axis.
+    """
+
+    tokens_per_minute: int | None = None
+    # Google counts one TEXT inside batchEmbedContents as one request, so its
+    # "100 requests a minute" is 100 texts, whatever the number of calls.
+    texts_per_minute: int | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Spec:
     """Everything the PROVIDER decides about a model, in one row.
 
