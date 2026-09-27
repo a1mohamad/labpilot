@@ -16,13 +16,23 @@ SIDES = ("A", "B")
 # evidence in the report, the map competes with nothing but the question and
 # the planner's instructions (D10, CLAUDE.md Step 2 section 5b).
 #
-# 8,000 is HALF of Gemma's 16,000 input cap - the largest free quota here, and
-# the line that binds - leaving the other half for the instructions and the
-# question. IT IS A GUESS, like OUTLINE_BUDGET was: M5 owes the sweep, and the
-# sweep must include a 1,000-token control, because that is what aider ships
-# and it is the strongest argument that a map should be SHORT. The caller
-# applies the per-tier cap: min(PLANNER_BUDGET, what this tier can take).
-PLANNER_BUDGET = 8_000
+# 12,000 is what is LEFT of Gemma's 16,000 input cap - the largest free quota
+# here, and the line that binds - once the rest of the planner call is paid:
+#
+#   16,000 / 1.1 (the _check_fits margin)              ~14,500
+#   - instructions ~2,000, question ~500, schema ~300   ~12,000
+#
+# The cap counts INPUT only (measured: InputTokensPerModelPerMinute), so the
+# planner's answer needs no room here. The earlier 8,000 kept half the cap for
+# "the rest", and the rest is nowhere near half.
+#
+# IT IS A CEILING, NOT A MEASURED BEST. M5 owes the sweep - 1k, 4k, 8k, 12k and
+# a DYNAMIC budget (the tier's input limit / 1.1, minus what the rest of the
+# prompt really costs, as the report path does with reserve()). aider's 1k is a
+# DEFAULT, not a measurement, and aider doubles it when no files are open - the
+# case our planner is always in. The caller applies the per-tier cap:
+# min(PLANNER_BUDGET, what this tier can take).
+PLANNER_BUDGET = 12_000
 
 NOT_LISTED = "(contents not listed)"
 RANKED_NOTE = (
