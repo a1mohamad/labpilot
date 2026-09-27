@@ -522,6 +522,40 @@ dependency and no env var. Read
 before touching `api/reranking.py`, and note that it does **not** help the
 generation-time problem below — it cannot generate.
 
+> ### ✅ THE GOOGLE EMBED BATCH DEFECT IS FIXED — 2026-09-27, proven LIVE
+>
+> Branch `fix/google-embed-batch`, three commits. **Google refused two things,
+> and both are now handled:** a batch too BIG (96 texts, ~47,869 tokens against
+> a 30,000/minute bucket) and a minute too FULL (a second 40-text batch inside
+> the same minute). The first fix alone only moved the failure to batch 2.
+>
+> ```
+> max_batch_size   a PROVIDER field: 96 Mistral, 40 Google. embed_batches clamps
+> Pace             limits a provider ENFORCES - not Rate, which Mistral runs 11x
+>                  past. Only Google has one: 30,000 tokens + 100 TEXTS a minute
+> pacing.reserve   one 62s window PER POOL (key + model), at 90% headroom; waits
+>                  before a request that would overflow it. Shared across calls,
+>                  so side B does not start inside side A's full minute
+> 429 / 503        a WAIT, never a size: 20s, then 60s (or Retry-After), the SAME
+>                  batch again. Past that the error names the DAILY budget
+> EmbeddingError   carries status + retry_after - branch on the field, not text
+> batches         cut by tokens so TWO fit a minute, not one
+> ```
+>
+> **Live, exit `185.254.96.11` AS58212 dataforest, Google 200:** 160 real
+> chunks on `gemini-embedding-001`, 4 batches of 40, **zero refusals**, the
+> pacer holding batch 3 for ~50s. Took 1.29 min against 1.78 promised. These
+> chunks were small, so the 100-TEXTS limit bound; **the token path is proven
+> only in simulation** - `tests/unit/embed/test_google_pacing.py` runs the
+> shipped `GoogleEmbedder` against a fake Google enforcing the measured rule,
+> including one that counts 25% more tokens than `chars/3`.
+>
+> **815 passed, 5 skipped** unit + api; 216 passed integration + api. **11
+> mutations, all fire** - one (a window forgotten per call) survived first
+> because its test ended side A on an EMPTY minute; the premise is now asserted.
+> `scripts/warm_embeddings.py` still carries its own pacing and can be
+> simplified onto this - not done.
+
 > ### ⚠⚠⚠ STEP 2's FIRST PROBLEM IS GENERATION TIME — 400 SECONDS, MEASURED
 >
 > One answer took **401s**, another **497s**, and generation was **98.2%** of
@@ -673,6 +707,8 @@ generation-time problem below — it cannot generate.
 > routing    a per-kind delta with ONE query in the kind  ->  structure = -0.534
 > ```
 >
+> **✅ FIXED 2026-09-27 - see the Google embed block at the top of Current Status.**
+>
 > **⚠ AND THE TWO PRODUCTION DEFECTS ARE STILL UNFIXED — one now breaks a
 > SHIPPED decision.** `MAX_BATCH_SIZE = 96` is a **Mistral** constant with a
 > global name, so a 96-text Google batch is ~32,800 tokens against a
@@ -705,6 +741,8 @@ either corpus, and `structure` went from -0.534 to +0.201.**
 **EXACT SEARCH STANDS, and the question is CLOSED. Server-side exact is
 2.9 / 6.1 / 11.3 ms at 335 / 729 / 1,387 rows on the REAL Supabase instance —
 against a 350 ms network round trip and a 52,700 ms report.**
+**✅ BOTH FIXED since - the text budget by `daily_text_budget`, the batch by
+`max_batch_size` + pacing on 2026-09-27.**
 **⚠ TWO PRODUCTION DEFECTS FOUND, both unfixed. `MAX_BATCH_SIZE = 96` is a
 MISTRAL constant with a global name, so every Google embedder fails on its
 FIRST batch; and GOOGLE COUNTS ONE TEXT AS ONE REQUEST, so it can embed
@@ -9389,7 +9427,7 @@ recover recall" and "use the index at all" are in TENSION at this size.
 The only condition 2026-09-05 allowed — time on real artifacts — is measured
 and does not overturn it. Revisit at ~20,000 chunks in one artifact.
 
-### 7. TWO PRODUCTION DEFECTS, both found by measurement
+### 7. TWO PRODUCTION DEFECTS, both found by measurement — BOTH FIXED since (2026-09-27)
 
 **`MAX_BATCH_SIZE = 96` is a Mistral constant wearing a global name.** 96 geo
 texts = 44,554 tokens -> **429**; 40 texts = 18,072 -> **200 immediately
