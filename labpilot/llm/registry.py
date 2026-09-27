@@ -13,6 +13,8 @@ MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 KILO_URL = "https://api.kilo.ai/api/gateway/v1/chat/completions"
 REQUESTY_URL = "https://router.requesty.ai/v1/chat/completions"
+LITEROUTER_URL = "https://api.literouter.com/v1/chat/completions"
+ORCAROUTER_URL = "https://api.orcarouter.ai/v1/chat/completions"
 CLOUDFLARE_URL = (
     "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
 )
@@ -632,6 +634,104 @@ KILO_STEP_3_7_FLASH = _kilo(
 )
 
 
+# LITEROUTER and ORCAROUTER - two more free gateways, measured 2026-09-23 and
+# re-measured LIVE 2026-09-28 before any line here was written: all seven
+# routes below answered, 21 of 21 calls, under three reasoning settings each.
+#
+# Only models ALREADY RANKED in CHAIN are routed here. Both gateways list more
+# free models than this, and an unranked model cannot be placed - the same
+# rule that kept dots-3-note and nex-n2.5 out on 2026-09-19.
+#
+# Their value is a SECOND and THIRD route to models whose first route is thin
+# or dead: GLM-5.3 Flash (tier 1) is otherwise only on Cline, whose quota is
+# invisible; DeepSeek V4 Flash died on OpenRouter AND Kilo; Mistral Medium's
+# own account is paused until its monthly usage resets.
+#
+# LiteRouter publishes NO quota and sends no rate-limit headers - blind, like
+# Cline and Kilo - and it allows ONE concurrent request per account, measured
+# as a 403 "Too many concurrent requests". A real report prompt fits: 48,011
+# tokens to DeepSeek and 27,010 to GLM-5.3 Flash, both 200.
+#
+# OrcaRouter publishes 10 requests a minute and 50 a day on its own
+# /api/free-package/public, and took a 15,691-token report prompt.
+#
+# ONE pool per gateway, as for Kilo and Requesty: neither limit is per model.
+def _gateway(
+    *,
+    name: str,
+    url: str,
+    key: str,
+    model: str,
+    context_window: int,
+    max_output_tokens: int,
+) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        name=name,
+        tier=0,
+        url=url,
+        model=model,
+        api_key_env=key,
+        quota_pool=key,
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        # glm-5.3-flash returns EMPTY content without an explicit effort on
+        # Cline and on OrcaRouter - a property of the model, not the host.
+        extra_body=OPENROUTER_REASONING,
+    )
+
+
+def _literouter(**kwargs) -> OpenAICompatibleProvider:
+    return _gateway(url=LITEROUTER_URL, key="LITEROUTER_API_KEY", **kwargs)
+
+
+def _orcarouter(**kwargs) -> OpenAICompatibleProvider:
+    return _gateway(url=ORCAROUTER_URL, key="ORCAROUTER_API_KEY", **kwargs)
+
+
+LITEROUTER_GLM_5_3_FLASH = _literouter(
+    name="GLM-5.3 Flash (LiteRouter)",
+    model="glm-5.3-flash:free",
+    context_window=1_310_720,
+    max_output_tokens=131_072,
+)
+ORCAROUTER_GLM_5_3_FLASH = _orcarouter(
+    name="GLM-5.3 Flash (OrcaRouter)",
+    model="z-ai/glm-5.3-flash-free",
+    context_window=1_310_720,
+    max_output_tokens=131_072,
+)
+LITEROUTER_DEEPSEEK_V4_FLASH = _literouter(
+    name="DeepSeek V4 Flash (LiteRouter)",
+    model="deepseek-v4-flash-0731:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+ORCAROUTER_DEEPSEEK_V4_FLASH = _orcarouter(
+    name="DeepSeek V4 Flash (OrcaRouter)",
+    model="deepseek/deepseek-v4-flash-free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_QWEN_3_8_27B = _literouter(
+    name="Qwen3.8 27B (LiteRouter)",
+    model="qwen3.8-27b:free",
+    context_window=262_144,
+    max_output_tokens=235_929,
+)
+LITEROUTER_GLM_5_2 = _literouter(
+    name="GLM-5.2 (LiteRouter)",
+    model="glm-5.2:free",
+    context_window=32_768,
+    max_output_tokens=29_491,
+)
+LITEROUTER_MISTRAL_MEDIUM = _literouter(
+    name="Mistral Medium (LiteRouter)",
+    model="mistral-medium-2508:free",
+    context_window=262_144,
+    max_output_tokens=262_144,
+)
+
+
 def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
     """Tier is the POSITION, never a number somebody typed.
 
@@ -655,6 +755,11 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
 # "a weaker model on this one".
 CHAIN = _ordered(
     CLINE_GLM_5_3_FLASH,
+    # Tier 1's model on two more gateways. Cline first because it is free and
+    # was measured first; LiteRouter's quota is unpublished, OrcaRouter's is
+    # 50 a day, so the smaller known allowance goes last.
+    LITEROUTER_GLM_5_3_FLASH,
+    ORCAROUTER_GLM_5_3_FLASH,
     GEMINI_3_8_FLASH,
     _second_account(GEMINI_3_8_FLASH),
     GEMINI_3_7_FLASH,
@@ -665,12 +770,16 @@ CHAIN = _ordered(
     # FIVE TIMES faster (211.9 tok/s against 43.1) with a 1.05M context and
     # no per-day neuron budget. A 13-Elo coding edge does not buy a 5x
     # slowdown when generation is already 98.2% of an answer.
-    KILO_DEEPSEEK_V4_FLASH,
-    DEEPSEEK_V4_FLASH,
+    #
+    # Its two ORIGINAL routes died on 2026-09-23 and wait at the END of the
+    # chain; these two took their place.
+    LITEROUTER_DEEPSEEK_V4_FLASH,
+    ORCAROUTER_DEEPSEEK_V4_FLASH,
     # Then the coding specialist. It ties Gemini 3.6 Flash on general
     # intelligence and beats it by 56 Elo on code, which is the task this
     # project actually does - so it goes above it.
     KILO_QWEN_3_8_27B,
+    LITEROUTER_QWEN_3_8_27B,
     QWEN_3_8_27B,
     # ADJACENT, for the same reason the Google twins are: once Cloudflare's
     # neurons are gone the strongest thing still available is the same model
@@ -681,8 +790,7 @@ CHAIN = _ordered(
     _second_account(GEMINI_3_6_FLASH),
     GEMINI_3_5_FLASH,
     _second_account(GEMINI_3_5_FLASH),
-    KILO_GLM_5_2,
-    GLM_5_2,
+    LITEROUTER_GLM_5_2,
     CLINE_LAGUNA_S_2_1,
     KILO_LAGUNA_S_2_1,
     KILO_NEMOTRON_3_ULTRA,
@@ -692,6 +800,7 @@ CHAIN = _ordered(
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
     MISTRAL_MEDIUM,
+    LITEROUTER_MISTRAL_MEDIUM,
     KILO_STEP_3_7_FLASH,
     REQUESTY_MUSE_GLIMMER,
     GEMMA_4_31B,
@@ -707,4 +816,29 @@ CHAIN = _ordered(
     DEVSTRAL_2,
     GEMINI_3_1_FLASH_LITE,
     _second_account(GEMINI_3_1_FLASH_LITE),
+    # KNOWN DEAD, KEPT ON PURPOSE - see KNOWN_DEAD below. Kilo before its
+    # OpenRouter twin even here, so the day one revives the order is right.
+    KILO_GLM_5_2,
+    GLM_5_2,
+    KILO_DEEPSEEK_V4_FLASH,
+    DEEPSEEK_V4_FLASH,
+)
+
+# Tiers that answer 404 on every call, KEPT so they can come back. Both free
+# routes to each model died the same way, and the error says why:
+#
+#   DeepSeek V4 Flash   2026-09-23   OpenRouter "unavailable for free. The paid
+#                                    version is available now"; Kilo "the
+#                                    requested model does not exist"
+#   GLM-5.2             2026-09-28   the same two answers, word for word
+#
+# A free model that disappears sometimes returns. A dead tier at the END costs
+# one fast 404, and only once every live tier above it has failed; near the TOP
+# it cost a request on EVERY report. Take a name out of this list only after
+# that tier answers again - that is a claim, and a test holds you to it.
+KNOWN_DEAD = (
+    KILO_GLM_5_2.name,
+    GLM_5_2.name,
+    KILO_DEEPSEEK_V4_FLASH.name,
+    DEEPSEEK_V4_FLASH.name,
 )

@@ -4,6 +4,7 @@ import pytest
 
 from labpilot.llm import (
     CHAIN,
+    KNOWN_DEAD,
     ClineProvider,
     GeminiProvider,
     LLMError,
@@ -38,10 +39,12 @@ OUTPUT_TOO_SMALL = (
     # brought a 32,768 context with it, against the 58,000 a report needs.
     # BOTH routes carry it - the limit belongs to the model's free serving,
     # not to the gateway in front of it.
-    "GLM-5.2 (Kilo)",
-    "GLM-5.2",
+    "GLM-5.2 (LiteRouter)",
     "GPT-OSS 120B (Groq)",
     "Devstral 2",
+    # the two dead GLM-5.2 routes, at the tail with the rest of KNOWN_DEAD
+    "GLM-5.2 (Kilo)",
+    "GLM-5.2",
 )
 INPUT_LIMITED = ("gemma-4-31b-it",)
 
@@ -55,6 +58,13 @@ INPUT_LIMITED = ("gemma-4-31b-it",)
 # The `:free` suffix on Laguna is load-bearing in the other direction: the
 # paid id `poolside/laguna-s-2.1` also answers, and spends credits.
 CLINE_MODELS_THE_API_SERVES = ("z-ai/glm-5.3-flash", "poolside/laguna-s-2.1:free")
+
+GATEWAYS = (
+    "KILO_API_KEY",
+    "REQUESTY_API_KEY",
+    "LITEROUTER_API_KEY",
+    "ORCAROUTER_API_KEY",
+)
 
 
 def test_chain_tiers_are_sequential_from_one():
@@ -361,7 +371,7 @@ def test_each_gateway_shares_one_quota_pool():
     Google bills per model, so there the pools must DIFFER. Same question,
     opposite answer, and getting it backwards is silent either way.
     """
-    for env_var in ("KILO_API_KEY", "REQUESTY_API_KEY"):
+    for env_var in GATEWAYS:
         pools = {p.quota_pool for p in CHAIN if p.api_key_env == env_var}
         tiers = [p.name for p in CHAIN if p.api_key_env == env_var]
         assert len(tiers) > 1, f"{env_var} has too few tiers to test"
@@ -427,3 +437,39 @@ def test_every_tier_that_accepts_reasoning_asks_for_it():
     ]
 
     assert not missing, missing
+
+
+def test_the_known_dead_tiers_wait_at_the_end_of_the_chain():
+    """A dead tier is kept, but never where the chain reaches it first.
+
+    The chain treats a 404 as "next tier", so a dead tier high up does not
+    break a report - it silently spends a request on EVERY report, which is
+    how both DeepSeek routes sat at positions 6 and 7 for five days. At the
+    end it is reached only when every live tier above it has already failed.
+
+    Moving one back up is allowed, and this test forces it to be deliberate:
+    take the name out of KNOWN_DEAD, which is a claim that it answers again.
+    """
+    tail = [provider.name for provider in CHAIN[-len(KNOWN_DEAD) :]]
+    # every POSITION, not only the tail: a dead tier listed twice - once near
+    # the top, once at the end - passes a tail check and still costs a request
+    # on every report. Mutation testing found exactly that hole.
+    above = [p.name for p in CHAIN[: -len(KNOWN_DEAD)] if p.name in KNOWN_DEAD]
+
+    assert not above, f"{above} are known dead and sit above the tail"
+    assert tail == list(KNOWN_DEAD), (
+        f"the chain ends {tail}, but the known-dead tiers are {list(KNOWN_DEAD)}. "
+        f"A dead tier anywhere else costs a request on every report."
+    )
+
+
+def test_every_route_to_a_dead_tier_has_a_live_twin_above_it():
+    # Moving a dead route to the end is only safe if the MODEL is still
+    # reachable higher up. Otherwise the move quietly demotes a whole model.
+    dead = [p for p in CHAIN if p.name in KNOWN_DEAD]
+    live = [p for p in CHAIN if p.name not in KNOWN_DEAD]
+
+    for provider in dead:
+        family = provider.name.split(" (")[0]
+        twins = [p.name for p in live if p.name.split(" (")[0] == family]
+        assert twins, f"{provider.name} is dead and no live route to {family} remains"
