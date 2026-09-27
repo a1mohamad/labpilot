@@ -1060,6 +1060,12 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > **Next is slice 1** (latency ranking) or **slice 2** (the skeleton - and it
 > > must ship a CHECKPOINTER and a `thread_id`, per D15, or the product cannot
 > > have a second turn).
+> >
+> > **2026-09-28: THE PLANNER'S MAP IS BUILT (C5 is closed in code) and
+> > `PLANNER_BUDGET` is 12,000, not 8,000.** Seven LiteRouter/OrcaRouter tiers
+> > and a `KNOWN_DEAD` tail rule landed with it. **The suite was NOT re-run after
+> > the budget change - run it first.** Two GitHub secrets are owed. Read
+> > [section 12](#12-the-planner-map-is-built-and-its-budget-was-corrected--2026-09-28).
 >
 > > ## ✅ STEP 1 IS DONE — 2026-09-19. STEP 2, THE AGENT, IS NEXT
 > >
@@ -16465,6 +16471,15 @@ aider/coders/base_coder.py:
 
 #### THE NUMBER THAT ARGUES AGAINST A BIG BUDGET
 
+> **⚠ CORRECTED 2026-09-28 — this heading OVERSTATES aider.** Its own docs,
+> re-read: the 1k is a **default**, the repo-map page gives **no measurement**
+> that a smaller map is better, and aider **expands the map "significantly"
+> when no files have been added to the chat** - `--map-multiplier-no-files`,
+> default **2**. Our planner is ALWAYS in that no-files case, because the map is
+> the only view of the repository it gets. So aider's own behaviour argues for
+> MORE room here, not less. See
+> [section 12](#12-the-planner-map-is-built-and-its-budget-was-corrected--2026-09-28).
+
 > **aider's repo map defaults to `--map-tokens 1000`.**
 
 One thousand, for a whole codebase, in a top-tier coding agent. It can afford
@@ -16519,14 +16534,16 @@ costs **zero extra calls**, because the question is embedded for search anyway.
 
 | # | decision |
 |---|---|
-| **D10** | The planner gets its **own budget**, `PLANNER_BUDGET`, not `OUTLINE_BUDGET` - the two compete with different things. Applied **per tier** as `min(PLANNER_BUDGET, what this tier can take)`, which is section 11.1's grid. **35 of 40 tiers hold 250,000+**; the line that matters is **16,000, Gemma's input cap**, which is the largest free quota in the project |
+| **D10** | The planner gets its **own budget**, `PLANNER_BUDGET`, not `OUTLINE_BUDGET` - the two compete with different things. Applied **per tier** as `min(PLANNER_BUDGET, what this tier can take)`, which is section 11.1's grid. **35 of 40 tiers hold 250,000+**; the line that matters is **16,000, Gemma's input cap**, which is the largest free quota in the project. **SET TO 12,000 on 2026-09-28** - what is left of that cap after the 10% margin and the rest of the call, not half of it. Slice 6 makes it DYNAMIC per call. See [section 12](#12-the-planner-map-is-built-and-its-budget-was-corrected--2026-09-28) |
 | **D11** | The map is **RANKED and ELIDED**, aider-style, built from headers we already store. **Rank only when it does not fit** - most repositories fit, and then ranking is a cost with no benefit. **Cosine first (free), a reranker as a measured upgrade.** And **BIAS, never filter**: every file keeps at least one row, because hiding what the question does not mention is the one failure the map exists to prevent |
 | **D12** | Check the **Jev family and any new decision-model providers** in the catalogue, with M3. Jev is listwise, typed and ~1.2s, so it is a natural ranker for map rows as well as for chunks |
 | **D13** | **D3 IS REVISED, at the user's instruction: use FUNCTION CALLING where the tier supports it, and STRUCTURED OUTPUT where it does not.** The honest cost is **two code paths** in the LLM layer instead of one, and a per-tier capability flag that has to stay true. The honest gain is provider-enforced arguments on the tiers that have them. **M3 decides how many tiers that actually is** - if it is most of them the hybrid is worth it, and if it is few, D3 stands as written |
 
-**The knob is a knob.** `PLANNER_BUDGET` is a guess until **M5** sweeps it, and
-the sweep must include a **1,000-token control**, because that is what aider
-ships and it is the strongest argument on the other side.
+**The knob is a knob.** `PLANNER_BUDGET` is a CEILING until **M5** sweeps it,
+and the sweep must include a **1,000-token control** and a **DYNAMIC** budget.
+*(Rewritten 2026-09-28: this used to call aider's 1k "the strongest argument on
+the other side". It is a default, not a measurement - see the correction
+above.)*
 
 Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
 (agentpatterns.ai) · Context Rot (tinyfish.ai, redis.io).
@@ -16539,7 +16556,8 @@ Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
 | M2 | **latency ranking of all 40 tiers** — we have ordered them by quality and by quota and never once by speed | 1 |
 | M3 | ~~which tiers support function calling~~ **MEASURED 2026-09-23 — 23 of the 24 tiers that answered. See [section 9](#9-m3-is-measured--function-calling-2026-09-23)** | done |
 | M4 | the raw question **vs** planner-written queries **vs** claims, scored against `EXPECTED.md` | 5 |
-| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does | 6 |
+| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does. **AND THE BUDGET SWEEP** (added 2026-09-28): fixed **1k · 4k · 8k · 12k** against a **DYNAMIC** budget (the tier's input limit / 1.1, minus what the rest of the prompt really costs). Score the queries on how many known divergence locations in `EXPECTED.md` / `queries.json` they reach, not on how they read. Record planner latency beside it, and which tier answered | 6 |
+| M9 | **A's FULL TEXT in the planner call** (question + map + the paper) against question + map alone. When A is small this merges the planner and `extract_claims` into ONE call. Added 2026-09-28; an open choice, not a decision | 6 |
 | M6 | **a findings score on the SEARCH path** — never once measured, see C3. This is the baseline Step 2 must beat | 8 |
 | M7 | an exact-match tool vs vector alone (D8) | 8 |
 | M8 | **per-node output tokens and latency** — every time estimate in this section rests on an assumed 40s per node | 8 |
@@ -16552,13 +16570,14 @@ of spending quota.
 
 | # | change | where |
 |---|---|---|
-| CC1 | `outline_of(conn, artifact_id)` — the per-file map, no text, no vectors | `store/reader.py` |
-| CC2 | a SECOND renderer for that map — reuse the ladder and `_by_file`, drop two columns | `prompts/` |
+| CC1 | ~~`outline_of(conn, artifact_id)`~~ **DONE 2026-09-28 as `read_headers` + `file_scores`** — headers only, no text, no vectors | `store/reader.py`, `store/search.py` |
+| CC2 | ~~a SECOND renderer for that map~~ **DONE 2026-09-28 as `build_map`** | `prompts/corpus_map.py` |
 | CC3 | the `agent/` package — core layer, injected callables | `labpilot/agent/` |
 | CC4 | a JSON helper: ask with a schema, parse, retry. Extend `generation_config` past reranking | `llm/` |
 | CC5 | wiring — build the graph, inject the callables, map the new errors | `api/` |
 | CC6 | `requirements.txt` and `test_packaging.py`, if LangGraph is added | root |
-| CC7 | a budget ladder for the map, for the 500-file case | `prompts/` |
+| CC7 | ~~a budget ladder for the map, for the 500-file case~~ **DONE 2026-09-28** — level 3 counts files by folder | `prompts/` |
+| CC8 | **the DYNAMIC planner budget** — `min(PLANNER_BUDGET, tier input limit / 1.1 − cost of instructions + question + schema)`, computed per call. Cannot be written before the planner instructions exist | slice 6 |
 
 ### 9. M3 IS MEASURED — function calling, 2026-09-23
 
@@ -16931,6 +16950,120 @@ MCP and web search are **Step 2.5**. The UI, SSE progress and the TypeScript
 rewrite are **Step 3** — and note that *"Searching the web..."* in a chat
 product is nothing but the app rendering the plan steps as they run, so the
 planner's JSON gives us those labels for free. Fine-tuning is **Step 4**.
+
+### 12. THE PLANNER MAP IS BUILT, AND ITS BUDGET WAS CORRECTED — 2026-09-28
+
+*Built on `feat/planner-map` and fast-forwarded into `main`. **834 passed, 5
+skipped** unit + api and the store integration tests green, measured BEFORE the
+last change below (8,000 -> 12,000), which was committed WITHOUT a re-run at the
+user's request - run the suite first thing next session.*
+
+#### 12.1 What was built
+
+```
+store.read_headers(conn, id)       every chunk's header, source and lines.
+                                   NO text, NO vector - one light read
+store.file_scores(conn, id, q)     per file, the MAX cosine of its chunks to
+                                   the question. MAX, not mean: a big file with
+                                   one relevant chunk must not look unrelated
+prompts.build_map(parts, scores=)  the planner's map of both sides
+llm.KNOWN_DEAD                     dead tiers, KEPT at the tail of CHAIN
+```
+
+`file_scores` and `search` now share one guard, `_checked` - empty query,
+unknown artifact, wrong model, wrong width - so the two cannot drift apart.
+
+**`build_map` has three levels**, and only shrinks when it must:
+
+```
+1  it fits           every file, its classes/functions, their members.
+                     No ranking - ranking a map that fits is cost, no benefit
+2  too long          EVERY file gets one line; then details are given back to
+                     the files closest to the question, in rank order. A file
+                     too big to fit is SKIPPED, not the end of the loop
+3  still too long    the rest are COUNTED by folder; the closest stay named
+```
+
+**No file ever disappears** - named or counted, always (D11: bias, never
+filter). **The two sides share the budget** by the selector's rule: equal share,
+and a small side's leftover flows to the other. Neither side is privileged.
+
+Mutation-verified: **3 chain, 4 store and 8 map mutations, every one fires.**
+Two survived first and were real gaps - a dead tier listed twice above the tail,
+and a fixture with no split TOP-LEVEL function, where `part 1/2` sits exactly
+where a member name would.
+
+#### 12.2 The gateway work that rode along
+
+```
+LiteRouter   tier-1 GLM-5.3 Flash · DeepSeek V4 Flash · Qwen3.8 27B ·
+             GLM-5.2 · Mistral Medium
+OrcaRouter   GLM-5.3 Flash · DeepSeek V4 Flash
+```
+
+Seven tiers, one quota pool per gateway, `OPENROUTER_REASONING` on all of them
+(GLM-5.3 returns EMPTY without it - reproduced on a third platform). **CHAIN is
+47 tiers.** The free-tier smoke guard reads both gateways' catalogues.
+
+**KNOWN_DEAD, at the user's call: dead routes are MOVED TO THE TAIL, never
+deleted**, because a free model can come back. Today: GLM-5.2 on Kilo and on
+OpenRouter (404 "unavailable for free"), DeepSeek V4 Flash on Kilo and on
+OpenRouter. Two tests: no dead tier sits above the tail, and **every dead model
+has a LIVE route above it** - GLM-5.2 and DeepSeek both live on LiteRouter.
+
+**Groq is ALIVE.** Section 9's 403 was the VPN exit, not the provider -
+re-checked, both tiers answer.
+
+**OWED: the GitHub repository secrets `LITEROUTER_API_KEY` and
+`ORCAROUTER_API_KEY`.** `smoke.yaml` maps them, and Monday's run fails on
+those tiers until the secrets exist.
+
+#### 12.3 THE BUDGET WAS WRONG, and the user found it
+
+`PLANNER_BUDGET` shipped at **8,000** - "half of Gemma's 16,000, the other half
+for the instructions and the question". **The rest of the call is nowhere near
+half:**
+
+```
+16,000 / 1.1  (the _check_fits margin)                 ~14,500
+- instructions ~2,000 · question ~500 · schema ~300     ~12,000
+```
+
+And Gemma's cap counts **INPUT only** (measured 2026-08-16, see
+[two kinds of limit](#two-kinds-of-limit-and-they-are-not-the-same-thing)), so the planner's
+answer needs no room there. **Now 12,000.** Still a CEILING: slice 6 computes
+it per call (CC8), and M5 may still find smaller is better.
+
+> **A reserve that is never itemised grows to fill the gap.** "Half for the
+> rest" sounded prudent and wasted ~4,000 tokens of the only view the planner
+> has. The report path already does this right - `reserve()` measures what the
+> instructions really cost and gives evidence the remainder.
+
+#### 12.4 Where file text enters the queries — settled, because it confused us
+
+```
+the PLANNER call     instructions + question + map. NO file text (D2)
+extract_claims       reads the paper whole - but ONLY if the planner picks it
+B's text             never read whole (it does not fit). It is SEARCHED, and the
+                     retrieved chunks refine the next queries in the D4 loop
+```
+
+That is the Claude Code shape: the FIRST search comes from the question and a
+view of the folders, and file text shapes later searches through the loop.
+**Aider is NOT an example of this - it has no search at all**; the user opens
+files by hand. The open choice is M9: put a small A's full text into the
+planner call and merge it with `extract_claims`.
+
+> **Name which of two things a word means before arguing from it.** "Files" in
+> aider means files OPEN IN THE CHAT, not files uploaded. Reading it as ours
+> produced a whole exchange of confusion.
+
+#### 12.5 Still open
+
+- **Nothing calls the map.** The planner is slice 6.
+- `PLANNER_BUDGET` - M5, including the dynamic variant.
+- `scripts/warm_embeddings.py` still carries its own pacing and could use
+  `embed.pacing`.
 
 ---
 
