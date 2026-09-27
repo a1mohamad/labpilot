@@ -29,13 +29,15 @@ import pytest
 import requests
 from dotenv import load_dotenv
 
-from labpilot.llm import CHAIN
+from labpilot.llm import CHAIN, KNOWN_DEAD
 
 load_dotenv()
 
 CATALOGUES = {
     "KILO_API_KEY": "https://api.kilo.ai/api/gateway/models",
     "REQUESTY_API_KEY": "https://router.requesty.ai/v1/models",
+    "LITEROUTER_API_KEY": "https://api.literouter.com/v1/models",
+    "ORCAROUTER_API_KEY": "https://api.orcarouter.ai/v1/models",
 }
 
 
@@ -47,20 +49,34 @@ def _free_ids(url: str, key: str) -> set[str]:
     body = response.json()
     items = body.get("data", body if isinstance(body, list) else [])
 
-    free = set()
-    for model in items:
-        pricing = model.get("pricing")
-        if isinstance(pricing, dict):
-            prices = (pricing.get("prompt"), pricing.get("completion"))
-        else:
-            prices = (model.get("input_price"), model.get("output_price"))
-        known = [p for p in prices if p is not None]
-        try:
-            if known and all(float(p) == 0 for p in known):
-                free.add(str(model.get("id")))
-        except (TypeError, ValueError):
-            continue
-    return free
+    return {str(model.get("id")) for model in items if _costs_nothing(model)}
+
+
+def _costs_nothing(model: dict) -> bool:
+    """Every gateway spells a price differently, measured 2026-09-28.
+
+        Kilo        pricing {"prompt": "0", "completion": "0"}
+        Requesty    input_price 0, output_price 0
+        LiteRouter  model_cost 0
+        OrcaRouter  pricing {"request": "0.000000"} - PER CALL, not per token
+
+    Free means EVERY price it states is zero, and it states at least one. A
+    model with no price at all is unknown, never free.
+    """
+    pricing = model.get("pricing")
+    if isinstance(pricing, dict):
+        prices = [
+            value for key, value in pricing.items() if not key.endswith("_per_million")
+        ]
+    else:
+        prices = [model.get("input_price"), model.get("output_price")]
+    prices.append(model.get("model_cost"))
+
+    known = [price for price in prices if price not in (None, "")]
+    try:
+        return bool(known) and all(float(price) == 0 for price in known)
+    except (TypeError, ValueError):
+        return False
 
 
 @pytest.mark.smoke
@@ -70,7 +86,13 @@ def test_every_gateway_tier_is_still_free_on_its_gateway(env_var: str, url: str)
     if not key:
         pytest.skip(f"{env_var} is not set")
 
-    ours = [provider for provider in CHAIN if provider.api_key_env == env_var]
+    # A known-dead tier is expected to be missing - that is WHY it is at the
+    # end. This guard is for a LIVE tier quietly turning paid.
+    ours = [
+        provider
+        for provider in CHAIN
+        if provider.api_key_env == env_var and provider.name not in KNOWN_DEAD
+    ]
     assert ours, f"no CHAIN tier uses {env_var}; delete this case or the key"
 
     free = _free_ids(url, key)
