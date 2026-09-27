@@ -6,6 +6,7 @@ from labpilot.store.contracts import (
     Side,
     StoredArtifact,
     StoredChunk,
+    StoredHeader,
     Vector,
 )
 from labpilot.store.defaults import SEARCH_LIMIT
@@ -17,8 +18,8 @@ from labpilot.store.errors import (
     UnknownArtifact,
 )
 from labpilot.store.keyword import bm25_search, keyword_search
-from labpilot.store.reader import measure, read_chunks
-from labpilot.store.search import search
+from labpilot.store.reader import measure, read_chunks, read_headers
+from labpilot.store.search import file_scores, search
 from labpilot.store.writer import write_artifact
 
 __all__ = [
@@ -31,17 +32,20 @@ __all__ = [
     "ModelMismatch",
     "NotConfigured",
     "read_chunks",
+    "read_headers",
     "SearchHit",
     "SEARCH_LIMIT",
     "Side",
     "StoreError",
     "StoredArtifact",
     "StoredChunk",
+    "StoredHeader",
     "UnknownArtifact",
     "Vector",
     "connect",
     "create_schema",
     "database_url",
+    "file_scores",
     "search",
     "write_artifact",
 ]

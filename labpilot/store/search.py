@@ -35,6 +35,21 @@ _SEARCH = """
 """
 
 
+# How close each FILE comes to the question: the score of its BEST chunk.
+#
+# MAX, not the mean. A file is worth showing if ANY part of it answers - a
+# 900-line trainer whose one clipping line is the answer would average out to
+# nothing, the same dilution that makes a large chunk retrieve badly. One pass
+# over the artifact's rows, exact, like _SEARCH; nothing but a number per file
+# crosses the wire.
+_FILE_SCORES = """
+    select source, max(1 - (v <=> %s::vector))
+    from chunks
+    where artifact_id = %s
+    group by source
+"""
+
+
 def search(
     conn: psycopg.Connection,
     artifact_id: str,
@@ -45,32 +60,9 @@ def search(
 ) -> tuple[SearchHit, ...]:
     if limit < 1:
         raise ValueError(f"limit must be positive, got {limit}")
-    if not query:
-        raise ValueError("the query vector is empty")
 
     with conn.cursor() as cur:
-        cur.execute(_ARTIFACT, (artifact_id,))
-        row = cur.fetchone()
-        if row is None:
-            raise UnknownArtifact(
-                f"no artifact {artifact_id!r} is stored: searching it would "
-                f"return an empty result, which reads as 'nothing matched'"
-            )
-
-        stored_model, dim = row
-        if stored_model != model:
-            raise ModelMismatch(
-                f"artifact {artifact_id!r} was embedded with {stored_model!r} "
-                f"but this query was embedded with {model!r}: two embedding "
-                f"spaces do not compare, and the numbers would look fine"
-            )
-        if len(query) != dim:
-            raise ValueError(
-                f"the query has {len(query)} dimensions, but artifact "
-                f"{artifact_id!r} stores {dim}"
-            )
-
-        vector = str(list(query))
+        vector = _checked(cur, artifact_id, query, model=model)
         cur.execute(_SEARCH, (vector, artifact_id, vector, limit))
         rows = cur.fetchall()
 
@@ -86,3 +78,52 @@ def search(
         )
         for chunk_index, text, header, source, start_line, end_line, score in rows
     )
+
+
+def file_scores(
+    conn: psycopg.Connection,
+    artifact_id: str,
+    query: Vector,
+    *,
+    model: str,
+) -> dict[str, float]:
+    with conn.cursor() as cur:
+        vector = _checked(cur, artifact_id, query, model=model)
+        cur.execute(_FILE_SCORES, (vector, artifact_id))
+        rows = cur.fetchall()
+
+    return {source: float(score) for source, score in rows}
+
+
+def _checked(cur, artifact_id: str, query: Vector, *, model: str) -> str:
+    """Refuse a query that cannot be compared with this artifact's vectors.
+
+    Shared by every read that takes a query vector, because each failure here
+    is SILENT otherwise: a missing artifact returns nothing, and a vector from
+    another model returns numbers that look fine and mean nothing.
+    """
+    if not query:
+        raise ValueError("the query vector is empty")
+
+    cur.execute(_ARTIFACT, (artifact_id,))
+    row = cur.fetchone()
+    if row is None:
+        raise UnknownArtifact(
+            f"no artifact {artifact_id!r} is stored: searching it would "
+            f"return an empty result, which reads as 'nothing matched'"
+        )
+
+    stored_model, dim = row
+    if stored_model != model:
+        raise ModelMismatch(
+            f"artifact {artifact_id!r} was embedded with {stored_model!r} "
+            f"but this query was embedded with {model!r}: two embedding "
+            f"spaces do not compare, and the numbers would look fine"
+        )
+    if len(query) != dim:
+        raise ValueError(
+            f"the query has {len(query)} dimensions, but artifact "
+            f"{artifact_id!r} stores {dim}"
+        )
+
+    return str(list(query))

@@ -64,6 +64,22 @@ class StoredChunk:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class StoredHeader:
+    """One chunk WITHOUT its text: where it sits and what it is called.
+
+    The planner's map of an artifact is built from these, BEFORE any search
+    runs, so it can decide what to search for. The text is ~97% of a row and
+    the map never shows it, so it never leaves the database.
+    """
+
+    chunk_index: int
+    source: str
+    start_line: int
+    end_line: int
+    header: str = ""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class StoredArtifact:
     """What one artifact IS, and how big, in a single round trip.
 

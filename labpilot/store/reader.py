@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import psycopg
 
-from labpilot.store.contracts import ArtifactRecord, StoredArtifact, StoredChunk
+from labpilot.store.contracts import (
+    ArtifactRecord,
+    StoredArtifact,
+    StoredChunk,
+    StoredHeader,
+)
 from labpilot.store.errors import UnknownArtifact
 
 # `embed_text` is `header + "\n" + text`, and the newline exists ONLY when the
@@ -46,6 +51,15 @@ _MEASURE = f"""
 # full confidence. Postgres promises no order at all without this line.
 _CHUNKS = """
     select chunk_index, text, header, source, start_line, end_line
+    from chunks
+    where artifact_id = %s
+    order by chunk_index
+"""
+
+# The same order rule as _CHUNKS, for the same reason: the map groups a file's
+# CONSECUTIVE chunks, so rows out of order would split one file into several.
+_HEADERS = """
+    select chunk_index, header, source, start_line, end_line
     from chunks
     where artifact_id = %s
     order by chunk_index
@@ -103,4 +117,31 @@ def read_chunks(conn: psycopg.Connection, artifact_id: str) -> tuple[StoredChunk
             end_line=end_line,
         )
         for chunk_index, text, header, source, start_line, end_line in rows
+    )
+
+
+def read_headers(
+    conn: psycopg.Connection, artifact_id: str
+) -> tuple[StoredHeader, ...]:
+    with conn.cursor() as cur:
+        cur.execute(_HEADERS, (artifact_id,))
+        rows = cur.fetchall()
+
+        if not rows:
+            cur.execute(_EXIST, (artifact_id,))
+            if cur.fetchone() is None:
+                raise UnknownArtifact(
+                    f"no artifact {artifact_id!r} is stored: an empty map would "
+                    f"read as 'this artifact holds nothing'"
+                )
+
+    return tuple(
+        StoredHeader(
+            chunk_index=chunk_index,
+            header=header,
+            source=source,
+            start_line=start_line,
+            end_line=end_line,
+        )
+        for chunk_index, header, source, start_line, end_line in rows
     )
