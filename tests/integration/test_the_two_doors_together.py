@@ -59,6 +59,7 @@ class CountingEmbedder:
     name, model, dim = "Counting", "fake-embed", 3
 
     max_batch_size = MAX_BATCH_SIZE
+    pace = None
 
     def __init__(self) -> None:
         self.documents = 0

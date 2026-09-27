@@ -2,7 +2,7 @@ from labpilot.embed.base import HTTPEmbedder
 from labpilot.embed.batching import embed_batches, looks_like_too_many_tokens
 from labpilot.embed.cloudflare import CloudflareEmbedder
 from labpilot.embed.cohere import CohereEmbedder
-from labpilot.embed.contracts import EmbeddingBatch, Rate, Spec, Task, Vector
+from labpilot.embed.contracts import EmbeddingBatch, Pace, Rate, Spec, Task, Vector
 from labpilot.embed.defaults import MAX_BATCH_SIZE
 from labpilot.embed.errors import EmbeddingError
 from labpilot.embed.google import GoogleEmbedder
@@ -40,6 +40,7 @@ __all__ = [
     "GoogleEmbedder",
     "HTTPEmbedder",
     "MistralEmbedder",
+    "Pace",
     "Rate",
     "Spec",
     "Task",

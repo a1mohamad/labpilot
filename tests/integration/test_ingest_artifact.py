@@ -16,6 +16,7 @@ class FakeEmbedder:
     name, model, dim = "Fake", "fake-embed", 3
 
     max_batch_size = MAX_BATCH_SIZE
+    pace = None
 
     def embed(self, texts, *, task="document"):
         return EmbeddingBatch(

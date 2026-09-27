@@ -3,8 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from labpilot.embed.base import HTTPEmbedder
-from labpilot.embed.contracts import Task, Vector
-from labpilot.embed.defaults import GOOGLE_MAX_BATCH_SIZE
+from labpilot.embed.contracts import Pace, Task, Vector
+from labpilot.embed.defaults import (
+    GOOGLE_MAX_BATCH_SIZE,
+    GOOGLE_TEXTS_PER_MINUTE,
+    GOOGLE_TOKENS_PER_MINUTE,
+)
 
 TASK_TYPES: dict[Task, str] = {
     "query": "RETRIEVAL_QUERY",
@@ -16,6 +20,13 @@ TASK_TYPES: dict[Task, str] = {
 class GoogleEmbedder(HTTPEmbedder):
     api_key_env: str = "GOOGLE_API_KEY"
     max_batch_size: int = GOOGLE_MAX_BATCH_SIZE
+    # Google ENFORCES both, unlike Mistral - a second 40-text batch inside one
+    # minute was refused. Every Google model shares the shape; each has its
+    # own bucket, which `pool` keeps apart.
+    pace: Pace | None = Pace(
+        tokens_per_minute=GOOGLE_TOKENS_PER_MINUTE,
+        texts_per_minute=GOOGLE_TEXTS_PER_MINUTE,
+    )
 
     def _endpoint(self) -> str:
         return f"{self.url}/{self.model}:batchEmbedContents"

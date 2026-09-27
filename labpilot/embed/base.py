@@ -10,8 +10,8 @@ from dataclasses import dataclass
 import requests
 
 from labpilot._text import truncate
-from labpilot.embed.contracts import EmbeddingBatch, Rate, Task, Vector
-from labpilot.embed.defaults import DEFAULT_TIMEOUT, MAX_BATCH_SIZE
+from labpilot.embed.contracts import EmbeddingBatch, Pace, Rate, Task, Vector
+from labpilot.embed.defaults import DEFAULT_TIMEOUT, MAX_BATCH_SIZE, PACE_HEADROOM
 from labpilot.embed.errors import EmbeddingError
 from labpilot.embed.rates import learn, observed
 from labpilot.tokens import estimate_tokens
@@ -41,6 +41,15 @@ class HTTPEmbedder(ABC):
     # Texts per request. A PROVIDER limit, so it lives on the provider: 96 is
     # derived from Mistral's budget and Google refuses it - see defaults.py.
     max_batch_size: int = MAX_BATCH_SIZE
+    # Limits the provider ENFORCES, which embed_batches keeps under. None for
+    # every provider that has never refused us on a per-minute limit.
+    pace: Pace | None = None
+
+    @property
+    def pool(self) -> str:
+        # Google bills per project per MODEL, so the key and the model together
+        # name the bucket - the same split quota_pool makes in llm/.
+        return f"{self.api_key_env}:{self.model}"
 
     def embed(self, texts: Sequence[str], *, task: Task = "document") -> EmbeddingBatch:
         self._check_texts(texts)
@@ -60,7 +69,9 @@ class HTTPEmbedder(ABC):
 
         if response.status_code != 200:
             raise EmbeddingError(
-                f"{self.name}: HTTP {response.status_code}: {truncate(response.text)}"
+                f"{self.name}: HTTP {response.status_code}: {truncate(response.text)}",
+                status=response.status_code,
+                retry_after=_retry_after(response.headers),
             )
 
         learn(self.model, response.headers, self.rate)
@@ -148,7 +159,20 @@ class HTTPEmbedder(ABC):
         )
         by_requests = requests / rpm if rpm else 0.0
 
-        return max(tokens / rate, by_requests)
+        # An ENFORCED limit is the true ceiling on what embed_batches will send,
+        # so the estimate must not promise more than the pace allows. Google's
+        # per-minute TEXTS are their own ceiling: 100 a minute, whatever the
+        # number of calls they arrive in.
+        pace = self.pace
+        if pace and pace.tokens_per_minute:
+            rate = min(rate, pace.tokens_per_minute * PACE_HEADROOM)
+        by_texts = (
+            chunks / (pace.texts_per_minute * PACE_HEADROOM)
+            if pace and pace.texts_per_minute
+            else 0.0
+        )
+
+        return max(tokens / rate, by_requests, by_texts)
 
     def _check_texts(self, texts: Sequence[str]) -> None:
         if not texts:
@@ -236,3 +260,13 @@ class HTTPEmbedder(ABC):
 
     @abstractmethod
     def _prompt_tokens(self, body: dict) -> int: ...
+
+
+def _retry_after(headers) -> float | None:
+    # Seconds only. Google sends no Retry-After at all (measured 2026-09-24), so
+    # this is for the providers that do; an HTTP date is ignored, not guessed.
+    try:
+        value = float(headers.get("Retry-After"))
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None

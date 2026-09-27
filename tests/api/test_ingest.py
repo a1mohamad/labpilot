@@ -29,6 +29,7 @@ class FakeEmbedder:
     dim = 2
 
     max_batch_size = MAX_BATCH_SIZE
+    pace = None
 
     def __init__(self):
         self.batch_sizes: list[int] = []
