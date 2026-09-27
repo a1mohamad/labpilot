@@ -28,6 +28,8 @@ class FakeEmbedder:
     model = "fake"
     dim = 2
 
+    max_batch_size = MAX_BATCH_SIZE
+
     def __init__(self):
         self.batch_sizes: list[int] = []
 

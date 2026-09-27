@@ -58,3 +58,14 @@ def test_every_embedder_can_take_a_chunk_at_our_cap(embedder):
         pytest.skip("no declared input limit")
 
     assert embedder.max_input_tokens >= MAX_CHUNK_TOKENS
+
+
+@CASES
+def test_a_full_batch_of_capped_chunks_fits_the_embedders_minute(embedder):
+    # Google ENFORCES 30,000 a minute and refused a 96-text batch outright,
+    # measured 2026-09-24. A batch that cannot fit the bucket even when the
+    # bucket is empty can never be sent, however long we wait.
+    budget = embedder.rate.tokens_per_minute
+    if budget is None:
+        pytest.skip("no published per-minute token budget")
+    assert embedder.max_batch_size * MAX_CHUNK_TOKENS <= budget

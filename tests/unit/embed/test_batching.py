@@ -13,6 +13,7 @@ class Fake:
     """Refuses any request larger than `ceiling`, the way a provider does."""
 
     name = "Fake"
+    max_batch_size = 96
 
     def __init__(self, ceiling: int = 10_000, error: str = TOO_MANY):
         self.ceiling, self.error, self.sizes = ceiling, error, []
@@ -87,3 +88,18 @@ def test_a_single_text_that_is_refused_cannot_be_split_further():
 def test_a_size_that_can_never_send_anything_is_a_caller_bug(size):
     with pytest.raises(ValueError, match="size"):
         list(embed_batches(Fake(), ["x"], size=size))
+
+
+def test_with_no_size_the_embedders_own_batch_size_is_used():
+    fake = Fake()
+    fake.max_batch_size = 4
+    list(embed_batches(fake, ["x"] * 10))
+    assert fake.sizes == [4, 4, 2]
+
+
+def test_a_size_above_the_embedders_limit_is_clamped_not_refused():
+    # the Google defect: a caller asking for 96 must get the 40 Google takes
+    fake = Fake()
+    fake.max_batch_size = 4
+    list(embed_batches(fake, ["x"] * 10, size=96))
+    assert fake.sizes == [4, 4, 2]

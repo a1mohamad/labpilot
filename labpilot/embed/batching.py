@@ -4,12 +4,12 @@ from collections.abc import Iterator, Sequence
 from typing import Protocol
 
 from labpilot.embed.contracts import EmbeddingBatch, Task
-from labpilot.embed.defaults import MAX_BATCH_SIZE
 from labpilot.embed.errors import EmbeddingError
 
 
 class Embedder(Protocol):
     name: str
+    max_batch_size: int
 
     def embed(
         self, texts: Sequence[str], *, task: Task = "document"
@@ -29,11 +29,12 @@ def embed_batches(
     texts: Sequence[str],
     *,
     task: Task = "document",
-    size: int = MAX_BATCH_SIZE,
+    size: int | None = None,
 ) -> Iterator[EmbeddingBatch]:
     """Embed any number of texts, one request per yielded batch.
 
-    MAX_BATCH_SIZE is derived from the per-MINUTE token limit, but providers
+    The size starts at the embedder's own `max_batch_size`. MAX_BATCH_SIZE
+    is derived from Mistral's per-MINUTE token limit, but providers
     also cap a single request, and `estimate_tokens` is `chars / 3` - which
     under-counts far enough to cross that cap on real repositories. Measured:
     a batch we estimated at 46,162 tokens was refused, while one Mistral had
@@ -47,8 +48,13 @@ def embed_batches(
     Yields per request rather than returning everything, so a caller can write
     each batch away instead of holding every vector in memory.
     """
-    if size < 1:
+    if size is not None and size < 1:
         raise ValueError(f"size must be positive, got {size}")
+    # CLAMP, never refuse: a caller asking for more than the provider takes gets
+    # what the provider takes. Refusing would make every caller learn every
+    # provider's limit, and the one caller that did not is the bug.
+    limit = embedder.max_batch_size
+    size = limit if size is None else min(size, limit)
 
     start = 0
     while start < len(texts):

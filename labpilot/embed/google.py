@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from labpilot.embed.base import HTTPEmbedder
 from labpilot.embed.contracts import Task, Vector
+from labpilot.embed.defaults import GOOGLE_MAX_BATCH_SIZE
 
 TASK_TYPES: dict[Task, str] = {
     "query": "RETRIEVAL_QUERY",
@@ -14,6 +15,7 @@ TASK_TYPES: dict[Task, str] = {
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GoogleEmbedder(HTTPEmbedder):
     api_key_env: str = "GOOGLE_API_KEY"
+    max_batch_size: int = GOOGLE_MAX_BATCH_SIZE
 
     def _endpoint(self) -> str:
         return f"{self.url}/{self.model}:batchEmbedContents"

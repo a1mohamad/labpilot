@@ -22,6 +22,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from labpilot.api import ApiConfig, app, get_client, services
+from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.llm import LLMResult
 
@@ -56,6 +57,8 @@ class CountingEmbedder:
     """
 
     name, model, dim = "Counting", "fake-embed", 3
+
+    max_batch_size = MAX_BATCH_SIZE
 
     def __init__(self) -> None:
         self.documents = 0

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from labpilot.api.services import ingest_artifact
+from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.store import search
 
@@ -13,6 +14,8 @@ CODE = b"CLIP_NORM = 1.5\n\n\ndef train():\n    return CLIP_NORM\n"
 
 class FakeEmbedder:
     name, model, dim = "Fake", "fake-embed", 3
+
+    max_batch_size = MAX_BATCH_SIZE
 
     def embed(self, texts, *, task="document"):
         return EmbeddingBatch(

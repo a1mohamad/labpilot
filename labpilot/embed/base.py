@@ -38,6 +38,9 @@ class HTTPEmbedder(ABC):
     # value the provider reports at runtime overrides it via rates.observed().
     rate: Rate = Rate()
     timeout: tuple[float, float] = DEFAULT_TIMEOUT
+    # Texts per request. A PROVIDER limit, so it lives on the provider: 96 is
+    # derived from Mistral's budget and Google refuses it - see defaults.py.
+    max_batch_size: int = MAX_BATCH_SIZE
 
     def embed(self, texts: Sequence[str], *, task: Task = "document") -> EmbeddingBatch:
         self._check_texts(texts)
@@ -139,7 +142,7 @@ class HTTPEmbedder(ABC):
         # Mistral sends x-ratelimit-limit-req-minute on every 200 - so an
         # observed value wins over the seed here, and only here. No header
         # carries throughput, so `rate` above has nothing to learn from yet.
-        requests = math.ceil(chunks / MAX_BATCH_SIZE)
+        requests = math.ceil(chunks / self.max_batch_size)
         rpm = observed(self.model).get(
             "requests_per_minute", self.rate.requests_per_minute
         )
@@ -151,9 +154,10 @@ class HTTPEmbedder(ABC):
         if not texts:
             raise ValueError("texts must not be empty")
 
-        if len(texts) > MAX_BATCH_SIZE:
+        if len(texts) > self.max_batch_size:
             raise ValueError(
-                f"{len(texts)} texts is over the batch limit of {MAX_BATCH_SIZE}; "
+                f"{len(texts)} texts is over the batch limit of "
+                f"{self.max_batch_size}; "
                 "the caller owns the loop"
             )
 
