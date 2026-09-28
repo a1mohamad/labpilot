@@ -170,7 +170,7 @@ def test_an_upload_over_the_size_limit_is_rejected(client, no_database):
     raising the limit grew the payload with it and the assertion could never
     fail. It was green for three runs while testing nothing.
     """
-    huge = b"x = 1\n" * 900_000
+    huge = b"x = 1\n" * 1_800_000
     assert len(huge) > ApiConfig.MAX_UPLOAD_BYTES, "must exceed the real limit"
 
     response = upload(client, "big.py", huge)
