@@ -17,6 +17,7 @@ from labpilot.api import services
 from labpilot.api.reranking import CHAIN, PROVIDERS, RANKING_CONFIG, _listwise, rank
 from labpilot.llm import GeminiProvider, LLMResult
 from labpilot.rerank import (
+    JEV_NETLIFY_RERANK,
     JEV_RERANK,
     LLM_RERANK_ORDER,
     RERANK_CHAIN,
@@ -96,6 +97,24 @@ def test_jev_is_the_only_tier_that_does_not_depend_on_google():
     assert len(google) == 2 * len(LLM_RERANK_ORDER)
     assert JEV_RERANK in CHAIN
     assert JEV_RERANK.api_key_env == "OPENROUTER_API_KEY"
+
+
+def test_the_free_jev_route_sits_right_behind_the_paid_one():
+    """The same model on a second allowance comes before a weaker model.
+
+    It is the twin rule `_both_accounts` applies to Google, for the same
+    reason: when OpenRouter stops carrying our unpaid balance, the strongest
+    thing left is Jev itself on Netlify, not flash-lite 3.1. And it must NOT
+    lean on OpenRouter in any way, or the fallback dies with the thing it is
+    falling back from.
+    """
+    third = CHAIN.index(JEV_RERANK)
+    assert CHAIN[third + 1] is JEV_NETLIFY_RERANK, (
+        f"the chain continues {[t.name for t in CHAIN[third : third + 3]]}"
+    )
+    assert JEV_NETLIFY_RERANK.api_key_env != JEV_RERANK.api_key_env
+    assert "openrouter" not in JEV_NETLIFY_RERANK.url
+    assert JEV_NETLIFY_RERANK.url_env is not None
 
 
 def test_every_llm_tier_is_tuned_for_ranking_and_not_for_generation(recorded):
