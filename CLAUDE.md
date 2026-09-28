@@ -1063,7 +1063,12 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > must ship a CHECKPOINTER and a `thread_id`, per D15, or the product cannot
 > > have a second turn).
 > >
-> > **2026-09-28: THE PLANNER'S MAP IS BUILT (C5 is closed in code) and
+> > **2026-09-29: JEV HAS A FREE ROUTE, THROUGH NETLIFY, LIVE.** OpenRouter
+> carries our Jev calls on an unpaid balance ($0 credits), so a Netlify proxy
+> now sits right behind it as rerank tier 4. See
+> [section 12.7](#127-jev-has-a-free-second-route-through-netlify--2026-09-29-live).
+>
+> **2026-09-28: THE PLANNER'S MAP IS BUILT (C5 is closed in code) and
 > > `PLANNER_BUDGET` is 12,000, not 8,000.** Seven LiteRouter/OrcaRouter tiers
 > > and a `KNOWN_DEAD` tail rule landed with it. **The suite was NOT re-run after
 > > the budget change - run it first.** Two GitHub secrets are owed. Read
@@ -13496,6 +13501,7 @@ vector alone's MRR of **0.608**.*
 | 3 | **`gemini-3.1-flash-lite`** | Google | **0.745** | — | its own 500/day | LLM, listwise |
 | 4 | **`gemma-4-26b-a4b-it`** | Google | **0.732** | — | its own 14,400/day | LLM, listwise, MoE |
 | 5 | **`gemma-4-31b-it`** | Google | **0.732** | — | 14,400/day | LLM, listwise |
+| **2b** | **`jev-1.13.0` via Netlify** | **Netlify AI Gateway** | same model | same model | **FREE, 300 credits/month** | decision model — the fallback, added 2026-09-29 |
 | 6 | **`rerank-v4.0-fast`** | Cohere | 0.669 | 0.621 | 1,000/**month** | cross-encoder |
 | 7 | `rerank-3` | Voyage | *unmeasured* | — | 200M once · 3 RPM | cross-encoder |
 | 8 | `rerank-3-lite` | Voyage | 0.725 | — | its own 3 RPM | cross-encoder |
@@ -17098,6 +17104,57 @@ Side effect: the whole-body limit is `2 x upload + 65,536`, so it is now
 **Still owed:** Cohere's 100,000 tokens/minute could move into the registry
 as a `Pace`, so the product paces Cohere too. Not done - it changes product
 behaviour and its embedding-time estimate.
+
+#### 12.7 Jev has a FREE second route, through Netlify — 2026-09-29, LIVE
+
+**Why it was needed.** The OpenRouter Jev tier is billed, and the account has
+never been paid:
+
+```
+OpenRouter  total_credits $0.00   total_usage $0.0417   is_free_tier true
+```
+
+OpenRouter still answers our Jev calls on that unpaid balance. That is its
+choice, not a plan, and it can stop at any time.
+
+**What was built.** Netlify's AI Gateway injects its OWN TypeSafe key, but only
+into code running on Netlify. So a tiny function there is the bridge:
+
+```
+LabPilot --Bearer JEV_PROXY_SECRET--> labpilot-jev-0e3591.netlify.app/api/jev
+         --Netlify's key--> TypeSafe POST /v1/systemone  (jev-1.13.0)
+```
+
+- **The proxy** is the separate folder `../labpilot-jev-proxy` (NOT in this
+  repo): one function, `netlify.toml`, a README. No LabPilot logic, so a
+  question change never needs a redeploy - a production deploy costs 15 of the
+  Free plan's 300 monthly credits (180 credits = $1 of model spend).
+- **The tier** is `JEV_NETLIFY_RERANK`, position 4 of the assembled rerank
+  chain, directly behind `JEV_RERANK` - the twin rule `_both_accounts` applies
+  to Google. `JevReranker` gained `url_env`: the address is read from
+  `JEV_PROXY_URL` at call time, and an unset one is a RerankError BEFORE any
+  request, so the chain skips it for free. TypeSafe's native shape is identical
+  to OpenRouter's decisions endpoint, so nothing else changed.
+- **Chain 3 is thirteen tiers now**, Cohere at 11.
+
+**Proven live, exit AS24940 Hetzner Online, Nuremberg:** the diagnostic GET
+answered `key_present: true` - **the AI Gateway works on the FREE plan**,
+which the Jev investigation of 2026-09-19 could not confirm. Both Jev smoke
+tiers passed. A POST with no secret or a wrong one answers 403.
+
+**Two traps met on the way:**
+
+- A new Netlify site sits behind **team login protection** (`sso_login`) by
+  default, so every request got a login redirect. It was turned off for this
+  one site only, at the user's instruction; the shared secret is what protects
+  the function now.
+- The proxy was tested locally in Node against a FAKE upstream before any
+  deploy, so the first real call was not also the first test.
+
+Mutation-verified: moving the Netlify tier away from its twin fires the
+placement test; making an unset URL fall through to a request fires the
+"costs no request" test alone. GitHub secrets `JEV_PROXY_URL` and
+`JEV_PROXY_SECRET` were added by the user.
 
 ---
 
