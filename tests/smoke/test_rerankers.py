@@ -23,6 +23,8 @@ happen", not "what is this set to", exactly as the bi-encoder does. A smoke
 test must not encode our hardest open research question as a pass condition.
 """
 
+import os
+
 import pytest
 from dotenv import load_dotenv
 
@@ -79,6 +81,11 @@ def test_every_tier_of_the_shipped_chain_is_alive(reranker):
     "the four tiers that now LEAD chain 3 had no liveness check". Parametrise
     over the thing the ask path actually calls and it cannot happen again.
     """
+    url_env = getattr(reranker, "url_env", None)
+    if url_env and not os.environ.get(url_env):
+        # The Netlify Jev tier has no public address until OUR proxy is
+        # deployed. Unset, the chain skips it for free - so is the smoke run.
+        pytest.skip(f"{url_env} is not set - the proxy is not deployed yet")
     ranking = reranker.rank(QUERY, DOCUMENTS)
 
     assert ranking.model == reranker.model
