@@ -36,8 +36,12 @@ def test_an_archive_we_accept_must_be_able_to_reach_us():
     the relationship was written down while the number was still a guess. The
     archive's number is the one that moved: 50MB compressed against a 20MB
     UNCOMPRESSED total was never coherent either.
+
+    It first checked the WHOLE-BODY limit, which was the wrong ceiling: a zip
+    is one file, so it meets the PER-FILE limit first. At 5MB a 7MB zip was
+    refused there, and the archive's 10MB never got to run.
     """
-    assert MAX_ARCHIVE_BYTES <= ApiConfig.MAX_REQUEST_BODY_BYTES
+    assert MAX_ARCHIVE_BYTES <= ApiConfig.MAX_UPLOAD_BYTES
 
 
 def test_a_file_that_could_hold_secrets_or_data_is_never_readable():
