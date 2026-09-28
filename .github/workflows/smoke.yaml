@@ -30,3 +30,5 @@ jobs:
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          JEV_PROXY_URL: ${{ secrets.JEV_PROXY_URL }}
+          JEV_PROXY_SECRET: ${{ secrets.JEV_PROXY_SECRET }}
