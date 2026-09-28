@@ -15,6 +15,7 @@ from labpilot.rerank.llm import LLMReranker
 from labpilot.rerank.registry import (
     CLOUDFLARE_RERANK,
     COHERE_RERANK,
+    JEV_NETLIFY_RERANK,
     JEV_RERANK,
     LLM_RERANK_ORDER,
     RERANK_CHAIN,
@@ -29,6 +30,7 @@ __all__ = [
     "CloudflareReranker",
     "CohereReranker",
     "HTTPReranker",
+    "JEV_NETLIFY_RERANK",
     "JEV_RERANK",
     "JevReranker",
     "LLMReranker",
