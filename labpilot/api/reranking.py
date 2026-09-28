@@ -26,6 +26,7 @@ from labpilot.llm import (
 )
 from labpilot.llm.registry import GOOGLE_KEYS
 from labpilot.rerank import (
+    JEV_NETLIFY_RERANK,
     JEV_RERANK,
     LLM_RERANK_ORDER,
     RERANK_CHAIN,
@@ -122,10 +123,11 @@ def _both_accounts(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
 # condition, so the chain no longer ends in something worse than not reranking.
 # It still ends in skip(), which is what "no reranker was available" means.
 #
-# ELEVEN tiers, with Cohere at 9. That is the budget half of v2's G20: Cohere
-# never hurt a corpus and repairs flash-lite's worst case, so it belongs early
-# among the CROSS-ENCODERS - and it is 1,000 calls a MONTH against flash-lite's
-# 1,000 a day across two keys, so it belongs behind every LLM tier.
+# THIRTEEN tiers since 2026-09-29 (both Jev routes), with Cohere at 11. That
+# is the budget half of v2's G20: Cohere never hurt a corpus and repairs
+# flash-lite's worst case, so it belongs early among the CROSS-ENCODERS - and
+# it is 1,000 calls a MONTH against flash-lite's 1,000 a day across two keys,
+# so it belongs behind every LLM tier.
 # JEV SITS THIRD, AND THE THIRD IS DELIBERATE - it was asked for second.
 #
 # Position 2 is flash-lite ON THE SECOND GOOGLE ACCOUNT: the same model, a
@@ -156,11 +158,18 @@ def _both_accounts(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
 # IT IS ALSO THE FIRST PAID TIER IN ANY CHAIN HERE. If the balance runs out it
 # answers 402, the chain moves on, and the cost is one wasted request - the
 # same shape as a spent pool. See rerank/jev.py for the billing detail.
+#
+# AND ITS FREE TWIN SITS RIGHT BEHIND IT, the way each Google tier's second
+# account sits behind the first: the same model on Netlify's AI Gateway, no
+# card, 300 credits a month. It is the tier that keeps Jev alive when
+# OpenRouter stops carrying our unpaid balance. Until the proxy is deployed
+# and JEV_PROXY_URL is set it refuses before any request, so it costs nothing.
 LEAD_MODEL, *REMAINING_MODELS = LLM_RERANK_ORDER
 
 CHAIN: tuple[Reranker, ...] = (
     *_both_accounts(PROVIDERS[LEAD_MODEL]),
     JEV_RERANK,
+    JEV_NETLIFY_RERANK,
     *(tier for model in REMAINING_MODELS for tier in _both_accounts(PROVIDERS[model])),
     *RERANK_CHAIN,
 )
