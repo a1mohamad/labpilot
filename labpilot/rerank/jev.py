@@ -56,8 +56,15 @@ class JevReranker(HTTPReranker):
     # the same thing about Gemma: a tier's usable window is a property of the
     # CORPUS as well as the provider.
     max_documents: int = 50
+    # The NETLIFY route's address is our own deployed site, not a public
+    # constant, so it is read from the environment like a key - and an unset
+    # one fails before any request, which is what lets the tier sit in the
+    # chain before the proxy is ever deployed.
+    url_env: str | None = None
 
     def _endpoint(self) -> str:
+        if self.url_env is not None:
+            return self._required(self.url_env)
         return self.url
 
     def _headers(self) -> dict[str, str]:
