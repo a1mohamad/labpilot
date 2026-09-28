@@ -76,6 +76,30 @@ JEV_RERANK = JevReranker(
     model="typesafe/jev-1.13",
 )
 
+# THE SAME MODEL, THE FREE ROUTE - the fallback for when OpenRouter stops
+# serving Jev. Our OpenRouter account holds $0 of credit and ~$0.042 of Jev
+# usage (read 2026-09-29), so every call above runs on an unpaid balance that
+# OpenRouter may stop allowing at any time.
+#
+# Netlify's AI Gateway injects its OWN TypeSafe key into Netlify compute only,
+# so this tier calls our proxy (the separate `labpilot-jev-proxy` folder) and
+# the proxy calls TypeSafe. The Free plan is 300 credits a month with no card;
+# 180 credits buy $1 of model spend. The wire shape is TypeSafe's own
+# `POST /v1/systemone` - model, state, questions in; answers out - identical to
+# OpenRouter's decisions endpoint, so JevReranker serves both unchanged.
+#
+# `jev-1.13.0` is the gateway's pinned id for the model measured above.
+# UNVERIFIED until the proxy is deployed: nothing here has returned a ranking
+# yet. Until JEV_PROXY_URL is set, the tier refuses before any request and the
+# chain moves on for free.
+JEV_NETLIFY_RERANK = JevReranker(
+    name="Jev (Netlify)",
+    url="",
+    url_env="JEV_PROXY_URL",
+    api_key_env="JEV_PROXY_SECRET",
+    model="jev-1.13.0",
+)
+
 # ~2,840 calls a DAY, which is the largest renewing budget here by a wide
 # margin, and the instrument the slice 6 measurement actually ran on.
 CLOUDFLARE_RERANK = CloudflareReranker(
