@@ -172,8 +172,10 @@ MAX_FILE_BYTES = 5_000_000
 MAX_TOTAL_BYTES = 20_000_000
 MAX_FILES = 20_000
 
-# An archive we accept must be able to REACH us, and 50MB never could: the API
-# body limit is 2 x MAX_UPLOAD_BYTES plus overhead, about 10MB. Pinned as an
+# An archive we accept must be able to REACH us, and 50MB never could. A zip
+# is ONE upload, so it must pass MAX_UPLOAD_BYTES first - the per-file limit,
+# not the whole-body one. At 5MB that made this 10MB unreachable; since
+# 2026-09-28 both are 10MB. Pinned as an
 # xfail since 2026-08-28 because choosing the number before the feature existed
 # would have been a guess; slice 7 wired the door, so it is chosen now.
 #
