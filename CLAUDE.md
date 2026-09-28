@@ -499,7 +499,9 @@ read [STEP 2 — the plan](#step-2--the-plan-recorded-2026-09-22) before anythin
 else, because it OVERTURNS this file in two places — no findings score has ever
 been measured on the search path, and the planner cannot use `build_context`.**
 
-**871 passed, 4 skipped, 0 xfailed, ruff clean.** The RAG system ingests a
+**936 passed, 87 skipped (82 smoke + 5 environment), ruff clean - measured
+2026-09-28, just before the three fixes in
+[section 12.6](#126-three-small-debts-closed--2026-09-28).** The RAG system ingests a
 file, a `.zip` or a git URL; stores it in pgvector; and answers a question by
 stuffing when the pair fits and by search + fusion + gate + rerank when it does
 not. Every constant in that sentence was measured — see
@@ -553,8 +555,8 @@ generation-time problem below — it cannot generate.
 > **815 passed, 5 skipped** unit + api; 216 passed integration + api. **11
 > mutations, all fire** - one (a window forgotten per call) survived first
 > because its test ended side A on an EMPTY minute; the premise is now asserted.
-> `scripts/warm_embeddings.py` still carries its own pacing and can be
-> simplified onto this - not done.
+> `scripts/warm_embeddings.py` now uses this too - its private copy of the
+> batching and pacing was deleted on 2026-09-28.
 
 > ### ⚠⚠⚠ STEP 2's FIRST PROBLEM IS GENERATION TIME — 400 SECONDS, MEASURED
 >
@@ -1162,7 +1164,7 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > |---|---|---|
 > > | 1 | **the test suite spent LIVE rerank quota on every run** - four Gemini tiers, then Cohere, whose free tier is 1,000 calls a MONTH | ✅ `tests/conftest.py` keeps the chain empty outside smoke |
 > > | 2 | **the API reported `25 of 25` for a 120-chunk corpus** - the prompt told the truth and the response did not | ✅ `Comparison.totals` |
-> > | 3 | **a dead line in `ingest_source`** - `replace(chunk, artifact_id=...)` changes nothing, because nothing reads `Chunk.artifact_id` | ❌ **reported, not fixed** |
+> > | 3 | **a dead line in `ingest_source`** - `replace(chunk, artifact_id=...)` changes nothing, because nothing reads `Chunk.artifact_id` | ✅ **removed 2026-09-28** |
 > >
 > > **Defect 1 is the one to remember.** It hid behind a Python detail: `_best`
 > > takes its chain as a DEFAULT ARGUMENT, evaluated once at import time, so
@@ -9156,7 +9158,7 @@ up. `Comparison.totals` now carries it and the router prefers it.
 > **Fixing a lie in one layer does not fix it in the next.** The prompt and the
 > response are two audiences for one fact, and only one of them had been told.
 
-#### 16.4 DEFECT 3 — a dead line, reported and NOT fixed
+#### 16.4 DEFECT 3 — a dead line, reported and NOT fixed (REMOVED 2026-09-28)
 
 In `ingest_source`:
 
@@ -9244,8 +9246,10 @@ broken, not the test"*.
   prove wiring the integration tests prove for free, and *"do not add tests to
   raise a number"* binds hardest where the test costs quota.
 - **No fix for the dead line** in 16.4 — reported instead, because deleting
-  production code was not what the review was asked to do.
-- **`MAX_ARCHIVE_BYTES` vs `MAX_UPLOAD_BYTES` is a NAMED OPEN QUESTION.** The
+  production code was not what the review was asked to do. **Removed
+  2026-09-28.**
+- **`MAX_ARCHIVE_BYTES` vs `MAX_UPLOAD_BYTES` is a NAMED OPEN QUESTION.**
+  **CLOSED 2026-09-28: both are 10MB now - see section 12.6 of Step 2.** The
   archive limit is 10MB and the per-file upload limit is 5MB, so a zip between
   the two is refused by the upload guard and the archive limit never fires.
   That is the same shape as the xfail slice 7 just closed, one door further in.
@@ -17062,8 +17066,38 @@ planner call and merge it with `extract_claims`.
 
 - **Nothing calls the map.** The planner is slice 6.
 - `PLANNER_BUDGET` - M5, including the dynamic variant.
-- `scripts/warm_embeddings.py` still carries its own pacing and could use
-  `embed.pacing`.
+
+#### 12.6 Three small debts closed — 2026-09-28
+
+Done on `main` at the user's instruction, with no branch.
+
+```
+the dead line      removed: replace(chunk, artifact_id=...) in ingest_source.
+                   Nothing reads Chunk.artifact_id; _store takes the id itself
+warm_embeddings    now calls the product's embed_batches for batching, pacing
+                   and 429/503 waits. Its private copy is gone, so the script
+                   now exercises the code that ships. Two things stay in the
+                   script: Cohere's measured 100,000 tokens/minute (the
+                   registry gives Cohere no Pace), and a resume after a READ
+                   TIMEOUT, which has no status so embed_batches raises it
+upload limit       MAX_UPLOAD_BYTES 5MB -> 10MB, the same as MAX_ARCHIVE_BYTES
+```
+
+**The upload limit was the real defect.** A `.zip` is ONE upload, so it meets
+the per-file check first. At 5MB a 7MB zip was refused there and the archive's
+10MB limit could never fire. The old test compared the archive limit with the
+**whole-body** limit - the wrong ceiling, so it passed while the bug was live.
+`test_an_archive_we_accept_must_be_able_to_reach_us` now compares it with
+`MAX_UPLOAD_BYTES`. Mutation-verified: putting the upload limit back to 5MB
+fires it.
+
+Side effect: the whole-body limit is `2 x upload + 65,536`, so it is now
+~20MB, and the two literal payloads that test it grew from 11MB to 21MB.
+`MAX_FILE_BYTES` (one file inside a repository) stays 5MB.
+
+**Still owed:** Cohere's 100,000 tokens/minute could move into the registry
+as a `Pace`, so the product paces Cohere too. Not done - it changes product
+behaviour and its embedding-time estimate.
 
 ---
 
