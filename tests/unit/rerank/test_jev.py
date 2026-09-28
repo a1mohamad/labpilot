@@ -120,3 +120,48 @@ def test_a_missing_noul_is_our_error_and_not_a_crash():
 
     with pytest.raises(RerankError, match="unexpected response shape"):
         RERANKER.rank("q", ["a"])
+
+
+PROXY = "https://labpilot-jev.test/api/jev"
+NETLIFY = JevReranker(
+    name="Test Jev (Netlify)",
+    url="",
+    url_env="JEV_PROXY_URL",
+    api_key_env="JEV_PROXY_SECRET",
+    model="jev-1.13.0",
+)
+
+
+@responses.activate
+def test_the_netlify_route_posts_to_the_deployed_url_with_our_own_secret(
+    monkeypatch,
+):
+    """The address is OURS, read at call time like a key - never a constant -
+    and the bearer is the proxy's secret, not the OpenRouter key. The proxy
+    swaps it for Netlify's injected TypeSafe key on the other side."""
+    monkeypatch.setenv("JEV_PROXY_URL", PROXY)
+    monkeypatch.setenv("JEV_PROXY_SECRET", "proxy-secret")
+    responses.post(PROXY, json=reply({"d0": 0.1, "d1": 0.9}))
+
+    ranking = NETLIFY.rank("what is the learning rate", ["no", "yes"])
+
+    assert ranking.order == (1, 0)
+    sent = responses.calls[0].request
+    assert sent.headers["Authorization"] == "Bearer proxy-secret"
+    assert json.loads(sent.body)["model"] == "jev-1.13.0"
+
+
+@responses.activate
+def test_an_undeployed_proxy_costs_no_request_and_lets_the_chain_move_on(
+    monkeypatch,
+):
+    """The tier ships BEFORE the proxy is deployed, so an unset URL must be a
+    RerankError - which the chain catches - and must never reach the network.
+    A ValueError here would crash the ask path over a missing deployment."""
+    monkeypatch.delenv("JEV_PROXY_URL", raising=False)
+    monkeypatch.setenv("JEV_PROXY_SECRET", "proxy-secret")
+
+    with pytest.raises(RerankError, match="JEV_PROXY_URL"):
+        NETLIFY.rank("what is the learning rate", ["no", "yes"])
+
+    assert len(responses.calls) == 0
