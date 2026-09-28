@@ -194,8 +194,6 @@ def ingest_source(conn: psycopg.Connection, source: Source, *, side: Side) -> In
         raise EmptyArtifact(f"{source.name} holds no text we can read")
 
     artifact_id = _source_id(chunks, side)
-    chunks = tuple(replace(chunk, artifact_id=artifact_id) for chunk in chunks)
-
     return _store(conn, chunks, artifact_id=artifact_id, name=source.name, side=side)
 
 
