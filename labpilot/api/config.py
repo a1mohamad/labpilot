@@ -19,7 +19,10 @@ class ApiConfig:
     SUMMARY = "Explains why two pieces of work produce different results."
     PREFIX = "/api/v1"
 
-    MAX_UPLOAD_BYTES: int = int(os.getenv("MAX_UPLOAD_BYTES", "5000000"))
+    # 10MB, the same as MAX_ARCHIVE_BYTES. A .zip passes THIS check before the
+    # archive code ever sees it, so a smaller number here would silently make
+    # the archive limit unreachable - which it was, at 5MB, until 2026-09-28.
+    MAX_UPLOAD_BYTES: int = int(os.getenv("MAX_UPLOAD_BYTES", "10000000"))
 
     # Multipart carries two files plus boundaries and headers, so the whole-body
     # ceiling is deliberately larger than twice the per-file one. It exists to
