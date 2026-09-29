@@ -145,3 +145,24 @@ def test_the_log_line_carries_the_cost_we_must_watch(provider, caplog):
 
     assert "cost 0.00078375" in caplog.text
     assert "1170 reasoning tokens" in caplog.text
+
+
+@responses.activate
+def test_an_error_inside_the_data_envelope_is_reported_with_its_status(provider):
+    """Cline wraps the whole reply in `data`, so the same hidden failure arrives
+    one level down. The inherited reader handles it once the envelope is off."""
+    responses.post(
+        URL,
+        json={
+            "data": {
+                "error": {"message": "Service temporarily overloaded", "code": 503}
+            },
+            "success": True,
+        },
+    )
+
+    with pytest.raises(LLMError) as raised:
+        provider.complete("hi")
+
+    assert raised.value.status == 503
+    assert "Service temporarily overloaded" in str(raised.value)
