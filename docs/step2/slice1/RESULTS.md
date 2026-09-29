@@ -373,12 +373,23 @@ Gemma refuses every request that carries a thinking field, which is why the tier
 send none. **Gemma accepts two levels, MINIMAL and HIGH;** it refuses LOW and
 MEDIUM, and MEDIUM was what every Gemini tier shipped with.
 
-**Nothing was changed in behaviour.** `thinking=None` stays. MINIMAL was not
-tested for quality: turning thinking off changes what a verdict or a ranking is
-worth, and the 0.732 rerank MRR was measured with thinking on. **A decision is
-needed:** add the 26B A4B to the generator chain with MINIMAL for the small nodes
-(gate, verify, planner) that Step 2 wants on the biggest free pool. It would answer
-in about 2.5 s from 14,400 requests a day, against Flash-Lite's 500.
+**Done on 2026-09-30, on the user's decision: the 26B A4B is now in the generator
+chain with `thinking="MINIMAL"`**, as tiers 32 and 33 (both Google keys), between
+Muse Glimmer (AA 18) and the 31B (AA 15) at its own 17 (commits d87b539 and
+29ddcc9). Called through our own provider code it answered in **2.1 to 2.2 seconds
+on both keys**, and a longer job through `LLMClient` finished in 9.4 s. It has its
+own 14,400 requests a day, against Flash-Lite's 500.
+
+- **The 31B stays as it was** (`thinking=None`), below the 26B.
+- **The reranker is unchanged.** It builds its tier with `thinking=None` itself, and
+  a test now fails if the chain's level ever reaches it.
+- **Not tested for answer quality.** Turning thinking off changes what a verdict or
+  a ranking is worth, and the AA 17 and the 0.732 rerank MRR were both measured with
+  thinking on. It cannot serve a report: its 16,000 tokens a minute of input are
+  refused locally, for free, like the 31B's.
+- **A small hazard for Step 2:** it wraps a JSON answer in a Markdown code fence
+  (` ```json `), even when asked for "one JSON object and nothing else". A node that
+  parses its output has to strip the fence.
 
 ## 8. Inkling Small: a spent shared cap, and no free way around it
 
