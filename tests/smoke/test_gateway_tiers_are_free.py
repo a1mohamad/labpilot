@@ -38,6 +38,7 @@ CATALOGUES = {
     "REQUESTY_API_KEY": "https://router.requesty.ai/v1/models",
     "LITEROUTER_API_KEY": "https://api.literouter.com/v1/models",
     "ORCAROUTER_API_KEY": "https://api.orcarouter.ai/v1/models",
+    "ROUTEWAY_API_KEY": "https://api.routeway.ai/v1/models",
 }
 
 
@@ -52,6 +53,22 @@ def _free_ids(url: str, key: str) -> set[str]:
     return {str(model.get("id")) for model in items if _costs_nothing(model)}
 
 
+def _stated_prices(pricing: dict):
+    """Every price in a pricing block, however deep the gateway nests it.
+
+    A nested block used to reach float() as a dict, which raised, which read as
+    "not free" - so a gateway that nested its prices looked entirely paid. Only
+    the numbers count: a `unit` such as "1M tokens" is a label, not a price.
+    """
+    for key, value in pricing.items():
+        if key.endswith("_per_million"):
+            continue
+        if isinstance(value, dict):
+            yield from _stated_prices(value)
+        elif key != "unit":
+            yield value
+
+
 def _costs_nothing(model: dict) -> bool:
     """Every gateway spells a price differently, measured 2026-09-28.
 
@@ -59,15 +76,15 @@ def _costs_nothing(model: dict) -> bool:
         Requesty    input_price 0, output_price 0
         LiteRouter  model_cost 0
         OrcaRouter  pricing {"request": "0.000000"} - PER CALL, not per token
+        Routeway    pricing {"input": {"price_per_million_t": 0.0}, "output":
+                    {...}, "caching": {"read": {...}}} - NESTED, three deep
 
     Free means EVERY price it states is zero, and it states at least one. A
     model with no price at all is unknown, never free.
     """
     pricing = model.get("pricing")
     if isinstance(pricing, dict):
-        prices = [
-            value for key, value in pricing.items() if not key.endswith("_per_million")
-        ]
+        prices = list(_stated_prices(pricing))
     else:
         prices = [model.get("input_price"), model.get("output_price")]
     prices.append(model.get("model_cost"))
