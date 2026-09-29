@@ -128,7 +128,13 @@ class LLMReranker:
             # The caller's function wraps some other layer's error vocabulary -
             # LLMError today - which rerank/ deliberately cannot see. Wrapping
             # it here is what lets the chain treat a dead tier like any other.
-            raise RerankError(f"{self.name}: {exc}") from exc
+            #
+            # The status crosses with it, read by name because this package
+            # cannot import the type: a caller that has to tell a busy provider
+            # from a dead one should not have to parse our message to do it.
+            raise RerankError(
+                f"{self.name}: {exc}", status=getattr(exc, "status", None)
+            ) from exc
 
         order = self._parse(reply or "", len(documents))
         return Ranking(
