@@ -230,6 +230,10 @@ def usage_tokens(body: dict | None) -> tuple[int | None, int | None]:
     `candidatesTokenCount` EXCLUDES it, so Gemini's total is candidates plus
     thoughts. Cline wraps the whole reply in `data`. Missing usage is None, never
     zero - a zero would rank the tier as instant.
+
+    A REPORTED zero is missing usage too. MEASURED 2026-09-30: LiteRouter sent
+    `completion_tokens: 0` for an answer of 11,159 characters, and the tier's
+    median speed came out as 17 tokens a second instead of 35.
     """
     if not isinstance(body, dict):
         return None, None
@@ -240,12 +244,11 @@ def usage_tokens(body: dict | None) -> tuple[int | None, int | None]:
     if isinstance(meta, dict):
         written = meta.get("candidatesTokenCount")
         thought = meta.get("thoughtsTokenCount")
-        if written is None and thought is None:
-            return None, None
-        return (written or 0) + (thought or 0), thought
+        total = (written or 0) + (thought or 0)
+        return (total, thought) if total else (None, None)
 
     usage = body.get("usage")
-    if isinstance(usage, dict) and usage.get("completion_tokens") is not None:
+    if isinstance(usage, dict) and usage.get("completion_tokens"):
         details = usage.get("completion_tokens_details") or {}
         return usage["completion_tokens"], details.get("reasoning_tokens")
 
@@ -335,9 +338,24 @@ def _median(values: Iterable[float]) -> float | None:
     return statistics.median(values) if values else None
 
 
-def _failure_summary(samples: Sequence[Sample], unmeasured: int = 0) -> str:
+CUT_OFF = ("length", "max_tokens")
+
+
+def _cut_off(sample: Sample) -> bool:
+    """An answer the provider stopped at the token cap, not one it finished."""
+    return sample.ok and sample.finish_reason.lower() in CUT_OFF
+
+
+def _failure_summary(
+    samples: Sequence[Sample], unmeasured: int = 0, cut: int = 0
+) -> str:
     kinds = Counter(s.kind for s in samples if not s.ok)
     parts = [f"{kind} x{n}" for kind, n in sorted(kinds.items())]
+    if cut:
+        # Its seconds are the time to WRITE up to the cap, and a report that
+        # would have needed more is not measured. Both Gemini 3.5 Flash routes
+        # ran into it at 8,188 tokens, mostly reasoning.
+        parts.append(f"cut at the token cap x{cut}")
     if unmeasured:
         parts.append(f"network, unmeasured x{unmeasured}")
     return ", ".join(parts)
@@ -365,12 +383,13 @@ def summarize(samples: Sequence[Sample]) -> list[Row]:
 
         short_s = _median(s.seconds for s in short)
         long_s = _median(s.seconds for s in long)
-        short_tok = _median(s.generated for s in short)
-        long_tok = _median(s.generated for s in long)
+        # `if s.generated`: a saved zero is missing usage, not a fast tier.
+        short_tok = _median(s.generated for s in short if s.generated)
+        long_tok = _median(s.generated for s in long if s.generated)
 
         report = [s for s in good if s.probe == "report"]
         report_s = _median(s.seconds for s in report)
-        report_tok = _median(s.generated for s in report)
+        report_tok = _median(s.generated for s in report if s.generated)
 
         slope = None
         enough = (
@@ -396,7 +415,9 @@ def summarize(samples: Sequence[Sample]) -> list[Row]:
                 long_tokens=long_tok,
                 per_1k=None if slope is None else slope * 1000,
                 predicted=predicted,
-                failures=_failure_summary(group, unmeasured),
+                failures=_failure_summary(
+                    group, unmeasured, sum(1 for s in good if _cut_off(s))
+                ),
                 long_range=(
                     (min(s.seconds for s in long), max(s.seconds for s in long))
                     if long
