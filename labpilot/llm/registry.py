@@ -363,31 +363,33 @@ GEMMA_4_31B = _gemini(
 # parameters suggest, because the bottleneck is Google's serving of these
 # models and not their size.
 #
-# Whether it belongs in CHAIN as a GENERATOR is a SEPARATE question and there
-# is no evidence for it yet: it appears on neither AA nor LMArena, and this
-# chain is ordered on measured capability. Adding it would also force two
-# "pin the exceptions by name" lists to change, which must be deliberate.
+# IN CHAIN SINCE 2026-09-30, as a GENERATOR, on the user's decision. The evidence
+# was about SPEED and reliability, not capability: on Google it answered a
+# 30-token job in 7.3s twice with no error, against 28-45s and 500s for the 31B
+# (first token at 2.0s against 38.5s). Stock Gemma 4 26B A4B is 17 on AA v4.3.2
+# against the 31B's 15, so it is not weaker on the one number we have, and it has
+# its own 14,400 requests a day. It sits BETWEEN Muse Glimmer (18) and the 31B.
 #
-# NEW EVIDENCE 2026-09-30, and it is about SPEED, not capability: on Google it
-# answered a 30-token job in 7.3s twice with no error, against 28-45s and 500s
-# for the 31B (first token at 2.0s against 38.5s). Stock Gemma 4 26B A4B is 17 on
-# AA v4.3.2 against the 31B's 15, so it is not weaker on the one number we have.
-# It also has its own 14,400 requests a day. Still NOT in CHAIN: that is a
-# decision for the user, and the two lists above must change with it.
+# `thinking="MINIMAL"` is what makes it worth having: it answered a 30-token job
+# in 2.3-2.6s (3 of 3), no hidden tokens, against 1.7s for Gemini 3.5 Flash-Lite,
+# which allows 500 calls a day, not 14,400. That suits the small nodes (gate,
+# verify, planner) Step 2 wants on the biggest free pool.
 #
-# WITH `thinking="MINIMAL"` it answered a 30-token job in 2.3-2.6s (3 of 3), no
-# hidden tokens, against 1.7s for Gemini 3.5 Flash-Lite - which allows 500 calls
-# a day, not 14,400. That would suit the small nodes (gate, verify, planner) the
-# Step 2 routing wants to send to the biggest free pool. It was NOT tested for
-# QUALITY: thinking off changes what a ranking or a verdict is worth, and the
-# 0.732 rerank MRR above was measured with the default (thinking on).
+# ⚠ NOT TESTED FOR QUALITY. Thinking off changes what a verdict or a ranking is
+# worth, and the AA 17 and the 0.732 rerank MRR were both measured with thinking
+# ON. It also cannot serve a report: 16,000 tokens a MINUTE of input, refused
+# locally for free by _check_fits, exactly like the 31B.
+#
+# THE RERANKER IS UNCHANGED. api/reranking.py builds its tier with
+# dataclasses.replace(provider, thinking=None, ...), so this default never reaches
+# it - and it must not until the ranking has been re-measured with thinking off.
 GEMMA_4_26B = _gemini(
     name="Gemma 4 26B A4B",
     model="gemma-4-26b-a4b-it",
     context_window=262_144,
     max_output_tokens=32_768,
     max_input_tokens=16_000,
-    thinking=None,
+    thinking="MINIMAL",
 )
 
 
@@ -966,6 +968,11 @@ CHAIN = _ordered(
     LITEROUTER_MISTRAL_MEDIUM,
     KILO_STEP_3_7_FLASH,
     REQUESTY_MUSE_GLIMMER,
+    # ADDED 2026-09-30: AA 17 sits between Muse Glimmer (18) and the 31B (15), and
+    # it is the reliable, fast Gemma. Adjacent to its key-2 twin for the same
+    # reason every Google model is - a spent account costs nothing to skip.
+    GEMMA_4_26B,
+    _second_account(GEMMA_4_26B),
     GEMMA_4_31B,
     _second_account(GEMMA_4_31B),
     REQUESTY_GEMMA_4_31B,
