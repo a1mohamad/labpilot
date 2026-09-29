@@ -7,8 +7,8 @@ run file). The instrument is `scripts/measure_latency.py`; its tests are
 
 Read the [caveats](#what-this-does-not-tell-you) before quoting a number. The
 short version: **this is one afternoon, one exit, three samples per cell, and an
-answer of about 500 tokens.** It ranks the tiers. It does not yet say how long a
-5,000-token report takes.
+answer of about 500 tokens.** It ranks the tiers. How long a report-sized answer
+takes was measured afterwards, on 26 tiers with two samples each (section 6).
 
 ---
 
@@ -173,8 +173,8 @@ reports took **119 to 497**. So the 400-second problem is not explained by this
 table: either the reports are far longer than 5,000 tokens of writing, or the
 sustained speed falls a long way below what a 500-token answer shows. Speed also
 differs a lot by tier: one sample already reached 5,644 tokens (DeepSeek on
-OrcaRouter, mostly reasoning) in 35 seconds, about 160 tokens a second. **That is
-the question the next measurement has to answer** (section 5).
+OrcaRouter, mostly reasoning) in 35 seconds, about 160 tokens a second. **Section 6
+measures it at report length.**
 
 ### 3.6 Reliability is a second axis
 
@@ -205,8 +205,8 @@ Kilo's, raw, on 2026-09-30:
 Our reader has no `choices` to read, so it reports "unexpected response shape"
 with the body cut off. Two things are lost: **the reason**, and **the
 classification** - it is a 503, which the six-way rule retries on the same tier,
-but the chain sees a failure with no status and moves on. **Not fixed; it is a
-product change.** It reproduced 2 times in 6 calls on Kilo and 0 in 6 on
+but the chain sees a failure with no status and moves on. **Fixed on 2026-09-30;
+see section 9.** It reproduced 2 times in 6 calls on Kilo and 0 in 6 on
 OpenRouter's own Nemotron 3 Ultra.
 
 **Step 3.7 Flash on Kilo returned "an empty answer" 3 times in 6, and the raw
@@ -229,6 +229,12 @@ caveats below.
   and rules it out for a big one.
 - **Medium prose (about 500 tokens):** DeepSeek V4 Flash on LiteRouter (6.3 s), the
   two Flash-Lites (7-8 s), GLM-5.3 Flash on Cline (8.3 s).
+- **A report-sized node (section 6):** both Flash-Lites finished about 3,000 to
+  4,700 tokens in 15 to 20 s, Nemotron 3 Super and North Mini Code in 35 to 49 s,
+  tier 1 in 24 to 120 s, and every Gemma 4 31B route in over two minutes. Speed is
+  one axis: slice 8 measured Flash-Lite losing 5 of 19 findings on the full report.
+- **Do not send a report to a Groq tier** (it stops at about 4,000 tokens) **or to
+  a Routeway Gemma finetune** (the gateway drops a request at about 121 s).
 - **Order the routes of one model by speed** (section 3.1).
 - **Do not put a tier that answers under half the time in a latency-sensitive
   node**, however good its model is (section 3.2, 3.6). The chain pays for every
@@ -237,10 +243,8 @@ caveats below.
 
 ## 5. What this does not tell you
 
-- **Report length is not measured.** The long job is about 500 tokens. A report is
-  10 times that, and speed does not scale in a straight line. A probe of about
-  3,000 tokens on the top 10 to 15 tiers is the next measurement, and the answer
-  to the 400-second problem depends on it.
+- **The first ranking is at about 500 tokens.** A report is ten times that, so
+  section 6 measures it. That run is small: 26 tiers, two samples each.
 - **Three samples per cell, one afternoon, one country.** The exit was AS24940
   Hetzner, Nuremberg, and its address changed during the run. Failures cluster in
   time - a bad window shows in every tier it touches - so a second run at another
@@ -252,15 +256,189 @@ caveats below.
 - **The token budget shaped some failures.** The short probe allows 2,048 tokens.
   A node that gives a thinking tier more room would not fail the way Step 3.7 Flash
   did.
-- **Only the generators were measured, not the rerankers.** Their speed is known
-  only from slice 6 (Flash-Lite about 1.3 s, Jev 1.2-1.6 s, Gemma 26B about 19 s,
-  Gemma 31B about 23 s).
+- **Only the generators were measured, not the rerankers.** Their speed is the
+  old slice 6 numbers, kept on purpose (section 10).
 - **Known dead routes were not called** (GLM-5.2 on Kilo and OpenRouter, DeepSeek
   V4 Flash on Kilo and OpenRouter).
 - **The Mistral tiers say nothing about Mistral's speed.** All three answered 429
   on every call, and the account's monthly quota is reported spent.
 
-## 6. Reproduce it
+## 6. Report length (measured 2026-09-30)
+
+The ranking above is at about 500 tokens, and a report is ten times that. So a
+third job was added, `--probes report`: **a report of about 2,000 words**, a read
+cap of 420 seconds, and room for 8,192 tokens. **26 tiers, two samples each, 52
+requests**, from 22:05 to 22:55 UTC on the same ISP (Hetzner, Nuremberg). Data:
+`artifacts/step2/latency/report-length_2026-09-30.jsonl`.
+
+`tok/s` is the tokens the provider says the model wrote, reasoning included,
+divided by the seconds. `~5,000 tokens` is 5,000 divided by that speed. **It
+assumes the speed stays the same past the ~4,000 tokens measured, which is not
+shown.**
+
+| # | tier | answered | seconds (range) | tokens | tok/s | ~5,000 tokens | note |
+|---|---|---|---|---|---|---|---|
+| 1 | GPT-OSS 120B (Groq) | 2/2 | 9 (9-9) | 4000 | 430 | 12 s | cut at the token cap x2 |
+| 2 | Qwen3.8 27B (Groq) | 1/2 | 10 | 4000 | 409 | 12 s | cut at the token cap x1; error x1 |
+| 3 | Gemini 3.1 Flash-Lite | 2/2 | 15 (14-16) | 2982 | 202 | 25 s |  |
+| 4 | Gemini 3.1 Flash-Lite (key 2) | 1/2 | 17 | 3113 | 181 | 28 s | http-503 x1 |
+| 5 | Gemini 3.5 Flash-Lite | 2/2 | 18 (17-19) | 4421 | 248 | 20 s |  |
+| 6 | Gemini 3.5 Flash-Lite (key 2) | 2/2 | 18 (17-20) | 4280 | 233 | 21 s |  |
+| 7 | Nemotron 3 Super | 2/2 | 37 (35-38) | 4768 | 130 | 38 s |  |
+| 8 | North Mini Code (Kilo) | 2/2 | 37 (35-38) | 4849 | 132 | 38 s |  |
+| 9 | Mistral Medium (LiteRouter) | 2/2 | 40 (33-47) | 3624 | 92 | 54 s |  |
+| 10 | Laguna S 2.1 (Cline) | 2/2 | 41 (30-52) | 2348 | 57 | 87 s |  |
+| 11 | Gemini 3.5 Flash | 2/2 | 41 (40-42) | 8188 | 199 | 25 s | cut at the token cap x2 |
+| 12 | Gemini 3.5 Flash (key 2) | 2/2 | 42 (41-43) | 8188 | 197 | 25 s | cut at the token cap x2 |
+| 13 | Nemotron 3 Super (Kilo) | 2/2 | 42 (38-47) | 5172 | 123 | 41 s |  |
+| 14 | North Mini Code | 2/2 | 44 (38-49) | 5408 | 128 | 39 s |  |
+| 15 | DeepSeek V4 Flash (LiteRouter) | 2/2 | 44 (42-45) | 4276 | 98 | 51 s |  |
+| 16 | DeepSeek V4 Flash (OrcaRouter) | 2/2 | 51 (51-51) | 8910 | 175 | 29 s |  |
+| 17 | Qwen3.8 27B (LiteRouter) | 2/2 | 54 (52-55) | 5094 | 95 | 53 s |  |
+| 18 | GLM-5.3 Flash (Cline) | 2/2 | 72 (24-120) | 3794 | 94 | 53 s |  |
+| 19 | DeepSeek V4 Flash (Routeway) | 2/2 | 83 (57-108) | 4032 | 53 | 95 s |  |
+| 20 | GPT-OSS 120B | 2/2 | 101 (76-126) | 6699 | 71 | 71 s |  |
+| 21 | GLM-5.3 Flash (LiteRouter) | 2/2 | 116 (109-123) | 3831 | 35 | 142 s |  |
+| 22 | Gemma 4 31B (Requesty) | 2/2 | 118 (116-120) | 4173 | 35 | 142 s |  |
+| 23 | Gemma 4 31B (key 2) | 1/2 | 126 | 4163 | 33 | 152 s | http-500 x1 |
+| 24 | Gemma 4 31B | 1/2 | 132 | 3995 | 30 | 165 s | http-500 x1 |
+| 25 | GLM-5.3 Flash (OrcaRouter) | 1/2 | 141 | 8192 | 58 | 86 s | cut at the token cap x1; error x1 |
+| 26 | Gemma 4 26B A4B Chimerax (Routeway) | 0/2 | - | - | - | - | {'http-502': 2} at 121s, 122s |
+
+### 7.1 What it shows
+
+- **Tier 1 wrote about 3,800 tokens in 120 seconds and in 24 seconds** (32 and 156
+  tokens a second, five times apart, both finished normally). The 400 to 500
+  second reports of 2026-09-19 are **not reproduced**: about 3,800 tokens is 24 to
+  120 s here. Either those reports were much longer (400 s at tier 1's 53 to 94
+  tokens a second is 21,000 to 38,000 tokens) or the tier was in its slow mode.
+  This run cannot say which.
+- **Speed held at report length.** 23 of 25 tiers wrote at least as many tokens a
+  second at report length as at 500 tokens, because the fixed cost dominated the
+  short job. The two below 1.0 are GLM-5.3 Flash on Cline (0.89, from two samples
+  five times apart) and Qwen3.8 27B on LiteRouter (0.86). So a report's time is
+  close to its tokens divided by the tier's speed.
+- **Three groups.** About 10 to 20 seconds: both Flash-Lites, and Groq (see the
+  next point). About 35 to 55 seconds: Nemotron 3 Super, North Mini Code, Mistral
+  Medium (LiteRouter), Gemini 3.5 Flash, DeepSeek V4 Flash, Qwen3.8 27B
+  (LiteRouter). **Over 100 seconds: GLM-5.3 Flash on LiteRouter and OrcaRouter,
+  GPT-OSS on Cloudflare, and all three Gemma 4 31B routes.**
+- **Some answers were cut at the token cap, so their seconds are the time to the
+  cap.** Both Gemini 3.5 Flash routes stopped at 8,188 tokens both times, mostly
+  reasoning. GLM-5.3 Flash on OrcaRouter stopped at 8,192. **Both Groq tiers
+  stopped at 4,000 - Groq's 8,000-token window leaves that much room - so Groq is
+  the fastest tier here and cannot write a report longer than about 4,000
+  tokens.**
+- **Routeway's gateway drops a generation at about 121 seconds.** Its Gemma 4 26B
+  finetune answered HTTP 502 twice, at 121.4 and 121.6 seconds. At 22 tokens a
+  second it cannot finish more than about 2,700 tokens there, so **Routeway's six
+  Gemma finetunes cannot write a report.** DeepSeek V4 Flash on Routeway did
+  answer, at 57 and 108 seconds.
+- **Gemma 4 31B failed on the way:** HTTP 500 on 4 of 8 calls on key 1 and 3 of 8
+  on key 2 in the two runs together.
+
+## 7. Gemma is not a bug of ours, and one of our notes was wrong
+
+Asked whether the Gemma tiers hide a bug, on 2026-09-30, with direct calls and
+streaming. The request we send is minimal (the prompt, `maxOutputTokens` and
+`temperature`), and nothing in it slows a model down.
+
+| test, on the same 30-token job | result |
+|---|---|
+| Gemini 3.5 Flash-Lite, same minute | 1.7 s, first token at 1.7 s |
+| **Gemma 4 31B on Google, as we ship it** (6 calls) | **3 answered, in 28 to 45 s, with 166 to 207 hidden reasoning tokens; 3 returned HTTP 500** |
+| streaming the 31B | **first token at 38.5 s**, answer at 44.6 s, done at 45.0 s |
+| Gemma 4 26B A4B on Google, as we ship it | 7.1 to 7.3 s, 218 to 225 hidden tokens, no error in 5 calls |
+| streaming the 26B | first token at 2.0 s, done at 7.2 s |
+| `thinkingLevel: MINIMAL`, the 26B | **2.3 to 2.6 s, no hidden tokens, 3 of 3** |
+| `thinkingLevel: MINIMAL`, the 31B | 28 to 31 s twice (no hidden tokens), one 500 |
+| `thinkingLevel` LOW, MEDIUM, `thinkingBudget: 0` | HTTP 400 "not supported for this model" |
+| `thinkingLevel: HIGH` | accepted (26B 7.2 s; 31B answered 503, busy) |
+
+**What explains "too slow":**
+
+1. **The 31B waits about 30 to 40 seconds before it writes anything**, and then
+   writes fast. That is Google's queue for that model, not our request. It also
+   answers 500 about half the time.
+2. **Gemma thinks by default**, 166 to 1,100 hidden tokens depending on the job.
+3. **"Small" is the wrong word for the 31B.** It is a dense 31-billion-parameter
+   model. The small one is the **26B A4B, and on Google it is about four times
+   faster** (7 s against 28 to 45 s, and no errors).
+4. **Routeway's six 26B finetunes are slow because of their host:** 22 tokens a
+   second for a model with about 4B active parameters, and a gateway that cuts a
+   request at about 121 seconds.
+
+**One wrong claim of ours, corrected in the registry.** The 2026-09-11 note said
+Gemma refuses every request that carries a thinking field, which is why the tiers
+send none. **Gemma accepts two levels, MINIMAL and HIGH;** it refuses LOW and
+MEDIUM, and MEDIUM was what every Gemini tier shipped with.
+
+**Nothing was changed in behaviour.** `thinking=None` stays. MINIMAL was not
+tested for quality: turning thinking off changes what a verdict or a ranking is
+worth, and the 0.732 rerank MRR was measured with thinking on. **A decision is
+needed:** add the 26B A4B to the generator chain with MINIMAL for the small nodes
+(gate, verify, planner) that Step 2 wants on the biggest free pool. It would answer
+in about 2.5 s from 14,400 requests a day, against Flash-Lite's 500.
+
+## 8. Inkling Small: a spent shared cap, and no free way around it
+
+It answered HTTP 429 on 6 of 6 calls. The raw refusal, read 2026-09-29 21:56 UTC:
+
+```
+Daily limit reached for thinkingmachines/inkling-small:free via Thinking Machines.
+Credits don't affect this cap.      X-RateLimit-Limit 1000   Remaining 0
+reset 2026-09-30 00:00 UTC          limit_source: openrouter_shared_capacity
+```
+
+**The cap is 1,000 requests a day for the whole world**, and it was already gone
+at 18:29 UTC. Every route to the model was checked:
+
+| route | result |
+|---|---|
+| Kilo (ours) | the 429 above |
+| Cline | reaches the same OpenRouter counter (`limit_rpd/thinkingmachines/inkling-small-20260730`, sent back inside an HTTP 500) |
+| OpenRouter directly | 403 "only available on agentic harnesses" - Kilo and Cline pass that gate, we do not |
+| Routeway, Requesty, and the paid Kilo and OpenRouter ids | **paid**, $0.45 to $1.87 per million input tokens |
+
+**It cannot be revived for free.** It works only in the first hours of a UTC day,
+if at all. A 429 costs one 1.1-second call, so it stays in the chain where its
+score puts it. The registry comment now records this.
+
+## 9. The error hidden inside an HTTP 200 (fixed)
+
+Nemotron 3 Ultra and Super answered HTTP 200 with a 503 "overloaded" error in the
+body, and we reported "unexpected response shape". Fixed in
+`labpilot/llm/openai_compatible.py` (commits 9364cc5, c71b4e5 and 577ea95):
+
+- The provider's own message and its **numeric code as the status** now survive.
+  **A hidden 503 is retried on the same tier by the chain**, which is the whole
+  point.
+- The rate-limit headers in the error's metadata are read, so a hidden daily 429
+  retires the pool like a real one.
+- **A reply with real `choices` is never thrown away**, even if it also carries an
+  `error`, and an empty `error` field changes nothing.
+- 18 tests, and 11 deliberate breaks, every one caught.
+
+## 10. The rerankers: the old numbers, on purpose
+
+Not re-measured, as instructed. These are the numbers already recorded in
+CLAUDE.md, from slice 6 (2026-09-11) and the Jev probe (2026-09-19):
+
+| reranker | seconds for one call | what the call was |
+|---|---|---|
+| Gemini 3.5 Flash-Lite, tuned | **1.3** | 30 documents, thinking off, JSON schema |
+| Jev (TypeSafe) | **1.2 to 1.6** | 30 documents, two corpora |
+| Gemini 3.1 Flash-Lite, tuned | 5.3 | 30 documents |
+| Gemma 4 26B A4B, tuned | 18.7 | 30 documents |
+| Gemma 4 31B, tuned | 22.8 | 30 documents |
+| Cohere `rerank-v4.0-fast` | about 1 | a 3-document probe, 2026-08-11 |
+| Voyage `rerank-2.5-lite` | 3.8 | a 3-document probe, 2026-08-11 - **not** the shipped `rerank-3` tiers, which were never timed |
+
+**The Gemma rows may be too slow for the reason in section 7.** They were measured
+with thinking on, and the 26B is 3 times faster on a short job with MINIMAL. Nobody
+has measured the ranking quality with it off.
+
+## 11. Reproduce it
 
 ```bash
 PYTHONPATH=. python scripts/measure_latency.py --dry-run
