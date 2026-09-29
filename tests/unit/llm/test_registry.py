@@ -10,6 +10,7 @@ from labpilot.llm import (
     LLMError,
     OpenAICompatibleProvider,
 )
+from labpilot.llm.registry import GOOGLE_KEYS
 from labpilot.prompts import PROMPT_BUDGET, REPORT_MAX_TOKENS
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -32,11 +33,17 @@ ROUTEWAY_WITHOUT_REASONING = (
 REJECTS_REASONING = ("Devstral 2", *ROUTEWAY_WITHOUT_REASONING)
 
 # The Gemini-shape twin of REJECTS_REASONING, and it cost a dead tier to find.
-# Gemma answers HTTP 400 - "Thinking level is not supported for this model" -
-# to every request carrying the field, measured 2026-09-11. It is 14,400
-# requests a DAY, the largest generator budget here, and it was broken on every
-# call since slice 4 added `thinking`.
-REJECTS_THINKING = ("gemma-4-31b-it",)
+# Gemma answers HTTP 400 - "Thinking level is not supported for this model" - to
+# MEDIUM, which every Gemini tier ships with, so tier 8 was broken on every call
+# since slice 4 added `thinking` (measured 2026-09-11). It is 14,400 requests a
+# DAY, the largest generator budget here.
+#
+# CORRECTED 2026-09-30: that note used to say Gemma refuses EVERY level, and it
+# does not. It accepts MINIMAL and HIGH and refuses LOW, MEDIUM and
+# thinkingBudget 0. MINIMAL writes no hidden tokens, which is why the 26B is in
+# the chain at all.
+GEMMA_MODELS = ("gemma-4-31b-it", "gemma-4-26b-a4b-it")
+GEMMA_LEVELS = ("MINIMAL", "HIGH")
 
 # Deliberate, measured exceptions. A new name appearing here is a real problem.
 # Groq's 8,000 is a TOTAL per-minute budget (prompt + reserved output), so it is
@@ -59,7 +66,9 @@ OUTPUT_TOO_SMALL = (
     "GLM-5.2 (Kilo)",
     "GLM-5.2",
 )
-INPUT_LIMITED = ("gemma-4-31b-it",)
+# Both Gemma models: the 16,000 is a per-minute INPUT quota, and the 26B joined
+# the chain on 2026-09-30 with the same limit. Neither can serve a report.
+INPUT_LIMITED = ("gemma-4-26b-a4b-it", "gemma-4-31b-it")
 
 # A tier whose FIELDS say it can write a report and whose WINDOW says it cannot.
 # Routeway's deepseek-v4-flash:free holds 42,000 tokens, prompt PLUS output,
@@ -322,11 +331,11 @@ def test_the_two_qwen_hosts_do_not_share_a_reasoning_value():
 
 
 def _thinking_tiers():
+    """The Gemini tiers that share one level. Gemma has its own levels."""
     return [
         provider
         for provider in CHAIN
-        if isinstance(provider, GeminiProvider)
-        and provider.model not in REJECTS_THINKING
+        if isinstance(provider, GeminiProvider) and provider.model not in GEMMA_MODELS
     ]
 
 
@@ -343,25 +352,62 @@ def test_the_google_tiers_do_not_drift_apart():
     assert len(levels) == 1, levels
 
 
-def test_a_tier_that_rejects_thinking_does_not_ask_for_it():
+def test_a_gemma_tier_only_asks_for_a_thinking_level_gemma_accepts():
     """The other half, and the half that was missing.
 
     Without this, "all Gemini tiers agree" is satisfied again the moment
-    somebody puts MEDIUM back on Gemma to tidy up - and tier 8 dies silently
-    on every call, which is exactly what happened for weeks.
+    somebody puts MEDIUM back on Gemma to tidy up - and the tier dies silently
+    on every call, which is exactly what happened for weeks. Gemma accepts
+    MINIMAL and HIGH, or no field at all; LOW and MEDIUM answer HTTP 400.
     """
-    asking = [
-        provider.name
+    gemma = [
+        provider
         for provider in CHAIN
-        if isinstance(provider, GeminiProvider)
-        and provider.model in REJECTS_THINKING
-        and provider.thinking is not None
+        if isinstance(provider, GeminiProvider) and provider.model in GEMMA_MODELS
+    ]
+    assert len(gemma) >= 4, "premise: both Gemma models, both keys"
+
+    wrong = [
+        f"{provider.name}: {provider.thinking}"
+        for provider in gemma
+        if provider.thinking is not None and provider.thinking not in GEMMA_LEVELS
     ]
 
-    assert not asking, (
-        f"{asking} reject a thinking level with HTTP 400 but are configured to "
-        f"send one, so every call to them fails. Set thinking=None."
+    assert not wrong, (
+        f"{wrong} ask for a level Gemma refuses with HTTP 400, so every call "
+        f"fails. Use MINIMAL, HIGH, or None."
     )
+
+
+def test_the_gemma_26b_is_in_the_chain_with_minimal_thinking_on_both_keys():
+    """The decision, pinned so it cannot be undone by a tidy-up: added
+    2026-09-30 at the user's instruction because MINIMAL took it from 7.1s to
+    2.5s with no hidden tokens, from a 14,400-a-day pool of its own."""
+    tiers = [provider for provider in CHAIN if provider.model == "gemma-4-26b-a4b-it"]
+
+    assert [provider.api_key_env for provider in tiers] == list(GOOGLE_KEYS)
+    assert {provider.thinking for provider in tiers} == {"MINIMAL"}
+
+
+def test_the_gemma_26b_sits_between_muse_glimmer_and_the_31b():
+    """Placed on AA v4.3.2: Muse Glimmer 18, the 26B A4B 17, the 31B 15."""
+    names = [provider.name for provider in CHAIN]
+
+    assert (
+        names.index("Muse Glimmer 30B (Requesty)")
+        < names.index("Gemma 4 26B A4B")
+        < names.index("Gemma 4 26B A4B (key 2)")
+        < names.index("Gemma 4 31B")
+    )
+    assert names.index("Gemma 4 26B A4B (key 2)") == names.index("Gemma 4 26B A4B") + 1
+
+
+def test_the_reranker_built_from_the_gemma_26b_still_runs_with_no_thinking():
+    """The chain default must never reach the reranker. Its 0.732 MRR was
+    measured with thinking on, and nobody has measured it with thinking off."""
+    from labpilot.api.reranking import RANKING_CONFIG
+
+    assert RANKING_CONFIG["thinking"] is None
 
 
 def test_a_gateway_route_comes_before_its_openrouter_twin():
