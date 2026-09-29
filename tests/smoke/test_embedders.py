@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from labpilot.embed import MIGRATION
 from labpilot.ingest import chunk_file
+from tests.smoke.live import call_live
 
 load_dotenv()
 
@@ -18,7 +19,7 @@ CLAIM = chunk_file(SAMPLES / "A_paper.md", side="A", artifact_id="paper")[0].emb
 @pytest.mark.smoke
 @pytest.mark.parametrize("embedder", MIGRATION, ids=lambda e: e.model)
 def test_every_embedder_is_alive_and_its_declared_dimension_is_still_true(embedder):
-    batch = embedder.embed([CODE, CLAIM])
+    batch = call_live(lambda: embedder.embed([CODE, CLAIM]), name=embedder.name)
 
     assert len(batch.vectors) == 2
     assert batch.dim == embedder.dim
