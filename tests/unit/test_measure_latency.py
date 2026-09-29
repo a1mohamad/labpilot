@@ -677,3 +677,149 @@ def test_the_report_shows_the_range_and_a_dash_where_there_is_no_number():
 
     assert "long range" in text and "tok/s" in text
     assert "9-9" in text
+
+
+# --- the report-sized probe --------------------------------------------------
+
+
+def test_a_report_may_run_far_longer_than_the_other_probes_before_it_is_a_timeout():
+    assert ml.cap_for("report") == 420.0
+    assert ml.cap_for("short") == ml.READ_CAP
+    assert ml.cap_for("long") == ml.READ_CAP
+
+
+def test_a_report_that_ran_five_minutes_is_slow_and_not_a_network_failure():
+    """Tier 1 needed 119 to 497s for a full report. Judged by the short-probe cap
+    (90s), a working tier would be thrown away as 'the network' and re-run."""
+    slow = sample(probe="report", kind="timeout", seconds=300.0)
+    quick = sample(probe="report", kind="timeout", seconds=100.0)
+
+    assert not ml.is_network_failure(slow)
+    assert ml.is_network_failure(quick)
+
+
+def test_the_same_seconds_mean_different_things_for_different_probes():
+    """A call that ended at 100s ran to a 100s cap, but only got a fifth of the
+    way to the report's - so it is the model in one case and the network in the
+    other."""
+    assert ml.transport_kind(100.0, 100.0) == "timeout"
+    assert ml.transport_kind(100.0, ml.cap_for("report")) == "network"
+    assert ml.transport_kind(400.0, ml.cap_for("report")) == "timeout"
+
+
+def test_the_report_call_is_capped_at_the_reports_own_limit(monkeypatch):
+    seen = {}
+    original = ml.dataclasses.replace
+
+    def spy(obj, **changes):
+        seen.update(changes)
+        return original(obj, **changes)
+
+    monkeypatch.setattr(ml.dataclasses, "replace", spy)
+    provider = FakeProvider(lambda p, m: LLMResult(text="x", model="m", tier=1))
+
+    ml.measure(provider, "report", 1, ml._Recorder(None))
+
+    assert seen["timeout"] == (10.0, 420.0)
+
+
+def test_the_report_probe_asks_for_a_long_answer_and_has_room_to_write_it():
+    assert "about 2,000 words" in ml.PROBES["report"]
+    assert ml.OUTPUT_BUDGET["report"] > ml.OUTPUT_BUDGET["long"]
+    assert "{nonce}" not in ml.prompt_for("report")
+
+
+def test_report_time_speed_and_spread_come_from_the_report_samples_only():
+    samples = [
+        sample(probe="report", seconds=100.0, generated=3000, round=1),
+        sample(probe="report", seconds=60.0, generated=3000, round=2),
+        sample(probe="long", seconds=1.0, generated=100),
+    ]
+
+    (row,) = ml.summarize(samples)
+
+    assert row.report_s == 80.0
+    assert row.report_range == (60.0, 100.0)
+    assert row.report_tokens == 3000
+    assert row.report_tok_s == pytest.approx(3000 / 80.0)
+
+
+def test_a_tier_with_no_report_answer_ranks_after_every_tier_that_has_one():
+    fast = [sample(tier="fast", probe="report", seconds=30.0, generated=3000)]
+    slow = [sample(tier="slow", probe="report", seconds=300.0, generated=3000)]
+    none = [sample(tier="none", probe="report", kind="http-503", seconds=1.0)]
+
+    ranked = ml.rank(ml.summarize(none + slow + fast), "report")
+
+    assert [row.tier for row in ranked] == ["fast", "slow", "none"]
+
+
+def test_the_report_table_says_whether_speed_held_at_report_length():
+    """The question the probe exists for: 40 tok/s at 500 tokens and 30 tok/s at
+    3,000 is 0.75 - the tier slowed down as it wrote more."""
+    samples = [
+        sample(probe="long", seconds=10.0, generated=400),
+        sample(probe="report", seconds=100.0, generated=3000),
+    ]
+
+    text = ml.format_report(ml.summarize(samples), "report")
+
+    assert "report s" in text and "held" in text
+    assert "0.75" in text
+
+
+def test_held_is_a_dash_when_the_500_token_job_was_not_loaded():
+    samples = [sample(probe="report", seconds=100.0, generated=3000)]
+
+    text = ml.format_report(ml.summarize(samples), "report")
+
+    assert "0.75" not in text
+    assert " -  " in text
+
+
+def _clock(monkeypatch, *ticks):
+    """Freeze measure()'s two readings of the clock, so a call can 'take' 200s."""
+    import types
+
+    values = iter(ticks)
+    monkeypatch.setattr(
+        ml,
+        "time",
+        types.SimpleNamespace(monotonic=lambda: next(values), sleep=lambda s: None),
+    )
+
+
+def test_a_transport_failure_after_200_seconds_is_the_network_for_a_report_only(
+    monkeypatch,
+):
+    """The classification is made INSIDE measure(), with the probe's own cap: 200s
+    is a real timeout for a 180s job and a tunnel failure for a 420s one. A
+    version that ignored the probe would call a slow report 'the network'."""
+    fault = failing(
+        "Fake: request failed: boom", cause=requests.exceptions.ReadTimeout("x")
+    )
+
+    _clock(monkeypatch, 0.0, 200.0)
+    long = ml.measure(FakeProvider(fault), "long", 1, ml._Recorder(None))
+    _clock(monkeypatch, 0.0, 200.0)
+    report = ml.measure(FakeProvider(fault), "report", 1, ml._Recorder(None))
+
+    assert long.kind == "timeout"
+    assert report.kind == "network"
+
+
+def test_ranking_by_report_time_can_disagree_with_ranking_by_the_long_job():
+    """A tier quick at 500 tokens and slow at 3,000 is the case the probe exists
+    for - and the case a ranking that quietly used the long time would hide."""
+    steady = [
+        sample(tier="steady", probe="long", seconds=100.0, generated=500),
+        sample(tier="steady", probe="report", seconds=30.0, generated=3000),
+    ]
+    fades = [
+        sample(tier="fades", probe="long", seconds=10.0, generated=500),
+        sample(tier="fades", probe="report", seconds=300.0, generated=3000),
+    ]
+    rows = ml.summarize(steady + fades)
+
+    assert [r.tier for r in ml.rank(rows, "report")] == ["steady", "fades"]
+    assert [r.tier for r in ml.rank(rows, "long")] == ["fades", "steady"]
