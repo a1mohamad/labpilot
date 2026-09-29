@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+# BOUND AT IMPORT, on purpose. tests/conftest.py empties
+# labpilot.api.reranking.CHAIN for every non-smoke test, but a name bound here
+# still holds the real tuple - and the real tuple is the list the ask path
+# reaches for, which is the one worth checking.
+from labpilot.api.reranking import CHAIN as SHIPPED_CHAIN
 from labpilot.ingest.defaults import MAX_CHUNK_TOKENS
-from labpilot.rerank import LLM_RERANK_ORDER, RERANK_CHAIN
+from labpilot.llm.registry import GOOGLE_KEYS
+from labpilot.rerank import LLM_RERANK_ORDER, RERANK_CHAIN, LLMReranker
 from labpilot.rerank.base import HTTPReranker
 from labpilot.rerank.errors import RerankError
+
+ROOT = Path(__file__).resolve().parents[3]
+SMOKE_WORKFLOW = ROOT / ".github" / "workflows" / "smoke.yaml"
 
 CASES = pytest.mark.parametrize(
     "reranker", RERANK_CHAIN, ids=lambda reranker: reranker.model
@@ -155,3 +166,52 @@ def test_cohere_outranks_voyage_on_breadth_even_though_quora_disagrees():
         "Cohere was demoted below Voyage again - that ordering comes from "
         "quora alone, and three more corpora did not reproduce it"
     )
+
+
+def _env_names(tier) -> set[str]:
+    """Every environment variable a shipped rerank tier reads at call time."""
+    if isinstance(tier, LLMReranker):
+        # Its key lives inside the `complete` callable, which cannot be read
+        # back - so name the accounts the assembled chain is built from.
+        return set(GOOGLE_KEYS)
+    assert isinstance(tier, HTTPReranker), (
+        f"{tier!r} is neither an LLMReranker nor an HTTPReranker, so this test "
+        f"cannot tell which secrets it needs - teach _env_names about it"
+    )
+    return {
+        name
+        for name in (tier.api_key_env, tier.account_env, getattr(tier, "url_env", None))
+        if name
+    }
+
+
+def test_every_env_var_the_shipped_rerank_chain_reads_is_mapped_in_the_smoke_workflow():
+    """A GitHub secret is only STORED there. It reaches the test process only
+    if smoke.yaml passes it in, and a missing line fails as "is not set" - the
+    same message as a missing secret, so it reads like a dead provider.
+
+    FOUND 2026-09-29: VOYAGE_API_KEY existed as a secret since 2026-08-11 and
+    smoke.yaml never had a line for it, so both Voyage tiers failed four
+    Mondays running. The two older mapping tests missed it because they walk
+    the generator CHAIN and the embedder MIGRATION, and the rerankers are
+    neither - Cohere only escaped because it is also an embedder.
+
+    This walks the ASSEMBLED chain the ask path calls, not RERANK_CHAIN and
+    LLM_RERANK_ORDER separately: two lists that are each complete can leave a
+    hole between them, and Jev sat in exactly that hole until 2026-09-19.
+    """
+    assert SHIPPED_CHAIN, "the shipped chain is empty, so this test proves nothing"
+    workflow = SMOKE_WORKFLOW.read_text(encoding="utf-8")
+
+    required = set().union(*(_env_names(tier) for tier in SHIPPED_CHAIN))
+    # Premises with a literal on one side, so an emptied set fails here rather
+    # than passing vacuously.
+    assert {"VOYAGE_API_KEY", "COHERE_API_KEY", "JEV_PROXY_URL"} <= required
+
+    missing = sorted(
+        name
+        for name in required
+        if f"{name}: ${{{{ secrets.{name} }}}}" not in workflow
+    )
+
+    assert not missing, missing
