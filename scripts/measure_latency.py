@@ -104,16 +104,44 @@ LONG = (
     "[request id: {nonce}]"
 )
 
-PROBES = {"short": SHORT, "long": LONG}
+# REPORT-SIZED, added 2026-09-30 because the two probes above are about 500
+# tokens and a report is ten times that. Speed does not scale in a straight
+# line: the first ranking put tier 1 at 8s for 500 tokens, which cannot explain
+# the 119-497s reports measured on the same tier. The model is told the length
+# is part of the task so it does not stop early.
+REPORT = (
+    "Write a detailed technical report of about 2,000 words on why a "
+    "reimplementation of a web server benchmark reports fewer requests per "
+    "second than the original paper. Use these sections: Summary, Setup "
+    "differences, Likely causes (at least six, each with an explanation and a way "
+    "to test it), Ranking of the causes, Experiments to run next, and Limits of "
+    "this analysis. Do not stop early: the length is part of the task.\n\n"
+    'Paper: "1,200 requests per second. 16 worker threads, keep-alive on, 1 KB '
+    'payloads, a warm cache."\n'
+    'Reimplementation: "940 requests per second. 8 worker threads, keep-alive '
+    'off, 4 KB payloads, a cold cache."\n\n'
+    "[request id: {nonce}]"
+)
+
+PROBES = {"short": SHORT, "long": LONG, "report": REPORT}
 
 # Tokens each probe may write. Deliberately generous: a reasoning tier can spend
 # most of a small budget thinking and return nothing (measured, 2,048 was flaky),
 # and a truncated answer would be timed as if it were finished.
-OUTPUT_BUDGET = {"short": 2048, "long": 4096}
+OUTPUT_BUDGET = {"short": 2048, "long": 4096, "report": 8192}
 
 # The longest one call may take before it is recorded as a timeout. A censored
 # sample - "slower than this" - is still a ranking fact.
 READ_CAP = 180.0
+
+# A report-sized answer legitimately takes minutes: tier 1 needed 119 to 497s for
+# a full report. A 180s cap would call a slow-but-working tier a timeout.
+READ_CAP_BY_PROBE = {"report": 420.0}
+
+
+def cap_for(probe: str) -> float:
+    return READ_CAP_BY_PROBE.get(probe, READ_CAP)
+
 
 # Seconds between two calls to one key, from limits the providers PUBLISH.
 # Routeway is 5 a minute in one pool; Groq counts the tokens it RESERVES, so a
@@ -183,6 +211,10 @@ class Row:
     failures: str
     long_range: tuple[float, float] | None = None
     long_tok_s: float | None = None  # tokens written per second at the long probe
+    report_s: float | None = None
+    report_range: tuple[float, float] | None = None
+    report_tokens: float | None = None
+    report_tok_s: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +306,7 @@ def is_network_failure(sample: Sample) -> bool:
     """
     if sample.kind == "network":
         return True
-    if sample.kind == "timeout" and sample.seconds < READ_CAP / 2:
+    if sample.kind == "timeout" and sample.seconds < cap_for(sample.probe) / 2:
         return True
     return sample.kind == "error" and "request failed" in sample.error
 
@@ -336,6 +368,10 @@ def summarize(samples: Sequence[Sample]) -> list[Row]:
         short_tok = _median(s.generated for s in short)
         long_tok = _median(s.generated for s in long)
 
+        report = [s for s in good if s.probe == "report"]
+        report_s = _median(s.seconds for s in report)
+        report_tok = _median(s.generated for s in report)
+
         slope = None
         enough = (
             None not in (short_tok, long_tok) and long_tok - short_tok >= MIN_TOKEN_GAP
@@ -369,6 +405,18 @@ def summarize(samples: Sequence[Sample]) -> list[Row]:
                 long_tok_s=(
                     long_tok / long_s if long_tok is not None and long_s else None
                 ),
+                report_s=report_s,
+                report_range=(
+                    (min(s.seconds for s in report), max(s.seconds for s in report))
+                    if report
+                    else None
+                ),
+                report_tokens=report_tok,
+                report_tok_s=(
+                    report_tok / report_s
+                    if report_tok is not None and report_s
+                    else None
+                ),
             )
         )
     return rows
@@ -383,7 +431,9 @@ def rank(rows: Sequence[Row], by: str = "long") -> list[Row]:
     goes last, ordered by whatever it does have."""
 
     def key(row: Row):
-        if by == "short":
+        if by == "report":
+            value, fallback = row.report_s, row.long_s
+        elif by == "short":
             value, fallback = row.short_s, row.long_s
         elif by == "t1000":
             value, fallback = row.predicted.get(1000, row.long_s), row.short_s
@@ -396,7 +446,52 @@ def rank(rows: Sequence[Row], by: str = "long") -> list[Row]:
     return sorted(rows, key=key)
 
 
+def format_report_probe(rows: Sequence[Row]) -> str:
+    """The report-sized table: seconds, spread, tokens, and whether speed HOLDS.
+
+    `held` is the tokens per second at report length divided by the tokens per
+    second at the ~500-token job. Below 1.0 the tier slows down as it writes; it
+    is only shown when both probes are in the loaded files."""
+
+    def cell(value, spec=".1f"):
+        return "-" if value is None else format(value, spec)
+
+    def span(row: Row):
+        if row.report_range is None:
+            return "-"
+        low, high = row.report_range
+        return f"{low:.0f}-{high:.0f}"
+
+    def held(row: Row):
+        if row.report_tok_s is None or not row.long_tok_s:
+            return None
+        return row.report_tok_s / row.long_tok_s
+
+    lines = [
+        f"{'#':>2}  {'tier':34} {'ok':>5} {'report s':>9} {'range':>9} "
+        f"{'tokens':>7} {'tok/s':>6} {'held':>5}  notes",
+        "-" * 116,
+    ]
+    for place, row in enumerate(rank(rows, "report"), 1):
+        lines.append(
+            f"{place:>2}  {row.tier:34} {row.ok:>2}/{row.calls:<2} "
+            f"{cell(row.report_s):>9} {span(row):>9} "
+            f"{cell(row.report_tokens, '.0f'):>7} {cell(row.report_tok_s, '.0f'):>6} "
+            f"{cell(held(row), '.2f'):>5}  {row.failures}"
+        )
+    lines.append("")
+    lines.append(
+        "report s is the median of the successful calls; tokens is what the "
+        "provider says the model wrote, reasoning included. held is tok/s at "
+        "report length over tok/s at the ~500-token job."
+    )
+    return "\n".join(lines)
+
+
 def format_report(rows: Sequence[Row], by: str = "long") -> str:
+    if by == "report":
+        return format_report_probe(rows)
+
     def cell(value, spec=".1f"):
         return "-" if value is None else format(value, spec)
 
@@ -481,17 +576,17 @@ class _Recorder:
         return response
 
 
-def transport_kind(seconds: float) -> str:
+def transport_kind(seconds: float, cap: float = READ_CAP) -> str:
     """A failure that carried no HTTP status and came from the network layer.
 
     Only one that ran to the read cap is the model being slow. Anything sooner -
     the VPN tunnel not opening in 10s, a connection reset - never reached the
     provider, and calling it a timeout would rank a fast model as slow."""
-    return "timeout" if seconds >= READ_CAP * 0.9 else "network"
+    return "timeout" if seconds >= cap * 0.9 else "network"
 
 
 def measure(provider, probe: str, round_no: int, recorder: _Recorder) -> Sample:
-    capped = dataclasses.replace(provider, timeout=(10.0, READ_CAP))
+    capped = dataclasses.replace(provider, timeout=(10.0, cap_for(probe)))
     recorder.body = None
     at = datetime.now(UTC).isoformat(timespec="seconds")
     started = time.monotonic()
@@ -515,7 +610,7 @@ def measure(provider, probe: str, round_no: int, recorder: _Recorder) -> Sample:
             kind = "error"
     seconds = time.monotonic() - started
     if kind == "transport":
-        kind = transport_kind(seconds)
+        kind = transport_kind(seconds, cap_for(probe))
 
     generated, reasoning = usage_tokens(recorder.body) if kind == "ok" else (None, None)
     return Sample(
@@ -735,7 +830,9 @@ def main() -> None:
     parser.add_argument("--only", nargs="*", default=[], help="tier name fragments")
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--probes", default="short,long")
-    parser.add_argument("--by", choices=("long", "short", "t1000"), default="long")
+    parser.add_argument(
+        "--by", choices=("long", "short", "t1000", "report"), default="long"
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the plan only")
     parser.add_argument("--out", help="jsonl file to append to")
     parser.add_argument("--report", nargs="+", help="rank saved runs, call nothing")
