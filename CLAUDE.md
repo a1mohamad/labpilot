@@ -17564,11 +17564,26 @@ tok/s). **The 2026-09-11 note said Gemma refuses every request carrying a thinki
 field. False: it accepts MINIMAL and HIGH and refuses LOW and MEDIUM, and MEDIUM
 was what every Gemini tier shipped with.** Corrected in `registry.py`.
 
-**A DECISION IS OWED and nothing was changed:** add `GEMMA_4_26B` to the generator
-chain with `thinking="MINIMAL"` for the small nodes (gate, verify, planner)? ~2.5s
-from 14,400 requests a day, against Flash-Lite's 500. **It was NOT tested for
-quality** - the 0.732 rerank MRR was measured with thinking ON - and adding it
-forces two "pin the exceptions by name" lists to change.
+**DONE 2026-09-30, on the user's decision: `GEMMA_4_26B` IS IN THE CHAIN with
+`thinking="MINIMAL"`** - CHAIN is now **56 tiers**, and tiers 32 and 33 are the 26B
+on the two Google keys, between Muse Glimmer (AA 18) and the 31B (AA 15), at its own
+17 (commits d87b539, 29ddcc9). Called through our own provider code: **2.1-2.2s on
+both keys**; a longer job through `LLMClient` finished in 9.4s. Its own 14,400
+requests a day, against Flash-Lite's 500.
+
+- The 31B stays `thinking=None`, below it. **The reranker is unchanged**: it builds
+  its tier with `thinking=None` itself, and a test fails if the chain's level ever
+  reaches it.
+- **NOT tested for answer quality** - the AA 17 and the 0.732 rerank MRR were both
+  measured with thinking ON. It cannot serve a report (16,000 tokens a minute of
+  input, refused locally for free).
+- **The pinned lists changed on purpose**: `INPUT_LIMITED` gained the 26B, and
+  `REJECTS_THINKING` became `GEMMA_MODELS` + `GEMMA_LEVELS = (MINIMAL, HIGH)` - the
+  old test asserted Gemma takes NO level, which was the wrong claim. 4 tests added,
+  8 deliberate breaks, all caught.
+- **A hazard for Step 2:** it wraps a JSON answer in a ```json code fence even when
+  asked for "one JSON object and nothing else". A node that parses its output must
+  strip the fence.
 
 #### 15.7 INKLING SMALL: a spent shared cap, no free way around it
 
