@@ -420,6 +420,29 @@ def test_each_gateway_shares_one_quota_pool():
         )
 
 
+def test_routeway_tiers_carry_a_short_read_timeout_of_their_own():
+    """Routeway HANGS instead of refusing, measured 2026-09-29.
+
+    Three DeepSeek calls and a 59K Gemma prompt ran past 60 seconds with no
+    reply, while real answers took 1-26s. The default read timeout is 600s and
+    the whole chain has 900s, so one hang on the default would spend two
+    thirds of the budget on a single dead tier and leave the rest almost
+    nothing.
+
+    The 180 is a literal on purpose: computing it from the default would make
+    the test pass whatever the default became.
+    """
+    routeway = [p for p in CHAIN if p.api_key_env == "ROUTEWAY_API_KEY"]
+
+    assert routeway, "no Routeway tier left - delete this test or the key"
+    for provider in routeway:
+        assert provider.timeout[1] <= 180.0, (
+            f"{provider.name} waits {provider.timeout[1]:.0f}s for a reply. "
+            f"Routeway hangs rather than refusing, so anything past 180s is "
+            f"the chain budget spent on one dead tier."
+        )
+
+
 def test_every_cline_tier_is_a_model_the_api_actually_serves():
     """Four of Cline's six free models are API-blocked, and blocked SILENTLY.
 
