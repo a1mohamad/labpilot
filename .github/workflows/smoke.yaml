@@ -28,6 +28,7 @@ jobs:
           KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
           LITEROUTER_API_KEY: ${{ secrets.LITEROUTER_API_KEY }}
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          ROUTEWAY_API_KEY: ${{ secrets.ROUTEWAY_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           JEV_PROXY_URL: ${{ secrets.JEV_PROXY_URL }}

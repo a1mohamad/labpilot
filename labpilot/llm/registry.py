@@ -15,6 +15,7 @@ KILO_URL = "https://api.kilo.ai/api/gateway/v1/chat/completions"
 REQUESTY_URL = "https://router.requesty.ai/v1/chat/completions"
 LITEROUTER_URL = "https://api.literouter.com/v1/chat/completions"
 ORCAROUTER_URL = "https://api.orcarouter.ai/v1/chat/completions"
+ROUTEWAY_URL = "https://api.routeway.ai/v1/chat/completions"
 CLOUDFLARE_URL = (
     "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
 )
@@ -732,6 +733,112 @@ LITEROUTER_MISTRAL_MEDIUM = _literouter(
 )
 
 
+# ROUTEWAY — a fourth free gateway, probed LIVE 2026-09-29 with
+# scripts/probe_routeway.py before any line here was written.
+#
+# THE LIMITS ARE THE DECISION. Every number is from the API, not a docs page:
+#
+#     5 requests a MINUTE and 200 a DAY, read from the response headers, and the
+#     day counter fell across DIFFERENT models - one budget, so one pool.
+#
+#     a hard context cap per free route, enforced on prompt PLUS requested
+#     output and named in the 400:
+#         deepseek-v4-flash:free   42,000   (the model itself holds 1,000,000)
+#         the Gemma variants       62,000
+#     A 41,901-token prompt passed and a 45,954-token one was refused. So the
+#     window is both the context AND the output ceiling, and `max_tokens:
+#     131072` on a ten-token prompt is a 400.
+#
+# WHAT WAS ADDED, and what was measured against it:
+#   * DeepSeek V4 Flash - 3 of 3 whole answers to a real question, 2-11s, a
+#     correct diagnosis of the planted bug, and a tool call in 2.4s. It cannot
+#     serve a report (42,000 against the 58,000 one needs), which
+#     CONTEXT_TOO_SMALL in the tests names. A third live route to a model whose
+#     two original ones died.
+#   * Six Gemma 4 26B A4B variants - 18 of 18 pings and 5 of 6 real answers (the
+#     sixth was a proxy timeout at 10.2s, not the model). Routeway's own
+#     description calls them COMMUNITY CREATIVE FINETUNES, so they are NOT the
+#     stock model AA scores at 17, and none has a score of its own. They sit
+#     below the measured Gemma 4 31B (15) on purpose: no evidence, no promotion.
+#     The order among them rests on ONE sample each and means nothing.
+#
+# WHAT WAS LEFT OUT, and why:
+#   * MiniMax M2.7 - AA 23, but 0 of 3 whole answers. Its reasoning arrives as
+#     `<think>...` INSIDE the reply text, it spends 550-1,024 tokens on one
+#     sentence, and one call took 58s. `_visible_text` would return the thinking
+#     as the answer.
+#   * Muse Glimmer 30B - 0 of 3 whole (one cut at 1,024 tokens after 57s, two
+#     60s read timeouts, and an earlier 502). Requesty's route answered in 2.3s.
+#
+# THE TIMEOUT IS SET PER TIER, which is what the field exists for. Routeway
+# HANGS instead of refusing (three DeepSeek calls ran past 60s, one Gemma
+# prompt of 59K did too), and the default 600s read timeout would let one hang
+# spend two thirds of the 900s chain budget. Real answers were 1-26s.
+#
+# A `cache-status: MISS/HIT` header shows Routeway caches identical requests.
+# temperature is 0 here, so a repeated prompt can be served without a model.
+ROUTEWAY_DEEPSEEK_TIMEOUT = (10.0, 120.0)
+ROUTEWAY_GEMMA_TIMEOUT = (10.0, 180.0)
+
+
+def _routeway(
+    *,
+    name: str,
+    model: str,
+    context_window: int,
+    timeout: tuple[float, float],
+) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        name=name,
+        tier=0,
+        url=ROUTEWAY_URL,
+        model=model,
+        api_key_env="ROUTEWAY_API_KEY",
+        # ONE pool: 5 a minute and 200 a day are account-wide across models.
+        quota_pool="ROUTEWAY_API_KEY",
+        context_window=context_window,
+        # No separate output cap exists. The server checks prompt PLUS output
+        # against one window, and that window is what _check_fits enforces.
+        max_output_tokens=context_window,
+        timeout=timeout,
+        # No `extra_body`: `reasoning_effort` is NOT in these models'
+        # supported_parameters (only Muse Glimmer lists it), and an unlisted
+        # field is a guess.
+    )
+
+
+ROUTEWAY_DEEPSEEK_V4_FLASH = _routeway(
+    name="DeepSeek V4 Flash (Routeway)",
+    model="deepseek-v4-flash:free",
+    context_window=42_000,
+    timeout=ROUTEWAY_DEEPSEEK_TIMEOUT,
+)
+
+
+def _routeway_gemma(variant: str) -> OpenAICompatibleProvider:
+    return _routeway(
+        name=f"Gemma 4 26B A4B {variant} (Routeway)",
+        model=f"gemma-4-26b-a4b-it-{variant.lower()}:free",
+        context_window=62_000,
+        timeout=ROUTEWAY_GEMMA_TIMEOUT,
+    )
+
+
+# Named first-sample-correct first (they read `xs[i-k:i+1]` as k+1 elements,
+# the planted bug). ONE call each, so treat the order as a coin flip.
+ROUTEWAY_GEMMA_VARIANTS = tuple(
+    _routeway_gemma(variant)
+    for variant in (
+        "Darksoul",
+        "Moonlight",
+        "Musica",
+        "Luminous",
+        "Chimerax",
+        "MeroMero",
+    )
+)
+
+
 def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
     """Tier is the POSITION, never a number somebody typed.
 
@@ -775,6 +882,10 @@ CHAIN = _ordered(
     # chain; these two took their place.
     LITEROUTER_DEEPSEEK_V4_FLASH,
     ORCAROUTER_DEEPSEEK_V4_FLASH,
+    # A third route, and the last of the three because it is the only one that
+    # cannot serve a report: 42,000 of context against 58,000. _check_fits
+    # refuses it for a report at no cost, and it answers the small jobs.
+    ROUTEWAY_DEEPSEEK_V4_FLASH,
     # Then the coding specialist. It ties Gemini 3.6 Flash on general
     # intelligence and beats it by 56 Elo on code, which is the task this
     # project actually does - so it goes above it.
@@ -806,6 +917,8 @@ CHAIN = _ordered(
     GEMMA_4_31B,
     _second_account(GEMMA_4_31B),
     REQUESTY_GEMMA_4_31B,
+    # UNSCORED community finetunes, below the measured Gemma 4 31B on purpose.
+    *ROUTEWAY_GEMMA_VARIANTS,
     KILO_NORTH_MINI_CODE,
     NORTH_MINI_CODE,
     KILO_NEMOTRON_3_SUPER,

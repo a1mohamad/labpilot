@@ -16,7 +16,20 @@ ROOT = Path(__file__).resolve().parents[3]
 ENV_EXAMPLE = ROOT / ".env.example"
 SMOKE_WORKFLOW = ROOT / ".github" / "workflows" / "smoke.yaml"
 KNOWN_THINKING = ("LOW", "MEDIUM", "HIGH")
-REJECTS_REASONING = ("Devstral 2",)
+# Routeway's free models do not list `reasoning_effort` in their
+# supported_parameters (only Muse Glimmer does), so sending one is a guess. They
+# are named one by one, never by gateway, so a NEW Routeway tier still has to
+# answer the question instead of inheriting the excuse.
+ROUTEWAY_WITHOUT_REASONING = (
+    "DeepSeek V4 Flash (Routeway)",
+    "Gemma 4 26B A4B Darksoul (Routeway)",
+    "Gemma 4 26B A4B Moonlight (Routeway)",
+    "Gemma 4 26B A4B Musica (Routeway)",
+    "Gemma 4 26B A4B Luminous (Routeway)",
+    "Gemma 4 26B A4B Chimerax (Routeway)",
+    "Gemma 4 26B A4B MeroMero (Routeway)",
+)
+REJECTS_REASONING = ("Devstral 2", *ROUTEWAY_WITHOUT_REASONING)
 
 # The Gemini-shape twin of REJECTS_REASONING, and it cost a dead tier to find.
 # Gemma answers HTTP 400 - "Thinking level is not supported for this model" -
@@ -48,6 +61,13 @@ OUTPUT_TOO_SMALL = (
 )
 INPUT_LIMITED = ("gemma-4-31b-it",)
 
+# A tier whose FIELDS say it can write a report and whose WINDOW says it cannot.
+# Routeway's deepseek-v4-flash:free holds 42,000 tokens, prompt PLUS output,
+# measured 2026-09-29 (a 41,901-token prompt passed, 45,954 was a 400). Its
+# max_output_tokens equals that window, so the field test above cannot see it;
+# 26,000 of prompt and 32,000 of output is 58,000. Refused locally, for free.
+CONTEXT_TOO_SMALL = ("DeepSeek V4 Flash (Routeway)",)
+
 # Cline lists SIX free models and its API serves only these TWO. Measured
 # 2026-09-13: the other four answer
 #     403 "<model> is only available via Cline product surfaces"
@@ -64,6 +84,7 @@ GATEWAYS = (
     "REQUESTY_API_KEY",
     "LITEROUTER_API_KEY",
     "ORCAROUTER_API_KEY",
+    "ROUTEWAY_API_KEY",
 )
 
 
@@ -239,14 +260,31 @@ def test_every_tier_we_believe_can_serve_a_report_really_can():
     the provider instead of here.
     """
     prompt = "x" * (PROMPT_BUDGET * 3)
-    excused = set(OUTPUT_TOO_SMALL) | {
-        provider.name for provider in CHAIN if provider.model in INPUT_LIMITED
-    }
+    excused = (
+        set(OUTPUT_TOO_SMALL)
+        | set(CONTEXT_TOO_SMALL)
+        | {provider.name for provider in CHAIN if provider.model in INPUT_LIMITED}
+    )
 
     for provider in CHAIN:
         if provider.name in excused:
             continue
         provider._check_fits(prompt, REPORT_MAX_TOKENS)
+
+
+def test_a_tier_with_too_small_a_window_costs_no_request():
+    """The other half of the excuse: it must really be refused, and for free.
+
+    CONTEXT_TOO_SMALL is a promise that _check_fits turns these tiers away
+    before any HTTP call. If a window is ever raised past what a report needs,
+    the name is stale and the excuse is hiding a tier that could serve one.
+    """
+    prompt = "x" * (PROMPT_BUDGET * 3)
+    by_name = {provider.name: provider for provider in CHAIN}
+
+    for name in CONTEXT_TOO_SMALL:
+        with pytest.raises(LLMError, match="context"):
+            by_name[name]._check_fits(prompt, REPORT_MAX_TOKENS)
 
 
 def test_the_two_qwen_hosts_do_not_share_a_reasoning_value():
