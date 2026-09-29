@@ -17400,9 +17400,10 @@ returns.
 > rerank env vars (Voyage, today) and the dead-tier list. Iterate the object the
 > code uses, or import the list it defines.
 
-**35 tests were added** - the helper, the status field, the wiring - and every
-rule was broken on purpose. 13 mutations, each fired on the test meant to catch
-it. **One was first a fake:** a bare `ValueError` behaves the same under a narrow
+**28 tests were added on top of the Voyage mapping test** (unit and api went
+840 to 868, counted 2026-09-29) - the helper, the status field, the wiring - and
+every rule was broken on purpose. 13 mutations, each fired on the test meant to
+catch it. **One was first a fake:** a bare `ValueError` behaves the same under a narrow
 `except` and a broad one, so the test could not fail; the fault now carries a
 network cause and does. Two more tests read the smoke files as TEXT to prove they
 go through the helper, because importing them runs `load_dotenv`, which unit
