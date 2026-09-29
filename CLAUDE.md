@@ -1059,9 +1059,12 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > for the numbers, the `git` defect, five measured gateway platforms, and
 > > D14-D16.
 > >
-> > **Next is slice 1** (latency ranking) or **slice 2** (the skeleton - and it
-> > must ship a CHECKPOINTER and a `thread_id`, per D15, or the product cannot
-> > have a second turn).
+> > **Slice 1 IS MEASURED (2026-09-29/30) - read
+> > [section 15](#15-slice-1-is-measured--every-tier-ranked-by-speed-2026-09-30)
+> > and `docs/step2/slice1/RESULTS.md`.** One thing it did NOT answer: how long a
+> > 5,000-token REPORT takes. **Next is slice 2** (the skeleton - and it must ship
+> > a CHECKPOINTER and a `thread_id`, per D15, or the product cannot have a second
+> > turn), or a report-length latency probe first.
 > >
 > > **2026-09-29: ROUTEWAY IS IN THE CHAIN — 54 TIERS, MERGED: `main`,
 > > `origin/main` and `feat/routeway` are the same commit (checked with git
@@ -1087,8 +1090,9 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > **2026-09-29: THE WEEKLY SMOKE RUN HAD BEEN RED FOR FOUR MONDAYS.** About
 > > half of its 41 failures were not dead providers - a missing Voyage mapping,
 > > missing Kilo and Requesty secrets, Google's own 503s, a spent Mistral quota
-> > and a dead-tier list that had drifted from the registry. Fixed in the
-> > working tree, NOT COMMITTED. Read
+> > and a dead-tier list that had drifted from the registry. Fixed, and
+> > committed by the user on 2026-09-29 (small commits, pushed); NOT YET RUN ON
+> > GITHUB. Read
 > > [section 14](#14-the-weekly-smoke-run-was-red-for-a-month--2026-09-29).
 >
 > > ## ✅ STEP 1 IS DONE — 2026-09-19. STEP 2, THE AGENT, IS NEXT
@@ -16580,7 +16584,7 @@ Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
 | # | measure | slice |
 |---|---|---|
 | M1 | ~~does LangGraph fit 512MB~~ **MEASURED 2026-09-23 — yes, ~55MB imported and the whole container is 74 MiB under load. See [section 10](#10-slice-0-is-closed-and-the-memory-budget-was-6x-wrong--2026-09-23)** | done |
-| M2 | **latency ranking of all 40 tiers** — we have ordered them by quality and by quota and never once by speed | 1 |
+| M2 | ~~latency ranking of all tiers~~ **MEASURED 2026-09-29 — 50 tiers ranked at a ~500-token answer. Report length is NOT measured. See [section 15](#15-slice-1-is-measured--every-tier-ranked-by-speed-2026-09-30)** | done |
 | M3 | ~~which tiers support function calling~~ **MEASURED 2026-09-23 — 23 of the 24 tiers that answered. See [section 9](#9-m3-is-measured--function-calling-2026-09-23)** | done |
 | M4 | the raw question **vs** planner-written queries **vs** claims, scored against `EXPECTED.md` | 5 |
 | M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does. **AND THE BUDGET SWEEP** (added 2026-09-28): fixed **1k · 4k · 8k · 12k** against a **DYNAMIC** budget (the tier's input limit / 1.1, minus what the rest of the prompt really costs). Score the queries on how many known divergence locations in `EXPECTED.md` / `queries.json` they reach, not on how they read. Record planner latency beside it, and which tier answered | 6 |
@@ -17317,8 +17321,8 @@ Splitting the pool would make that case retry seven times.
 ### 14. THE WEEKLY SMOKE RUN WAS RED FOR A MONTH — 2026-09-29
 
 *Found by reading the run history instead of the code, when the user asked
-whether CI had other problems. **NOT COMMITTED and NOT RUN ON GITHUB** - the
-fixes are in the working tree on `main`, and only a real Monday run (or
+whether CI had other problems. **Committed by the user on 2026-09-29 (14 small
+commits, pushed) and NOT YET RUN ON GITHUB** - only a real Monday run (or
 `gh workflow run smoke.yaml`, about 80 requests) can prove them.*
 
 **Four Mondays in a row failed.** 2026-09-07: 4 failed. 09-14: 8. 09-21: 26.
@@ -17427,6 +17431,85 @@ tests must not do.
 - **The Gemma reranker still declines about 1 query in 17**, and
   `declined == 0` is asserted. It will fail a Monday by chance. Not retried,
   because a decline is a model answer, not a network fault.
+
+### 15. SLICE 1 IS MEASURED — every tier ranked by speed, 2026-09-30
+
+*Full write-up: `docs/step2/slice1/RESULTS.md`. Instrument:
+`scripts/measure_latency.py` with `tests/unit/test_measure_latency.py`.
+**NOT COMMITTED** - three new untracked paths (`scripts/measure_latency.py`, its
+test, and `docs/step2/`) plus this file. The raw data is
+`artifacts/step2/latency/2026-09-29_18-29.jsonl` (git-ignored).*
+
+**50 tiers, 300 requests, plus 41 re-measured.** Two fixed jobs (a ~30-token gate
+verdict and a ~500-token explanation), three rounds, one request at a time, no
+retries. Exit AS24940 Hetzner, Nuremberg; Google 200 on both keys first.
+
+#### 15.1 WHAT IT FOUND
+
+```
+route beats model   GPT-OSS 120B    Groq 4.1s     vs Cloudflare 30.2s    (7x)
+                    GLM-5.3 Flash   Cline 8.3s    vs OrcaRouter 66.2s    (8x)
+                    Qwen3.8 27B     Groq 8.3s     vs Cloudflare 83.7s    (10x)
+                    CHAIN orders the routes of ONE model by quota, never by speed
+newest Gemini       3.7 Flash 0 of 12 answered, 3.8 Flash 3 of 12, 3.6 Flash 5 of 12
+                    - positions 4-7 of CHAIN answered 3 of 24 calls. 3.5 Flash and
+                    both Flash-Lites: 36 of 36
+thinking = the      Gemini 3.5 Flash wrote 566 tokens for a 30-token verdict, 529 of
+fixed cost          them reasoning. Speed matters less than how much a tier thinks
+same tier varies    North Mini Code (Kilo): 18.6s, 9.8s, 4.3s for the same job.
+                    Three samples give a median, not a promise
+```
+
+**TIER 1 IS NOT SLOW AT THIS SIZE, and that leaves the 400-second problem
+UNEXPLAINED.** GLM-5.3 Flash (Cline) wrote ~500 tokens in 8.3s, about 59 tokens a
+second - so ~85s for a 5,000-token report, against measured reports of 119-497s.
+Either those reports are far longer than 5,000 tokens or sustained speed falls a
+long way below what a short answer shows. **A probe of ~3,000 tokens on the top
+10-15 tiers is the next measurement**, and the routing slice should not be
+finished before it.
+
+#### 15.2 THREE THINGS THAT WERE WRONG ON THE WAY, all mine
+
+- **The network was read as the model.** Through the VPN a tunnel that does not
+  open in 10s is reported as `Read timed out (read timeout=10.0)`. The first run
+  counted 41 of 300 as slow or failed models; 20 were in the last 25 calls. They
+  are now kind `network`, retried, and never counted. `--fill FILE` re-runs only
+  what a saved run is missing. **The 41 were measured ~2 hours after the rest.**
+- **A line through two points is only as good as their distance.** A thinking tier
+  writes the same number of tokens for both probes, so the fitted slope said 86s
+  per 1,000 tokens for an answer that took 10s. The fit is now drawn only when the
+  probes differ by 200+ tokens, and the ranking is on MEASURED seconds.
+- **My first draft of the write-up had several wrong numbers** (`24 of 24` for
+  `36 of 36`, "five" for six tiers that never answered, a Mistral count, a
+  DeepSeek time) until each claim was checked against the data. **Check a summary
+  against the file it summarises.**
+
+#### 15.3 TWO DEFECTS THE DATA POINTED AT, neither fixed
+
+- **An error inside an HTTP 200 is misreported.** Nemotron 3 Ultra and Super on
+  OpenRouter and Kilo answered 200 with
+  `{"message": "Upstream error from Nvidia: Service temporarily overloaded",
+  "code": 503, ...}` where `choices` should be. Our reader says "unexpected
+  response shape" and cuts the body, so the REASON is lost and the chain sees a
+  failure with no status instead of a **503, which the six-way rule retries**.
+  Reproduced 2 in 6 on Kilo, 0 in 6 on OpenRouter.
+- **Step 3.7 Flash (Kilo) spends a 2,048-token budget thinking.** 3 of 4 raw
+  replies were `finish_reason: length`, `content: ""`, 8,000-9,000 characters of
+  reasoning, for a 30-token answer. It is a property of the tier at a small budget,
+  not a flaky endpoint. Qwen on Cloudflare and Groq and Laguna on Kilo also
+  returned empty answers; their raw replies were NOT captured.
+
+#### 15.4 WHAT IT DOES NOT TELL YOU
+
+Report length; a second time of day (failures cluster, so gaps under ~30% are
+noise); the rerankers (slice 6 has them: Flash-Lite ~1.3s, Jev 1.2-1.6s, Gemma 26B
+~19s, Gemma 31B ~23s); the four known-dead routes; and Mistral's speed, since all
+three Mistral-hosted tiers answered 429 on every call. **The original 300 samples
+carry no timestamp; every new one does.**
+
+**19 mutations on the new rules (13 for the network and fill logic, 6 for the fit
+guard and ranking), every one fired on the test meant to catch it.** 70 unit
+tests for the script.
 
 ---
 
