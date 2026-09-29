@@ -823,3 +823,85 @@ def test_ranking_by_report_time_can_disagree_with_ranking_by_the_long_job():
 
     assert [r.tier for r in ml.rank(rows, "report")] == ["steady", "fades"]
     assert [r.tier for r in ml.rank(rows, "long")] == ["fades", "steady"]
+
+
+# --- a reported zero, and an answer cut at the token cap --------------------
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"usage": {"completion_tokens": 0}},
+        {"usageMetadata": {"candidatesTokenCount": 0, "thoughtsTokenCount": 0}},
+        {"usageMetadata": {"candidatesTokenCount": 0}},
+        {"data": {"usage": {"completion_tokens": 0}}},
+    ],
+)
+def test_a_reported_zero_is_missing_usage_not_a_free_answer(body):
+    """MEASURED 2026-09-30: LiteRouter sent completion_tokens 0 for an answer of
+    11,159 characters. Taken at its word the tier's median speed came out at 17
+    tokens a second instead of 35."""
+    assert ml.usage_tokens(body) == (None, None)
+
+
+def test_a_saved_zero_does_not_drag_a_median_down():
+    """Runs saved before the guard already hold the zero, so summarize must
+    ignore it too - the file cannot be rewritten."""
+    samples = [
+        sample(probe="report", seconds=100.0, generated=0, round=1),
+        sample(probe="report", seconds=100.0, generated=3800, round=2),
+    ]
+
+    (row,) = ml.summarize(samples)
+
+    assert row.report_tokens == 3800
+    assert row.report_tok_s == pytest.approx(38.0)
+
+
+@pytest.mark.parametrize("finish", ["length", "MAX_TOKENS", "max_tokens", "LENGTH"])
+def test_an_answer_cut_at_the_token_cap_is_flagged(finish):
+    cut = ml.dataclasses.replace(
+        sample(probe="report", seconds=40.0), finish_reason=finish
+    )
+
+    (row,) = ml.summarize([cut])
+
+    assert "cut at the token cap x1" in row.failures
+
+
+@pytest.mark.parametrize("finish", ["stop", "STOP", "", "end_turn"])
+def test_a_finished_answer_is_not_flagged(finish):
+    done = ml.dataclasses.replace(
+        sample(probe="report", seconds=40.0), finish_reason=finish
+    )
+
+    (row,) = ml.summarize([done])
+
+    assert "token cap" not in row.failures
+
+
+def test_a_cut_answer_is_still_a_measurement_and_still_counts_as_answered():
+    """It is flagged, not discarded: the seconds are real, they are just the time
+    to write up to the cap."""
+    cut = ml.dataclasses.replace(
+        sample(probe="report", seconds=40.0, generated=8188), finish_reason="MAX_TOKENS"
+    )
+
+    (row,) = ml.summarize([cut])
+
+    assert (row.ok, row.calls) == (1, 1)
+    assert row.report_s == 40.0
+
+
+def test_a_saved_zero_does_not_drag_the_long_probe_median_down_either():
+    """The same guard, on the OTHER median: the fit and tokens-per-second for the
+    500-token job read it, and a run saved earlier can hold a zero there too."""
+    samples = [
+        sample(probe="long", seconds=10.0, generated=0, round=1),
+        sample(probe="long", seconds=10.0, generated=500, round=2),
+    ]
+
+    (row,) = ml.summarize(samples)
+
+    assert row.long_tokens == 500
+    assert row.long_tok_s == pytest.approx(50.0)
