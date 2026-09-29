@@ -116,6 +116,38 @@ def test_a_failure_from_the_callers_layer_becomes_our_error_type():
         rr.rank("why", DOCS)
 
 
+def test_the_status_of_the_callers_error_crosses_the_wrap():
+    """A caller that must tell a BUSY provider from a DEAD one branches on the
+    field. rerank/ cannot import LLMError, so it reads `status` by name; if the
+    wrap dropped it, the weekly smoke run would be back to parsing our message
+    text - and a 503 that clears in seconds would look like a dead tier."""
+
+    class ProviderBusy(Exception):
+        status = 503
+
+    def busy(prompt: str, budget: int) -> str:
+        raise ProviderBusy("high demand")
+
+    rr = LLMReranker(complete=busy, name="Test LLM", model="test-model")
+
+    with pytest.raises(RerankError) as raised:
+        rr.rank("why", DOCS)
+
+    assert raised.value.status == 503
+
+
+def test_an_error_with_no_status_leaves_the_status_empty():
+    def broken(prompt: str, budget: int) -> str:
+        raise RuntimeError("no status here")
+
+    rr = LLMReranker(complete=broken, name="Test LLM", model="test-model")
+
+    with pytest.raises(RerankError) as raised:
+        rr.rank("why", DOCS)
+
+    assert raised.value.status is None
+
+
 def test_a_caller_bug_still_crashes_rather_than_degrading():
     rr, sent = build()
 
