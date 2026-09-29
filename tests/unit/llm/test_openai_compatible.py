@@ -1,4 +1,5 @@
 import json
+import time
 
 import pytest
 import requests
@@ -216,3 +217,126 @@ def test_a_reasoning_model_that_only_thinks_counts_as_an_empty_answer():
         build_provider()._extract_message(
             {"choices": [{"message": {"content": content}, "finish_reason": "length"}]}
         )
+
+
+# --- an error the provider put INSIDE an HTTP 200 -----------------------------
+
+HIDDEN_503 = {
+    "id": "gen-1",
+    "error": {
+        "message": "Upstream error from Nvidia: Service temporarily overloaded",
+        "code": 503,
+        "metadata": {"error_type": "provider_overloaded"},
+    },
+}
+
+
+@responses.activate
+def test_an_error_inside_a_200_keeps_the_providers_words_and_its_status(provider):
+    """Measured 2026-09-30 on Nemotron 3 through Kilo. It used to be reported as
+    'unexpected response shape' with the message cut off."""
+    responses.post(URL, json=HIDDEN_503)
+
+    with pytest.raises(LLMError) as raised:
+        provider.complete("hi")
+
+    assert raised.value.status == 503
+    assert "Service temporarily overloaded" in str(raised.value)
+    assert "unexpected response shape" not in str(raised.value)
+
+
+@responses.activate
+def test_a_503_hidden_in_a_200_is_retried_on_the_same_tier_by_the_chain(provider):
+    """The reason the status matters: the chain retries 503, but only an
+    LLMError that carries the status can be retried."""
+    from labpilot.llm import LLMClient
+
+    responses.post(URL, json=HIDDEN_503)
+    responses.post(URL, json=ok_body("recovered"))
+
+    result = LLMClient(chain=(provider,), base_delay=0.0).generate("hi")
+
+    assert result.text == "recovered"
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_a_429_hidden_in_a_200_with_a_daily_reset_retires_the_pool(provider):
+    """Its metadata carries the same headers a real 429 would, so the daily-cap
+    rule works on it too."""
+    from labpilot.llm.chain import pool_is_exhausted
+
+    tomorrow_ms = (time.time() + 86_400) * 1000
+    responses.post(
+        URL,
+        json={
+            "error": {
+                "message": "Rate limit exceeded: daily limit reached",
+                "code": 429,
+                "metadata": {
+                    "headers": {
+                        "X-RateLimit-Limit": "1000",
+                        "X-RateLimit-Remaining": "0",
+                        "X-RateLimit-Reset": str(int(tomorrow_ms)),
+                    }
+                },
+            }
+        },
+    )
+
+    with pytest.raises(LLMError) as raised:
+        provider.complete("hi")
+
+    assert raised.value.status == 429
+    assert raised.value.reset_at - time.time() > 86_000
+    assert pool_is_exhausted(raised.value)
+
+
+@pytest.mark.parametrize("code", [None, "not a number", True, 200, 301, 700, []])
+@responses.activate
+def test_a_code_that_is_not_an_http_error_leaves_the_status_empty(provider, code):
+    responses.post(URL, json={"error": {"message": "odd failure", "code": code}})
+
+    with pytest.raises(LLMError) as raised:
+        provider.complete("hi")
+
+    assert raised.value.status is None
+    assert "odd failure" in str(raised.value)
+
+
+@responses.activate
+def test_a_numeric_code_sent_as_text_still_counts(provider):
+    responses.post(URL, json={"error": {"message": "busy", "code": "503"}})
+
+    with pytest.raises(LLMError) as raised:
+        provider.complete("hi")
+
+    assert raised.value.status == 503
+
+
+@responses.activate
+def test_an_error_that_is_just_a_string_is_shown(provider):
+    responses.post(URL, json={"error": "the upstream fell over"})
+
+    with pytest.raises(LLMError, match="the upstream fell over"):
+        provider.complete("hi")
+
+
+@responses.activate
+def test_an_error_beside_a_real_answer_does_not_throw_the_answer_away(provider):
+    """Only a reply with NO choices is a failure. Some gateways attach a warning
+    to a good reply, and refusing it would discard paid-for text."""
+    body = ok_body("the real answer")
+    body["error"] = {"message": "a warning", "code": 503}
+    responses.post(URL, json=body)
+
+    assert provider.complete("hi").text == "the real answer"
+
+
+@pytest.mark.parametrize("empty", [None, {}, "", 0])
+@responses.activate
+def test_an_empty_error_field_changes_nothing(provider, empty):
+    responses.post(URL, json={"model": "test/model", "error": empty})
+
+    with pytest.raises(LLMError, match="unexpected response shape"):
+        provider.complete("hi")
