@@ -73,7 +73,8 @@ class HTTPReranker(ABC):
 
         if response.status_code != 200:
             raise RerankError(
-                f"{self.name}: HTTP {response.status_code}: {truncate(response.text)}"
+                f"{self.name}: HTTP {response.status_code}: {truncate(response.text)}",
+                status=response.status_code,
             )
 
         try:
