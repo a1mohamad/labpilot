@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import responses
 
 # BOUND AT IMPORT, on purpose. tests/conftest.py empties
 # labpilot.api.reranking.CHAIN for every non-smoke test, but a name bound here
@@ -215,3 +216,25 @@ def test_every_env_var_the_shipped_rerank_chain_reads_is_mapped_in_the_smoke_wor
     )
 
     assert not missing, missing
+
+
+@CASES
+@pytest.mark.parametrize("status", [429, 503])
+@responses.activate
+def test_every_reranker_reports_the_http_status_as_a_field(
+    reranker, status, monkeypatch
+):
+    """The status has to be readable WITHOUT parsing the message.
+
+    The weekly smoke run retries a 503 and treats a persistent 429 as a spent
+    quota, and it can only do that if the error says which one it was.
+    """
+    monkeypatch.setenv(reranker.api_key_env, "test-key")
+    if reranker.account_env:
+        monkeypatch.setenv(reranker.account_env, "test-account")
+    responses.add(responses.POST, reranker._endpoint(), json={"e": "x"}, status=status)
+
+    with pytest.raises(RerankError) as raised:
+        reranker.rank("why", ["a document"])
+
+    assert raised.value.status == status
