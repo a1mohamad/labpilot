@@ -297,9 +297,13 @@ DEVSTRAL_2 = OpenAICompatibleProvider(
 )
 
 # thinking=None is NOT a preference. Gemma answers HTTP 400 - "Thinking level
-# is not supported for this model" - to every request that carries the field,
-# so tier 8 was dead on every call, measured 2026-09-11. Removing the field
-# makes it answer normally.
+# is not supported for this model" - to a request that carries MEDIUM (the level
+# every Gemini tier here shipped with), so tier 8 was dead on every call,
+# measured 2026-09-11. Removing the field makes it answer normally.
+#
+# ⚠ CORRECTED 2026-09-30: that note used to say "every request that carries the
+# field", and it is not true. Gemma accepts TWO levels, MINIMAL and HIGH, and
+# refuses LOW, MEDIUM and thinkingBudget 0. See the measurements below.
 #
 # This is the largest generator budget in the project - 14,400 requests a DAY,
 # against 20/day for each Flash model - and CLAUDE.md's Step 2 routing leads
@@ -308,6 +312,24 @@ DEVSTRAL_2 = OpenAICompatibleProvider(
 #
 # The weekly smoke test DID cover it and DID fail. Nobody read the result. The
 # guard worked; the reporting did not.
+#
+# WHY IT IS SLOW, measured 2026-09-30 - and it is NOT a bug of ours. Streaming a
+# 30-token answer showed the wait comes BEFORE the first token:
+#   Gemini 3.5 Flash-Lite   first token 1.7s   total 1.7s
+#   Gemma 4 31B             first token 38.5s  first answer 44.6s  total 45.0s
+# then it writes fast. Three more facts:
+#   * it THINKS BY DEFAULT - 166-207 hidden tokens for a 38-token answer, ~1,000
+#     for a 500-token one. `thinkingLevel: MINIMAL` IS ACCEPTED and writes NO
+#     hidden tokens; HIGH is accepted too. LOW, MEDIUM and thinkingBudget 0 answer
+#     400 "not supported for this model". On the 26B below, MINIMAL took the same
+#     job from 7.1s to 2.5s, 3 of 3 times. On this 31B the wait is the QUEUE, so
+#     MINIMAL saved little (28-31s against 40s)
+#   * about half the calls answered 500 "Internal error encountered" or 503: 5 of
+#     7 valid calls in one direct test, 5 of 12 in the 300-request latency run
+#   * "small" is misleading: this is a DENSE 31B model. The 26B A4B below answered
+#     the same job in 7.3s, twice, with no error
+# Routeway's six 26B finetunes are slow for a different reason: 22 tokens a second
+# for a model with ~4B active parameters is their host, not the model.
 GEMMA_4_31B = _gemini(
     name="Gemma 4 31B",
     model="gemma-4-31b-it",
@@ -345,6 +367,20 @@ GEMMA_4_31B = _gemini(
 # is no evidence for it yet: it appears on neither AA nor LMArena, and this
 # chain is ordered on measured capability. Adding it would also force two
 # "pin the exceptions by name" lists to change, which must be deliberate.
+#
+# NEW EVIDENCE 2026-09-30, and it is about SPEED, not capability: on Google it
+# answered a 30-token job in 7.3s twice with no error, against 28-45s and 500s
+# for the 31B (first token at 2.0s against 38.5s). Stock Gemma 4 26B A4B is 17 on
+# AA v4.3.2 against the 31B's 15, so it is not weaker on the one number we have.
+# It also has its own 14,400 requests a day. Still NOT in CHAIN: that is a
+# decision for the user, and the two lists above must change with it.
+#
+# WITH `thinking="MINIMAL"` it answered a 30-token job in 2.3-2.6s (3 of 3), no
+# hidden tokens, against 1.7s for Gemini 3.5 Flash-Lite - which allows 500 calls
+# a day, not 14,400. That would suit the small nodes (gate, verify, planner) the
+# Step 2 routing wants to send to the biggest free pool. It was NOT tested for
+# QUALITY: thinking off changes what a ranking or a verdict is worth, and the
+# 0.732 rerank MRR above was measured with the default (thinking on).
 GEMMA_4_26B = _gemini(
     name="Gemma 4 26B A4B",
     model="gemma-4-26b-a4b-it",
@@ -618,6 +654,22 @@ REQUESTY_MUSE_GLIMMER = _requesty(
 # carried `limit_source: openrouter_shared_capacity`, X-RateLimit-Limit 5000,
 # Remaining 0, resetting at midnight UTC. That is a per-model DAILY cap over
 # every OpenRouter user, not our allowance - "Credits don't affect this cap".
+#
+# MEASURED AGAIN 2026-09-29/30, and it answered 429 on 6 of 6 calls in a
+# 50-tier run (docs/step2/slice1/RESULTS.md). The raw refusal:
+#   "Daily limit reached for thinkingmachines/inkling-small:free via Thinking
+#    Machines"   X-RateLimit-Limit 1000, Remaining 0, reset 00:00 UTC
+# THE CAP IS 1,000 REQUESTS A DAY FOR THE WHOLE WORLD, and it was gone by 18:29
+# UTC. THERE IS NO SECOND FREE ROUTE, all four checked:
+#   Cline        reaches the same OpenRouter counter (same
+#                `limit_rpd/thinkingmachines/inkling-small-20260730` id, sent
+#                back as an HTTP 500 wrapping the 429)
+#   OpenRouter   403 "only available on agentic harnesses" - Kilo and Cline pass
+#                that gate, we do not
+#   Routeway, Requesty, and the paid Kilo/OpenRouter ids   PAID, $0.45-$1.87
+#                per million input tokens - the no-card rule forbids them
+# So it works only in the first hours of a UTC day, if at all. A 429 costs one
+# 1.1s call and the chain moves on, so it is kept where its score puts it.
 KILO_INKLING_SMALL = _kilo(
     name="Inkling Small (Kilo)",
     model="thinkingmachines/inkling-small:free",
