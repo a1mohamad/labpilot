@@ -31,6 +31,7 @@ from dotenv import load_dotenv
 from labpilot.api.reranking import CHAIN, LLM_RERANK_ORDER, PROVIDERS, _listwise
 from labpilot.ingest import chunk_file
 from labpilot.rerank import RERANK_CHAIN
+from tests.smoke.live import call_live
 from tests.smoke.test_embedders import SAMPLES
 
 load_dotenv()
@@ -86,7 +87,7 @@ def test_every_tier_of_the_shipped_chain_is_alive(reranker):
         # The Netlify Jev tier has no public address until OUR proxy is
         # deployed. Unset, the chain skips it for free - so is the smoke run.
         pytest.skip(f"{url_env} is not set - the proxy is not deployed yet")
-    ranking = reranker.rank(QUERY, DOCUMENTS)
+    ranking = call_live(lambda: reranker.rank(QUERY, DOCUMENTS), name=reranker.name)
 
     assert ranking.model == reranker.model
     assert len(ranking.order) == len(DOCUMENTS)
@@ -100,7 +101,7 @@ def test_every_tier_of_the_shipped_chain_is_alive(reranker):
 @pytest.mark.smoke
 @pytest.mark.parametrize("reranker", RERANK_CHAIN, ids=lambda r: r.model)
 def test_every_reranker_is_alive_and_puts_the_real_answer_first(reranker):
-    ranking = reranker.rank(QUERY, DOCUMENTS)
+    ranking = call_live(lambda: reranker.rank(QUERY, DOCUMENTS), name=reranker.name)
 
     assert ranking.model == reranker.model
     assert len(ranking.order) == len(DOCUMENTS)
@@ -122,7 +123,7 @@ def test_every_llm_tier_is_alive_and_puts_the_real_answer_first(reranker):
     that - it is invisible in the order itself, because a decline keeps the
     retrieval order and looks exactly like agreement.
     """
-    ranking = reranker.rank(QUERY, DOCUMENTS)
+    ranking = call_live(lambda: reranker.rank(QUERY, DOCUMENTS), name=reranker.name)
 
     assert reranker.declined == 0, (
         f"{reranker.name} returned no usable ranking - a decline keeps the "
