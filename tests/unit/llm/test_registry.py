@@ -61,10 +61,12 @@ OUTPUT_TOO_SMALL = (
     # not to the gateway in front of it.
     "GLM-5.2 (LiteRouter)",
     "GPT-OSS 120B (Groq)",
-    "Devstral 2",
-    # the two dead GLM-5.2 routes, at the tail with the rest of KNOWN_DEAD
+    # the dead tiers, at the tail with the rest of KNOWN_DEAD, in chain order.
+    # Devstral 2 joined them 2026-10-05: the changelog says it moved to paid
+    # API access, and its 16,384 output cap is still below a report's 32,000.
     "GLM-5.2 (Kilo)",
     "GLM-5.2",
+    "Devstral 2",
 )
 # Both Gemma models: the 16,000 is a per-minute INPUT quota, and the 26B joined
 # the chain on 2026-09-30 with the same limit. Neither can serve a report.
@@ -570,13 +572,50 @@ def test_the_known_dead_tiers_wait_at_the_end_of_the_chain():
     )
 
 
+# Dead tiers with NO live route to the same model, and the reason each is allowed.
+# Named one by one, never by provider, so a NEW dead tier still has to have a
+# twin or earn a line here. Both are Mistral models the free plan stopped
+# serving on 2026-10-05, measured: 429 with a limit of 0 requests a minute.
+NO_LIVE_ROUTE = (
+    # Deprecated by Mistral in favour of Mistral Small 4, which the API now
+    # serves under this name - and that model is at limit 0 on this account.
+    "Magistral Small",
+    # The changelog: "Devstral 2.0 moves to paid API access" (2026-01-27).
+    "Devstral 2",
+)
+
+
+def _has_a_live_twin(provider) -> bool:
+    family = provider.name.split(" (")[0]
+    live = [p for p in CHAIN if p.name not in KNOWN_DEAD]
+    return any(p.name.split(" (")[0] == family for p in live)
+
+
 def test_every_route_to_a_dead_tier_has_a_live_twin_above_it():
     # Moving a dead route to the end is only safe if the MODEL is still
     # reachable higher up. Otherwise the move quietly demotes a whole model.
+    # The exceptions are NAMED, because for them there is nothing higher up.
     dead = [p for p in CHAIN if p.name in KNOWN_DEAD]
-    live = [p for p in CHAIN if p.name not in KNOWN_DEAD]
 
     for provider in dead:
+        if provider.name in NO_LIVE_ROUTE:
+            continue
         family = provider.name.split(" (")[0]
-        twins = [p.name for p in live if p.name.split(" (")[0] == family]
-        assert twins, f"{provider.name} is dead and no live route to {family} remains"
+        assert _has_a_live_twin(provider), (
+            f"{provider.name} is dead and no live route to {family} remains"
+        )
+
+
+def test_the_no_live_route_list_does_not_outlive_its_reason():
+    """An exception that names a tier which HAS a twin now is a lie.
+
+    It would also hide a real gap: a name left here silences the rule above for
+    that tier for ever, including after someone adds a live route to the model.
+    """
+    by_name = {p.name: p for p in CHAIN}
+
+    for name in NO_LIVE_ROUTE:
+        assert name in KNOWN_DEAD, f"{name} is excused but is not known dead"
+        assert not _has_a_live_twin(by_name[name]), (
+            f"{name} has a live route now - take it out of NO_LIVE_ROUTE"
+        )

@@ -964,7 +964,6 @@ CHAIN = _ordered(
     KILO_INKLING_SMALL,
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
-    MISTRAL_MEDIUM,
     LITEROUTER_MISTRAL_MEDIUM,
     KILO_STEP_3_7_FLASH,
     REQUESTY_MUSE_GLIMMER,
@@ -984,8 +983,6 @@ CHAIN = _ordered(
     NEMOTRON_3_SUPER,
     GPT_OSS_120B,
     GPT_OSS_120B_GROQ,
-    MAGISTRAL_SMALL,
-    DEVSTRAL_2,
     GEMINI_3_1_FLASH_LITE,
     _second_account(GEMINI_3_1_FLASH_LITE),
     # KNOWN DEAD, KEPT ON PURPOSE - see KNOWN_DEAD below. Kilo before its
@@ -994,6 +991,9 @@ CHAIN = _ordered(
     GLM_5_2,
     KILO_DEEPSEEK_V4_FLASH,
     DEEPSEEK_V4_FLASH,
+    MISTRAL_MEDIUM,
+    MAGISTRAL_SMALL,
+    DEVSTRAL_2,
 )
 
 # Tiers that answer 404 on every call, KEPT so they can come back. Both free
@@ -1008,9 +1008,43 @@ CHAIN = _ordered(
 # one fast 404, and only once every live tier above it has failed; near the TOP
 # it cost a request on EVERY report. Take a name out of this list only after
 # that tier answers again - that is a claim, and a test holds you to it.
+#
+# THE THREE MISTRAL CHAT TIERS WERE ADDED 2026-10-05, and they are not dead
+# the way the two above are. Mistral's own catalogue (GET /v1/models) says two
+# of them are the SAME MODEL, which is why the calls were fine and the names
+# were the problem:
+#
+#   mistral-medium-latest = Mistral Medium 3.5. Its aliases are mistral-medium,
+#       -3, -3-5, -2604, magistral-medium-latest and the two vibe-cli ids.
+#   mistral-small-latest  = Mistral Small 4 (mistral-small-2603). Its aliases
+#       include magistral-small-latest.
+#
+# The old pinned ids are gone: every dated magistral-* and devstral-* id except
+# devstral-2512 answers 400 "invalid model", and mistral-medium-2508 and
+# mistral-small-2506 answer the same limit-0 429 as the new names. Mistral's
+# changelog says it plainly:
+# Medium 3.5 came out 2026-04-28 and Small 4 on 2026-03-16, Magistral and
+# Devstral are listed as deprecated in favour of them, and "Devstral 2.0 moves
+# to paid API access" (2026-01-27).
+#
+# On this account both models answer 429 with x-ratelimit-limit-req-minute: 0,
+# on every one of the 40-odd calls made on 2026-10-05, while 11 other models
+# answered 200 through the same key, the same network and the same request.
+# reasoning_effort "none" does not change it, and the monthly allowance IS back
+# ($0 of $10 used) - so this is not a spent quota. The admin Limits page even
+# lists medium and small at 1 RPS; the API header is the truth, and the two
+# disagree (request id 01a10b8a-8a6c-7754-b703-02ae7ed7b7ba is one for Mistral
+# support).
+#
+# Moved to the END rather than deleted, like the two above, because Mistral may
+# change what the free plan includes. Devstral 2 and Magistral Small have NO live
+# route elsewhere, which test_registry names as an exception on purpose.
 KNOWN_DEAD = (
     KILO_GLM_5_2.name,
     GLM_5_2.name,
     KILO_DEEPSEEK_V4_FLASH.name,
     DEEPSEEK_V4_FLASH.name,
+    MISTRAL_MEDIUM.name,
+    MAGISTRAL_SMALL.name,
+    DEVSTRAL_2.name,
 )
