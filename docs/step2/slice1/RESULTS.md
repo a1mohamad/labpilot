@@ -461,3 +461,37 @@ PYTHONPATH=. python scripts/measure_latency.py --report artifacts/step2/latency/
 **Check the exit ISP first** (CLAUDE.md's network precondition). The dry run prints
 the requests each quota pool will be asked for; the Gemini Flash tiers allow only
 20 a day each, so a full three-round run uses 6 of them per pool.
+
+## 12. The failed tiers, retried (2026-10-05)
+
+Raised by the user: re-measure only the tiers that gave no usable number, and
+keep it short. **11 tiers, 2 rounds, the short and the long job: 44 requests,
+about 6 minutes**, from 09:09 UTC. Exit AS24940 Hetzner, Nuremberg; Google
+answered 200 first. Data: `artifacts/step2/latency/2026-10-05_09-09_failed-retry.jsonl`
+(git-ignored). "Failed" here means 0 answers, fewer than half, or no long answer
+in section 2's run. One tier (Gemini 3.6 Flash, key 2) answered 3 of 6 with a long
+number, so it was left out.
+
+| tier | first run | now (of 4) | what it said |
+|---|---|---|---|
+| **Qwen3.8 27B (Kilo)** | 1 of 6 | **4 of 4** | long answer 15 to 22 s, 69 tok/s. Its upstream pool was full before; the short job is slow (20 s) because it wrote 314 reasoning tokens for a 30-token answer |
+| Gemini 3.6 Flash | 2 of 6 | 3 of 4 | long answer 15.3 s; one 503 |
+| Gemini 3.8 Flash (key 2) | 1 of 6 | 3 of 4 | long answer 11.3 s; one 503 |
+| Gemini 3.8 Flash (key 1) | 2 of 6 | 1 of 4 | three 503 |
+| Gemini 3.7 Flash (key 2) | 0 of 6 | 2 of 4 | long answer 7.7 s; two 503 |
+| Gemini 3.7 Flash (key 1) | 0 of 6 | 1 of 4 | three 503 |
+| Laguna S 2.1 (Kilo) | 3 of 6 | 2 of 4 | **short job only** (3.3 s). The long job returned "an empty answer" twice, after 64 and 75 s. The raw reply was not captured |
+| Mistral Medium, Magistral Small, Devstral 2 | 0 of 6 each | 0 of 4 each | 429, **limit 0** - see CLAUDE.md section 16 |
+| Inkling Small (Kilo) | 0 of 6 | 0 of 4 | 429 `limit_rpd`, the shared daily cap of section 8 |
+
+**What it shows.**
+
+- **The Gemini 3.6, 3.7 and 3.8 tiers answered 10 of 20 calls, and every miss was a
+  503.** Section 3.2's finding stands: they are busy about half the time.
+- **Qwen3.8 27B on Kilo works now.** One run in two different windows is not a
+  trend; it was refused 5 times in 6 on 2026-09-29.
+- **Laguna on Kilo cannot do the long job** in 4 tries over two runs.
+- **Mistral's three chat tiers are not slow, they are refused.** Two of them are
+  the same model under two names. The full probe is in CLAUDE.md section 16, and
+  the tiers now sit at the end of `CHAIN` as `KNOWN_DEAD`.
+- The sample is small (4 calls per tier). Treat any one cell as a sign, not a rate.
