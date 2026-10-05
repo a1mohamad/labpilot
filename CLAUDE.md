@@ -3,6 +3,32 @@
 Project instructions for Claude Code, and orientation for any human reader.
 Read the two rule sections first — they change *how* everything below is done.
 
+> ## ⚠ THE USER IS A BEGINNER IN AGENTS. READ THIS BEFORE YOU WRITE A WORD.
+>
+> **THE USER IS NEW TO AGENTS, GRAPHS, CHAINS, LANGGRAPH, LANGCHAIN, MCP, THE
+> INSIDE OF RAG, AND FINE-TUNING.** They know PyTorch, FastAPI, Docker and
+> Postgres well. They do **not** know this part, and this project exists to
+> teach it. Step 2 (the agent) is all of it.
+>
+> **Every session starts with the same mistake:** this file is full of expert
+> words (checkpointer, reducer, injected callable, fan-out, thread_id,
+> plan-and-execute) and the next reply repeats them as if they were known. The
+> user asked on 2026-10-05, in capital letters, for this to stop. So:
+>
+> 1. **Say it in bold, at the start of the session and again in any message
+>    about agents:** "You are new to agents / LangGraph / LangChain, so I explain
+>    from the start."
+> 2. **No bare jargon.** The first time an agent word appears in a message, give
+>    its meaning in the same sentence, in common words. Not "a checkpointer" but
+>    "a checkpointer (a small saver that keeps the chat state between turns)".
+> 3. **One tiny real example** (a state dict, a three-node graph) beside every
+>    rule. A definition alone does not teach this.
+> 4. **Do not copy words from this file into a reply. Translate them.** A status
+>    or "ready" message is also a message to a beginner.
+> 5. **Short, common words, full sentences, no metaphors** - the user's English is
+>    B1-B2. See [Communication](#communication) and the
+>    [teaching format](#format-for-every-new-concept--follow-this-order).
+
 **Contents:** [Working Rules](#working-rules-read-first) · [**Network precondition**](#network-precondition--check-the-exit-isp-before-any-llm-work) · [Overview](#project-overview) ·
 [Status](#current-status) · [Environment](#development-environment) ·
 [Conventions](#conventions) · [**Mutation testing**](#mutation-testing--claudes-standing-job-and-it-runs-unasked) ·
