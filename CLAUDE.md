@@ -1061,10 +1061,12 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > >
 > > **Slice 1 IS MEASURED (2026-09-29/30) - read
 > > [section 15](#15-slice-1-is-measured--every-tier-ranked-by-speed-2026-09-30)
-> > and `docs/step2/slice1/RESULTS.md`.** One thing it did NOT answer: how long a
-> > 5,000-token REPORT takes. **Next is slice 2** (the skeleton - and it must ship
-> > a CHECKPOINTER and a `thread_id`, per D15, or the product cannot have a second
-> > turn), or a report-length latency probe first.
+> > and `docs/step2/slice1/RESULTS.md`.** The report-length probe was run too
+> > (2026-09-30, [section 15.5](#155-report-length-measured-2026-09-30)): tier 1
+> > wrote ~3,800 tokens in 120s AND in 24s, so the 400-500s reports of
+> > 2026-09-19 are NOT reproduced and nobody knows yet why they were slow.
+> > **Next is slice 2** (the skeleton - and it must ship a CHECKPOINTER and a
+> > `thread_id`, per D15, or the product cannot have a second turn).
 > >
 > > **2026-09-29: ROUTEWAY IS IN THE CHAIN — 54 TIERS, MERGED: `main`,
 > > `origin/main` and `feat/routeway` are the same commit (checked with git
@@ -17436,8 +17438,8 @@ tests must not do.
 
 *Full write-up: `docs/step2/slice1/RESULTS.md`. Instrument:
 `scripts/measure_latency.py` with `tests/unit/test_measure_latency.py`.
-**NOT COMMITTED** - three new untracked paths (`scripts/measure_latency.py`, its
-test, and `docs/step2/`) plus this file. The raw data is
+**COMMITTED on `main`** (script `b4fa84a`, its tests `2f0ce0b`, the results
+`0cc24d8`; this line said "NOT COMMITTED" after they were). The raw data is
 `artifacts/step2/latency/2026-09-29_18-29.jsonl` (git-ignored).*
 
 **50 tiers, 300 requests, plus 41 re-measured.** Two fixed jobs (a ~30-token gate
