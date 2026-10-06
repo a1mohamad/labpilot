@@ -17935,6 +17935,39 @@ artifact.
    NOTHING else moves: same answer, same response, same error mapping. The
    existing `ask` and `/compare` tests are the safety net.
 
+#### 17.8 The lesson plan for Step 2, and who writes the code — 2026-10-06
+
+**The user writes ALL the code. Claude brings it in the chat.** Claude does not
+write files in `labpilot/`. Claude reads files, runs the tests, and runs the
+mutation checks (break one line for a moment, put the file back from a COPY, and
+tell the user first).
+
+**One lesson** is one short message: the idea in plain words, one tiny example,
+then 15 to 40 lines for the user to type. Then the user says "done", Claude runs
+the tests, and every file gets its own commit. Lesson size: heavy is 3 or 4
+lessons, medium is 2, light is 1, none is a measurement with no new idea. These
+are estimates, not promises.
+
+| Slice | What we do | Lessons |
+|---|---|---|
+| 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
+| 1 done | the speed of each of the 56 models | none |
+| **2 (next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+| 3 | run two independent steps at the same time | medium, 2 |
+| 4 | a step that can STOP the graph (the gate) | medium, 2 |
+| 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
+| 6 | the planner: one cheap call chooses the steps and the queries | medium, 2 |
+| 7 | each step gets its own models, token limit and thinking level | light, 1 |
+| 8 | score the findings against the answer key and time the run | none |
+
+**The 4 lessons of slice 2:** (1) state, node and edge, with a graph of 2 steps;
+(2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
+`thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
+
+**How a new session starts slice 2:** read this section and 17.7, check the branch
+`feat/agent-skeleton` (made from `main` on 2026-10-06), then give lesson 1. Lessons
+call no model, so the exit-ISP check is not needed until the first live test.
+
 ---
 
 ## Agent Design — Step 2, recorded 2026-08-11
