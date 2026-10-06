@@ -3,31 +3,54 @@
 Project instructions for Claude Code, and orientation for any human reader.
 Read the two rule sections first — they change *how* everything below is done.
 
-> ## ⚠ THE USER IS A BEGINNER IN AGENTS. READ THIS BEFORE YOU WRITE A WORD.
+> ## ⛔ READ THIS FIRST. IT APPLIES TO EVERY REPLY, IN EVERY SESSION.
 >
-> **THE USER IS NEW TO AGENTS, GRAPHS, CHAINS, LANGGRAPH, LANGCHAIN, MCP, THE
-> INSIDE OF RAG, AND FINE-TUNING.** They know PyTorch, FastAPI, Docker and
-> Postgres well. They do **not** know this part, and this project exists to
-> teach it. Step 2 (the agent) is all of it.
+> **THE USER IS A BEGINNER IN AGENTS, GRAPHS, CHAINS, LANGGRAPH, LANGCHAIN, MCP,
+> THE INSIDE OF RAG, AND FINE-TUNING. THEIR ENGLISH IS NOT PERFECT (B1-B2).**
+> They know PyTorch, FastAPI, Docker and Postgres well. They do **not** know the
+> agent part, and this project exists to teach it. Step 2 is all of it.
 >
-> **Every session starts with the same mistake:** this file is full of expert
-> words (checkpointer, reducer, injected callable, fan-out, thread_id,
-> plan-and-execute) and the next reply repeats them as if they were known. The
-> user asked on 2026-10-05, in capital letters, for this to stop. So:
+> ### Write the WHOLE reply for this reader, from the first word to the last.
 >
-> 1. **Say it in bold, at the start of the session and again in any message
->    about agents:** "You are new to agents / LangGraph / LangChain, so I explain
->    from the start."
-> 2. **No bare jargon.** The first time an agent word appears in a message, give
->    its meaning in the same sentence, in common words. Not "a checkpointer" but
->    "a checkpointer (a small saver that keeps the chat state between turns)".
-> 3. **One tiny real example** (a state dict, a three-node graph) beside every
->    rule. A definition alone does not teach this.
-> 4. **Do not copy words from this file into a reply. Translate them.** A status
->    or "ready" message is also a message to a beginner.
-> 5. **Short, common words, full sentences, no metaphors** - the user's English is
->    B1-B2. See [Communication](#communication) and the
->    [teaching format](#format-for-every-new-concept--follow-this-order).
+> This is true for every message: lessons, plans, status reports, "ready"
+> messages, error reports and questions. It is true in every session.
+> **The user must never have to ask for it, and must never have to remind you
+> when a new session starts. If they have to, you failed.** They have already
+> asked more than once (2026-10-05 and 2026-10-06).
+>
+> ### NEVER write an opener line instead of doing the work.
+>
+> No "You are new to agents, so a quick word first: ...", no one-line
+> definition at the top, no bold reminder sentence. **The user called this
+> cheating (2026-10-06), and they are right.** One word explained at the top,
+> followed by an expert reply, fixes nothing: the other twenty hard words stay.
+>
+> ### What to do instead
+>
+> 1. **Explain inside the reply, at the place where the idea is used.** The first
+>    time an agent word appears, give its meaning in the same sentence, in common
+>    words, and connect it to something they already know (a PyTorch checkpoint,
+>    a FastAPI route, a Postgres row). Never a bare term.
+> 2. **One tiny real example** beside every rule (a real state dict, a
+>    three-node graph). A definition alone does not teach this.
+> 3. **Common words and normal full sentences.** Keep "because", "so", "then".
+>    No headline fragments, no metaphors, no idioms. Use the same word for the
+>    same thing. See [Communication](#communication).
+> 4. **Do not copy words from this file into a reply. Translate them.** This file
+>    is full of expert words (checkpointer, reducer, injected callable, fan-out,
+>    plan-and-execute) that the user does not know.
+> 5. **Short: about one screen.** If the topic needs more, split it and ask
+>    before you continue.
+>
+> ### Check before you send. All three answers must be "yes".
+>
+> - Is every agent word explained **in the body**, in plain words, where it first
+>   appears?
+> - Could a reader with B1 English understand every sentence the first time?
+> - Is the reply about one screen long?
+>
+> The teaching order for a new idea is in
+> [the teaching format](#format-for-every-new-concept--follow-this-order).
 
 **Contents:** [Working Rules](#working-rules-read-first) · [**Network precondition**](#network-precondition--check-the-exit-isp-before-any-llm-work) · [Overview](#project-overview) ·
 [Status](#current-status) · [Environment](#development-environment) ·
@@ -202,11 +225,17 @@ The measure of success is not that LabPilot ships. It is that the user can
 repo in front of them.
 
 ### Communication
-English proficiency is between B1 and B2, not a native speaker.
+**The user is a beginner in agents, and their English is between B1 and B2.**
+The banner at the top of this file has the full rules. They apply to every reply
+and every session, not only to lessons, and they replace any opener line.
 
-- Use clear, simple English words and short sentences.
+- Use common words and normal full sentences, with "because", "so" and "then".
+  Short sentences made of hard words are harder to read than longer sentences
+  made of easy words.
 - Simplify the *language*, not the *concepts*.
-- Avoid idioms, slang, and heavily casual phrasing.
+- Avoid idioms, slang, metaphors, and heavily casual phrasing.
+- Never replace the explanation with a one-line reminder or definition at the
+  start of a reply. The whole reply is written for this reader.
 
 ### Sources — verify before trusting
 When checking whether a platform or service is free, **only two sources count**:
@@ -1093,6 +1122,10 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > 2026-09-19 are NOT reproduced and nobody knows yet why they were slow.
 > > **Next is slice 2** (the skeleton - and it must ship a CHECKPOINTER and a
 > > `thread_id`, per D15, or the product cannot have a second turn).
+> > **2026-10-06: the decisions about chat memory, where to save it, and old
+> > artifacts are in [section 17](#17-chat-memory-storage-and-cleanup--decided-2026-10-06)
+> > - read it before slice 2.** Artifacts are NEVER deleted today, and all chats
+> > share one 500 MB.
 > >
 > > **2026-09-29: ROUTEWAY IS IN THE CHAIN — 54 TIERS, MERGED: `main`,
 > > `origin/main` and `feat/routeway` are the same commit (checked with git
@@ -12116,6 +12149,8 @@ added.*
 **The numbers are POSITIONS, derived by `_ordered()`, never typed.** Read this
 table by model name; a tier index in this file has gone stale three times now.
 
+> **⚠ OUT OF DATE (2026-10-06): this table lists 40 tiers, but `CHAIN` has 56.** Read `labpilot/llm/registry.py` for the real order. Tier numbers here have been wrong before.
+
 | # | Model | Provider | AA v4.3 | Code Arena | Note |
 |---|---|---|---|---|---|
 | 1 | GLM-5.3 Flash (Cline) | Cline | 42 | 1607 (#17) | 1,310,720 ctx / 131,072 out |
@@ -16981,7 +17016,7 @@ considered and rejected: real answers were measured at 2.86, 3.21, 3.99 and
 | # | decision |
 |---|---|
 | **D14** | **Jargon and acronym expansion is a NAMED GAP.** The research listed three cases where professionals rewrite a query; D5 covers multi-turn and D2 covers decomposition, and **nothing covers the third**. It is the one that fits us worst: a claim from A is written in the paper's words (*"attention pooling over hidden states"*) and B is written in the programmer's (`_attn_pool`, `CLIP_NORM`). BM25 and the reranker compensate by accident; nothing bridges the two vocabularies on purpose |
-| **D15** | **SLICE 2 MUST SHIP A CHECKPOINTER AND A `thread_id`, not only nodes and edges.** LabPilot is a CHAT, and no slice built conversation state. D5 would have a node with nothing to read, and CLAUDE.md's own UI example - *"now compare **it** with my code"* - cannot work without it. LangGraph's checkpointer is the mechanism: `compile(checkpointer=...)` plus `config={"configurable": {"thread_id": ...}}` makes turn 2 read turn 1's state |
+| **D15** | **SLICE 2 MUST SHIP A CHECKPOINTER AND A `thread_id`, not only nodes and edges.** LabPilot is a CHAT, and no slice built conversation state. D5 would have a node with nothing to read, and CLAUDE.md's own UI example - *"now compare **it** with my code"* - cannot work without it. LangGraph's checkpointer is the mechanism: `compile(checkpointer=...)` plus `config={"configurable": {"thread_id": ...}}` makes turn 2 read turn 1's state. **Refined 2026-10-06 in [section 17](#17-chat-memory-storage-and-cleanup--decided-2026-10-06)** |
 | **D16** | **Adding a gateway is not just a registry entry.** Each new platform needs its provider wiring, its place in `CHAIN` argued on measured capability, its env var in `.env.example` AND in `smoke.yaml` (which `test_every_chain_env_var_is_mapped_in_the_smoke_workflow` enforces), and a liveness case. `test_every_gateway_tier_is_free` already exists for exactly this class of drift |
 
 #### 10.8 THE METHOD LESSON, EARNED THREE TIMES IN ONE SESSION
@@ -17743,6 +17778,162 @@ it unlocks them, and needs a card, which this project does not use.
   section 12. In short: Qwen3.8 27B on Kilo works now, the Gemini 3.6-3.8 tiers
   answer about half the time, Laguna on Kilo cannot write a long answer, and the
   Mistral chat tiers and Inkling Small are refused on every call.
+
+### 17. CHAT MEMORY, STORAGE AND CLEANUP — decided 2026-10-06
+
+*Talked through with the user in plain words, one question at a time, right
+before slice 2. The user agreed with 17.3 to 17.5. 17.6 is a plan for LATER, not
+for slice 2. Nothing in this section is built. It refines D15 in section 10.7.*
+
+#### 17.1 What was checked first (2026-10-06)
+
+- **Git.** Branch `fix/mistral-dead-tiers`: 4 commits that exist only on the
+  user's computer (not pushed, not in `main`). `main` equals `origin/main`. Open
+  question for the user: push and merge that branch first, or start slice 2 from
+  it. Nobody commits to `main` except the user.
+- **Tests that never use the database:** `tests/unit` and `tests/api`, run with
+  no database and no quota: **986 passed, 5 skipped, 0 failed**, ruff clean. The
+  5 skips are not about the database: 4 are embedder checks that do not apply to
+  some embedders, 1 needs admin rights to make a symlink on Windows.
+- **Tests that DO use the database:** `tests/integration` holds **83** tests
+  marked `database`. They use the real Supabase through the VPN, each run in its
+  own temporary schema, no model quota. **They were NOT run on 2026-10-06.**
+  `tests/smoke` spends model quota and was not run either.
+- **Code.** `labpilot/agent/` is empty. `langgraph 1.2.12` is pinned and
+  installed, and nothing imports it. `ask()` in `api/services.py` is the function
+  slice 2 replaces; the route that calls it is `api/routers/compare.py`.
+- **Numbers.** `CHAIN` has 56 tiers, the rerank chain 13, `MIGRATION` 8. The Chain
+  1 table in this file still lists 40 tiers (see the note above it).
+
+#### 17.2 How the memory works, in plain words
+
+- **State** is one dictionary that moves from node to node. A node (one step, one
+  function) returns only the fields it changed, and LangGraph puts them in.
+- **Two kinds of memory.** Inside one run (one user message, from question to
+  answer) the state moves from node to node with NO checkpointer. Between runs
+  (the next message of the same chat) the state exists only with a checkpointer.
+- **A checkpointer** saves a copy of the state after every step. Each copy is a
+  checkpoint. A new message starts from the LATEST copy of its chat. The older
+  copies matter only to continue after a crash in the middle of a run (one report
+  can take minutes).
+- **A `thread_id`** is the name of one chat. Same id, same saved state. A new id
+  starts with an empty state. It is NOT the `request_id`, which is new for every
+  request and exists for logs.
+- **A reducer** is the rule that says how a new value joins the old one. By
+  default it REPLACES (`question`, `answer`). For a list that must grow
+  (`history`, `findings`) the rule is ADD.
+- **Chat agents and memory.** The model remembers nothing: the program sends the
+  old messages again in every call. When that gets too long there are three
+  ways: cut the oldest messages, summarize them, or keep facts outside the chat
+  and load only what is needed.
+
+Tiny example, one chat `"chat-7"`:
+
+```
+turn 1   start          {"question": "why do results differ?", "chunks": [], "answer": ""}
+         after search   {"question": "...", "chunks": [c1, c2], "answer": ""}      <- saved
+         after answer   {"question": "...", "chunks": [c1, c2], "answer": "..."}   <- saved
+turn 2   loads the last saved copy, replaces "question", runs again
+         ("and what about the learning rate?" can now be read as a follow-up)
+```
+
+#### 17.3 Decisions
+
+| # | decision |
+|---|---|
+| **D17** | **One chat = one `thread_id`.** The server makes a random uuid on the first message (when none is sent), returns it in the response, and the page keeps it in the browser so a refresh continues the chat. Random, never 1, 2, 3: there is no login, so anyone who knows the id could read the chat. `POST /compare` has no such field today: slice 2 adds it |
+| **D18** | **Slice 2 ships a checkpointer.** Same as D15. The saved state is the memory between turns |
+| **D19** | **The state is saved in Postgres, in the SAME Supabase database, in separate tables** (the user agreed, 2026-10-06). The saver in memory is for tests only, because Render restarts the server and a memory saver loses every chat. The saver needs a new package, `langgraph-checkpoint-postgres`. It is NOT installed. **Slice 2 must first check** its name and version, that it works with our `psycopg 3.2.12`, and that it works on the session pooler (port 5432, never 6543: transaction mode rejects prepared statements) |
+| **D20** | **What the state holds** (17.4). The exact fields are decided in slice 2 |
+| **D21** | **The prompt gets the recent questions and the `findings`, NOT the old full reports.** A report is about 5,000 tokens and `PROMPT_BUDGET` is 26,000. The list of findings is already the summary. A cheap model may summarize old turns later, ONLY if measured to be needed: Gemma has 14,400 calls a day, but every call adds waiting time and generation time is already the biggest problem |
+| **D22** | **Keep only the latest copy of each chat.** The saver keeps a copy after every step, and a growing list is saved in full again at every turn, so old copies add up fast. How to delete old copies with the real saver is not checked yet: `delete_thread` removes a whole chat, but removing only the old copies of one chat may need our own SQL. Slice 2 finds out |
+
+#### 17.4 What the state holds (D20)
+
+```
+keep for the whole chat (grows):     a, b          the two artifact ids, set once
+                                     history       each turn's question and answer, short
+                                     findings      what was found so far (ADD reducer)
+this turn only (replaced next turn): question, chunks (ids, not text), answer
+never in the state:                  the database connection (it cannot be saved),
+                                     the full prompt (~78,000 characters, build it again),
+                                     API keys
+```
+
+**The connection also cannot be in the state for a second reason:** `agent/` is the
+core layer and may not import `store/`, `llm/`, `embed/` or `rerank/`
+(`test_architecture`). So `api/` hands each node the function it needs, and the
+connection stays inside that function (D7).
+
+#### 17.5 How much space, and the free second project
+
+**These numbers are rough estimates, NOT measurements.** Slice 2 measures one real
+chat.
+
+- One answer is about 12 KB of text. Chunk text adds about 25 KB per turn. With
+  chunk ids only, almost nothing.
+- One chat of 10 turns: about 120 KB (ids only) or about 400 KB (with chunk
+  text). 100 chats: about 12 MB or 40 MB.
+- One artifact of 10,000 chunks is about 90 MB, and a big repository is 200 MB or
+  more. **The artifacts, not the chat state, are the real danger for 500 MB.**
+- An earlier guess of 100 to 200 KB per turn was too high.
+
+**Second Supabase project.** Read from Supabase's own pricing page on 2026-10-06:
+the free plan allows 2 active projects, each with its own 500 MB database and its
+own compute, and free projects are paused after 1 week of inactivity. The page
+does not say whether a card is needed: we only find out when we create one, and
+we stop if it asks. We already use 1 of the 2 slots. **Decision: do NOT create it
+now. Keep it in reserve.** If the artifacts fill the first database, the second
+project is worth more to them than to the chat state. It is only a new connection
+string, because both are Postgres.
+
+#### 17.6 Artifacts are never deleted, and the plan for it (D23, for LATER)
+
+**Facts, checked in the code on 2026-10-06:**
+
+- `store/schema.sql` has one `artifacts` table and one `chunks` table for
+  everyone. There is NO owner column: no user id and no chat id. All artifacts
+  from all chats share one database and one 500 MB.
+- The id is `side + sha256(content)[:16]`. The same file in the same slot is the
+  same artifact, stored once (re-ingest replaces it). Two different users who
+  upload the same file share it.
+- **Nothing deletes an artifact.** The routes are only `POST /artifacts`,
+  `POST /compare` and the health routes. There is no delete route and no expiry.
+  So the artifact data only grows, and when 500 MB is full every new upload fails.
+- There is **no privacy between users**: anyone who knows an artifact id can ask
+  about it.
+- A chat only points to its two artifact ids. Deleting a chat does not delete
+  artifacts. Deleting an artifact leaves chats that point to nothing.
+
+**Plan (Step 3, before real users come; NOT slice 2):**
+
+1. Add a column `last_used_at` to `artifacts`, updated at every `/compare` that
+   uses the artifact. `alter table ... add column if not exists`, like the `tsv`
+   column.
+2. Before each ingest, read the size the database uses (one SQL query, for
+   example `pg_database_size`).
+3. If it is above a limit, delete the artifacts used longest ago until there is
+   room. `on delete cascade` already removes their chunks.
+4. The check runs at upload time, NOT on a timer: Render sleeps when idle, so a
+   timer is not reliable. It also deletes only when space is really needed, which
+   a rule like "delete after 7 days" does not.
+5. The page tells the user before an upload that old files can be removed. If a
+   chat comes back to a removed artifact, the existing `UnknownArtifactId` (404)
+   is shown as: "this file was removed to free space, please upload it again".
+
+**The limit of about 350 MB (70% of 500) is a guess to be measured.** Open: an
+owner column for privacy, and what to do with chats that point to a removed
+artifact.
+
+#### 17.7 What slice 2 must do first, so nothing is forgotten
+
+1. Teach the user the idea (this is the heavy teaching slice), THEN build.
+2. Check `langgraph-checkpoint-postgres` (D19) and how to delete old copies (D22).
+3. Add `thread_id` to the compare request and response (D17).
+4. Keep the state small (17.4) and measure one real chat (17.5).
+5. Nodes take functions from `api/` (D7). The graph replaces `ask()` and
+   NOTHING else moves: same answer, same response, same error mapping. The
+   existing `ask` and `/compare` tests are the safety net.
 
 ---
 
