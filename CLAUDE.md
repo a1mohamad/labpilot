@@ -128,7 +128,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Slice 4 Result](#the-measurement--five-runs-all-saved) ·
 [**Next: Coverage**](#why-coverage-is-stuck--diagnosed-2026-08-14) ·
 [Comparison Template](#the-comparison-template--designed-2026-08-14) ·
-[**STEP 2 — THE PLAN, 8 slices**](#step-2--the-plan-recorded-2026-09-22) ·
+[**STEP 2 — THE PLAN, 9 slices**](#step-2--the-plan-recorded-2026-09-22) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -16458,7 +16458,11 @@ selector that slice 7 deleted.
 > baseline therefore has to be measured before Step 2 can be said to beat
 > anything — M6 below.
 
-### 4. THE EIGHT SLICES
+### 4. THE NINE SLICES
+
+*(Eight until 2026-10-07. Slice 9 was added by the user's decision, see
+[section 18](#18-slice-9--a-big-repository-as-side-a-decided-2026-10-07). Other
+notes in this file that say "eight slices" mean slices 0 to 8.)*
 
 | # | slice | what it must prove | teaching |
 |---|---|---|---|
@@ -16471,6 +16475,7 @@ selector that slice 7 deleted.
 | 6 | **the planner** | nodes AND queries chosen from the question plus a corpus map | medium |
 | 7 | **routing** | a chain, a `max_tokens` and a thinking level PER TASK | light — every number already exists |
 | 8 | **measure** | findings against `EXPECTED.md`, and the wall clock | none |
+| **9** | **a big repository as side A** | claims from an A that does not fit one call, ranked and limited, measured on a NEW test pair | medium |
 
 **Slice 0 is first because it can change the plan.** If LangGraph is 200MB
 resident we write the graph in plain Python instead. Check the gate before the
@@ -17934,6 +17939,103 @@ artifact.
 5. Nodes take functions from `api/` (D7). The graph replaces `ask()` and
    NOTHING else moves: same answer, same response, same error mapping. The
    existing `ask` and `/compare` tests are the safety net.
+
+#### 17.8 The lesson plan for Step 2, and who writes the code — 2026-10-06
+
+**The user writes ALL the code. Claude brings it in the chat.** Claude does not
+write files in `labpilot/`. Claude reads files, runs the tests, and runs the
+mutation checks (break one line for a moment, put the file back from a COPY, and
+tell the user first).
+
+**One lesson** is one short message: the idea in plain words, one tiny example,
+then 15 to 40 lines for the user to type. Then the user says "done", Claude runs
+the tests, and every file gets its own commit. Lesson size: heavy is 3 or 4
+lessons, medium is 2, light is 1, none is a measurement with no new idea. These
+are estimates, not promises.
+
+| Slice | What we do | Lessons |
+|---|---|---|
+| 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
+| 1 done | the speed of each of the 56 models | none |
+| **2 (next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+| 3 | run two independent steps at the same time | medium, 2 |
+| 4 | a step that can STOP the graph (the gate) | medium, 2 |
+| 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
+| 6 | the planner: one cheap call chooses the steps and the queries | medium, 2 |
+| 7 | each step gets its own models, token limit and thinking level | light, 1 |
+| 8 | score the findings against the answer key and time the run | none |
+| 9 | a big repository as side A: rank the files and the claims | medium, 2 |
+
+**The 4 lessons of slice 2:** (1) state, node and edge, with a graph of 2 steps;
+(2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
+`thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
+
+**How a new session starts slice 2:** read this section and 17.7, check the branch
+`feat/agent-skeleton` (made from `main` on 2026-10-06), then give lesson 1. Lessons
+call no model, so the exit-ISP check is not needed until the first live test.
+
+### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
+
+*Talked through with the user during lesson 1. The user was confused about what a
+claim is and where claims come from, and asked for the big-repository case to be
+built as the LAST slice. Nothing here is built.*
+
+#### 18.1 The project in one picture (the user asked for this reset)
+
+A is the SOURCE: the paper, or the original code. B is what the user built. The
+question LabPilot answers is: **why does B not get the results of A, and what is
+different?**
+
+```
+A (source) -> extract_claims (one cheap call) -> a list of claims
+              each claim = one search text
+                       -> search in B -> verify -> a list of differences
+                       -> explain why the results differ
+```
+
+- Claims come from **A only**. B is the thing we search in.
+- **The format of A does not matter to this step.** Step 1 already turns a PDF, a
+  Word file, a notebook, code and a git repository into chunks of text with a
+  header, so `extract_claims` reads chunks and never sees a format.
+- What really changes is **size** (does A fit one call? `measure()` says), **how
+  many facts** it holds (a paper about 14, a repository hundreds), and the place
+  label (a page, or a file and a function).
+- With **one artifact only** there are no claims. Other tools are used: summarize,
+  find bugs.
+- **Withdrawn:** an idea of "roles" and a "two-way walk", and a suffix rule to
+  choose the mode. It made the picture harder, and the user rejected it. Do not
+  build it.
+
+#### 18.2 Decisions
+
+| # | decision |
+|---|---|
+| **D24** | `extract_claims` is ONE cheap call over A. Its **instruction is fixed and versioned**, its **output has a fixed JSON shape** (`text` plus where it was seen), the **claims are saved beside the report** (a fallback tier writes different claims), and a **short fixed list is the backup** when the call fails |
+| **D25** | **The user's question goes inside the extract instruction**, for every A that fits one call. One line of text, no new design. The default question is general, so it filters almost nothing; a specific question narrows the list. Risk: a narrow question may hide a claim that explains the gap, so **M10** checks it |
+| **D26** | **Slice 5 only handles an A that fits one call.** If it does not fit, the program says *"A is too big, point me at a folder or a file"*. It never cuts the input silently |
+| **D27** | **Slice 9 builds the big-repository version, by the user's decision.** If A does not fit: (1) rank the files of A by closeness to the question (`file_scores()` exists), (2) take the closest files, (3) one cheap call per file, in PARALLEL, (4) join the lists and remove duplicates, (5) **rank the claims and keep the best N**. In graph words: "does it fit?" is a conditional edge and "one call per file" is the parallel part |
+| **D28** | **The claim ranking system is NOT designed yet.** The user wants a new ranking for claims. Candidates to measure: the closeness of each claim to the question (free, needs no call), a reranker tier on the claims, or asking the extract call to give each claim a score. Decide it in slice 9 with data |
+
+#### 18.3 What slice 9 needs first
+
+**A test pair with a repository on side A.** We have none: every number in this
+project comes from one paper and one Python file. A design with no test data is a
+guess, so the pair is built BEFORE the design, as slice 8's third corpus was.
+
+#### 18.4 Measurements owed
+
+| # | measure | slice |
+|---|---|---|
+| M10 | the question inside the extract instruction against no question: does the model still find the same differences on `quora_siamese`? | 5 |
+| M11 | does the same instruction work when A is code (Python, Go) and not a paper? Nothing here is tested yet | 5 |
+| M12 | the number N (claims kept) and the number of files taken, on the new pair | 9 |
+| M13 | the claim ranking candidates of D28 against each other | 9 |
+
+#### 18.5 Tools that already exist
+
+`measure()` (the size of A, one round trip), `file_scores()` (files ranked by
+closeness to a question), `read_headers()` and `build_map()` (the planner's map).
+No new store code should be needed for D27.
 
 ---
 
