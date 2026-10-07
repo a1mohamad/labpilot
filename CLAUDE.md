@@ -1126,6 +1126,10 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > artifacts are in [section 17](#17-chat-memory-storage-and-cleanup--decided-2026-10-06)
 > > - read it before slice 2.** Artifacts are NEVER deleted today, and all chats
 > > share one 500 MB.
+> > **2026-10-07: SLICE 2, LESSON 1 OF 4 IS DONE. Resume at LESSON 2.** Read
+> > [section 17.9](#179-where-we-stopped--slice-2-lesson-1-is-done-2026-10-07)
+> > first: it says what the user already knows, which three answers were wrong,
+> > and what lesson 2 must teach.
 > >
 > > **2026-09-29: ROUTEWAY IS IN THE CHAIN — 54 TIERS, MERGED: `main`,
 > > `origin/main` and `feat/routeway` are the same commit (checked with git
@@ -17957,7 +17961,7 @@ are estimates, not promises.
 |---|---|---|
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
-| **2 (next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+| **2 (IN PROGRESS: lesson 1 of 4 done 2026-10-07, lesson 2 is next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | run two independent steps at the same time | medium, 2 |
 | 4 | a step that can STOP the graph (the gate) | medium, 2 |
 | 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
@@ -17970,9 +17974,99 @@ are estimates, not promises.
 (2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
-**How a new session starts slice 2:** read this section and 17.7, check the branch
-`feat/agent-skeleton` (made from `main` on 2026-10-06), then give lesson 1. Lessons
+**How a new session continues slice 2:** read this section, 17.7 and 17.9, check
+git (branch, status, `git log -5`), then give **lesson 2**. Lesson 1 is done. Lessons
 call no model, so the exit-ISP check is not needed until the first live test.
+
+#### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
+
+**Status: lesson 1 of 4 is complete. The next thing to do is lesson 2.** Nothing in
+`labpilot/` was changed. `labpilot/agent/` is still empty and `ask()` is untouched.
+
+**What the user typed and ran.** `scripts/intro_to_graph.py`, a graph of two steps
+(`search`, then `write`) over a state with `question`, `chunks` and `answer`. It runs
+with `python scripts/intro_to_graph.py` and printed exactly what it should:
+
+```
+{'question': 'why do results differ?', 'chunks': [...], 'answer': '... I read 2 chunks'}   <- invoke
+{'search': {'chunks': [...]}}                                                              <- stream
+{'write': {'answer': '...'}}                                                               <- stream
+```
+
+(The user's own copy is `scripts/intro_to_graph.py`. A reference copy is in the
+git-ignored `artifacts/lesson1_graph.py`.) The first run failed with
+`ImportError: cannot import name 'End'`. Cause: `START` and `END` are ALL CAPITALS in
+LangGraph. The user fixed it alone.
+
+**What the user now knows** (do not re-teach):
+
+- A **state** is one dictionary (a `TypedDict` with fixed keys) that goes from step to
+  step. A **node** is one function. An **edge** is an arrow between two nodes.
+  `compile()` builds the graph, `invoke` runs it, `stream(stream_mode="updates")` shows
+  each step.
+- A node **receives the WHOLE state** and **returns ONLY what it changed**. LangGraph,
+  not the node, puts the change into the state.
+- The graph is **fixed** (all nodes and edges are written down). A conditional edge
+  decides which path to walk at run time. The graph is not "dynamic" in the sense that
+  nodes appear by themselves.
+- A new key later means a **new line in the `State` class**. A key that is not in
+  `State` is **silently ignored** by LangGraph (a typo trap).
+- Parallel steps that write the same key without a reducer raise `InvalidUpdateError`.
+  This was only mentioned, not taught: it is lesson 2.
+
+**The three check questions, and what the user answered** (the answers were loose, and
+this is what was corrected, so do not repeat the same mistakes):
+
+1. *Why can `write` read `question` when `search` did not return it?* The user said
+   "its own LangGraph mechanism". Correct: LangGraph keeps the whole state, and nothing
+   replaced `question`.
+2. *What is `answer` if `write` returns `{}`?* The user did NOT give a value. Correct:
+   `""`, the value from the start. There is no error and no warning, so we must test the
+   output of each step.
+3. *Which variables go in the state?* The user said "variables that change in every
+   node", and wrote `threat_id`. **Corrected:** the rule is "put in the state what a
+   LATER STEP or a LATER TURN must read". And **`thread_id` is NOT in the state**: it is
+   the name of the chat and goes in the call,
+   `graph.invoke(start, config={"configurable": {"thread_id": "chat-7"}})`. Keep OUT of
+   the state: the database connection, API keys, and the full prompt (see 17.4). The user
+   did understand that the saved state goes to the database, and that only what is in the
+   state gets saved.
+
+**Open mix-up to watch:** the user mixes up `thread_id` and the state. It is taught
+properly in lesson 3. If it appears again before that, fix it in one sentence.
+
+**Lesson 2 must teach** (a list that grows, with a reducer):
+
+1. Why two steps writing the same key lose data: by default the second write REPLACES
+   the first. Use a tiny real example with two steps that each return one finding.
+2. A **reducer** is the rule for how a new value joins the old one. The default is
+   replace. For a list that must grow, `Annotated[list[str], operator.add]`.
+3. The user already asked, and was answered: a reducer matters for steps that run in
+   parallel and also for a list that grows over a chain. In a chain, two replaces are
+   fine. If you want to keep both values, you need a reducer.
+4. Show the two outputs side by side (no reducer: `InvalidUpdateError` in parallel, or a
+   lost value in a chain; with a reducer: both kept). Parallel order is NOT guaranteed.
+5. Connect it to LabPilot: `findings` and `history` are the keys that grow (17.4).
+
+Then the user types about 15 to 40 lines, says "done", Claude runs the checks, and every
+file gets its own commit.
+
+**The rules that apply to every lesson here** (the user asked for them again on
+2026-10-07): follow the teaching order in "Format for every new concept" for a LESSON,
+but answer a side question in plain short words, with no lesson structure. Never put a
+one-line definition at the top of a reply. Explain every agent word inside the sentence
+where it appears. About one screen.
+
+**Other open items from this session:**
+
+- Slice 9 (a big repository as side A) is recorded in section 18. Nothing is built.
+- **EmbeddingGemma 2** (740M parameters, open weights): the Gemma releases page on
+  Google lists it with the date 2026-10-06. It is NOT in our embedder list and is not
+  scored. Our rule is: a new embedder joins `MIGRATION` only after we score it on the
+  fixtures. It was not found in the Gemini API model list, and it is not known whether
+  AI Studio offers it. Ask the user for the exact model name if they see it there.
+- The user's file `scripts/intro_to_graph.py` is the user's learning file. Ask before
+  committing it.
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
