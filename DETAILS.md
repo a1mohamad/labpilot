@@ -2,6 +2,8 @@
 > [CLAUDE.md](CLAUDE.md) is the compact version that Claude loads every session. Nothing was deleted:
 > the long Step 0 and Step 1 narratives, the old START HERE blocks and the dated session notes are here
 > word for word. Open this file when CLAUDE.md points you to it, or when you need the full evidence.
+> One later change, at the end of the session of 2026-10-08: the slice 2 lesson status (sections 17.8,
+> 17.10, the new 17.11 and the START HERE block) was updated here and in CLAUDE.md, so both say lesson 2 is done.
 
 # CLAUDE.md — LabPilot
 
@@ -1133,13 +1135,15 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > artifacts are in [section 17](#17-chat-memory-storage-and-cleanup--decided-2026-10-06)
 > > - read it before slice 2.** Artifacts are NEVER deleted today, and all chats
 > > share one 500 MB.
-> > **2026-10-07: SLICE 2, LESSON 1 OF 4 IS DONE. Resume at LESSON 2.** Read
+> > **2026-10-07: SLICE 2, LESSON 1 OF 4 WAS DONE (lesson 2 followed, see the 2026-10-08 line below).** Read
 > > [section 17.9](#179-where-we-stopped--slice-2-lesson-1-is-done-2026-10-07)
 > > first: it says what the user already knows, which three answers were wrong,
 > > and what lesson 2 must teach.
-> > **2026-10-08: LESSON 2 WAS TAUGHT, THE EXERCISE IS PENDING.** Read
-> > [section 17.10](#1710-lesson-2-was-taught-2026-10-08) (what the user knows, the
-> > two check questions still open) and
+> > **2026-10-08: LESSON 2 IS DONE. LESSON 3 WAS TAUGHT AND ITS EXERCISE IS PENDING.
+> > Resume at the output of `scripts/lesson3_memory.py`.** Read
+> > [section 17.10](#1710-lesson-2-was-taught-2026-10-08) (lesson 2: what the user knows,
+> > both check questions answered), [section 17.11](#1711-lesson-3-was-taught-2026-10-08)
+> > (lesson 3 and its one open question) and
 > > [section 19](#19-design-decisions-of-2026-10-08--made-while-teaching-slice-2-lesson-2)
 > > (D29-D34 and clarifications: ReAct + plan-and-execute, where function calling is
 > > used, the planner, one final node `respond`, the Effort and Strength controls, two
@@ -17975,7 +17979,7 @@ are estimates, not promises.
 |---|---|---|
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
-| **2 (IN PROGRESS: lesson 1 done 2026-10-07, lesson 2 TAUGHT 2026-10-08 with the exercise pending, lesson 3 is after it)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+| **2 (IN PROGRESS: lessons 1 and 2 DONE, lesson 3 TAUGHT 2026-10-08 with the exercise pending, lesson 4 is after it)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | run two independent steps at the same time | medium, 2 |
 | 4 | a step that can STOP the graph (the gate) | medium, 2 |
 | 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
@@ -17988,15 +17992,18 @@ are estimates, not promises.
 (2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
-**How a new session continues slice 2:** read this section, 17.7 and 17.9, check
-git (branch, status, `git log -5`). Lesson 1 is done and lesson 2 is TAUGHT: ask the
-user for "done" and the outputs of the `scripts/lesson2_reducer.py` exercise (17.10),
-run the checks, commit that file alone, and only then give **lesson 3**. Lessons
-call no model, so the exit-ISP check is not needed until the first live test.
+**How a new session continues slice 2:** read this section, 17.7, 17.10 and 17.11, check
+git (branch, status, `git log -5`). Lessons 1 and 2 are DONE (both exercise files are
+committed). Lesson 3 (the checkpointer and the `thread_id`) is TAUGHT: ask the user for the
+output of `scripts/lesson3_memory.py` and for the answer to the one question in 17.11, run
+the file, commit it alone, and only then give **lesson 4** (cut `ask()` into steps; first
+check `langgraph-checkpoint-postgres`, D19). Lessons call no model, so the exit-ISP check
+is not needed until the first live test.
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
 
-**Status: lesson 1 of 4 is complete. The next thing to do is lesson 2.** Nothing in
+**Status when written (2026-10-07): lesson 1 of 4 was complete and lesson 2 was next. Lesson 2 is
+now done (17.10) and lesson 3 is taught (17.11).** Nothing in
 `labpilot/` was changed. `labpilot/agent/` is still empty and `ask()` is untouched.
 
 **What the user typed and ran.** `scripts/intro_to_graph.py`, a graph of two steps
@@ -18087,10 +18094,13 @@ where it appears. About one screen.
 
 #### 17.10 Lesson 2 was taught, 2026-10-08
 
-**Status: taught in chat. The exercise is pending.** The user types
-`scripts/lesson2_reducer.py` (about 24 lines). **When this was written the user had NOT yet
-said "done" or pasted the outputs.** Resume: ask for them, run the checks, commit that
-file alone, then give lesson 3 (the checkpointer and the `thread_id`).
+**Status: DONE, 2026-10-08.** The user typed `scripts/graph_with_reducer.py` (38 lines, both
+graphs in one file; the name is not the `lesson2_reducer.py` planned earlier), ran the three
+steps and pasted the outputs. Claude ran the file, `ruff check` and `ruff format --check`
+(both pass), and tried the case the outputs did not show: the parallel graph WITHOUT the
+reducer, on a copy. It stops with `InvalidUpdateError: At key 'findings': Can receive only
+one value per step. Use an Annotated key to handle multiple values.` Both check questions
+were answered (below). The file is committed on its own.
 
 **The lesson had to be redone once.** The first version mixed the four parts, had no math,
 and showed no real state before and after each node. The user said "you forgot the
@@ -18125,9 +18135,17 @@ real state dict after each node.
   is the SUM of what the runs return (a run may return 0 or 2 items), and in a parallel
   run the default rule gives an error, not "the last one".
 
-**Two check questions are still open:** (1) why is there no error in step 1 when a finding
-is lost? (2) what do you see if `check_lr` returns `state["findings"] + [...]` while the
-reducer is on? (The old items appear twice.)
+**The two check questions are ANSWERED.** (1) Why is there no error in step 1 when a finding
+is lost? The user said "because it is replaced, but in parallel it must keep both and it
+can't". Right idea, small fix: LangGraph does not try to keep both. The rule "replace" needs
+one winner. In a chain there is one write per step, so the last write wins. In parallel two
+writes arrive in the same step, there is no winner, so it stops with an error. (2) What do you
+see if `check_lr` returns `state["findings"] + [...]` while the reducer is on? The user said
+"all we have plus this extra words in the middle". Claude ran it on a copy:
+`['CLIP_NORM...', 'CLIP_NORM...', 'lr...']`, so the old item appears **twice** (the node gave
+back old + new, and the reducer added that to the old again). With a reducer a node returns
+only its new items. In the parallel graph the order of the two findings is not guaranteed; in
+the user's runs `CLIP_NORM` came first both times.
 
 **Side questions answered in this session, do not re-teach:** `extract_claims` is one model
 call over A, then a search and a `verify` per claim (the cost plan allows 5 claims per
@@ -18145,6 +18163,50 @@ request and sees the request and the answer. Until then, answer in ONE sentence 
 **The "dazed" rule.** When the user says they are confused or dazed, STOP adding ideas. Give
 one sentence, park the topic, and return to the exercise. Too many new ideas in a row was
 the cause every time.
+
+#### 17.11 Lesson 3 was taught, 2026-10-08
+
+**Status: taught in chat. The exercise is pending.** The user types
+`scripts/lesson3_memory.py` (about 30 lines). **When this was written the user had NOT yet
+typed it or answered the question below.** Resume: ask for the output of the file and for the
+answer, run the file, run `ruff check` and `ruff format --check` on it, commit that file
+alone, then give lesson 4.
+
+**What was taught** (the four labelled parts: concept, details, math, where it sits):
+
+- Until now the state lived only during one `invoke`. A **checkpointer** saves a copy of the
+  state after every node (like `torch.save`, but automatic). A **`thread_id`** is the name of
+  one chat (like a primary key). The same name loads the latest saved copy; a new name starts
+  empty.
+- `compile(checkpointer=...)` turns saving on. `thread_id` is NOT a key of `State`: it goes
+  in `config={"configurable": {"thread_id": "chat-7"}}`. (The user mixed these up in lesson
+  1, see 17.9.)
+- At the start of a call LangGraph loads the latest copy of that thread, then applies the new
+  input with the SAME rules from lesson 2 (`question` replaces, `history` adds).
+- The math: `s^c_t = run(r(s^c_{t-1}, u_t))` and `s^c_0 = empty`. `c` is the `thread_id`, `t`
+  the message number, `s` the saved state, `u` the new input, `r` the rule of each key.
+  Different `c` never mix.
+- Today `InMemorySaver` (the copies live inside the Python process and are lost on restart).
+  Later the Postgres saver in the same Supabase database (D19, lesson 4).
+
+**The exercise.** State: `question: str`, `history: Annotated[list[str], operator.add]`,
+`answer: str`. One node `respond` returns `answer` (it says how many earlier questions it has
+seen) and `history: [state["question"]]`. Compile with `InMemorySaver()` from
+`langgraph.checkpoint.memory`. Calls 1 and 2 use `thread_id` `chat-7`, call 3 uses `chat-8`,
+then print `graph.get_state(chat7).values`. Claude ran a reference copy (it is not in the
+repo): the answers say "seen 0", "seen 1" and "seen 0", and `history` of chat-7 holds both
+questions. `history` needs no initial value when the key has a reducer. Claude's reference
+file passes `ruff check` and `ruff format --check`.
+
+**The one open question for the user:** "What will the `answer` text say in call 2 and in
+call 3?" (Expected: call 2 says `seen 1`; call 3 says `seen 0`, because chat-8 is a different
+thread.)
+
+**Next, lesson 4:** cut `ask()` into steps that receive their functions from `api/` (D7), swap
+the in-memory saver for the Postgres saver, and add `thread_id` to the compare request and
+response (D17). Before that, check `langgraph-checkpoint-postgres` (D19: package name and
+version, works with `psycopg 3.2.12`, works on the session pooler at port 5432) and how to
+keep only the latest copy of each chat (D22).
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
