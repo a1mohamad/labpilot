@@ -815,7 +815,7 @@ generation-time problem below — it cannot generate.
 |---|---|---|
 | 0 | does LangGraph fit 512 MB | **DONE 2026-09-23** — yes, ~55 MB imported, whole container 74 MiB (section 10) |
 | 1 | latency ranking of the chain | **DONE 2026-09-29/30** — 50 tiers ranked (section 15) |
-| 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **IN PROGRESS** — lessons 1 and 2 DONE, lesson 3 taught (its exercise is pending), lesson 4 is next (sections 17, 17.10, 17.11) |
+| 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **IN PROGRESS** — lessons 1, 2 and 3 DONE, lesson 4 is next (sections 17, 17.10, 17.11) |
 | 3 | two independent nodes run at once | not started |
 | 4 | a node that can halt the graph (the gate) | not started |
 | 5 | claims, `verify` per claim, the bounded re-search loop | not started |
@@ -845,9 +845,10 @@ generation-time problem below — it cannot generate.
   chats share one 500 MB → section 17.
 - **2026-10-07** — slice 9 decided → section 18; slice 2 lesson 1 done → 17.9.
 - **2026-10-08** — slice 2 lesson 2 DONE (the user ran all three steps) → 17.10; lesson 3 (checkpointer
-  and `thread_id`) taught, its exercise `scripts/lesson3_memory.py` is pending → 17.11; design decisions
-  D29-D34 (function calling scope, the planner as a model call, one final node `respond`, Effort and
-  Strength controls, two web search kinds) → section 19.
+  and `thread_id`) taught → 17.11; design decisions D29-D34 (function calling scope, the planner as a
+  model call, one final node `respond`, Effort and Strength controls, two web search kinds) → section 19.
+- **2026-10-09** — slice 2 lesson 3 DONE: the user typed `scripts/graph_with_memory.py`, fixed two
+  mistakes of their own, and got the right output; committed (`df1331e`) → 17.11.
 
 **The blocking problem of the whole step is GENERATION TIME** (the red block at the top of this section).
 Read it before designing a node.
@@ -10972,7 +10973,7 @@ are estimates, not promises.
 |---|---|---|
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
-| **2 (IN PROGRESS: lessons 1 and 2 DONE, lesson 3 TAUGHT 2026-10-08 with the exercise pending, lesson 4 is after it)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+| **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 is next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | run two independent steps at the same time | medium, 2 |
 | 4 | a step that can STOP the graph (the gate) | medium, 2 |
 | 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
@@ -10986,17 +10987,16 @@ are estimates, not promises.
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
 **How a new session continues slice 2:** read this section, 17.7, 17.10 and 17.11, check
-git (branch, status, `git log -5`). Lessons 1 and 2 are DONE (both exercise files are
-committed). Lesson 3 (the checkpointer and the `thread_id`) is TAUGHT: ask the user for the
-output of `scripts/lesson3_memory.py` and for the answer to the one question in 17.11, run
-the file, commit it alone, and only then give **lesson 4** (cut `ask()` into steps; first
-check `langgraph-checkpoint-postgres`, D19). Lessons call no model, so the exit-ISP check
-is not needed until the first live test.
+git (branch, status, `git log -5`). Lessons 1, 2 and 3 are DONE (all three exercise files are
+committed). Next is **lesson 4**: cut `ask()` into steps; first check
+`langgraph-checkpoint-postgres` (D19). It is the first lesson that changes `labpilot/`, so tell
+the user that before it starts. Lessons call no model, so the exit-ISP check is not needed until
+the first live test.
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
 
 **Status when written (2026-10-07): lesson 1 of 4 was complete and lesson 2 was next. Lesson 2 is
-now done (17.10) and lesson 3 is taught (17.11).** Nothing in
+now done (17.10) and lesson 3 is done too (17.11).** Nothing in
 `labpilot/` was changed. `labpilot/agent/` is still empty and `ask()` is untouched.
 
 **What the user typed and ran.** `scripts/intro_to_graph.py`, a graph of two steps
@@ -11159,11 +11159,30 @@ the cause every time.
 
 #### 17.11 Lesson 3 was taught, 2026-10-08
 
-**Status: taught in chat. The exercise is pending.** The user types
-`scripts/lesson3_memory.py` (about 30 lines). **When this was written the user had NOT yet
-typed it or answered the question below.** Resume: ask for the output of the file and for the
-answer, run the file, run `ruff check` and `ruff format --check` on it, commit that file
-alone, then give lesson 4.
+**Status: taught on 2026-10-08 and DONE on 2026-10-09.** The user typed `scripts/graph_with_memory.py` (not the planned name
+`lesson3_memory.py`), ran it, and it was committed alone (`df1331e`, `ruff check` and
+`ruff format --check` pass). The output was right: call 2 says `seen 1`, call 3 says `seen 0`
+(chat-8 is a new thread), and `get_state(chat7)` holds both questions. The user printed the whole
+`StateSnapshot` (no `.values`), which also shows a `checkpoint_id` per saved copy and a
+`parent_config` that points to the previous copy: that is the list D22 will have to trim.
+
+**What went wrong in the user's first run, and what was taught from it** (do not re-teach):
+
+- Their `State` still had the key `findings`, copied from lesson 2, while the node read
+  `state["history"]` -> `KeyError: 'history'`. Their second mistake: `"history": [state["history"]]`
+  where it must be `[state["question"]]`. They fixed both alone after one message.
+- **Input is a partial state.** `invoke` does not need every key. LangGraph merges the input into
+  the saved copy of the thread. Lessons 1 and 2 sent every key only for clarity, not because it is
+  required (tested: lesson 1 works with only `question`, lesson 2 works with `{}`). A `TypedDict`
+  is not checked when the program runs; only a type checker such as mypy looks at it.
+- **The rule for reading a key:** a node can read a key only if the key has a value at that
+  moment. A key gets a value from four places: (1) the input we send, (2) an earlier node, (3) the
+  saved copy of the chat, (4) a reducer, which starts the key as an empty value of its type
+  (`[]` for `list[str]`). If none applies: `KeyError` (tested with `chunks` and with `history`
+  without the reducer). **I first stated this rule with only three places and the user caught the
+  hole** (call 1 reads `history` that nobody sent). Check a rule against the exercise before teaching it.
+- **`config` is not state.** `thread_id` tells LangGraph which saved copy to load, like
+  `WHERE chat_id = 'chat-7'` tells Postgres which row to read. It is not a column of the row.
 
 **What was taught** (the four labelled parts: concept, details, math, where it sits):
 
@@ -11190,10 +11209,6 @@ then print `graph.get_state(chat7).values`. Claude ran a reference copy (it is n
 repo): the answers say "seen 0", "seen 1" and "seen 0", and `history` of chat-7 holds both
 questions. `history` needs no initial value when the key has a reducer. Claude's reference
 file passes `ruff check` and `ruff format --check`.
-
-**The one open question for the user:** "What will the `answer` text say in call 2 and in
-call 3?" (Expected: call 2 says `seen 1`; call 3 says `seen 0`, because chat-8 is a different
-thread.)
 
 **Next, lesson 4:** cut `ask()` into steps that receive their functions from `api/` (D7), swap
 the in-memory saver for the Postgres saver, and add `thread_id` to the compare request and
