@@ -131,5 +131,22 @@ def test_a_prompt_refused_locally_does_not_use_up_the_turn(monkeypatch):
     assert len(responses.calls) == 0
 
 
+@responses.activate
+def test_a_missing_key_does_not_use_up_the_turn(monkeypatch):
+    """Seventeen LiteRouter tiers with no key must fail at once, not after
+    seventeen rests of 8 seconds each."""
+    monkeypatch.delenv("TEST_API_KEY", raising=False)
+    taken: list[str] = []
+    monkeypatch.setattr(
+        "labpilot.llm.base.wait_for_turn", lambda account, gap: taken.append(account)
+    )
+
+    with pytest.raises(LLMError, match="TEST_API_KEY is not set"):
+        _provider(seconds_between_calls=8.0).complete("hello")
+
+    assert taken == []
+    assert len(responses.calls) == 0
+
+
 def test_a_provider_waits_for_nobody_unless_it_is_told_to():
     assert _provider().seconds_between_calls == 0.0

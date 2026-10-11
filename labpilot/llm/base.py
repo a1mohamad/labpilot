@@ -52,8 +52,10 @@ class HTTPProvider(ABC):
             raise ValueError("prompt must not be empty")
 
         self._check_fits(prompt, max_tokens)
-        # AFTER the fit check: a prompt refused locally sends nothing, so it
-        # must not use up the account's turn.
+        # A call that is refused locally sends nothing, so it must not use up
+        # the account's turn. A missing key is the case that would hurt: every
+        # tier on that gateway would rest 8 seconds before failing the same way.
+        self._api_key()
         wait_for_turn(self.api_key_env, self.seconds_between_calls)
 
         try:
