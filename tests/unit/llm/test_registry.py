@@ -55,13 +55,13 @@ GEMMA_LEVELS = ("MINIMAL", "HIGH")
 # and Step 2's small code jobs fit easily at 1,000 requests a day.
 OUTPUT_TOO_SMALL = (
     "Qwen3.8 27B (Groq)",
-    # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
-    # brought a 32,768 context with it, against the 58,000 a report needs.
-    # BOTH routes carry it - the limit belongs to the model's free serving,
-    # not to the gateway in front of it.
-    "GLM-5.2 (LiteRouter)",
     "GPT-OSS 120B (Groq)",
     # the dead tiers, at the tail with the rest of KNOWN_DEAD, in chain order.
+    # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
+    # brought a 32,768 context with it, against the 58,000 a report needs. That
+    # limit belongs to OpenRouter's free ROUTE, not to the model: LiteRouter's
+    # glm-5.2:free took a 37,458-token prompt and a 32,000-token output ask on
+    # 2026-10-11, so it left this list and these two dead routes stay on it.
     # Devstral 2 joined them 2026-10-05: the changelog says it moved to paid
     # API access, and its 16,384 output cap is still below a report's 32,000.
     "GLM-5.2 (Kilo)",
@@ -90,13 +90,20 @@ CONTEXT_TOO_SMALL = ("DeepSeek V4 Flash (Routeway)",)
 # paid id `poolside/laguna-s-2.1` also answers, and spends credits.
 CLINE_MODELS_THE_API_SERVES = ("z-ai/glm-5.3-flash", "poolside/laguna-s-2.1:free")
 
+# Gateways whose free limit is account-wide, so every tier shares ONE pool.
+# LiteRouter is NOT here: its dashboard shows a daily limit per model, so its
+# tiers own a pool each - see test_every_literouter_tier_owns_a_pool_of_its_own.
 GATEWAYS = (
     "KILO_API_KEY",
     "REQUESTY_API_KEY",
-    "LITEROUTER_API_KEY",
     "ORCAROUTER_API_KEY",
     "ROUTEWAY_API_KEY",
 )
+
+# What LiteRouter itself says: "7 seconds between messages". 8 is the value that
+# was measured to work, and it is a literal so the test cannot follow the
+# registry down.
+LITEROUTER_REST = 8.0
 
 
 def test_chain_tiers_are_sequential_from_one():
@@ -468,6 +475,90 @@ def test_each_gateway_shares_one_quota_pool():
         )
 
 
+# Artificial Analysis Intelligence Index v4.3.2, read from each model's own page
+# on 2026-10-11 (V3.2 and GLM-5 are marked estimates there). They are literals so
+# the test cannot follow the registry when somebody reorders it. Only the models
+# placed by this table are listed: a model with no score is not here, because
+# its place rests on something else.
+AA_SCORES = {
+    "DeepSeek V4.1 Flash": 39,
+    "DeepSeek V4 Pro": 36,
+    "DeepSeek V4 Flash": 34,
+    "GLM-5.2": 34,
+    "MiniMax M3": 29,
+    "GLM-5": 28,
+    "Kimi K2.6 cheap": 27,
+    "GLM-5.1": 26,
+    "Kimi K2.7 Code cheap": 26,
+    "Gemini 3.5 Flash-Lite": 23,
+    "MiniMax M2.7": 23,
+    "DeepSeek V3.2": 16,
+    "Mistral Large 3": 9,
+}
+# Artificial Analysis reports its index to the nearest point, and this project
+# reads a gap of one as a tie. Only a gap of TWO or more has to be in order.
+AA_TIE = 1
+
+
+def test_the_models_we_scored_are_ordered_by_their_artificial_analysis_score():
+    """The chain is ordered by measured capability. Every route to a model
+    counts - the first one is where the chain first reaches that model - and the
+    family is the name before the gateway, so a "-cheap" id (a different family
+    name) is not mistaken for its base.
+
+    Nothing else catches a reordering: all of them answer, the report still
+    comes out, and the only symptom is a weaker model answering when a stronger
+    one was free.
+    """
+    first_tier = {
+        family: min(p.tier for p in CHAIN if p.name.split(" (")[0] == family)
+        for family in AA_SCORES
+    }
+
+    for stronger, high in AA_SCORES.items():
+        for weaker, low in AA_SCORES.items():
+            if high - low > AA_TIE:
+                assert first_tier[stronger] < first_tier[weaker], (
+                    f"{stronger} ({high}) is reached at tier "
+                    f"{first_tier[stronger]} and {weaker} ({low}) at tier "
+                    f"{first_tier[weaker]}: Artificial Analysis scores "
+                    f"{stronger} higher."
+                )
+
+
+def test_every_literouter_tier_owns_a_pool_of_its_own():
+    """The mirror of test_each_gateway_shares_one_quota_pool, and the answer
+    differs on purpose: LiteRouter's dashboard shows "Daily limit: Free tier
+    (100)" or "(∞)" on each model's own card.
+
+    The costs of being wrong are asymmetric. One shared pool when the limit is
+    per model lets a single spent model retire every sibling for the request;
+    split pools when the limit is account-wide waste one request. So they are
+    split, and this test is what stops a tidy-up putting them back together.
+    """
+    literouter = [p for p in CHAIN if p.api_key_env == "LITEROUTER_API_KEY"]
+    pools = [p.pool for p in literouter]
+
+    assert len(literouter) > 1, "expected more than one LiteRouter tier"
+    assert len(set(pools)) == len(pools), pools
+    assert all(p.pool == f"LITEROUTER_API_KEY:{p.model}" for p in literouter), pools
+
+
+def test_every_literouter_tier_rests_between_calls():
+    """LiteRouter answers HTTP 403 to a second message inside 7 seconds, on any
+    model, so a tier that follows another one on the gateway would be refused
+    for nothing. A tier without the rest is a tier that fails whenever its
+    neighbour just ran."""
+    literouter = [p for p in CHAIN if p.api_key_env == "LITEROUTER_API_KEY"]
+
+    assert literouter, "no LiteRouter tier left - delete this test or the key"
+    for provider in literouter:
+        assert provider.seconds_between_calls >= LITEROUTER_REST, (
+            f"{provider.name} rests {provider.seconds_between_calls}s between "
+            f"calls; LiteRouter refuses anything under 7."
+        )
+
+
 def test_routeway_tiers_carry_a_short_read_timeout_of_their_own():
     """Routeway HANGS instead of refusing, measured 2026-09-29.
 
@@ -577,6 +668,10 @@ def test_the_known_dead_tiers_wait_at_the_end_of_the_chain():
 # twin or earn a line here. Both are Mistral models the free plan stopped
 # serving on 2026-10-05, measured: 429 with a limit of 0 requests a minute.
 NO_LIVE_ROUTE = (
+    # Its only other route was LiteRouter's mistral-medium-2508:free, which left
+    # the free list on 2026-10-11 (403 "not available or misspelled"). Mistral's
+    # own route is at limit 0 on this account, so nothing live reaches it.
+    "Mistral Medium",
     # Deprecated by Mistral in favour of Mistral Small 4, which the API now
     # serves under this name - and that model is at limit 0 on this account.
     "Magistral Small",
