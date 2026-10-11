@@ -5235,6 +5235,19 @@ chore: add project dependencies
 Types in use: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`.
 
 ### Branching
+**Creating a branch needs the user's permission, every time.** *(Rule added
+2026-10-11, after Claude made a new branch for a small edit to CLAUDE.md.)* It
+overrides every older line in this file, in DETAILS.md and in Claude's memory that
+says to "branch first".
+- Ask before `git switch -c`, `git checkout -b` or `git branch <name>`, and say what
+  the branch would be for.
+- If a suitable branch already exists, use it and say which one. Do not make another.
+- Claude never commits on `main` (below). So when Claude is on `main` and a commit
+  is needed, Claude stops and asks which branch to use or whether to create one. It
+  never invents a branch to avoid asking.
+- Reading files, running tests and editing files in the working tree need no branch
+  and no permission.
+
 **Branch per slice, not per commit.** *(Changed 2026-08-09 — this file used to
 say "commit directly to `main`".)* Nobody is waiting to review, but this is a
 portfolio repo, and a PR is also the only way to run a multi-agent code review.
