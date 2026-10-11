@@ -781,9 +781,12 @@ ORCAROUTER_GLM_5_3_FLASH = _orcarouter(
     context_window=1_310_720,
     max_output_tokens=131_072,
 )
+# The free id was "deepseek-v4-flash-0731:free" until it left the catalogue
+# (403 "not available or misspelled", 2026-10-11). The same model is listed
+# without the date, and answered a 41,628-token prompt and a 32,000-token ask.
 LITEROUTER_DEEPSEEK_V4_FLASH = _literouter(
     name="DeepSeek V4 Flash (LiteRouter)",
-    model="deepseek-v4-flash-0731:free",
+    model="deepseek-v4-flash:free",
     context_window=1_048_576,
     max_output_tokens=393_216,
 )
@@ -793,23 +796,41 @@ ORCAROUTER_DEEPSEEK_V4_FLASH = _orcarouter(
     context_window=1_048_576,
     max_output_tokens=393_216,
 )
-LITEROUTER_QWEN_3_8_27B = _literouter(
-    name="Qwen3.8 27B (LiteRouter)",
-    model="qwen3.8-27b:free",
+# REPLACES "qwen3.8-27b:free", which left the free list (403 "not available or
+# misspelled", 2026-10-11). This is NOT the same model: the 27B is gone and the
+# list now holds Qwen3.8 Flash. Artificial Analysis scores the open checkpoint
+# Qwen3.8-Flash-Next at 40 on v4.3.2 (reasoning), against 34 for the 27B, but
+# it has no page under this exact name, so the match is unproven and the tier
+# sits where the 27B sat. Measured 2026-10-11: a 40,892-token prompt answered
+# correctly, but it took 157s once, against 6-15s for every other id tested.
+LITEROUTER_QWEN_3_8_FLASH = _literouter(
+    name="Qwen3.8 Flash (LiteRouter)",
+    model="qwen3.8-flash:free",
     context_window=262_144,
-    max_output_tokens=235_929,
+    max_output_tokens=65_536,
 )
+# The 32,768 window and 29,491 output here came from OpenRouter's free route
+# and were never measured on LiteRouter. Measured 2026-10-11: a 37,458-token
+# prompt answered correctly and a 32,000-token output ask was accepted, so the
+# window is larger than that and a report fits. Nothing above 37K was tried,
+# which is why this is 131,072 and not the 200,000 the family is rated for.
 LITEROUTER_GLM_5_2 = _literouter(
     name="GLM-5.2 (LiteRouter)",
     model="glm-5.2:free",
-    context_window=32_768,
-    max_output_tokens=29_491,
+    context_window=131_072,
+    max_output_tokens=65_536,
 )
-LITEROUTER_MISTRAL_MEDIUM = _literouter(
-    name="Mistral Medium (LiteRouter)",
-    model="mistral-medium-2508:free",
+# REPLACES "mistral-medium-2508:free", which left the free list (403, 2026-10-11).
+# Mistral Large 3 is the only large Mistral on it, and it is WEAK: AA v4.3.2 = 9
+# (the page calls it deprecated), and on 2026-10-11 it named the wrong class on
+# a 41K prompt ("QuoraPreproccesor" for SystemConfig). It goes at the very end
+# of the live tiers, where it is only ever reached when everything better has
+# failed.
+LITEROUTER_MISTRAL_LARGE_3 = _literouter(
+    name="Mistral Large 3 (LiteRouter)",
+    model="mistral-large-3:free",
     context_window=262_144,
-    max_output_tokens=262_144,
+    max_output_tokens=32_768,
 )
 
 
@@ -969,8 +990,9 @@ CHAIN = _ordered(
     # Then the coding specialist. It ties Gemini 3.6 Flash on general
     # intelligence and beats it by 56 Elo on code, which is the task this
     # project actually does - so it goes above it.
+    # Qwen3.8 Flash first: on the same index it outscored the 27B it replaces.
+    LITEROUTER_QWEN_3_8_FLASH,
     KILO_QWEN_3_8_27B,
-    LITEROUTER_QWEN_3_8_27B,
     QWEN_3_8_27B,
     # ADJACENT, for the same reason the Google twins are: once Cloudflare's
     # neurons are gone the strongest thing still available is the same model
@@ -990,7 +1012,6 @@ CHAIN = _ordered(
     KILO_INKLING_SMALL,
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
-    LITEROUTER_MISTRAL_MEDIUM,
     KILO_STEP_3_7_FLASH,
     REQUESTY_MUSE_GLIMMER,
     # ADDED 2026-09-30: AA 17 sits between Muse Glimmer (18) and the 31B (15), and
@@ -1011,6 +1032,8 @@ CHAIN = _ordered(
     GPT_OSS_120B_GROQ,
     GEMINI_3_1_FLASH_LITE,
     _second_account(GEMINI_3_1_FLASH_LITE),
+    # The weakest live tier we have (AA 9), so it is the last one tried.
+    LITEROUTER_MISTRAL_LARGE_3,
     # KNOWN DEAD, KEPT ON PURPOSE - see KNOWN_DEAD below. Kilo before its
     # OpenRouter twin even here, so the day one revives the order is right.
     KILO_GLM_5_2,

@@ -55,13 +55,13 @@ GEMMA_LEVELS = ("MINIMAL", "HIGH")
 # and Step 2's small code jobs fit easily at 1,000 requests a day.
 OUTPUT_TOO_SMALL = (
     "Qwen3.8 27B (Groq)",
-    # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
-    # brought a 32,768 context with it, against the 58,000 a report needs.
-    # BOTH routes carry it - the limit belongs to the model's free serving,
-    # not to the gateway in front of it.
-    "GLM-5.2 (LiteRouter)",
     "GPT-OSS 120B (Groq)",
     # the dead tiers, at the tail with the rest of KNOWN_DEAD, in chain order.
+    # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
+    # brought a 32,768 context with it, against the 58,000 a report needs. That
+    # limit belongs to OpenRouter's free ROUTE, not to the model: LiteRouter's
+    # glm-5.2:free took a 37,458-token prompt and a 32,000-token output ask on
+    # 2026-10-11, so it left this list and these two dead routes stay on it.
     # Devstral 2 joined them 2026-10-05: the changelog says it moved to paid
     # API access, and its 16,384 output cap is still below a report's 32,000.
     "GLM-5.2 (Kilo)",
@@ -617,6 +617,10 @@ def test_the_known_dead_tiers_wait_at_the_end_of_the_chain():
 # twin or earn a line here. Both are Mistral models the free plan stopped
 # serving on 2026-10-05, measured: 429 with a limit of 0 requests a minute.
 NO_LIVE_ROUTE = (
+    # Its only other route was LiteRouter's mistral-medium-2508:free, which left
+    # the free list on 2026-10-11 (403 "not available or misspelled"). Mistral's
+    # own route is at limit 0 on this account, so nothing live reaches it.
+    "Mistral Medium",
     # Deprecated by Mistral in favour of Mistral Small 4, which the API now
     # serves under this name - and that model is at limit 0 on this account.
     "Magistral Small",
