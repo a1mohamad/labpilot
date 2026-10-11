@@ -148,6 +148,26 @@ Read the two rule sections first — they change *how* everything below is done.
 
 ## Working Rules (Read First)
 
+### Two files, one truth — CLAUDE.md and DETAILS.md
+
+*Rule added 2026-10-11, at the user's request, after a whole session of notes
+(section 20) reached CLAUDE.md and never reached DETAILS.md.*
+
+**Every change to CLAUDE.md is made to DETAILS.md too, in the same session and
+in the same commit.** A new section, a new bullet, a corrected sentence, a
+changed status line: all of it, with the same words. DETAILS.md is the full
+text, so it never holds LESS than CLAUDE.md and may hold more.
+
+- CLAUDE.md may be compacted later. DETAILS.md is never compacted, and what a
+  compaction removes from CLAUDE.md stays in DETAILS.md.
+- DETAILS.md is laid out a little differently (it has no "Where Step 2 stands"
+  block; it has the old banner and the tables of section 17.8). Put the same
+  fact in its equivalent place.
+- **Check before every docs commit:** `git diff --stat` must name BOTH files. If
+  it names only one, the commit is not ready. Write in the commit message that
+  both were updated.
+- Claude does this without being asked, every time.
+
 ### Learning mode — this is a learning project, not a delivery project
 This is the user's first project in RAG, agents, MCP, and LLM fine-tuning.
 The goal is to **learn these concepts**, not only to end up with a finished app.
@@ -809,13 +829,13 @@ generation-time problem below — it cannot generate.
 > product (the text budget by `daily_text_budget`, the batch by `max_batch_size` plus pacing —
 > see the Google embed block above), and the script's private copy was deleted on 2026-09-28.
 
-### Where Step 2 stands — updated 2026-10-08
+### Where Step 2 stands — updated 2026-10-11
 
 | slice | what it is | state |
 |---|---|---|
 | 0 | does LangGraph fit 512 MB | **DONE 2026-09-23** — yes, ~55 MB imported, whole container 74 MiB (section 10) |
 | 1 | latency ranking of the chain | **DONE 2026-09-29/30** — 50 tiers ranked (section 15) |
-| 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **IN PROGRESS** — lessons 1, 2 and 3 DONE, lesson 4 is next (sections 17, 17.10, 17.11) |
+| 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **IN PROGRESS** — lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: part 1 of 3 taught 2026-10-11, its script not yet run (sections 17, 17.10, 17.11, 17.12) |
 | 3 | two independent nodes run at once | not started |
 | 4 | a node that can halt the graph (the gate) | not started |
 | 5 | claims, `verify` per claim, the bounded re-search loop | not started |
@@ -851,8 +871,9 @@ generation-time problem below — it cannot generate.
   mistakes of their own, and got the right output; committed (`df1331e`) → 17.11.
 - **2026-10-11** — before lesson 4: an availability sweep of all 56 tiers (43 answered, 13 did not), the
   Gemini 3.5 and 3.7 Flash redirect found, and LiteRouter's free list re-read. The chain went from 56 to
-  **73 tiers** on branch `feat/literouter-models` (7 commits, NOT merged) → section 20. **Slice 2 lesson 4
-  has not started.**
+  **73 tiers**; the work was done on `feat/literouter-models` and the user re-committed it onto `main`
+  → section 20. **Then slice 2 lesson 4, part 1 of 3, was taught** (nodes get their tools from outside; a
+  closure), and decision **D35** was made (the old copies are deleted right after each message) → 17.12.
 
 **The blocking problem of the whole step is GENERATION TIME** (the red block at the top of this section).
 Read it before designing a node.
@@ -10868,10 +10889,11 @@ turn 2   loads the last saved copy, replaces "question", runs again
 |---|---|
 | **D17** | **One chat = one `thread_id`.** The server makes a random uuid on the first message (when none is sent), returns it in the response, and the page keeps it in the browser so a refresh continues the chat. Random, never 1, 2, 3: there is no login, so anyone who knows the id could read the chat. `POST /compare` has no such field today: slice 2 adds it |
 | **D18** | **Slice 2 ships a checkpointer.** Same as D15. The saved state is the memory between turns |
-| **D19** | **The state is saved in Postgres, in the SAME Supabase database, in separate tables** (the user agreed, 2026-10-06). The saver in memory is for tests only, because Render restarts the server and a memory saver loses every chat. The saver needs a new package, `langgraph-checkpoint-postgres`. It is NOT installed. **Slice 2 must first check** its name and version, that it works with our `psycopg 3.2.12`, and that it works on the session pooler (port 5432, never 6543: transaction mode rejects prepared statements) |
+| **D19** | **The state is saved in Postgres, in the SAME Supabase database, in separate tables** (the user agreed, 2026-10-06). The saver in memory is for tests only, because Render restarts the server and a memory saver loses every chat. The saver needs a new package, `langgraph-checkpoint-postgres`. It is NOT installed. **Slice 2 must first check** its name and version, that it works with our `psycopg 3.2.12`, and that it works on the session pooler (port 5432, never 6543: transaction mode rejects prepared statements) **CHECKED 2026-10-11 (17.12): it adds two small packages and the versions fit. Still NOT installed.** |
 | **D20** | **What the state holds** (17.4). The exact fields are decided in slice 2 |
 | **D21** | **The prompt gets the recent questions and the `findings`, NOT the old full reports.** A report is about 5,000 tokens and `PROMPT_BUDGET` is 26,000. The list of findings is already the summary. A cheap model may summarize old turns later, ONLY if measured to be needed: Gemma has 14,400 calls a day, but every call adds waiting time and generation time is already the biggest problem |
-| **D22** | **Keep only the latest copy of each chat.** The saver keeps a copy after every step, and a growing list is saved in full again at every turn, so old copies add up fast. How to delete old copies with the real saver is not checked yet: `delete_thread` removes a whole chat, but removing only the old copies of one chat may need our own SQL. Slice 2 finds out |
+| **D22** | **Keep only the latest copy of each chat.** The saver keeps a copy after every step, and a growing list is saved in full again at every turn, so old copies add up fast. How to delete old copies with the real saver is not checked yet: `delete_thread` removes a whole chat, but removing only the old copies of one chat may need our own SQL. Slice 2 finds out **WHEN it runs: right after each message finishes, see D35.** |
+| **D35** | **THE CLEANUP OF OLD COPIES RUNS RIGHT AFTER EACH MESSAGE FINISHES** (the user agreed, 2026-10-11). `api/` runs the graph, gets the answer, and then deletes the older copies of THAT `thread_id` and keeps the newest. Why then: the run is over, so the in-between copies (useful only to resume after a crash in the middle of a run) are useless, and deleting them during the run would remove that protection; a timer is a bad fit because Render's free server sleeps when idle (the same reason as 17.6); it is one small delete per message; and it repairs itself, because a crashed run never reaches the cleanup and keeps its copies until the next finished message deletes them. If the cleanup itself fails, write a log line and still send the answer; the next message tries again. **How** to delete (our own SQL, or `ShallowPostgresSaver`, or keep all copies) is still open, see 17.12. Deleting WHOLE old chats and old artifacts is a different job: artifacts are D23 (Step 3) and chats by age are not decided |
 
 #### 17.4 What the state holds (D20)
 
@@ -10953,7 +10975,8 @@ artifact.
 #### 17.7 What slice 2 must do first, so nothing is forgotten
 
 1. Teach the user the idea (this is the heavy teaching slice), THEN build.
-2. Check `langgraph-checkpoint-postgres` (D19) and how to delete old copies (D22).
+2. Check `langgraph-checkpoint-postgres` (D19, checked 2026-10-11) and how to delete old
+   copies (D22). The cleanup runs after each message finishes (D35).
 3. Add `thread_id` to the compare request and response (D17).
 4. Keep the state small (17.4) and measure one real chat (17.5).
 5. Nodes take functions from `api/` (D7). The graph replaces `ask()` and
@@ -10977,7 +11000,7 @@ are estimates, not promises.
 |---|---|---|
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
-| **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 is next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+| **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: part 1 of 3 taught 2026-10-11)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | run two independent steps at the same time | medium, 2 |
 | 4 | a step that can STOP the graph (the gate) | medium, 2 |
 | 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
@@ -10992,10 +11015,11 @@ are estimates, not promises.
 
 **How a new session continues slice 2:** read this section, 17.7, 17.10 and 17.11, check
 git (branch, status, `git log -5`). Lessons 1, 2 and 3 are DONE (all three exercise files are
-committed). Next is **lesson 4**: cut `ask()` into steps; first check
-`langgraph-checkpoint-postgres` (D19). It is the first lesson that changes `labpilot/`, so tell
-the user that before it starts. Lessons call no model, so the exit-ISP check is not needed until
-the first live test.
+committed). **Lesson 4 is IN PROGRESS (17.12): part 1 of 3 was taught on 2026-10-11.** Resume:
+ask whether `scripts/graph_with_tools.py` runs and for the answers to its two questions, then
+teach part 2 (cut `ask()` into nodes, the first change inside `labpilot/`, on a branch made from
+`main`) and part 3 (the Postgres saver, `thread_id`, one measured chat, the D35 cleanup).
+Lessons call no model, so the exit-ISP check is not needed until the first live test.
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
 
@@ -11219,6 +11243,82 @@ the in-memory saver for the Postgres saver, and add `thread_id` to the compare r
 response (D17). Before that, check `langgraph-checkpoint-postgres` (D19: package name and
 version, works with `psycopg 3.2.12`, works on the session pooler at port 5432) and how to
 keep only the latest copy of each chat (D22).
+
+#### 17.12 Lesson 4 was started, 2026-10-11
+
+**Status: part 1 of 3 TAUGHT. When this was written the user had NOT yet run
+`scripts/graph_with_tools.py`.** Lesson 4 was split into three parts so each
+one stays short: (1) the nodes get their functions from outside, as a small
+script; (2) `ask()` is cut into nodes, the first change inside `labpilot/`;
+(3) the Postgres saver, `thread_id` in the API, one measured chat and the
+cleanup of D35.
+
+**Part 1, what was taught.** A node must not import the database or a model (the
+layer test forbids it for `agent/`), so `build_graph(search, generate)` receives
+the two functions and builds the graph. The node functions are written INSIDE
+it, so they can use `search` and `generate`: an inner function that uses a
+variable of the function around it is a **closure**. LangGraph calls a node with
+only the state, so a second argument is not possible. A class with `self.search`
+does the same job and was shown beside it. The closure was chosen because it is
+shorter and the project rule says not to use a class only to group functions. In
+part 2 it may become a class or a small dataclass of tools, because the real
+`ask()` needs about six. Claude ran a reference copy first (it is not in the
+repo), and the output is:
+
+```
+{'question': 'why do results differ?', 'chunks': ['chunk about learning rate', 'chunk about clipping'], 'answer': 'why do results differ? -> I read 2 chunks'}
+```
+
+**What the user did not understand, and what worked.** The first explanation put
+"closure", "inner function" and "variables of the function around it" in one
+sentence, and it failed. Four more messages were needed. What worked: a
+`make_greeter(name)` example called twice (`say_amir`, `say_sara`, each remembers
+its own name); the sentence "a function that remembers variables from outside
+itself"; and `return greet` (the function) against `return greet()` (its
+result). The user then restated it correctly: *a function inside a function that
+uses the outer function's argument is a closure.* **A gap to name when it
+appears: in Python a function is a value** (it can be put in a variable, passed
+and returned), and `return greet` without brackets does not run it.
+
+**The saved copies, answers to the user's questions.**
+- Each saved copy is the WHOLE state at that moment, not only the change. The
+  newest copy already holds everything older copies had in the growing keys
+  (`history`, `findings`). Message 3 starts from the copy at the end of message 2.
+- By default the saver adds a NEW ROW for every step and replaces nothing, so a
+  chat leaves many copies. At the start of message 2 the copy still holds message
+  1's `answer` until the answer step replaces it (an earlier example wrongly
+  showed it empty).
+- Anything needed from an old message must live in a growing key. It cannot
+  rely on an old copy staying in the database.
+- The frontend: only the `thread_id` is decided. Showing the old messages after
+  a refresh needs a route that reads the history, which is NOT designed (Step 3).
+
+**D19 was CHECKED, which was the planned first job of slice 2.**
+`pip install --dry-run langgraph-checkpoint-postgres` would add TWO packages,
+`langgraph-checkpoint-postgres 3.1.2` and `psycopg-pool 3.3.3`. It requires
+`langgraph-checkpoint>=4.1.0,<5.0.0` (we have 4.2.0) and `psycopg>=3.2.0` (we have
+3.2.12). **Nothing is installed.** What follows was read from the library's source
+on GitHub `main`, NOT yet from the 3.1.2 install: `PostgresSaver.from_conn_string`
+is a context manager that opens its own connection with `autocommit=True`,
+`prepare_threshold=0` (no prepared statements, so the session pooler is safe) and
+`row_factory=dict_row`. The docstrings do not say these are required, so a
+connection we pass in should set the same. Its methods are `setup` (creates the
+tables and runs migrations), `put`, `put_writes`, `get_tuple`, `list`,
+`delete_thread` (a WHOLE chat) and `get_delta_channel_history`. **There is no
+"keep only the latest copy" method.** The file also imports a class named
+`ShallowPostgresSaver`. Its name suggests it keeps only the newest copy, but that
+is NOT verified. Check both after the install.
+
+**D35 was decided** (17.3): the cleanup of old copies runs right after each
+message finishes.
+
+**Branch.** `main` holds the lesson 3 script. The LiteRouter work (section 20) was
+re-committed onto `main` by the user on 2026-10-11. Lesson 4 code goes on a new
+branch made from `main`, for example `git switch -c feat/agent-nodes main`.
+
+**Open, for the user to decide:** how to delete the old copies (our own SQL,
+`ShallowPostgresSaver`, or keep all copies and delete whole old chats later), and
+the shape of part 2 (closure, class, or a small dataclass of tools).
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
@@ -11584,7 +11684,9 @@ and that was wrong. A plain web search is not written anywhere.
 ### 20. THE FREE MODEL LIST MOVES — the sweep of 2026-10-11
 
 *Exit `130.185.120.132` and later `185.204.171.216`, both **AS57568 ARVANCLOUD**, Frankfurt, Google 200. The
-branch is `feat/literouter-models`; the work was committed there in seven pieces, this note last, and `main` is untouched.*
+work was done on branch `feat/literouter-models` (7 commits). On 2026-10-11 the user re-committed it onto `main`
+piece by piece: the docs first (`62c42fb`), then `8b956d6`, `e65ecc6`, `aca8a3d`, `b35de66` and
+`852d761`. `main` and the branch hold identical code and tests (checked with git). The branch is kept.*
 
 #### 20.1 The sweep, and what failed
 
