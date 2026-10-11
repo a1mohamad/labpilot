@@ -892,6 +892,81 @@ LITEROUTER_GLM_5_2 = _literouter(
     context_window=131_072,
     max_output_tokens=65_536,
 )
+# MORE OF LITEROUTER'S FREE LIST, added 2026-10-11. Every id below answered a
+# tiny prompt both with and without the `reasoning` field the registry sends,
+# a 15.8K-token prompt correctly, a ~38K-token prompt, and a 32,000-token output
+# ask, with no empty answer and no "<think>" leaking into the text (MiniMax M2.7
+# did leak it on Routeway, which is why it was left out there). Scores are
+# Artificial Analysis v4.3.2, each read from the model's own page:
+#
+#     GLM-5.3 Flash cheap   42   (the tier-1 model; a second LiteRouter id)
+#     GLM-5.2 cheap         34   (a second id for the GLM-5.2 route above)
+#     MiniMax M3            29       and its "-cheap" id
+#     GLM-5                 28*  an estimate, and the page says deprecated
+#     Kimi K2.6             27   the free list has only the "-cheap" id
+#     GLM-5.1               26
+#     Kimi K2.7 Code        26   again only "-cheap"; the 42 a search snippet
+#                                gave was the OLD index (v4.1) - the page says 26
+#     MiniMax M2.7          23
+#
+# LEFT OUT, because there is no independent score to place them by: MiniMax
+# M3.1 Flash and Tencent Hy4 / Hy3 (Hy4 spent 1,000-1,600 tokens answering "you
+# are online"). No evidence, no promotion. Windows below are what each family is
+# rated for; none was tried above ~38K tokens.
+LITEROUTER_GLM_5_3_FLASH_CHEAP = _literouter(
+    name="GLM-5.3 Flash cheap (LiteRouter)",
+    model="glm-5.3-flash-cheap:free",
+    context_window=1_310_720,
+    max_output_tokens=131_072,
+)
+LITEROUTER_GLM_5_2_CHEAP = _literouter(
+    name="GLM-5.2 cheap (LiteRouter)",
+    model="glm-5.2-cheap:free",
+    context_window=131_072,
+    max_output_tokens=65_536,
+)
+LITEROUTER_MINIMAX_M3 = _literouter(
+    name="MiniMax M3 (LiteRouter)",
+    model="minimax-m3:free",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+LITEROUTER_MINIMAX_M3_CHEAP = _literouter(
+    name="MiniMax M3 cheap (LiteRouter)",
+    model="minimax-m3-cheap:free",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+LITEROUTER_GLM_5 = _literouter(
+    name="GLM-5 (LiteRouter)",
+    model="glm-5:free",
+    context_window=200_000,
+    max_output_tokens=65_536,
+)
+LITEROUTER_KIMI_K2_6 = _literouter(
+    name="Kimi K2.6 cheap (LiteRouter)",
+    model="kimi-k2.6-cheap:free",
+    context_window=262_144,
+    max_output_tokens=65_536,
+)
+LITEROUTER_GLM_5_1 = _literouter(
+    name="GLM-5.1 (LiteRouter)",
+    model="glm-5.1:free",
+    context_window=200_000,
+    max_output_tokens=65_536,
+)
+LITEROUTER_KIMI_K2_7_CODE = _literouter(
+    name="Kimi K2.7 Code cheap (LiteRouter)",
+    model="kimi-k2.7-code-cheap:free",
+    context_window=262_144,
+    max_output_tokens=65_536,
+)
+LITEROUTER_MINIMAX_M2_7 = _literouter(
+    name="MiniMax M2.7 (LiteRouter)",
+    model="minimax-m2.7:free",
+    context_window=204_800,
+    max_output_tokens=65_536,
+)
 # REPLACES "mistral-medium-2508:free", which left the free list (403, 2026-10-11).
 # Mistral Large 3 is the only large Mistral on it, and it is WEAK: AA v4.3.2 = 9
 # (the page calls it deprecated), and on 2026-10-11 it named the wrong class on
@@ -1039,6 +1114,7 @@ CHAIN = _ordered(
     # was measured first; LiteRouter's quota is unpublished, OrcaRouter's is
     # 50 a day, so the smaller known allowance goes last.
     LITEROUTER_GLM_5_3_FLASH,
+    LITEROUTER_GLM_5_3_FLASH_CHEAP,
     ORCAROUTER_GLM_5_3_FLASH,
     GEMINI_3_8_FLASH,
     _second_account(GEMINI_3_8_FLASH),
@@ -1085,14 +1161,27 @@ CHAIN = _ordered(
     GEMINI_3_5_FLASH,
     _second_account(GEMINI_3_5_FLASH),
     LITEROUTER_GLM_5_2,
+    LITEROUTER_GLM_5_2_CHEAP,
     CLINE_LAGUNA_S_2_1,
     KILO_LAGUNA_S_2_1,
     KILO_NEMOTRON_3_ULTRA,
     NEMOTRON_3_ULTRA,
     REQUESTY_NEMOTRON_3_ULTRA,
+    # --- ADDED 2026-10-11, AA v4.3.2: 29, 28*, 27, 26, 26 -------------------
+    # Inkling Small (26) follows because it is capped for the whole world and
+    # usually answers 429; the two 26s tie, so the one with a daily limit of
+    # its own goes first.
+    LITEROUTER_MINIMAX_M3,
+    LITEROUTER_MINIMAX_M3_CHEAP,
+    LITEROUTER_GLM_5,
+    LITEROUTER_KIMI_K2_6,
+    LITEROUTER_GLM_5_1,
+    LITEROUTER_KIMI_K2_7_CODE,
     KILO_INKLING_SMALL,
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
+    # AA 23, a tie with Flash-Lite, which has a measured allowance.
+    LITEROUTER_MINIMAX_M2_7,
     KILO_STEP_3_7_FLASH,
     REQUESTY_MUSE_GLIMMER,
     # ADDED 2026-09-30: AA 17 sits between Muse Glimmer (18) and the 31B (15), and

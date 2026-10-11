@@ -476,39 +476,54 @@ def test_each_gateway_shares_one_quota_pool():
 
 
 # Artificial Analysis Intelligence Index v4.3.2, read from each model's own page
-# on 2026-10-11 (V3.2 is marked an estimate there). They are literals so the
-# test cannot follow the registry when somebody reorders it.
-DEEPSEEK_AA = (
-    ("DeepSeek V4.1 Flash", 39),
-    ("DeepSeek V4 Pro", 36),
-    ("DeepSeek V4 Flash", 34),
-    ("DeepSeek V3.2", 16),
-)
+# on 2026-10-11 (V3.2 and GLM-5 are marked estimates there). They are literals so
+# the test cannot follow the registry when somebody reorders it. Only the models
+# placed by this table are listed: a model with no score is not here, because
+# its place rests on something else.
+AA_SCORES = {
+    "DeepSeek V4.1 Flash": 39,
+    "DeepSeek V4 Pro": 36,
+    "DeepSeek V4 Flash": 34,
+    "GLM-5.2": 34,
+    "MiniMax M3": 29,
+    "GLM-5": 28,
+    "Kimi K2.6 cheap": 27,
+    "GLM-5.1": 26,
+    "Kimi K2.7 Code cheap": 26,
+    "Gemini 3.5 Flash-Lite": 23,
+    "MiniMax M2.7": 23,
+    "DeepSeek V3.2": 16,
+    "Mistral Large 3": 9,
+}
+# Artificial Analysis reports its index to the nearest point, and this project
+# reads a gap of one as a tie. Only a gap of TWO or more has to be in order.
+AA_TIE = 1
 
 
-def test_the_deepseek_models_are_ordered_by_their_artificial_analysis_score():
-    """The chain is ordered by measured capability, and DeepSeek now has four
-    scored models in it. Every route to a model counts - the first one is where
-    the chain first reaches that model - and the family is the name before the
-    gateway, so a "-cheap" id (a different family name) is not mistaken for its
-    base.
+def test_the_models_we_scored_are_ordered_by_their_artificial_analysis_score():
+    """The chain is ordered by measured capability. Every route to a model
+    counts - the first one is where the chain first reaches that model - and the
+    family is the name before the gateway, so a "-cheap" id (a different family
+    name) is not mistaken for its base.
 
-    Nothing else catches a reordering: all four answer, the report still comes
-    out, and the only symptom is a weaker model answering when a stronger one
-    was free.
+    Nothing else catches a reordering: all of them answer, the report still
+    comes out, and the only symptom is a weaker model answering when a stronger
+    one was free.
     """
     first_tier = {
         family: min(p.tier for p in CHAIN if p.name.split(" (")[0] == family)
-        for family, _ in DEEPSEEK_AA
+        for family in AA_SCORES
     }
-    by_score = [family for family, _ in sorted(DEEPSEEK_AA, key=lambda row: -row[1])]
 
-    for stronger, weaker in zip(by_score, by_score[1:], strict=False):
-        assert first_tier[stronger] < first_tier[weaker], (
-            f"{stronger} is reached at tier {first_tier[stronger]} and {weaker} "
-            f"at tier {first_tier[weaker]}, but Artificial Analysis scores "
-            f"{stronger} higher: {dict(DEEPSEEK_AA)}"
-        )
+    for stronger, high in AA_SCORES.items():
+        for weaker, low in AA_SCORES.items():
+            if high - low > AA_TIE:
+                assert first_tier[stronger] < first_tier[weaker], (
+                    f"{stronger} ({high}) is reached at tier "
+                    f"{first_tier[stronger]} and {weaker} ({low}) at tier "
+                    f"{first_tier[weaker]}: Artificial Analysis scores "
+                    f"{stronger} higher."
+                )
 
 
 def test_every_literouter_tier_owns_a_pool_of_its_own():
