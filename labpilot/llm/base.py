@@ -10,6 +10,7 @@ import requests
 
 from labpilot._text import truncate
 from labpilot.llm._http import error_from_response
+from labpilot.llm._pacing import wait_for_turn
 from labpilot.llm.contracts import LLMResult
 from labpilot.llm.defaults import (
     DEFAULT_MAX_TOKENS,
@@ -36,6 +37,9 @@ class HTTPProvider(ABC):
     quota_pool: str | None = None
     timeout: tuple[float, float] = DEFAULT_TIMEOUT
     temperature: float = DEFAULT_TEMPERATURE
+    # Seconds the ACCOUNT must rest between two calls, across every model on it.
+    # Zero for nearly everyone; LiteRouter enforces 7 and answers 403 otherwise.
+    seconds_between_calls: float = 0.0
 
     @property
     def pool(self) -> str:
@@ -48,6 +52,9 @@ class HTTPProvider(ABC):
             raise ValueError("prompt must not be empty")
 
         self._check_fits(prompt, max_tokens)
+        # AFTER the fit check: a prompt refused locally sends nothing, so it
+        # must not use up the account's turn.
+        wait_for_turn(self.api_key_env, self.seconds_between_calls)
 
         try:
             response = requests.post(
