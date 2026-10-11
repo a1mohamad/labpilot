@@ -475,6 +475,42 @@ def test_each_gateway_shares_one_quota_pool():
         )
 
 
+# Artificial Analysis Intelligence Index v4.3.2, read from each model's own page
+# on 2026-10-11 (V3.2 is marked an estimate there). They are literals so the
+# test cannot follow the registry when somebody reorders it.
+DEEPSEEK_AA = (
+    ("DeepSeek V4.1 Flash", 39),
+    ("DeepSeek V4 Pro", 36),
+    ("DeepSeek V4 Flash", 34),
+    ("DeepSeek V3.2", 16),
+)
+
+
+def test_the_deepseek_models_are_ordered_by_their_artificial_analysis_score():
+    """The chain is ordered by measured capability, and DeepSeek now has four
+    scored models in it. Every route to a model counts - the first one is where
+    the chain first reaches that model - and the family is the name before the
+    gateway, so a "-cheap" id (a different family name) is not mistaken for its
+    base.
+
+    Nothing else catches a reordering: all four answer, the report still comes
+    out, and the only symptom is a weaker model answering when a stronger one
+    was free.
+    """
+    first_tier = {
+        family: min(p.tier for p in CHAIN if p.name.split(" (")[0] == family)
+        for family, _ in DEEPSEEK_AA
+    }
+    by_score = [family for family, _ in sorted(DEEPSEEK_AA, key=lambda row: -row[1])]
+
+    for stronger, weaker in zip(by_score, by_score[1:], strict=False):
+        assert first_tier[stronger] < first_tier[weaker], (
+            f"{stronger} is reached at tier {first_tier[stronger]} and {weaker} "
+            f"at tier {first_tier[weaker]}, but Artificial Analysis scores "
+            f"{stronger} higher: {dict(DEEPSEEK_AA)}"
+        )
+
+
 def test_every_literouter_tier_owns_a_pool_of_its_own():
     """The mirror of test_each_gateway_shares_one_quota_pool, and the answer
     differs on purpose: LiteRouter's dashboard shows "Daily limit: Free tier

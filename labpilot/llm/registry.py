@@ -790,6 +790,78 @@ LITEROUTER_DEEPSEEK_V4_FLASH = _literouter(
     context_window=1_048_576,
     max_output_tokens=393_216,
 )
+# THE REST OF LITEROUTER'S FREE DEEPSEEK, added 2026-10-11. Nine ids are listed
+# free; all nine answered a 15.8K-token prompt, a 41.6K-token prompt and a
+# 32,000-token output ask, one call at a time. Placed on Artificial Analysis
+# v4.3.2, read from each model's own page:
+#
+#     DeepSeek V4.1 Flash   39   214 tok/s    ABOVE the V4 Flash it follows
+#     DeepSeek V4 Pro       36    85 tok/s    (the page may be a newer build
+#                                              than the free id - not checked)
+#     DeepSeek V4 Flash     34   216 tok/s
+#     DeepSeek V3.2         16*  (an estimate, "independent evaluation
+#                                 forthcoming")
+#
+# THE "-cheap" AND "-stable" IDS: LiteRouter does not say what they are, and
+# neither do we. They answered like their base ids, so each is placed right
+# after its base as a second route to the same family. Nothing here claims they
+# are the same weights; if one turns out to be a lower-quality serving, this is
+# the place to move it. The dashboard shows "(inf)" daily on the cheap ids that
+# were visible and 100 on the base ids.
+#
+# V3.1 and V3.2 are OLDER models and they did worst: both named the wrong class
+# on the 15.8K prompt ("QuoraPreproccesor" for SystemConfig), V3.1 on the 41K one
+# too. They sit at the bottom, V3.2 by its score and V3.1 unscored, last.
+LITEROUTER_DEEPSEEK_V4_1_FLASH = _literouter(
+    name="DeepSeek V4.1 Flash (LiteRouter)",
+    model="deepseek-v4.1-flash:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE = _literouter(
+    name="DeepSeek V4.1 Flash stable (LiteRouter)",
+    model="deepseek-v4.1-flash-stable:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_1_FLASH_CHEAP = _literouter(
+    name="DeepSeek V4.1 Flash cheap (LiteRouter)",
+    model="deepseek-v4.1-flash-cheap:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_PRO = _literouter(
+    name="DeepSeek V4 Pro (LiteRouter)",
+    model="deepseek-v4-pro:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_PRO_CHEAP = _literouter(
+    name="DeepSeek V4 Pro cheap (LiteRouter)",
+    model="deepseek-v4-pro-cheap:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_FLASH_CHEAP = _literouter(
+    name="DeepSeek V4 Flash cheap (LiteRouter)",
+    model="deepseek-v4-flash-cheap:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+# The V3 pair holds 128k on Artificial Analysis. 32,768 of output is what a
+# 32,000-token ask was accepted at, not a measured ceiling.
+LITEROUTER_DEEPSEEK_V3_2 = _literouter(
+    name="DeepSeek V3.2 (LiteRouter)",
+    model="deepseek-v3.2:free",
+    context_window=131_072,
+    max_output_tokens=32_768,
+)
+LITEROUTER_DEEPSEEK_V3_1 = _literouter(
+    name="DeepSeek V3.1 (LiteRouter)",
+    model="deepseek-v3.1:free",
+    context_window=131_072,
+    max_output_tokens=32_768,
+)
 ORCAROUTER_DEEPSEEK_V4_FLASH = _orcarouter(
     name="DeepSeek V4 Flash (OrcaRouter)",
     model="deepseek/deepseek-v4-flash-free",
@@ -972,6 +1044,14 @@ CHAIN = _ordered(
     _second_account(GEMINI_3_8_FLASH),
     GEMINI_3_7_FLASH,
     _second_account(GEMINI_3_7_FLASH),
+    # --- ADDED 2026-10-11: DeepSeek on LiteRouter, by AA v4.3.2 -------------
+    # V4.1 Flash (39) ties Gemini 3.7 Flash, and 3.7 is now served by 3.8 (41),
+    # so it goes after the pair. Each "-stable" and "-cheap" id follows its base.
+    LITEROUTER_DEEPSEEK_V4_1_FLASH,
+    LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE,
+    LITEROUTER_DEEPSEEK_V4_1_FLASH_CHEAP,
+    LITEROUTER_DEEPSEEK_V4_PRO,
+    LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
     # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
     # DeepSeek first of the three: it and Qwen TIE on AA (35 vs 34, inside
     # the +-1 interval), Qwen wins Code Arena by 13 Elo, and DeepSeek is
@@ -982,6 +1062,7 @@ CHAIN = _ordered(
     # Its two ORIGINAL routes died on 2026-09-23 and wait at the END of the
     # chain; these two took their place.
     LITEROUTER_DEEPSEEK_V4_FLASH,
+    LITEROUTER_DEEPSEEK_V4_FLASH_CHEAP,
     ORCAROUTER_DEEPSEEK_V4_FLASH,
     # A third route, and the last of the three because it is the only one that
     # cannot serve a report: 42,000 of context against 58,000. _check_fits
@@ -1019,6 +1100,8 @@ CHAIN = _ordered(
     # reason every Google model is - a spent account costs nothing to skip.
     GEMMA_4_26B,
     _second_account(GEMMA_4_26B),
+    # AA 16 (an estimate) sits between the Gemma 26B (17) and the 31B (15).
+    LITEROUTER_DEEPSEEK_V3_2,
     GEMMA_4_31B,
     _second_account(GEMMA_4_31B),
     REQUESTY_GEMMA_4_31B,
@@ -1032,7 +1115,9 @@ CHAIN = _ordered(
     GPT_OSS_120B_GROQ,
     GEMINI_3_1_FLASH_LITE,
     _second_account(GEMINI_3_1_FLASH_LITE),
-    # The weakest live tier we have (AA 9), so it is the last one tried.
+    # Unscored and the worst on the one question asked of it, so it goes
+    # last of the unscored. Then the weakest scored tier we have (AA 9).
+    LITEROUTER_DEEPSEEK_V3_1,
     LITEROUTER_MISTRAL_LARGE_3,
     # KNOWN DEAD, KEPT ON PURPOSE - see KNOWN_DEAD below. Kilo before its
     # OpenRouter twin even here, so the day one revives the order is right.
