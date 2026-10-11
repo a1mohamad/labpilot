@@ -702,15 +702,17 @@ KILO_STEP_3_7_FLASH = _kilo(
 # invisible; DeepSeek V4 Flash died on OpenRouter AND Kilo; Mistral Medium's
 # own account is paused until its monthly usage resets.
 #
-# LiteRouter publishes NO quota and sends no rate-limit headers - blind, like
-# Cline and Kilo - and it allows ONE concurrent request per account, measured
-# as a 403 "Too many concurrent requests". A real report prompt fits: 48,011
-# tokens to DeepSeek and 27,010 to GLM-5.3 Flash, both 200.
+# LiteRouter sends no rate-limit headers, and it allows ONE concurrent request
+# per account, measured as a 403 "Too many concurrent requests". Its DASHBOARD
+# does publish a daily limit, per model - see _literouter below, which is why
+# this note used to say "publishes no quota" and no longer does. A real report
+# prompt fits: 48,011 tokens to DeepSeek and 27,010 to GLM-5.3 Flash, both 200.
 #
 # OrcaRouter publishes 10 requests a minute and 50 a day on its own
 # /api/free-package/public, and took a 15,691-token report prompt.
 #
-# ONE pool per gateway, as for Kilo and Requesty: neither limit is per model.
+# ONE pool per gateway for OrcaRouter, Kilo and Requesty: none of their limits
+# is per model. LiteRouter is the exception, and test_registry pins it.
 def _gateway(
     *,
     name: str,
@@ -719,6 +721,8 @@ def _gateway(
     model: str,
     context_window: int,
     max_output_tokens: int,
+    quota_pool: str | None = None,
+    seconds_between_calls: float = 0.0,
 ) -> OpenAICompatibleProvider:
     return OpenAICompatibleProvider(
         name=name,
@@ -726,17 +730,39 @@ def _gateway(
         url=url,
         model=model,
         api_key_env=key,
-        quota_pool=key,
+        quota_pool=quota_pool or key,
         context_window=context_window,
         max_output_tokens=max_output_tokens,
+        seconds_between_calls=seconds_between_calls,
         # glm-5.3-flash returns EMPTY content without an explicit effort on
         # Cline and on OrcaRouter - a property of the model, not the host.
         extra_body=OPENROUTER_REASONING,
     )
 
 
-def _literouter(**kwargs) -> OpenAICompatibleProvider:
-    return _gateway(url=LITEROUTER_URL, key="LITEROUTER_API_KEY", **kwargs)
+# LiteRouter, read from its own dashboard and measured 2026-10-11.
+#
+#   daily limit   shown PER MODEL on every card: "Free tier (100)" for some ids
+#                 and "(∞)" for others, so each model is its own pool, the way
+#                 Google's are. This replaces the note above that said
+#                 LiteRouter publishes no quota.
+#   cooldown      7 seconds between messages for the ACCOUNT, answered with
+#                 HTTP 403 (not 429) on any model. Measured: four models called
+#                 back to back, one 200 and three refused; the same three
+#                 answered when spaced 8 seconds apart. 8 is the measured
+#                 value that worked, 7 is the number the error states.
+LITEROUTER_SECONDS_BETWEEN_CALLS = 8.0
+
+
+def _literouter(*, model: str, **kwargs) -> OpenAICompatibleProvider:
+    return _gateway(
+        url=LITEROUTER_URL,
+        key="LITEROUTER_API_KEY",
+        model=model,
+        quota_pool=f"LITEROUTER_API_KEY:{model}",
+        seconds_between_calls=LITEROUTER_SECONDS_BETWEEN_CALLS,
+        **kwargs,
+    )
 
 
 def _orcarouter(**kwargs) -> OpenAICompatibleProvider:
@@ -755,11 +781,86 @@ ORCAROUTER_GLM_5_3_FLASH = _orcarouter(
     context_window=1_310_720,
     max_output_tokens=131_072,
 )
+# The free id was "deepseek-v4-flash-0731:free" until it left the catalogue
+# (403 "not available or misspelled", 2026-10-11). The same model is listed
+# without the date, and answered a 41,628-token prompt and a 32,000-token ask.
 LITEROUTER_DEEPSEEK_V4_FLASH = _literouter(
     name="DeepSeek V4 Flash (LiteRouter)",
-    model="deepseek-v4-flash-0731:free",
+    model="deepseek-v4-flash:free",
     context_window=1_048_576,
     max_output_tokens=393_216,
+)
+# THE REST OF LITEROUTER'S FREE DEEPSEEK, added 2026-10-11. Nine ids are listed
+# free; all nine answered a 15.8K-token prompt, a 41.6K-token prompt and a
+# 32,000-token output ask, one call at a time. Placed on Artificial Analysis
+# v4.3.2, read from each model's own page:
+#
+#     DeepSeek V4.1 Flash   39   214 tok/s    ABOVE the V4 Flash it follows
+#     DeepSeek V4 Pro       36    85 tok/s    (the page may be a newer build
+#                                              than the free id - not checked)
+#     DeepSeek V4 Flash     34   216 tok/s
+#     DeepSeek V3.2         16*  (an estimate, "independent evaluation
+#                                 forthcoming")
+#
+# THE "-cheap" AND "-stable" IDS: LiteRouter does not say what they are, and
+# neither do we. They answered like their base ids, so each is placed right
+# after its base as a second route to the same family. Nothing here claims they
+# are the same weights; if one turns out to be a lower-quality serving, this is
+# the place to move it. The dashboard shows "(inf)" daily on the cheap ids that
+# were visible and 100 on the base ids.
+#
+# V3.1 and V3.2 are OLDER models and they did worst: both named the wrong class
+# on the 15.8K prompt ("QuoraPreproccesor" for SystemConfig), V3.1 on the 41K one
+# too. They sit at the bottom, V3.2 by its score and V3.1 unscored, last.
+LITEROUTER_DEEPSEEK_V4_1_FLASH = _literouter(
+    name="DeepSeek V4.1 Flash (LiteRouter)",
+    model="deepseek-v4.1-flash:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE = _literouter(
+    name="DeepSeek V4.1 Flash stable (LiteRouter)",
+    model="deepseek-v4.1-flash-stable:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_1_FLASH_CHEAP = _literouter(
+    name="DeepSeek V4.1 Flash cheap (LiteRouter)",
+    model="deepseek-v4.1-flash-cheap:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_PRO = _literouter(
+    name="DeepSeek V4 Pro (LiteRouter)",
+    model="deepseek-v4-pro:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_PRO_CHEAP = _literouter(
+    name="DeepSeek V4 Pro cheap (LiteRouter)",
+    model="deepseek-v4-pro-cheap:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_FLASH_CHEAP = _literouter(
+    name="DeepSeek V4 Flash cheap (LiteRouter)",
+    model="deepseek-v4-flash-cheap:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+# The V3 pair holds 128k on Artificial Analysis. 32,768 of output is what a
+# 32,000-token ask was accepted at, not a measured ceiling.
+LITEROUTER_DEEPSEEK_V3_2 = _literouter(
+    name="DeepSeek V3.2 (LiteRouter)",
+    model="deepseek-v3.2:free",
+    context_window=131_072,
+    max_output_tokens=32_768,
+)
+LITEROUTER_DEEPSEEK_V3_1 = _literouter(
+    name="DeepSeek V3.1 (LiteRouter)",
+    model="deepseek-v3.1:free",
+    context_window=131_072,
+    max_output_tokens=32_768,
 )
 ORCAROUTER_DEEPSEEK_V4_FLASH = _orcarouter(
     name="DeepSeek V4 Flash (OrcaRouter)",
@@ -767,23 +868,116 @@ ORCAROUTER_DEEPSEEK_V4_FLASH = _orcarouter(
     context_window=1_048_576,
     max_output_tokens=393_216,
 )
-LITEROUTER_QWEN_3_8_27B = _literouter(
-    name="Qwen3.8 27B (LiteRouter)",
-    model="qwen3.8-27b:free",
+# REPLACES "qwen3.8-27b:free", which left the free list (403 "not available or
+# misspelled", 2026-10-11). This is NOT the same model: the 27B is gone and the
+# list now holds Qwen3.8 Flash. Artificial Analysis scores the open checkpoint
+# Qwen3.8-Flash-Next at 40 on v4.3.2 (reasoning), against 34 for the 27B, but
+# it has no page under this exact name, so the match is unproven and the tier
+# sits where the 27B sat. Measured 2026-10-11: a 40,892-token prompt answered
+# correctly, but it took 157s once, against 6-15s for every other id tested.
+LITEROUTER_QWEN_3_8_FLASH = _literouter(
+    name="Qwen3.8 Flash (LiteRouter)",
+    model="qwen3.8-flash:free",
     context_window=262_144,
-    max_output_tokens=235_929,
+    max_output_tokens=65_536,
 )
+# The 32,768 window and 29,491 output here came from OpenRouter's free route
+# and were never measured on LiteRouter. Measured 2026-10-11: a 37,458-token
+# prompt answered correctly and a 32,000-token output ask was accepted, so the
+# window is larger than that and a report fits. Nothing above 37K was tried,
+# which is why this is 131,072 and not the 200,000 the family is rated for.
 LITEROUTER_GLM_5_2 = _literouter(
     name="GLM-5.2 (LiteRouter)",
     model="glm-5.2:free",
-    context_window=32_768,
-    max_output_tokens=29_491,
+    context_window=131_072,
+    max_output_tokens=65_536,
 )
-LITEROUTER_MISTRAL_MEDIUM = _literouter(
-    name="Mistral Medium (LiteRouter)",
-    model="mistral-medium-2508:free",
+# MORE OF LITEROUTER'S FREE LIST, added 2026-10-11. Every id below answered a
+# tiny prompt both with and without the `reasoning` field the registry sends,
+# a 15.8K-token prompt correctly, a ~38K-token prompt, and a 32,000-token output
+# ask, with no empty answer and no "<think>" leaking into the text (MiniMax M2.7
+# did leak it on Routeway, which is why it was left out there). Scores are
+# Artificial Analysis v4.3.2, each read from the model's own page:
+#
+#     GLM-5.3 Flash cheap   42   (the tier-1 model; a second LiteRouter id)
+#     GLM-5.2 cheap         34   (a second id for the GLM-5.2 route above)
+#     MiniMax M3            29       and its "-cheap" id
+#     GLM-5                 28*  an estimate, and the page says deprecated
+#     Kimi K2.6             27   the free list has only the "-cheap" id
+#     GLM-5.1               26
+#     Kimi K2.7 Code        26   again only "-cheap"; the 42 a search snippet
+#                                gave was the OLD index (v4.1) - the page says 26
+#     MiniMax M2.7          23
+#
+# LEFT OUT, because there is no independent score to place them by: MiniMax
+# M3.1 Flash and Tencent Hy4 / Hy3 (Hy4 spent 1,000-1,600 tokens answering "you
+# are online"). No evidence, no promotion. Windows below are what each family is
+# rated for; none was tried above ~38K tokens.
+LITEROUTER_GLM_5_3_FLASH_CHEAP = _literouter(
+    name="GLM-5.3 Flash cheap (LiteRouter)",
+    model="glm-5.3-flash-cheap:free",
+    context_window=1_310_720,
+    max_output_tokens=131_072,
+)
+LITEROUTER_GLM_5_2_CHEAP = _literouter(
+    name="GLM-5.2 cheap (LiteRouter)",
+    model="glm-5.2-cheap:free",
+    context_window=131_072,
+    max_output_tokens=65_536,
+)
+LITEROUTER_MINIMAX_M3 = _literouter(
+    name="MiniMax M3 (LiteRouter)",
+    model="minimax-m3:free",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+LITEROUTER_MINIMAX_M3_CHEAP = _literouter(
+    name="MiniMax M3 cheap (LiteRouter)",
+    model="minimax-m3-cheap:free",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+LITEROUTER_GLM_5 = _literouter(
+    name="GLM-5 (LiteRouter)",
+    model="glm-5:free",
+    context_window=200_000,
+    max_output_tokens=65_536,
+)
+LITEROUTER_KIMI_K2_6 = _literouter(
+    name="Kimi K2.6 cheap (LiteRouter)",
+    model="kimi-k2.6-cheap:free",
     context_window=262_144,
-    max_output_tokens=262_144,
+    max_output_tokens=65_536,
+)
+LITEROUTER_GLM_5_1 = _literouter(
+    name="GLM-5.1 (LiteRouter)",
+    model="glm-5.1:free",
+    context_window=200_000,
+    max_output_tokens=65_536,
+)
+LITEROUTER_KIMI_K2_7_CODE = _literouter(
+    name="Kimi K2.7 Code cheap (LiteRouter)",
+    model="kimi-k2.7-code-cheap:free",
+    context_window=262_144,
+    max_output_tokens=65_536,
+)
+LITEROUTER_MINIMAX_M2_7 = _literouter(
+    name="MiniMax M2.7 (LiteRouter)",
+    model="minimax-m2.7:free",
+    context_window=204_800,
+    max_output_tokens=65_536,
+)
+# REPLACES "mistral-medium-2508:free", which left the free list (403, 2026-10-11).
+# Mistral Large 3 is the only large Mistral on it, and it is WEAK: AA v4.3.2 = 9
+# (the page calls it deprecated), and on 2026-10-11 it named the wrong class on
+# a 41K prompt ("QuoraPreproccesor" for SystemConfig). It goes at the very end
+# of the live tiers, where it is only ever reached when everything better has
+# failed.
+LITEROUTER_MISTRAL_LARGE_3 = _literouter(
+    name="Mistral Large 3 (LiteRouter)",
+    model="mistral-large-3:free",
+    context_window=262_144,
+    max_output_tokens=32_768,
 )
 
 
@@ -920,11 +1114,20 @@ CHAIN = _ordered(
     # was measured first; LiteRouter's quota is unpublished, OrcaRouter's is
     # 50 a day, so the smaller known allowance goes last.
     LITEROUTER_GLM_5_3_FLASH,
+    LITEROUTER_GLM_5_3_FLASH_CHEAP,
     ORCAROUTER_GLM_5_3_FLASH,
     GEMINI_3_8_FLASH,
     _second_account(GEMINI_3_8_FLASH),
     GEMINI_3_7_FLASH,
     _second_account(GEMINI_3_7_FLASH),
+    # --- ADDED 2026-10-11: DeepSeek on LiteRouter, by AA v4.3.2 -------------
+    # V4.1 Flash (39) ties Gemini 3.7 Flash, and 3.7 is now served by 3.8 (41),
+    # so it goes after the pair. Each "-stable" and "-cheap" id follows its base.
+    LITEROUTER_DEEPSEEK_V4_1_FLASH,
+    LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE,
+    LITEROUTER_DEEPSEEK_V4_1_FLASH_CHEAP,
+    LITEROUTER_DEEPSEEK_V4_PRO,
+    LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
     # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
     # DeepSeek first of the three: it and Qwen TIE on AA (35 vs 34, inside
     # the +-1 interval), Qwen wins Code Arena by 13 Elo, and DeepSeek is
@@ -935,6 +1138,7 @@ CHAIN = _ordered(
     # Its two ORIGINAL routes died on 2026-09-23 and wait at the END of the
     # chain; these two took their place.
     LITEROUTER_DEEPSEEK_V4_FLASH,
+    LITEROUTER_DEEPSEEK_V4_FLASH_CHEAP,
     ORCAROUTER_DEEPSEEK_V4_FLASH,
     # A third route, and the last of the three because it is the only one that
     # cannot serve a report: 42,000 of context against 58,000. _check_fits
@@ -943,8 +1147,9 @@ CHAIN = _ordered(
     # Then the coding specialist. It ties Gemini 3.6 Flash on general
     # intelligence and beats it by 56 Elo on code, which is the task this
     # project actually does - so it goes above it.
+    # Qwen3.8 Flash first: on the same index it outscored the 27B it replaces.
+    LITEROUTER_QWEN_3_8_FLASH,
     KILO_QWEN_3_8_27B,
-    LITEROUTER_QWEN_3_8_27B,
     QWEN_3_8_27B,
     # ADJACENT, for the same reason the Google twins are: once Cloudflare's
     # neurons are gone the strongest thing still available is the same model
@@ -956,15 +1161,27 @@ CHAIN = _ordered(
     GEMINI_3_5_FLASH,
     _second_account(GEMINI_3_5_FLASH),
     LITEROUTER_GLM_5_2,
+    LITEROUTER_GLM_5_2_CHEAP,
     CLINE_LAGUNA_S_2_1,
     KILO_LAGUNA_S_2_1,
     KILO_NEMOTRON_3_ULTRA,
     NEMOTRON_3_ULTRA,
     REQUESTY_NEMOTRON_3_ULTRA,
+    # --- ADDED 2026-10-11, AA v4.3.2: 29, 28*, 27, 26, 26 -------------------
+    # Inkling Small (26) follows because it is capped for the whole world and
+    # usually answers 429; the two 26s tie, so the one with a daily limit of
+    # its own goes first.
+    LITEROUTER_MINIMAX_M3,
+    LITEROUTER_MINIMAX_M3_CHEAP,
+    LITEROUTER_GLM_5,
+    LITEROUTER_KIMI_K2_6,
+    LITEROUTER_GLM_5_1,
+    LITEROUTER_KIMI_K2_7_CODE,
     KILO_INKLING_SMALL,
     GEMINI_3_5_FLASH_LITE,
     _second_account(GEMINI_3_5_FLASH_LITE),
-    LITEROUTER_MISTRAL_MEDIUM,
+    # AA 23, a tie with Flash-Lite, which has a measured allowance.
+    LITEROUTER_MINIMAX_M2_7,
     KILO_STEP_3_7_FLASH,
     REQUESTY_MUSE_GLIMMER,
     # ADDED 2026-09-30: AA 17 sits between Muse Glimmer (18) and the 31B (15), and
@@ -972,6 +1189,8 @@ CHAIN = _ordered(
     # reason every Google model is - a spent account costs nothing to skip.
     GEMMA_4_26B,
     _second_account(GEMMA_4_26B),
+    # AA 16 (an estimate) sits between the Gemma 26B (17) and the 31B (15).
+    LITEROUTER_DEEPSEEK_V3_2,
     GEMMA_4_31B,
     _second_account(GEMMA_4_31B),
     REQUESTY_GEMMA_4_31B,
@@ -985,6 +1204,10 @@ CHAIN = _ordered(
     GPT_OSS_120B_GROQ,
     GEMINI_3_1_FLASH_LITE,
     _second_account(GEMINI_3_1_FLASH_LITE),
+    # Unscored and the worst on the one question asked of it, so it goes
+    # last of the unscored. Then the weakest scored tier we have (AA 9).
+    LITEROUTER_DEEPSEEK_V3_1,
+    LITEROUTER_MISTRAL_LARGE_3,
     # KNOWN DEAD, KEPT ON PURPOSE - see KNOWN_DEAD below. Kilo before its
     # OpenRouter twin even here, so the day one revives the order is right.
     KILO_GLM_5_2,
