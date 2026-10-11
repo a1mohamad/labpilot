@@ -1170,7 +1170,7 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > used, the planner, one final node `respond`, the Effort and Strength controls, two
 > > web search kinds).
 > >
-> > **2026-10-11: LESSON 4, PART 1 OF 3 WAS TAUGHT, AND D35 WAS DECIDED.** Read
+> > **2026-10-11: LESSON 4, PART 1 OF 3 IS DONE (TAUGHT AND RUN), AND D35 WAS DECIDED.** Read
 > > [section 17.12](#1712-lesson-4-was-started-2026-10-11) first (what was taught, what the
 > > user did not understand, the D19 check, D35) and
 > > [section 20](#20-the-free-model-list-moves--the-sweep-of-2026-10-11) (the availability
@@ -18021,7 +18021,7 @@ are estimates, not promises.
 |---|---|---|
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
-| **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: part 1 of 3 taught 2026-10-11)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+| **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: part 1 of 3 DONE 2026-10-11, part 2 next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | run two independent steps at the same time | medium, 2 |
 | 4 | a step that can STOP the graph (the gate) | medium, 2 |
 | 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
@@ -18036,10 +18036,11 @@ are estimates, not promises.
 
 **How a new session continues slice 2:** read this section, 17.7, 17.10 and 17.11, check
 git (branch, status, `git log -5`). Lessons 1, 2 and 3 are DONE (all three exercise files are
-committed). **Lesson 4 is IN PROGRESS (17.12): part 1 of 3 was taught on 2026-10-11.** Resume:
-ask whether `scripts/graph_with_tools.py` runs and for the answers to its two questions, then
-teach part 2 (cut `ask()` into nodes, the first change inside `labpilot/`, on a branch made from
-`main`) and part 3 (the Postgres saver, `thread_id`, one measured chat, the D35 cleanup).
+committed). **Lesson 4 is IN PROGRESS (17.12): part 1 of 3 is DONE (2026-10-11).** Resume: teach
+part 2 (cut `ask()` into nodes, the first change inside `labpilot/`; the branch
+`feat/agent-nodes` already exists, so no new branch is needed) and part 3 (the Postgres
+saver, `thread_id`, one measured chat, the D35 cleanup). Ask the user whether
+`scripts/graph_with_tools.py` is committed yet.
 Lessons call no model, so the exit-ISP check is not needed until the first live test.
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
@@ -18268,8 +18269,8 @@ keep only the latest copy of each chat (D22).
 
 #### 17.12 Lesson 4 was started, 2026-10-11
 
-**Status: part 1 of 3 TAUGHT. When this was written the user had NOT yet run
-`scripts/graph_with_tools.py`.** Lesson 4 was split into three parts so each
+**Status: part 1 of 3 DONE (taught and run on 2026-10-11). Parts 2 and 3 are NOT
+started.** Lesson 4 was split into three parts so each
 one stays short: (1) the nodes get their functions from outside, as a small
 script; (2) `ask()` is cut into nodes, the first change inside `labpilot/`;
 (3) the Postgres saver, `thread_id` in the API, one measured chat and the
@@ -18315,6 +18316,27 @@ and returned), and `return greet` without brackets does not run it.
 - The frontend: only the `thread_id` is decided. Showing the old messages after
   a refresh needs a route that reads the history, which is NOT designed (Step 3).
 
+**Part 1 was RUN and CHECKED, 2026-10-11.** The user typed `scripts/graph_with_tools.py`
+(37 lines) on `feat/agent-nodes`. Claude ran it with Python 3.13.14, and `ruff check` and
+`ruff format --check` pass. The output is right:
+`{'question': 'why do results differ', 'chunks': ['chunk about learning rate', 'chunk about clipping'], 'answer': 'why do results differ -> I read 2 chunks'}`.
+The user named the fake `fake_answer` while the parameter is `generate`; that works and was
+left alone. When this was written the file was not committed yet.
+
+The two check questions of part 1, and the answers:
+
+1. *Where does the name `search` in `search_node` come from?* The user: "its closure rule,
+   inner function can use outer function arg". Correct.
+2. *You want a search that returns 3 chunks. What changes?* The user: "only need to change
+   `search_node` to return three chunks". **Wrong, and it is a habit to watch.** Nodes never
+   change. Write a new function `search_three` and call `build_graph(search_three,
+   fake_answer)`. The first graph keeps its own function (like `say_amir` and `say_sara`).
+   In the real app `search_node` stays the same: `api/` passes the real database search and
+   a test passes a fake one. Search code inside the node would also break D7. Watch for
+   this again in part 2, where the nodes are real.
+
+The user stopped here for the day ("that enough for today").
+
 **D19 was CHECKED, which was the planned first job of slice 2.**
 `pip install --dry-run langgraph-checkpoint-postgres` would add TWO packages,
 `langgraph-checkpoint-postgres 3.1.2` and `psycopg-pool 3.3.3`. It requires
@@ -18335,8 +18357,10 @@ is NOT verified. Check both after the install.
 message finishes.
 
 **Branch.** `main` holds the lesson 3 script. The LiteRouter work (section 20) was
-re-committed onto `main` by the user on 2026-10-11. Lesson 4 code goes on a new
-branch made from `main`, for example `git switch -c feat/agent-nodes main`.
+re-committed onto `main` by the user on 2026-10-11. The user made the branch
+`feat/agent-nodes` (checked with git: the same commit as `main`, `fadc5c2`) and wrote
+the part 1 script there. Part 2 goes on this branch. A new branch always needs the
+user's permission.
 
 **Open, for the user to decide:** how to delete the old copies (our own SQL,
 `ShallowPostgresSaver`, or keep all copies and delete whole old chats later), and
