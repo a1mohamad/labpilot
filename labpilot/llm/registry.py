@@ -702,15 +702,17 @@ KILO_STEP_3_7_FLASH = _kilo(
 # invisible; DeepSeek V4 Flash died on OpenRouter AND Kilo; Mistral Medium's
 # own account is paused until its monthly usage resets.
 #
-# LiteRouter publishes NO quota and sends no rate-limit headers - blind, like
-# Cline and Kilo - and it allows ONE concurrent request per account, measured
-# as a 403 "Too many concurrent requests". A real report prompt fits: 48,011
-# tokens to DeepSeek and 27,010 to GLM-5.3 Flash, both 200.
+# LiteRouter sends no rate-limit headers, and it allows ONE concurrent request
+# per account, measured as a 403 "Too many concurrent requests". Its DASHBOARD
+# does publish a daily limit, per model - see _literouter below, which is why
+# this note used to say "publishes no quota" and no longer does. A real report
+# prompt fits: 48,011 tokens to DeepSeek and 27,010 to GLM-5.3 Flash, both 200.
 #
 # OrcaRouter publishes 10 requests a minute and 50 a day on its own
 # /api/free-package/public, and took a 15,691-token report prompt.
 #
-# ONE pool per gateway, as for Kilo and Requesty: neither limit is per model.
+# ONE pool per gateway for OrcaRouter, Kilo and Requesty: none of their limits
+# is per model. LiteRouter is the exception, and test_registry pins it.
 def _gateway(
     *,
     name: str,
@@ -719,6 +721,8 @@ def _gateway(
     model: str,
     context_window: int,
     max_output_tokens: int,
+    quota_pool: str | None = None,
+    seconds_between_calls: float = 0.0,
 ) -> OpenAICompatibleProvider:
     return OpenAICompatibleProvider(
         name=name,
@@ -726,17 +730,39 @@ def _gateway(
         url=url,
         model=model,
         api_key_env=key,
-        quota_pool=key,
+        quota_pool=quota_pool or key,
         context_window=context_window,
         max_output_tokens=max_output_tokens,
+        seconds_between_calls=seconds_between_calls,
         # glm-5.3-flash returns EMPTY content without an explicit effort on
         # Cline and on OrcaRouter - a property of the model, not the host.
         extra_body=OPENROUTER_REASONING,
     )
 
 
-def _literouter(**kwargs) -> OpenAICompatibleProvider:
-    return _gateway(url=LITEROUTER_URL, key="LITEROUTER_API_KEY", **kwargs)
+# LiteRouter, read from its own dashboard and measured 2026-10-11.
+#
+#   daily limit   shown PER MODEL on every card: "Free tier (100)" for some ids
+#                 and "(∞)" for others, so each model is its own pool, the way
+#                 Google's are. This replaces the note above that said
+#                 LiteRouter publishes no quota.
+#   cooldown      7 seconds between messages for the ACCOUNT, answered with
+#                 HTTP 403 (not 429) on any model. Measured: four models called
+#                 back to back, one 200 and three refused; the same three
+#                 answered when spaced 8 seconds apart. 8 is the measured
+#                 value that worked, 7 is the number the error states.
+LITEROUTER_SECONDS_BETWEEN_CALLS = 8.0
+
+
+def _literouter(*, model: str, **kwargs) -> OpenAICompatibleProvider:
+    return _gateway(
+        url=LITEROUTER_URL,
+        key="LITEROUTER_API_KEY",
+        model=model,
+        quota_pool=f"LITEROUTER_API_KEY:{model}",
+        seconds_between_calls=LITEROUTER_SECONDS_BETWEEN_CALLS,
+        **kwargs,
+    )
 
 
 def _orcarouter(**kwargs) -> OpenAICompatibleProvider:

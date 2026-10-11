@@ -90,13 +90,20 @@ CONTEXT_TOO_SMALL = ("DeepSeek V4 Flash (Routeway)",)
 # paid id `poolside/laguna-s-2.1` also answers, and spends credits.
 CLINE_MODELS_THE_API_SERVES = ("z-ai/glm-5.3-flash", "poolside/laguna-s-2.1:free")
 
+# Gateways whose free limit is account-wide, so every tier shares ONE pool.
+# LiteRouter is NOT here: its dashboard shows a daily limit per model, so its
+# tiers own a pool each - see test_every_literouter_tier_owns_a_pool_of_its_own.
 GATEWAYS = (
     "KILO_API_KEY",
     "REQUESTY_API_KEY",
-    "LITEROUTER_API_KEY",
     "ORCAROUTER_API_KEY",
     "ROUTEWAY_API_KEY",
 )
+
+# What LiteRouter itself says: "7 seconds between messages". 8 is the value that
+# was measured to work, and it is a literal so the test cannot follow the
+# registry down.
+LITEROUTER_REST = 8.0
 
 
 def test_chain_tiers_are_sequential_from_one():
@@ -465,6 +472,39 @@ def test_each_gateway_shares_one_quota_pool():
             f"{env_var} has {len(tiers)} tiers across pools {sorted(pools)}. "
             f"Its limit is not per model, so one spent pool must retire them "
             f"all at once."
+        )
+
+
+def test_every_literouter_tier_owns_a_pool_of_its_own():
+    """The mirror of test_each_gateway_shares_one_quota_pool, and the answer
+    differs on purpose: LiteRouter's dashboard shows "Daily limit: Free tier
+    (100)" or "(∞)" on each model's own card.
+
+    The costs of being wrong are asymmetric. One shared pool when the limit is
+    per model lets a single spent model retire every sibling for the request;
+    split pools when the limit is account-wide waste one request. So they are
+    split, and this test is what stops a tidy-up putting them back together.
+    """
+    literouter = [p for p in CHAIN if p.api_key_env == "LITEROUTER_API_KEY"]
+    pools = [p.pool for p in literouter]
+
+    assert len(literouter) > 1, "expected more than one LiteRouter tier"
+    assert len(set(pools)) == len(pools), pools
+    assert all(p.pool == f"LITEROUTER_API_KEY:{p.model}" for p in literouter), pools
+
+
+def test_every_literouter_tier_rests_between_calls():
+    """LiteRouter answers HTTP 403 to a second message inside 7 seconds, on any
+    model, so a tier that follows another one on the gateway would be refused
+    for nothing. A tier without the rest is a tier that fails whenever its
+    neighbour just ran."""
+    literouter = [p for p in CHAIN if p.api_key_env == "LITEROUTER_API_KEY"]
+
+    assert literouter, "no LiteRouter tier left - delete this test or the key"
+    for provider in literouter:
+        assert provider.seconds_between_calls >= LITEROUTER_REST, (
+            f"{provider.name} rests {provider.seconds_between_calls}s between "
+            f"calls; LiteRouter refuses anything under 7."
         )
 
 
