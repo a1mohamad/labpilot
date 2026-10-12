@@ -1174,7 +1174,17 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > [section 17.12](#1712-lesson-4-was-started-2026-10-11) first (what was taught, what the
 > > user did not understand, the D19 check, D35) and
 > > [section 20](#20-the-free-model-list-moves--the-sweep-of-2026-10-11) (the availability
-> > sweep, the Gemini redirect, LiteRouter, and the chain of 73 tiers).
+> > sweep, the Gemini redirect, LiteRouter, and the chain of 73 tiers). The part 1 script
+> > is committed (`5cb6388` on `main`, `4fb6b48` on `feat/agent-nodes`). As of 2026-10-12
+> > `main` and `origin/main` are the same commit (`5cb6388`), `main` is the checked-out
+> > branch, and the branch of lesson 4 is `feat/agent-nodes` (`4fb6b48`, also on origin).
+> >
+> > **2026-10-12: LESSON 4, PART 2 IS DONE.** Read
+> > [section 17.13](#1713-lesson-4-part-2-was-done-2026-10-12) first: the conditional edge, the
+> > real graph in `labpilot/agent/graph.py` that `ask()` now runs, the 5 decisions, the 12 new tests,
+> > the 8 deliberate breaks, and the two rules the user set (they type ALL product code, and a step is
+> > given WHOLE in one message). The full suite is 1113 passed and 115 skipped. The work is committed on
+> > `feat/agent-nodes` (`74fb3b6`, `b1f4ba3`, pushed), three commits ahead of `main`. Next is part 3.
 > >
 > > **2026-09-29: ROUTEWAY IS IN THE CHAIN — 54 TIERS, MERGED: `main`,
 > > `origin/main` and `feat/routeway` are the same commit (checked with git
@@ -18021,7 +18031,11 @@ are estimates, not promises.
 |---|---|---|
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
+<<<<<<< HEAD
 | **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: part 1 of 3 DONE 2026-10-11, part 2 next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+=======
+| **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: parts 1 and 2 of 3 DONE, part 3 next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+>>>>>>> feat/agent-nodes
 | 3 | run two independent steps at the same time | medium, 2 |
 | 4 | a step that can STOP the graph (the gate) | medium, 2 |
 | 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
@@ -18034,13 +18048,22 @@ are estimates, not promises.
 (2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
-**How a new session continues slice 2:** read this section, 17.7, 17.10 and 17.11, check
+**How a new session continues slice 2:** read this section, 17.7, 17.10, 17.11 and 17.13, check
 git (branch, status, `git log -5`). Lessons 1, 2 and 3 are DONE (all three exercise files are
+<<<<<<< HEAD
 committed). **Lesson 4 is IN PROGRESS (17.12): part 1 of 3 is DONE (2026-10-11).** Resume: teach
 part 2 (cut `ask()` into nodes, the first change inside `labpilot/`; the branch
 `feat/agent-nodes` already exists, so no new branch is needed) and part 3 (the Postgres
 saver, `thread_id`, one measured chat, the D35 cleanup). Ask the user whether
 `scripts/graph_with_tools.py` is committed yet.
+=======
+committed). **Lesson 4 is IN PROGRESS: parts 1 and 2 of 3 are DONE (17.12, 17.13).** Resume with
+part 3 (the Postgres saver, `thread_id` in the request and the response, one measured chat, the D35
+cleanup), on the branch `feat/agent-nodes` (it already exists, so no new branch is needed).
+**Two rules the user set (17.13): they type ALL product code (only tests are copy-paste), and a
+step is given WHOLE in one message.** Part 3 starts by measuring whether the saver accepts the
+objects that are in the state now (17.13, open items).
+>>>>>>> feat/agent-nodes
 Lessons call no model, so the exit-ISP check is not needed until the first live test.
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
@@ -18269,8 +18292,13 @@ keep only the latest copy of each chat (D22).
 
 #### 17.12 Lesson 4 was started, 2026-10-11
 
+<<<<<<< HEAD
 **Status: part 1 of 3 DONE (taught and run on 2026-10-11). Parts 2 and 3 are NOT
 started.** Lesson 4 was split into three parts so each
+=======
+**Status: part 1 of 3 DONE (taught and run on 2026-10-11). Part 2 is DONE too (17.13). Part 3 is
+NOT started.** Lesson 4 was split into three parts so each
+>>>>>>> feat/agent-nodes
 one stays short: (1) the nodes get their functions from outside, as a small
 script; (2) `ask()` is cut into nodes, the first change inside `labpilot/`;
 (3) the Postgres saver, `thread_id` in the API, one measured chat and the
@@ -18321,7 +18349,12 @@ and returned), and `return greet` without brackets does not run it.
 `ruff format --check` pass. The output is right:
 `{'question': 'why do results differ', 'chunks': ['chunk about learning rate', 'chunk about clipping'], 'answer': 'why do results differ -> I read 2 chunks'}`.
 The user named the fake `fake_answer` while the parameter is `generate`; that works and was
+<<<<<<< HEAD
 left alone. When this was written the file was not committed yet.
+=======
+left alone. It was committed the same evening: `4fb6b48` on `feat/agent-nodes` and `5cb6388`
+on `main` (same content, two hashes).
+>>>>>>> feat/agent-nodes
 
 The two check questions of part 1, and the answers:
 
@@ -18361,10 +18394,92 @@ re-committed onto `main` by the user on 2026-10-11. The user made the branch
 `feat/agent-nodes` (checked with git: the same commit as `main`, `fadc5c2`) and wrote
 the part 1 script there. Part 2 goes on this branch. A new branch always needs the
 user's permission.
+<<<<<<< HEAD
+=======
+
+**Checked again on 2026-10-12.** `main` = `origin/main` = `5cb6388`, and `main` is the
+checked-out branch. `feat/agent-nodes` = `origin/feat/agent-nodes` = `4fb6b48`. The two share
+`fadc5c2`. `scripts/graph_with_tools.py` is identical on both. `main` also holds the docs
+commits `4a34fa3` and `d59ea4e`, which `feat/agent-nodes` does not. Which branch part 2 is
+written on is the user's choice, and Claude does not create a branch without asking.
+>>>>>>> feat/agent-nodes
 
 **Open, for the user to decide:** how to delete the old copies (our own SQL,
 `ShallowPostgresSaver`, or keep all copies and delete whole old chats later), and
-the shape of part 2 (closure, class, or a small dataclass of tools).
+the shape of part 2 (closure, class, or a small dataclass of tools). The second one was
+DECIDED in part 2: a closure, see 17.13.
+
+#### 17.13 Lesson 4, part 2 was done, 2026-10-12
+
+**Status: DONE, 2026-10-12.** The user typed every line of product code. The tests were given for
+copy and paste (the user's rule, below). `ruff check .` and `ruff format --check .` pass (259 files).
+The full suite is **1113 passed, 115 skipped** of 1228 tests: 110 of the skips are smoke tests that need
+`--run-smoke`, 5 skip by their own rule, and the 83 database tests ran. The work is committed on
+`feat/agent-nodes`: `74fb3b6` (the toy script `graph_with_branch.py` and docs) and `b1f4ba3` (graph, tests,
+wiring), both pushed. Part 3 is NOT started.
+
+**Part 2 had two steps.**
+
+- *2a, the new idea, as a toy: `scripts/graph_with_branch.py`.* A **conditional edge** is an arrow whose
+  end is chosen by a small function while the graph runs. The node `check` writes `fits`; `pick(state)` reads
+  it and returns the NAME of the next node as text. `pick` is not a node: it writes nothing and does not
+  appear in `stream`. Both branches write `chunks` and go to `answer`; only one runs per call, so lesson 2's
+  `InvalidUpdateError` cannot happen. Three QUIET failures were run and seen: a missing arrow (`stuff` to
+  `answer`) ends the run after `stuff` with no error and `answer` is simply absent from the final state; a typo
+  in the name `pick` returns ends the run with only a log line; and a node that reads a key nobody wrote fails
+  LOUD (`KeyError: 'size'`, the lesson 3 rule: the user forgot to send `size` in the input). The user added an
+  `empty` path for blank questions and learned two things: use `.strip()` (a question of spaces is not empty),
+  and the blank path cannot go to `answer`, because `answer_node` reads `chunks` and nobody wrote it there.
+- *2b, the real graph.* `labpilot/agent/graph.py`: `State` (10 keys),
+  `build_graph(*, measure, fits, stuff, search, make_prompt, generate) -> CompiledStateGraph`, five nodes
+  (`measure`, `stuff`, `search`, `prompt`, `generate`) and one conditional edge. Fully typed (the first version
+  had no hints; the project rule is full hints on public functions, so it was corrected).
+  `agent/__init__.py` exports `State` and `build_graph`. In `api/services.py`, `ask()` keeps its docstring and
+  its blank-question check, then runs `_ask_graph(conn, client).invoke({"question", "a", "b"})` and builds the
+  same `Comparison` from five state keys. `_ask_graph` builds the graph on every call and hands it six real
+  functions: `partial(_sides, conn)`, `fits`, `stuff_sides`, `search_sides`, `make_prompt`, `generate`.
+  **`stuff` and `search` have one shape**, `(sides, question) -> (chunks, totals)`; `totals` is `None` when
+  everything was read.
+
+**Decisions of part 2:**
+
+1. **Closure, not class.** Shorter, and nothing has to be remembered between calls. The honest cost: a node
+   cannot be tested alone, only the whole graph. Revisit when `build_graph` has about 10 nodes (slices 5 and
+   6): then a class, or a dataclass that holds the functions. Only the inside of `agent/` would change.
+2. **`sides` and `result` are typed `Any`**, because `agent/` may not import `store/` or `llm/` (layer test).
+   The graph only carries them.
+3. **The blank-question check stays in `ask()`, once, at the door** (before any database read or model call).
+   `InvalidQuestion` is an API type. Core code trusts its input. A second door into the graph needs the check
+   too, as ONE shared function and never as a copy.
+4. **Errors are converted in `api/`**, inside the `generate` function handed to the graph
+   (`AllFreeTiersExhausted` to `GenerationUnavailable`). The graph passes errors through unchanged, which a
+   test proves for three stages. So the 404, 409 and 503 mapping did not change.
+5. **Names:** a helper used by one file starts with `_` (`_ask_graph`), and outside code imports from the
+   package front door (`from labpilot.agent import build_graph`). The user first wrote `ask_graph` (3 tests
+   failed with one message) and imported from `labpilot.agent.graph`. The first was fixed; **the second was
+   still in `services.py` when this was written** and works.
+
+**Tests (12 new).** `tests/unit/agent/test_graph.py` (9, with fake functions, including one parametrized
+test that an error from `measure`, `search` or `generate` reaches the caller unchanged) and
+`tests/api/test_ask_graph.py` (3: `ask()` runs the graph and builds `Comparison` from its state, and a blank
+question is refused before the graph is built). **Eight deliberate breaks** were run on a temp copy of the
+repo, each caught: an inverted `pick` (7 tests), search losing `totals` (1), stuff forgetting `totals` (4),
+`generate` swallowing its error (1), `measure` args swapped (1), the arrow `stuff` to `prompt` forgotten (3),
+`ask()` dropping `totals` (1), the blank check deleted (2). Unit and API went from 999 to 1011 (+12), then
+1113 in the full run (it includes the database tests).
+
+**Open, for part 3.** The state now holds whole objects (`sides` from `store/`, `Chunk` tuples, the
+`LLMResult`), while D20 says the state should keep chunk ids and not text. The Postgres saver must turn the
+state into bytes. Whether it accepts these objects is NOT known and must be measured first in part 3,
+together with the size of one real chat (17.5). The graph is built again on every `ask()`; its cost alone was
+not timed (the 12 new tests run in 0.06 s).
+
+**Process rules the user set on 2026-10-12.** (1) The user types ALL product code; only tests are
+copy-paste. Claude never edits repo files. A temp copy for checking is allowed, but Claude says so first (the
+user stopped a session when edits at repo-looking temp paths looked like a broken rule). (2) A step is given
+WHOLE in one message: code, tests, wiring, commands and the answers to Claude's own check questions. No new
+"2a, 2b, 2b-1" splits. This overrides the line "about one screen, split and ask" in the banner at the top of
+this file for the size of a build step; the words stay simple (B1-B2).
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
