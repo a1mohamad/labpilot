@@ -1174,7 +1174,10 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > [section 17.12](#1712-lesson-4-was-started-2026-10-11) first (what was taught, what the
 > > user did not understand, the D19 check, D35) and
 > > [section 20](#20-the-free-model-list-moves--the-sweep-of-2026-10-11) (the availability
-> > sweep, the Gemini redirect, LiteRouter, and the chain of 73 tiers).
+> > sweep, the Gemini redirect, LiteRouter, and the chain of 73 tiers). The part 1 script
+> > is committed (`5cb6388` on `main`, `4fb6b48` on `feat/agent-nodes`). As of 2026-10-12
+> > `main` and `origin/main` are the same commit (`5cb6388`), `main` is the checked-out
+> > branch, and the branch of lesson 4 is `feat/agent-nodes` (`4fb6b48`, also on origin).
 > >
 > > **2026-09-29: ROUTEWAY IS IN THE CHAIN — 54 TIERS, MERGED: `main`,
 > > `origin/main` and `feat/routeway` are the same commit (checked with git
@@ -18039,8 +18042,10 @@ git (branch, status, `git log -5`). Lessons 1, 2 and 3 are DONE (all three exerc
 committed). **Lesson 4 is IN PROGRESS (17.12): part 1 of 3 is DONE (2026-10-11).** Resume: teach
 part 2 (cut `ask()` into nodes, the first change inside `labpilot/`; the branch
 `feat/agent-nodes` already exists, so no new branch is needed) and part 3 (the Postgres
-saver, `thread_id`, one measured chat, the D35 cleanup). Ask the user whether
-`scripts/graph_with_tools.py` is committed yet.
+saver, `thread_id`, one measured chat, the D35 cleanup). `scripts/graph_with_tools.py` IS
+committed (checked 2026-10-12: `5cb6388` on `main`, `4fb6b48` on `feat/agent-nodes`, same
+content). Before part 2, check which branch is checked out. The two docs commits `4a34fa3` and
+`d59ea4e` are only on `main`, so `feat/agent-nodes` does not hold them yet.
 Lessons call no model, so the exit-ISP check is not needed until the first live test.
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
@@ -18321,7 +18326,8 @@ and returned), and `return greet` without brackets does not run it.
 `ruff format --check` pass. The output is right:
 `{'question': 'why do results differ', 'chunks': ['chunk about learning rate', 'chunk about clipping'], 'answer': 'why do results differ -> I read 2 chunks'}`.
 The user named the fake `fake_answer` while the parameter is `generate`; that works and was
-left alone. When this was written the file was not committed yet.
+left alone. It was committed the same evening: `4fb6b48` on `feat/agent-nodes` and `5cb6388`
+on `main` (same content, two hashes).
 
 The two check questions of part 1, and the answers:
 
@@ -18361,6 +18367,12 @@ re-committed onto `main` by the user on 2026-10-11. The user made the branch
 `feat/agent-nodes` (checked with git: the same commit as `main`, `fadc5c2`) and wrote
 the part 1 script there. Part 2 goes on this branch. A new branch always needs the
 user's permission.
+
+**Checked again on 2026-10-12.** `main` = `origin/main` = `5cb6388`, and `main` is the
+checked-out branch. `feat/agent-nodes` = `origin/feat/agent-nodes` = `4fb6b48`. The two share
+`fadc5c2`. `scripts/graph_with_tools.py` is identical on both. `main` also holds the docs
+commits `4a34fa3` and `d59ea4e`, which `feat/agent-nodes` does not. Which branch part 2 is
+written on is the user's choice, and Claude does not create a branch without asking.
 
 **Open, for the user to decide:** how to delete the old copies (our own SQL,
 `ShallowPostgresSaver`, or keep all copies and delete whole old chats later), and
