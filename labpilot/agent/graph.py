@@ -1,0 +1,71 @@
+from collections.abc import Callable
+from typing import Any, TypedDict
+
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+
+from labpilot.ingest import Chunk
+
+Chunks = tuple[Chunk, ...]
+Totals = dict[str, int] | None
+
+
+class State(TypedDict):
+    question: str
+    a: str
+    b: str
+    sides: Any
+    fits: bool
+    chunks: Chunks
+    totals: Totals
+    prompt: str
+    selected: Chunks
+    result: Any
+
+
+def build_graph(
+    *,
+    measure: Callable[[str, str], Any],
+    fits: Callable[[Any, str], bool],
+    stuff: Callable[[Any, str], tuple[Chunks, Totals]],
+    search: Callable[[Any, str], tuple[Chunks, Totals]],
+    make_prompt: Callable[[Chunks, str, Totals], tuple[str, Chunks]],
+    generate: Callable[[str], Any],
+) -> CompiledStateGraph:
+    def measure_node(state: State) -> dict[str, Any]:
+        sides = measure(state["a"], state["b"])
+        return {"sides": sides, "fits": fits(sides, state["question"])}
+
+    def stuff_node(state: State) -> dict[str, Any]:
+        chunks, totals = stuff(state["sides"], state["question"])
+        return {"chunks": chunks, "totals": totals}
+
+    def search_node(state: State) -> dict[str, Any]:
+        chunks, totals = search(state["sides"], state["question"])
+        return {"chunks": chunks, "totals": totals}
+
+    def prompt_node(state: State) -> dict[str, Any]:
+        prompt, selected = make_prompt(
+            state["chunks"], state["question"], state["totals"]
+        )
+        return {"prompt": prompt, "selected": selected}
+
+    def generate_node(state: State) -> dict[str, Any]:
+        return {"result": generate(state["prompt"])}
+
+    def pick(state: State) -> str:
+        return "stuff" if state["fits"] else "search"
+
+    builder = StateGraph(State)
+    builder.add_node("measure", measure_node)
+    builder.add_node("stuff", stuff_node)
+    builder.add_node("search", search_node)
+    builder.add_node("prompt", prompt_node)
+    builder.add_node("generate", generate_node)
+    builder.add_edge(START, "measure")
+    builder.add_conditional_edges("measure", pick)
+    builder.add_edge("stuff", "prompt")
+    builder.add_edge("search", "prompt")
+    builder.add_edge("prompt", "generate")
+    builder.add_edge("generate", END)
+    return builder.compile()
