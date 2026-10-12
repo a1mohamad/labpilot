@@ -5,10 +5,13 @@ import logging
 import math
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
+from functools import partial
 from hashlib import sha256
 
 import psycopg
+from langgraph.graph.state import CompiledStateGraph
 
+from labpilot.agent.graph import build_graph
 from labpilot.api.contracts import Artifact, Comparison, Ingested
 from labpilot.api.errors import (
     ArtifactChanged,
@@ -566,29 +569,53 @@ def ask(
     if not question.strip():
         raise InvalidQuestion("question must not be empty")
 
-    sides = _sides(conn, a_id, b_id)
-
-    if _fits(sides, question=question):
-        chunks, totals = _stuffed(conn, sides), None
-    else:
-        chunks = _retrieved(conn, sides, question=question)
-        totals = {side: found.chunks for side, found in sides.items()}
-
-    prompt, selected = _prompt(chunks, question=question, totals=totals)
-
-    try:
-        result = client.generate(prompt, max_tokens=REPORT_MAX_TOKENS)
-    except AllFreeTiersExhausted as exc:
-        raise GenerationUnavailable(
-            "every free tier failed", attempts=exc.attempts
-        ) from exc
-
+    graph = _ask_graph(conn, client)
+    final = graph.invoke({"question": question, "a": a_id, "b": b_id})
     return Comparison(
-        result=result,
-        chunks=chunks,
-        selected=selected,
-        prompt=prompt,
-        totals=totals,
+        result=final["result"],
+        chunks=final["chunks"],
+        selected=final["selected"],
+        prompt=final["prompt"],
+        totals=final["totals"],
+    )
+
+
+def _ask_graph(conn: psycopg.Connection, client: LLMClient) -> CompiledStateGraph:
+    """The graph ask() runs, with the real functions handed to it.
+
+    labpilot/agent/ may not import store/, llm/ or this module, so it receives
+    these six functions instead. Each one is a step ask() used to do inline, and
+    each keeps the conversion of errors that belongs to the API layer.
+    """
+
+    def fits(sides, question):
+        return _fits(sides, question=question)
+
+    def stuff_sides(sides, question):
+        return _stuffed(conn, sides), None
+
+    def search_sides(sides, question):
+        chunks = _retrieved(conn, sides, question=question)
+        return chunks, {side: found.chunks for side, found in sides.items()}
+
+    def make_prompt(chunks, question, totals):
+        return _prompt(chunks, question=question, totals=totals)
+
+    def generate(prompt):
+        try:
+            return client.generate(prompt, max_tokens=REPORT_MAX_TOKENS)
+        except AllFreeTiersExhausted as exc:
+            raise GenerationUnavailable(
+                "every free tier failed", attempts=exc.attempts
+            ) from exc
+
+    return build_graph(
+        measure=partial(_sides, conn),
+        fits=fits,
+        stuff=stuff_sides,
+        search=search_sides,
+        make_prompt=make_prompt,
+        generate=generate,
     )
 
 
