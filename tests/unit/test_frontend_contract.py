@@ -31,7 +31,12 @@ from pathlib import Path
 
 import pytest
 
-from labpilot.api.schemas import CompareResponse, ErrorEnvelope, IngestResponse
+from labpilot.api.schemas import (
+    CompareRequest,
+    CompareResponse,
+    ErrorEnvelope,
+    IngestResponse,
+)
 
 APP_JS = Path("web/app.js")
 
@@ -42,6 +47,18 @@ _READS = re.compile(r"\b(payload|body)\.([a-zA-Z_][a-zA-Z0-9_]*)")
 # Names that are not fields of ours. `append` is FormData's; `hidden`,
 # `textContent` and friends belong to the DOM.
 _NOT_OURS = {"append", "hidden", "textContent", "dataset", "classList", "style"}
+
+
+# The object literal inside `JSON.stringify({ ... })` of the compare request.
+_COMPARE_BODY = re.compile(r"JSON\.stringify\(\{(?P<fields>.*?)\}\)", re.DOTALL)
+
+
+def _sent_to_compare() -> set[str]:
+    source = APP_JS.read_text(encoding="utf-8")
+    after_fetch = source[source.index("fetch(COMPARE") :]
+    body = _COMPARE_BODY.search(after_fetch)
+    assert body, "app.js no longer builds the compare request as JSON.stringify({...})"
+    return set(re.findall(r"^\s*(\w+)\s*[:,]", body.group("fields"), re.MULTILINE))
 
 
 def _reads(prefix: str) -> set[str]:
@@ -91,4 +108,31 @@ def test_the_page_is_really_wired_to_both_doors():
     assert _reads("body"), (
         "app.js no longer reads any field off the compare reply, so the "
         "compare half of this file is checking nothing. Re-point the regex."
+    )
+
+
+def test_the_page_sends_every_field_of_the_compare_request():
+    """Without the chat id every message starts a NEW chat.
+
+    Nothing fails when the page forgets it: the server accepts a request with no
+    id, makes a fresh one, and answers normally. So the page looks perfectly
+    healthy and the chat remembers nothing. Same family as the two incidents
+    above - a name that is missing breaks silently.
+    """
+    sent = _sent_to_compare()
+
+    assert sent, "the compare request holds no fields, so this test checks nothing"
+    missing = sorted(set(CompareRequest.model_fields) - sent)
+    assert not missing, (
+        f"web/app.js does not send {missing} to /compare. Add it, or the server "
+        f"never sees it."
+    )
+
+
+def test_the_page_keeps_the_chat_id_the_server_sent():
+    """The other half: the id arrives in the FIRST reply, and the page must read
+    it or there is nothing to send with the second question."""
+    assert "thread_id" in _reads("body"), (
+        "web/app.js never reads thread_id off the compare reply, so it cannot "
+        "send it back and every question starts a new chat."
     )
