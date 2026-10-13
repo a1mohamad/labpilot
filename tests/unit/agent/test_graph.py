@@ -1,4 +1,5 @@
 import pytest
+from langgraph.checkpoint.memory import InMemorySaver
 
 from labpilot.agent import build_graph
 
@@ -112,3 +113,62 @@ def test_the_final_state_holds_everything_ask_returns():
 def test_an_error_from_a_function_reaches_the_caller_unchanged(stage):
     with pytest.raises(Boom, match=stage):
         run(fits_value=False, fail_in=stage)
+
+
+def chat_graph(saver=None, *, generate=None):
+    return build_graph(
+        measure=lambda a, b: TOTALS,
+        fits=lambda sides, question: True,
+        stuff=lambda sides, question: (STUFFED, None),
+        search=lambda sides, question: (SEARCHED, TOTALS),
+        make_prompt=lambda chunks, question, totals: ("the prompt", chunks[:1]),
+        generate=generate or (lambda prompt: "the result"),
+        checkpointer=saver,
+    )
+
+
+def say(graph, question, chat="chat-7"):
+    config = {"configurable": {"thread_id": chat}}
+    return graph.invoke({"question": question, "a": "A-1", "b": "B-1"}, config)
+
+
+def test_a_second_message_in_the_same_chat_remembers_the_first():
+    graph = chat_graph(InMemorySaver())
+
+    say(graph, "first?")
+    final = say(graph, "second?")
+
+    assert final["history"] == ["first?", "second?"]
+
+
+def test_two_chats_do_not_share_a_history():
+    graph = chat_graph(InMemorySaver())
+
+    say(graph, "first?", chat="chat-7")
+    final = say(graph, "other?", chat="chat-8")
+
+    assert final["history"] == ["other?"]
+
+
+def test_a_graph_with_no_saver_remembers_only_the_current_message():
+    final = chat_graph().invoke({"question": "first?", "a": "A-1", "b": "B-1"})
+
+    assert final["history"] == ["first?"]
+
+
+def test_a_message_that_fails_is_not_remembered():
+    outcomes = iter([Boom("model down"), "the result"])
+
+    def generate(prompt):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    graph = chat_graph(InMemorySaver(), generate=generate)
+
+    with pytest.raises(Boom):
+        say(graph, "fails?")
+    final = say(graph, "works?")
+
+    assert final["history"] == ["works?"]
