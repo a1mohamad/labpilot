@@ -34,11 +34,19 @@ BODY = {"a": "A-paper", "b": "B-code", "question": "why do they diverge?"}
 
 @pytest.fixture
 def no_database(monkeypatch):
-    """The route opens a connection; nothing here should reach a real one."""
-    monkeypatch.setattr(
-        "labpilot.api.routers.compare.connect",
-        lambda *a, **k: contextlib.nullcontext(object()),
-    )
+    """The route opens a connection; nothing here should reach a real one.
+
+    Returns the keyword arguments of every `connect(...)` call, so a test can
+    see HOW the route asked for its connection.
+    """
+    opened = []
+
+    def fake_connect(*args, **kwargs):
+        opened.append(kwargs)
+        return contextlib.nullcontext(object())
+
+    monkeypatch.setattr("labpilot.api.routers.compare.connect", fake_connect)
+    return opened
 
 
 def chunk(side: str, index: int, text: str) -> Chunk:
@@ -104,7 +112,7 @@ def test_the_ids_reach_the_ask_path_in_the_slots_they_were_sent_in(
     """
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id):
         seen.update(a=a_id, b=b_id, question=question)
         return answered()
 
@@ -266,3 +274,68 @@ def test_the_old_upload_door_is_really_gone(client, no_database, monkeypatch):
     )
 
     assert response.status_code == 422
+
+
+def test_the_first_message_gets_a_new_chat_id_and_ask_receives_the_same_one(
+    client, no_database, monkeypatch
+):
+    seen = {}
+
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id):
+        seen["thread_id"] = thread_id
+        return answered()
+
+    monkeypatch.setattr("labpilot.api.services.ask", fake_ask)
+
+    sent = client.post(COMPARE, json=BODY).json()["thread_id"]
+
+    assert len(sent) == 32
+    assert seen["thread_id"] == sent
+
+
+def test_two_first_messages_start_two_different_chats(client, no_database, monkeypatch):
+    stub(monkeypatch, answered())
+
+    first = client.post(COMPARE, json=BODY).json()["thread_id"]
+    second = client.post(COMPARE, json=BODY).json()["thread_id"]
+
+    assert first != second
+
+
+def test_a_chat_id_that_was_sent_is_kept(client, no_database, monkeypatch):
+    seen = {}
+
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id):
+        seen["thread_id"] = thread_id
+        return answered()
+
+    monkeypatch.setattr("labpilot.api.services.ask", fake_ask)
+
+    response = client.post(COMPARE, json={**BODY, "thread_id": "chat-7"})
+
+    assert response.json()["thread_id"] == "chat-7"
+    assert seen["thread_id"] == "chat-7"
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_a_blank_chat_id_is_the_same_as_no_chat_id(
+    client, no_database, monkeypatch, blank
+):
+    stub(monkeypatch, answered())
+
+    sent = client.post(COMPARE, json={**BODY, "thread_id": blank}).json()["thread_id"]
+
+    assert len(sent) == 32
+
+
+def test_the_connection_is_opened_in_autocommit_mode(client, no_database, monkeypatch):
+    """The chat saver writes outside any transaction, so it needs this.
+
+    Without it the saved copies sit in a transaction nobody commits, and the
+    chat is silently forgotten when the connection closes.
+    """
+    stub(monkeypatch, answered())
+
+    client.post(COMPARE, json=BODY)
+
+    assert no_database == [{"autocommit": True}]

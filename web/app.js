@@ -8,7 +8,8 @@
 // a file again.
 const ARTIFACTS = "/api/v1/artifacts";
 const COMPARE = "/api/v1/compare";
-
+/** The chat this page is in. The server makes the id on the first answer. */
+const THREAD_KEY = "labpilot.thread";
 /** What each slot currently holds, once the server has stored it. */
 const stored = { A: null, B: null };
 
@@ -160,6 +161,7 @@ ask.addEventListener("submit", async (event) => {
         a: stored.A.artifact_id,
         b: stored.B.artifact_id,
         question,
+        thread_id: localStorage.getItem(THREAD_KEY),
       }),
     });
     const payload = await response.json();
@@ -174,6 +176,7 @@ ask.addEventListener("submit", async (event) => {
 });
 
 function showReport(body) {
+  localStorage.setItem(THREAD_KEY, body.thread_id);
   const meta = document.getElementById("meta");
   meta.replaceChildren(
     tag(`${body.model} · tier ${body.tier}`),

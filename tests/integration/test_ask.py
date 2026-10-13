@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from labpilot.api import services
+from labpilot.api.checkpoints import open_saver
 from labpilot.api.errors import (
     ArtifactChanged,
     ArtifactSidesClash,
@@ -177,3 +178,72 @@ def test_the_side_comes_from_the_stored_row_and_not_from_the_slot(db, monkeypatc
     prompt = client.prompts[0]
     assert "SIDE A" in prompt
     assert "SIDE B" in prompt
+
+
+# ---------------------------------------------------------------------------
+# CHAT MEMORY: the saver, a real Postgres, and the clean-up after each message.
+# ---------------------------------------------------------------------------
+
+
+def rows(db, table: str, thread_id: str) -> int:
+    with db.cursor() as cur:
+        cur.execute(f"select count(*) from {table} where thread_id = %s", (thread_id,))
+        return cur.fetchone()[0]
+
+
+def talk(db, thread_id: str, *questions: str) -> None:
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    for question in questions:
+        services.ask(
+            db, a, b, question=question, client=FakeClient(), thread_id=thread_id
+        )
+
+
+def test_a_chat_remembers_every_question_and_comes_back_as_real_objects(
+    db, chat_tables, caplog
+):
+    talk(db, "chat-memory", "first?", "second?", "third?")
+
+    saved = open_saver(db).get_tuple({"configurable": {"thread_id": "chat-memory"}})
+    values = saved.checkpoint["channel_values"]
+
+    assert values["history"] == ["first?", "second?", "third?"]
+    assert isinstance(values["result"], LLMResult)
+    assert "langgraph" not in caplog.text
+
+
+def test_only_the_newest_copy_of_a_chat_stays_in_the_database(db, chat_tables):
+    talk(db, "chat-one-copy", "first?")
+    blobs_after_one_message = rows(db, "checkpoint_blobs", "chat-one-copy")
+
+    talk(db, "chat-one-copy", "second?", "third?")
+
+    assert rows(db, "checkpoints", "chat-one-copy") == 1
+    assert rows(db, "checkpoint_writes", "chat-one-copy") == 0
+    assert rows(db, "checkpoint_blobs", "chat-one-copy") == blobs_after_one_message
+
+
+def test_cleaning_one_chat_leaves_another_chat_alone(db, chat_tables):
+    talk(db, "chat-left-alone", "only?")
+    copies_before = rows(db, "checkpoints", "chat-left-alone")
+    blobs_before = rows(db, "checkpoint_blobs", "chat-left-alone")
+
+    talk(db, "chat-busy", "first?", "second?", "third?")
+
+    assert rows(db, "checkpoints", "chat-left-alone") == copies_before
+    assert rows(db, "checkpoint_blobs", "chat-left-alone") == blobs_before
+
+
+def test_a_question_with_no_chat_saves_nothing(db, chat_tables):
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    with db.cursor() as cur:
+        cur.execute("select count(*) from checkpoints")
+        before = cur.fetchone()[0]
+
+    services.ask(db, a, b, question="no chat?", client=FakeClient())
+
+    with db.cursor() as cur:
+        cur.execute("select count(*) from checkpoints")
+        assert cur.fetchone()[0] == before

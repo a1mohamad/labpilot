@@ -51,6 +51,11 @@ class CompareRequest(BaseModel):
         "retrieval query, so re-wording it changes which parts are found.",
         examples=["Compare these and explain why the results diverge."],
     )
+    thread_id: str | None = Field(
+        default=None,
+        description="The chat this question belongs to. Leave it out on the "
+        "first message: the reply carries the id to send from then on.",
+    )
 
 
 class CitationReport(BaseModel):
@@ -69,6 +74,7 @@ class CompareResponse(BaseModel):
     )
     chunks: dict[str, SideChunks]
     citations: CitationReport
+    thread_id: str = Field(description="Send this back to continue the chat.")
 
 
 class ErrorBody(BaseModel):

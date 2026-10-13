@@ -12,7 +12,8 @@ import psycopg
 from langgraph.graph.state import CompiledStateGraph
 
 from labpilot.agent.graph import build_graph
-from labpilot.api.contracts import Artifact, Comparison, Ingested
+from labpilot.api.checkpoints import open_saver, prune
+from labpilot.api.contracts import Comparison, Ingested
 from labpilot.api.errors import (
     ArtifactChanged,
     ArtifactSidesClash,
@@ -346,17 +347,6 @@ def _cut_bytes(
     return chunks
 
 
-def _cut(artifact: Artifact, *, side: Side, field: str) -> tuple[Chunk, ...]:
-
-    return _cut_bytes(
-        artifact.raw,
-        name=artifact.name,
-        side=side,
-        artifact_id=artifact.name,
-        field=field,
-    )
-
-
 def _prompt(
     chunks: tuple[Chunk, ...],
     *,
@@ -554,6 +544,7 @@ def ask(
     *,
     question: str,
     client: LLMClient,
+    thread_id: str | None = None,
 ) -> Comparison:
     """Answer a question about two STORED artifacts.
 
@@ -570,7 +561,13 @@ def ask(
         raise InvalidQuestion("question must not be empty")
 
     graph = _ask_graph(conn, client)
-    final = graph.invoke({"question": question, "a": a_id, "b": b_id})
+    start = graph.invoke({"question": question, "a": a_id, "b": b_id})
+    if thread_id is None:
+        final = graph.invoke(start)
+    else:
+        config = {"configurable": {"thread_id": thread_id}}
+        final = graph.invoke(start, config, durability="exit")
+        _forgot_old_copies(conn, thread_id)
     return Comparison(
         result=final["result"],
         chunks=final["chunks"],
@@ -580,7 +577,18 @@ def ask(
     )
 
 
-def _ask_graph(conn: psycopg.Connection, client: LLMClient) -> CompiledStateGraph:
+def _forgot_old_copies(conn: psycopg.Connection, thread_id: str) -> None:
+    try:
+        prune(conn, thread_id)
+    except psycopg.Error:
+        logger.warning(
+            "could not delete old copies of chat %s", thread_id, exc_info=True
+        )
+
+
+def _ask_graph(
+    conn: psycopg.Connection, client: LLMClient, thread_id: str | None = None
+) -> CompiledStateGraph:
     """The graph ask() runs, with the real functions handed to it.
 
     labpilot/agent/ may not import store/, llm/ or this module, so it receives
@@ -616,6 +624,7 @@ def _ask_graph(conn: psycopg.Connection, client: LLMClient) -> CompiledStateGrap
         search=search_sides,
         make_prompt=make_prompt,
         generate=generate,
+        checkpointer=open_saver(conn) if thread_id else None,
     )
 
 

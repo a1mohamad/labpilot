@@ -1,6 +1,8 @@
+import operator
 from collections.abc import Callable
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -14,6 +16,7 @@ class State(TypedDict):
     question: str
     a: str
     b: str
+    history: Annotated[list[str], operator.add]
     sides: Any
     fits: bool
     chunks: Chunks
@@ -31,6 +34,7 @@ def build_graph(
     search: Callable[[Any, str], tuple[Chunks, Totals]],
     make_prompt: Callable[[Chunks, str, Totals], tuple[str, Chunks]],
     generate: Callable[[str], Any],
+    checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     def measure_node(state: State) -> dict[str, Any]:
         sides = measure(state["a"], state["b"])
@@ -53,6 +57,9 @@ def build_graph(
     def generate_node(state: State) -> dict[str, Any]:
         return {"result": generate(state["prompt"])}
 
+    def remember_node(state: State) -> dict[str, Any]:
+        return {"history": [state["question"]]}
+
     def pick(state: State) -> str:
         return "stuff" if state["fits"] else "search"
 
@@ -62,10 +69,12 @@ def build_graph(
     builder.add_node("search", search_node)
     builder.add_node("prompt", prompt_node)
     builder.add_node("generate", generate_node)
+    builder.add_node("remember", remember_node)
     builder.add_edge(START, "measure")
     builder.add_conditional_edges("measure", pick)
     builder.add_edge("stuff", "prompt")
     builder.add_edge("search", "prompt")
     builder.add_edge("prompt", "generate")
-    builder.add_edge("generate", END)
-    return builder.compile()
+    builder.add_edge("generate", "remember")
+    builder.add_edge("remember", END)
+    return builder.compile(checkpointer=checkpointer)

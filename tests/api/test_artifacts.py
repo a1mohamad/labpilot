@@ -245,7 +245,7 @@ def test_non_ascii_content_survives_the_door(client, no_database, monkeypatch):
 
 
 def test_a_broken_notebook_is_a_422_not_a_500(client, no_database):
-    """LoaderError is not an ApiError, so without the guard in services._cut a
+    """LoaderError is not an ApiError, so without the guard in services._cut_bytes a
     malformed .ipynb reaches the 500 handler and reads as OUR bug rather than
     the user's file. Reachable only since .ipynb became an accepted upload.
 

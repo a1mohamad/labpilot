@@ -70,3 +70,36 @@ def test_an_explicit_url_wins_over_the_environment(monkeypatch):
             pass
 
     assert seen["dsn"] == "postgresql://explicit/y"
+
+
+@pytest.mark.parametrize("asked", [True, False])
+def test_the_autocommit_choice_reaches_the_driver(monkeypatch, asked):
+    seen = {}
+
+    def spy(dsn, **kwargs):
+        seen.update(kwargs)
+        raise psycopg.OperationalError("stop here")
+
+    monkeypatch.setattr(psycopg, "connect", spy)
+
+    with pytest.raises(ConnectionFailed):  # noqa: PT012
+        with connect("postgresql://u:p@h:5432/d", autocommit=asked):
+            pass
+
+    assert seen["autocommit"] is asked
+
+
+def test_a_connection_is_not_autocommit_unless_someone_asks(monkeypatch):
+    seen = {}
+
+    def spy(dsn, **kwargs):
+        seen.update(kwargs)
+        raise psycopg.OperationalError("stop here")
+
+    monkeypatch.setattr(psycopg, "connect", spy)
+
+    with pytest.raises(ConnectionFailed):  # noqa: PT012
+        with connect("postgresql://u:p@h:5432/d"):
+            pass
+
+    assert seen["autocommit"] is False

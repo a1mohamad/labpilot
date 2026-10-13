@@ -205,3 +205,15 @@ def _emptied(conn: psycopg.Connection) -> psycopg.Connection:
         # 2min statement_timeout - the integration folder went 28s -> 238s.
         cur.execute("delete from artifacts")
     return conn
+
+
+@pytest.fixture(scope="module")
+def chat_tables(live_connection: Callable[[], psycopg.Connection]) -> None:
+    """The saver's own tables, made once per module in the test schema.
+
+    setup() takes about 12 seconds over the VPN (it builds three indexes), so
+    only a module that really needs a saved chat asks for this.
+    """
+    from labpilot.api.checkpoints import open_saver
+
+    open_saver(live_connection()).setup()
