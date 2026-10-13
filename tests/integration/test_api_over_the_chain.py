@@ -11,6 +11,7 @@ Mocked at the provider boundary with `responses`, so no network and no quota.
 from __future__ import annotations
 
 import contextlib
+import json
 
 import pytest
 import responses
@@ -19,6 +20,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from labpilot.api import ApiConfig, app, get_client
 from labpilot.llm import GeminiProvider, LLMClient
+from labpilot.prompts import REPORT_MAX_TOKENS
 from labpilot.store import ArtifactRecord, StoredArtifact, StoredChunk
 
 COMPARE = f"{ApiConfig.PREFIX}/compare"
@@ -227,3 +229,20 @@ def test_the_prompt_that_reaches_the_provider_carries_both_sides(client):
     assert "B-0" in sent
     assert "def add(x, y):" in sent
     assert QUESTION in sent
+
+
+@responses.activate
+def test_the_provider_is_asked_for_a_full_length_report(client):
+    """If the length is lost on the way, every report is cut at the default.
+
+    LLMClient.generate has a default of 1,024 tokens, and a report needs far
+    more. Dropping the argument breaks nothing visible: the model answers, the
+    page shows an answer, and only `finish_reason` says it was cut. The weekly
+    live run is the only other thing that would notice.
+    """
+    responses.add(responses.POST, url("first"), json=answered("first-001"))
+
+    post(client)
+
+    sent = json.loads(responses.calls[0].request.body)
+    assert sent["generationConfig"]["maxOutputTokens"] == REPORT_MAX_TOKENS
