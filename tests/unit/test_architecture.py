@@ -106,3 +106,50 @@ def test_the_import_graph_has_no_cycles():
             cycle = walk(unit)
             if cycle:
                 pytest.fail(f"import cycle: {' -> '.join(cycle)}")
+
+
+# Libraries that reach the outside world. The layer rule above only governs OUR
+# packages. Decision D7 says nodes get such things as functions handed in from
+# outside, so every node can be tested with a fake and no network. A node that
+# imports one of these directly would pass the layer rule and still break D7.
+OUTSIDE_WORLD = frozenset(
+    {
+        "aiohttp",
+        "httpx",
+        "psycopg",
+        "psycopg_pool",
+        "requests",
+        "socket",
+        "subprocess",
+        "urllib",
+        "urllib3",
+    }
+)
+
+
+def _third_party_imports(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names.add(node.module.split(".")[0])
+    return names
+
+
+def test_the_agent_package_never_reaches_the_outside_world_itself():
+    files = sorted((PACKAGE_ROOT / "agent").rglob("*.py"))
+    assert files, "labpilot/agent/ holds no files, so this test checks nothing"
+
+    reached = {
+        path.name: sorted(_third_party_imports(path) & OUTSIDE_WORLD)
+        for path in files
+        if _third_party_imports(path) & OUTSIDE_WORLD
+    }
+
+    assert not reached, (
+        f"{reached} reach the outside world directly. A node must get the "
+        f"function it needs from api/ (decision D7), or it can no longer be "
+        f"tested with a fake and no network."
+    )
