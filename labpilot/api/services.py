@@ -560,14 +560,14 @@ def ask(
     if not question.strip():
         raise InvalidQuestion("question must not be empty")
 
-    graph = _ask_graph(conn, client)
-    start = graph.invoke({"question": question, "a": a_id, "b": b_id})
+    graph = _ask_graph(conn, client, thread_id)
+    start = {"question": question, "a": a_id, "b": b_id}
     if thread_id is None:
         final = graph.invoke(start)
     else:
         config = {"configurable": {"thread_id": thread_id}}
         final = graph.invoke(start, config, durability="exit")
-        _forgot_old_copies(conn, thread_id)
+        _forget_old_copies(conn, thread_id)
     return Comparison(
         result=final["result"],
         chunks=final["chunks"],
@@ -577,7 +577,7 @@ def ask(
     )
 
 
-def _forgot_old_copies(conn: psycopg.Connection, thread_id: str) -> None:
+def _forget_old_copies(conn: psycopg.Connection, thread_id: str) -> None:
     try:
         prune(conn, thread_id)
     except psycopg.Error:
