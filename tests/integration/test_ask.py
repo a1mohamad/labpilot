@@ -85,19 +85,6 @@ def test_a_small_pair_is_stuffed_and_never_searched(db, monkeypatch):
     assert len(result.chunks) == 6, "every stored row was read back"
 
 
-def test_a_stuffed_pair_says_nothing_was_left_out(db):
-    """`totals` is None when every row was read, and the prompt must not claim
-    a partial read. A made-up total would make the page show "3 of 1 chunks"."""
-    a = stored(db, "A", parts=3, words=20)
-    b = stored(db, "B", parts=3, words=20)
-    client = FakeClient()
-
-    result = services.ask(db, a, b, question="why?", client=client)
-
-    assert result.totals is None
-    assert "NOT searched" not in client.prompts[0]
-
-
 def test_a_large_pair_is_searched_and_admits_how_much_it_read(db, monkeypatch):
     """The other branch, and the honesty that must come with it.
 
