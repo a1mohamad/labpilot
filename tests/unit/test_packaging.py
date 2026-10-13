@@ -8,7 +8,9 @@ they stop matching the code.
 from __future__ import annotations
 
 import ast
+import importlib.metadata
 import pathlib
+import re
 import sys
 
 SOURCE = pathlib.Path("labpilot")
@@ -62,6 +64,46 @@ def imported_packages() -> set[str]:
     }
 
 
+def imported_modules() -> set[str]:
+    """The FULL dotted names, `langgraph.checkpoint.base`, not just `langgraph`."""
+    found: set[str] = set()
+    for tree in _modules():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                found.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                found.add(node.module)
+
+    return {
+        name
+        for name in found
+        if name.split(".")[0] not in sys.stdlib_module_names
+        and name.split(".")[0] != SOURCE.name
+    }
+
+
+def _normalised(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def packages_providing(modules: set[str]) -> dict[str, set[str]]:
+    """Which installed packages ship each module, read from their own file lists."""
+    wanted: dict[pathlib.PurePosixPath, str] = {}
+    for module in modules:
+        base = pathlib.PurePosixPath(*module.split("."))
+        wanted[base / "__init__.py"] = module
+        wanted[base.with_suffix(".py")] = module
+
+    providers: dict[str, set[str]] = {module: set() for module in modules}
+    for dist in importlib.metadata.distributions():
+        for file in dist.files or ():
+            module = wanted.get(pathlib.PurePosixPath(file.as_posix()))
+            if module:
+                providers[module].add(_normalised(dist.metadata["Name"]))
+
+    return providers
+
+
 def _dotted(node: ast.AST) -> tuple[str, ...]:
     parts: list[str] = []
     while isinstance(node, ast.Attribute):
@@ -110,6 +152,33 @@ def test_every_package_labpilot_imports_is_pinned():
     )
 
     assert not missing, f"imported by labpilot/ but not in requirements.txt: {missing}"
+
+
+def test_every_module_labpilot_imports_comes_from_a_pinned_package():
+    """The test above reads only the FIRST word of an import, and that is not
+    enough when packages share a namespace.
+
+    `langgraph.checkpoint.base` starts with `langgraph`, which IS pinned, but the
+    module ships in `langgraph-checkpoint`, a different package that arrives only
+    through another one. Delete its pin and the old test stays green, the suite
+    stays green on this machine, and a fresh install fails at import.
+    """
+    pinned = {
+        _normalised(line.split("==")[0].split("[")[0].strip())
+        for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+
+    unpinned = {
+        module: sorted(found)
+        for module, found in packages_providing(imported_modules()).items()
+        if not found & pinned
+    }
+
+    assert not unpinned, (
+        f"imported by labpilot/ but no package that ships it is pinned in "
+        f"requirements.txt (module: the packages that ship it): {unpinned}"
+    )
 
 
 def test_every_requirement_is_pinned_to_an_exact_version():
