@@ -59,3 +59,10 @@ alter table chunks add column if not exists tsv tsvector
     generated always as (to_tsvector('english', header || ' ' || text)) stored;
 
 create index if not exists chunks_tsv on chunks using gin (tsv);
+
+
+-- Supabase opens every table in `public` to its web API, and the roles anon and
+-- authenticated get full rights on new tables. With row level security ON and no
+-- policy, that API sees nothing. Our app connects as `postgres`, which skips it.
+alter table artifacts enable row level security;
+alter table chunks enable row level security;
