@@ -18031,11 +18031,7 @@ are estimates, not promises.
 |---|---|---|
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
-<<<<<<< HEAD
-| **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: part 1 of 3 DONE 2026-10-11, part 2 next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
-=======
 | **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: parts 1 and 2 of 3 DONE, part 3 next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
->>>>>>> feat/agent-nodes
 | 3 | run two independent steps at the same time | medium, 2 |
 | 4 | a step that can STOP the graph (the gate) | medium, 2 |
 | 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
@@ -18050,20 +18046,12 @@ are estimates, not promises.
 
 **How a new session continues slice 2:** read this section, 17.7, 17.10, 17.11 and 17.13, check
 git (branch, status, `git log -5`). Lessons 1, 2 and 3 are DONE (all three exercise files are
-<<<<<<< HEAD
-committed). **Lesson 4 is IN PROGRESS (17.12): part 1 of 3 is DONE (2026-10-11).** Resume: teach
-part 2 (cut `ask()` into nodes, the first change inside `labpilot/`; the branch
-`feat/agent-nodes` already exists, so no new branch is needed) and part 3 (the Postgres
-saver, `thread_id`, one measured chat, the D35 cleanup). Ask the user whether
-`scripts/graph_with_tools.py` is committed yet.
-=======
 committed). **Lesson 4 is IN PROGRESS: parts 1 and 2 of 3 are DONE (17.12, 17.13).** Resume with
 part 3 (the Postgres saver, `thread_id` in the request and the response, one measured chat, the D35
 cleanup), on the branch `feat/agent-nodes` (it already exists, so no new branch is needed).
 **Two rules the user set (17.13): they type ALL product code (only tests are copy-paste), and a
 step is given WHOLE in one message.** Part 3 starts by measuring whether the saver accepts the
 objects that are in the state now (17.13, open items).
->>>>>>> feat/agent-nodes
 Lessons call no model, so the exit-ISP check is not needed until the first live test.
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
@@ -18292,13 +18280,8 @@ keep only the latest copy of each chat (D22).
 
 #### 17.12 Lesson 4 was started, 2026-10-11
 
-<<<<<<< HEAD
-**Status: part 1 of 3 DONE (taught and run on 2026-10-11). Parts 2 and 3 are NOT
-started.** Lesson 4 was split into three parts so each
-=======
 **Status: part 1 of 3 DONE (taught and run on 2026-10-11). Part 2 is DONE too (17.13). Part 3 is
 NOT started.** Lesson 4 was split into three parts so each
->>>>>>> feat/agent-nodes
 one stays short: (1) the nodes get their functions from outside, as a small
 script; (2) `ask()` is cut into nodes, the first change inside `labpilot/`;
 (3) the Postgres saver, `thread_id` in the API, one measured chat and the
@@ -18349,12 +18332,8 @@ and returned), and `return greet` without brackets does not run it.
 `ruff format --check` pass. The output is right:
 `{'question': 'why do results differ', 'chunks': ['chunk about learning rate', 'chunk about clipping'], 'answer': 'why do results differ -> I read 2 chunks'}`.
 The user named the fake `fake_answer` while the parameter is `generate`; that works and was
-<<<<<<< HEAD
-left alone. When this was written the file was not committed yet.
-=======
 left alone. It was committed the same evening: `4fb6b48` on `feat/agent-nodes` and `5cb6388`
 on `main` (same content, two hashes).
->>>>>>> feat/agent-nodes
 
 The two check questions of part 1, and the answers:
 
@@ -18394,15 +18373,12 @@ re-committed onto `main` by the user on 2026-10-11. The user made the branch
 `feat/agent-nodes` (checked with git: the same commit as `main`, `fadc5c2`) and wrote
 the part 1 script there. Part 2 goes on this branch. A new branch always needs the
 user's permission.
-<<<<<<< HEAD
-=======
 
 **Checked again on 2026-10-12.** `main` = `origin/main` = `5cb6388`, and `main` is the
 checked-out branch. `feat/agent-nodes` = `origin/feat/agent-nodes` = `4fb6b48`. The two share
 `fadc5c2`. `scripts/graph_with_tools.py` is identical on both. `main` also holds the docs
 commits `4a34fa3` and `d59ea4e`, which `feat/agent-nodes` does not. Which branch part 2 is
 written on is the user's choice, and Claude does not create a branch without asking.
->>>>>>> feat/agent-nodes
 
 **Open, for the user to decide:** how to delete the old copies (our own SQL,
 `ShallowPostgresSaver`, or keep all copies and delete whole old chats later), and
