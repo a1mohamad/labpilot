@@ -38,6 +38,17 @@ where b.thread_id = %(thread)s
   where v.key = b.channel and v.value = b.version
   )
 """
+CHAT_TABLES = (
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_writes",
+    "checkpoint_migrations",
+)
+
+
+def lock_tables(conn: psycopg.Connection) -> None:
+    for table in CHAT_TABLES:
+        conn.execute(f"alter table {table} enable row level security")
 
 
 def open_saver(conn: psycopg.Connection) -> PostgresSaver:
