@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, status
 
 from labpilot.api import services
@@ -68,18 +70,25 @@ def compare(body: CompareRequest, client: LLMClientDep) -> CompareResponse:
     function in store/ takes one - so the route is the layer that owns
     reaching the database and mapping the two ways that fails.
     """
+    thread_id = (body.thread_id or "").strip() or uuid.uuid4().hex
+
     try:
-        with connect() as conn:
+        with connect(autocommit=True) as conn:
             comparison = services.ask(
-                conn, body.a, body.b, question=body.question, client=client
+                conn,
+                body.a,
+                body.b,
+                question=body.question,
+                client=client,
+                thread_id=thread_id,
             )
     except (NotConfigured, ConnectionFailed) as exc:
         raise StorageUnavailable(str(exc)) from exc
 
-    return _response(comparison)
+    return _response(comparison, thread_id)
 
 
-def _response(comparison: Comparison) -> CompareResponse:
+def _response(comparison: Comparison, thread_id: str) -> CompareResponse:
     result = comparison.result
 
     return CompareResponse(
@@ -93,6 +102,7 @@ def _response(comparison: Comparison) -> CompareResponse:
         ],
         chunks={side: _counts(comparison, side) for side in ("A", "B")},
         citations=_citations(result.text, comparison.chunks),
+        thread_id=thread_id,
     )
 
 
