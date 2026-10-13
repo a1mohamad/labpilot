@@ -89,7 +89,7 @@ class FakeClient:
 
 
 @pytest.fixture
-def embedder(db, monkeypatch) -> CountingEmbedder:
+def embedder(db, chat_tables, monkeypatch) -> CountingEmbedder:
     counting = CountingEmbedder()
     monkeypatch.setattr(services, "_pick_embedder", lambda **kw: (counting, 0.1))
     monkeypatch.setattr(services, "MIGRATION", (counting,))
