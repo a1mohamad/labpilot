@@ -22,9 +22,15 @@ def database_url() -> str:
 
 
 @contextmanager
-def connect(url: str | None = None) -> Generator[psycopg.Connection]:
+def connect(
+    url: str | None = None, *, autocommit: bool = False
+) -> Generator[psycopg.Connection]:
     try:
-        opened = psycopg.connect(url or database_url(), connect_timeout=CONNECT_TIMEOUT)
+        opened = psycopg.connect(
+            url or database_url(),
+            connect_timeout=CONNECT_TIMEOUT,
+            autocommit=autocommit,
+        )
     except psycopg.Error as exc:
         raise ConnectionFailed(f"could not reach the database: {exc}") from exc
 
