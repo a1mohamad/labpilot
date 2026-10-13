@@ -16557,6 +16557,37 @@ before scoring five embedders.
 **Parallelism is slice 3, not slice 8.** Generation is 98.2% of a 497-second
 answer, so the shape must be proven early rather than bolted on.
 
+**A reminder for the END of Step 2: better citations. This is NOT a slice, it is a
+closing task.** *(Added 2026-10-14, at the user's request. Nothing is built.)*
+On the search path the page says `65 of 75 citations point at a real line` (87%; the
+first report of the same day was 54 of 59, 92%). That number only says the quoted line
+EXISTS. Whether the line SUPPORTS the claim is not measured at all. Both can get worse
+on a big repository (more chunks, longer ids, more lines that look alike). Before Step 2
+is closed, in this order, cheapest first:
+
+1. **Read the failed ones first.** Open the list under two or three real reports and
+   sort the failures by cause (wrong chunk id, a quote the model changed, a quote that
+   spans two lines, escaped quotes). The fix depends on the cause.
+2. **Repair by matching (no model call).** Clean the quote (spaces, quote marks, case),
+   then look for the closest line in ALL the chunks that were sent, not only the cited
+   one. This fixes a wrong id and small copy errors.
+3. **Let the system write the quote, not the model.** Print a small number on each line
+   (`B-17:12`) and ask the model for the number only. The system pastes the real text, so
+   a made-up quote cannot happen. Step 0 rejected line numbers for cost (about 3,000
+   tokens per prompt) and because "a model cannot count lines"; copying a printed number
+   is not counting, so measure it again. The big products work like this (Anthropic's
+   Citations feature, Cohere, OpenAI file search), **as remembered from their docs and
+   NOT verified: read their own pages before quoting them.**
+4. **One repair call.** Send only the failed citations and their chunks to a cheap
+   model: "these quotes do not exist, fix them". It is the same loop as the planned
+   "search again" step of slice 5.
+5. **Check support, not only existence** (an entailment model or a judge call; RARR is
+   a research example, also from memory). Slower, so a measured extra and not a default.
+
+The target is 97% or more for "the line exists". It is a goal to test, not a promise.
+Score it on at least two corpora, and print the denominator (65 of 75) as everywhere in
+this file.
+
 ### 5. THE OUTLINE GAP — the planner cannot use the outline we have
 
 The user asked whether the planner can see an outline of A and B, given that
