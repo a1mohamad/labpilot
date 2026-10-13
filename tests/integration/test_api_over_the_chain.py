@@ -15,6 +15,7 @@ import contextlib
 import pytest
 import responses
 from fastapi.testclient import TestClient
+from langgraph.checkpoint.memory import InMemorySaver
 
 from labpilot.api import ApiConfig, app, get_client
 from labpilot.llm import GeminiProvider, LLMClient
@@ -113,6 +114,12 @@ def client(monkeypatch):
         "labpilot.api.routers.compare.connect",
         lambda *a, **k: contextlib.nullcontext(object()),
     )
+    # The route now opens a chat. There is no real database here, so the saver
+    # lives in memory and there is nothing to clean up afterwards.
+    monkeypatch.setattr(
+        "labpilot.api.services.open_saver", lambda conn: InMemorySaver()
+    )
+    monkeypatch.setattr("labpilot.api.services.prune", lambda conn, thread_id: None)
     monkeypatch.setattr("labpilot.api.services.measure", _measure)
     monkeypatch.setattr("labpilot.api.services.read_chunks", _read_chunks)
     monkeypatch.setenv("TEST_API_KEY", "secret-key")
