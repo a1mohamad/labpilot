@@ -1186,6 +1186,12 @@ see START HERE. Branch `feat/hybrid-search`, level with `main`.**
 > > given WHOLE in one message). The full suite is 1113 passed and 115 skipped. The work is committed on
 > > `feat/agent-nodes` (`74fb3b6`, `b1f4ba3`, pushed), three commits ahead of `main`. Next is part 3.
 > >
+> > **2026-10-14: LESSON 4, PART 3 IS DONE AND SLICE 2 IS CLOSED.** Read [section 17.14](#1714-lesson-4-part-3-was-done-and-slice-2-is-closed--2026-10-13-and-2026-10-14) first: the Postgres chat
+> > saver, `thread_id` in the request and the reply, `durability="exit"`, the prune after each message, the closing
+> > review (five real gaps in the prune query, a page that could forget the chat id, an unpinned package) and the 11
+> > tests it added. The full suite without `--run-smoke` is 1151 passed and 115 skipped. Decisions D36 to D38. Everything was
+> > replayed onto `main`, one file per commit. **Slice 3 is next.**
+> >
 > > **2026-09-29: ROUTEWAY IS IN THE CHAIN — 54 TIERS, MERGED: `main`,
 > > `origin/main` and `feat/routeway` are the same commit (checked with git
 > > 2026-09-29; this line said "not merged" for a day after it was).** DeepSeek
@@ -17918,13 +17924,16 @@ turn 2   loads the last saved copy, replaces "question", runs again
 
 | # | decision |
 |---|---|
-| **D17** | **One chat = one `thread_id`.** The server makes a random uuid on the first message (when none is sent), returns it in the response, and the page keeps it in the browser so a refresh continues the chat. Random, never 1, 2, 3: there is no login, so anyone who knows the id could read the chat. `POST /compare` has no such field today: slice 2 adds it |
+| **D17** | **One chat = one `thread_id`.** The server makes a random uuid on the first message (when none is sent), returns it in the response, and the page keeps it in the browser so a refresh continues the chat. Random, never 1, 2, 3: there is no login, so anyone who knows the id could read the chat. **BUILT 2026-10-13 as D38** (17.14): the request has an optional `thread_id`, and the reply always carries one |
 | **D18** | **Slice 2 ships a checkpointer.** Same as D15. The saved state is the memory between turns |
-| **D19** | **The state is saved in Postgres, in the SAME Supabase database, in separate tables** (the user agreed, 2026-10-06). The saver in memory is for tests only, because Render restarts the server and a memory saver loses every chat. The saver needs a new package, `langgraph-checkpoint-postgres`. It is NOT installed. **Slice 2 must first check** its name and version, that it works with our `psycopg 3.2.12`, and that it works on the session pooler (port 5432, never 6543: transaction mode rejects prepared statements) **CHECKED 2026-10-11 (17.12): it adds two small packages and the versions fit. Still NOT installed.** |
+| **D19** | **The state is saved in Postgres, in the SAME Supabase database, in separate tables** (the user agreed, 2026-10-06). The saver in memory is for tests only, because Render restarts the server and a memory saver loses every chat. The saver needs a new package, `langgraph-checkpoint-postgres`, which is installed and pinned now (see the end of this row). **Slice 2 had to check first** its name and version, that it works with our `psycopg 3.2.12`, and that it works on the session pooler (port 5432, never 6543: transaction mode rejects prepared statements) **CHECKED 2026-10-11 (17.12) and BUILT 2026-10-13 (17.14): `langgraph-checkpoint-postgres==3.1.2` and `langgraph-checkpoint==4.2.0` are pinned, the four chat tables exist in the real database, and it works on the session pooler.** |
 | **D20** | **What the state holds** (17.4). The exact fields are decided in slice 2 |
 | **D21** | **The prompt gets the recent questions and the `findings`, NOT the old full reports.** A report is about 5,000 tokens and `PROMPT_BUDGET` is 26,000. The list of findings is already the summary. A cheap model may summarize old turns later, ONLY if measured to be needed: Gemma has 14,400 calls a day, but every call adds waiting time and generation time is already the biggest problem |
-| **D22** | **Keep only the latest copy of each chat.** The saver keeps a copy after every step, and a growing list is saved in full again at every turn, so old copies add up fast. How to delete old copies with the real saver is not checked yet: `delete_thread` removes a whole chat, but removing only the old copies of one chat may need our own SQL. Slice 2 finds out **WHEN it runs: right after each message finishes, see D35.** |
-| **D35** | **THE CLEANUP OF OLD COPIES RUNS RIGHT AFTER EACH MESSAGE FINISHES** (the user agreed, 2026-10-11). `api/` runs the graph, gets the answer, and then deletes the older copies of THAT `thread_id` and keeps the newest. Why then: the run is over, so the in-between copies (useful only to resume after a crash in the middle of a run) are useless, and deleting them during the run would remove that protection; a timer is a bad fit because Render's free server sleeps when idle (the same reason as 17.6); it is one small delete per message; and it repairs itself, because a crashed run never reaches the cleanup and keeps its copies until the next finished message deletes them. If the cleanup itself fails, write a log line and still send the answer; the next message tries again. **How** to delete (our own SQL, or `ShallowPostgresSaver`, or keep all copies) is still open, see 17.12. Deleting WHOLE old chats and old artifacts is a different job: artifacts are D23 (Step 3) and chats by age are not decided |
+| **D22** | **Keep only the latest copy of each chat.** The saver keeps a copy after every step, and a growing list is saved in full again at every turn, so old copies add up fast. **DECIDED AND BUILT 2026-10-13 (17.14): our own SQL, `PRUNE` in `api/checkpoints.py`.** `delete_thread` removes only a whole chat, and `ShallowPostgresSaver` was not used. It runs right after each message finishes, see D35. |
+| **D35** | **THE CLEANUP OF OLD COPIES RUNS RIGHT AFTER EACH MESSAGE FINISHES** (the user agreed, 2026-10-11). `api/` runs the graph, gets the answer, and then deletes the older copies of THAT `thread_id` and keeps the newest. Why then: the run is over, so the in-between copies (useful only to resume after a crash in the middle of a run) are useless, and deleting them during the run would remove that protection; a timer is a bad fit because Render's free server sleeps when idle (the same reason as 17.6); it is one small delete per message; and it repairs itself, because a crashed run never reaches the cleanup and keeps its copies until the next finished message deletes them. If the cleanup itself fails, write a log line and still send the answer; the next message tries again. **How** to delete was decided in 17.14: our own SQL. Deleting WHOLE old chats and old artifacts is a different job: artifacts are D23 (Step 3) and chats by age are not decided |
+| **D36** | **The graph saves ONCE, at the end of the message: `durability="exit"`** (2026-10-13). By default the graph saves after every step, and each save writes several rows. Over the VPN that is slow, and the in-between copies are deleted right after anyway (D35). The price: if the server dies in the middle of a message, that message is lost and is not resumed. The user asks again. Measured with a fake model function on the real database: the default saves 6 copies (~460 KB) and takes 4.5 to 6.5 s per message; with `exit` and the prune it stays at 1 checkpoint and 4 blobs per chat (~160 KB) and takes about 1 s |
+| **D37** | **The saver only accepts the classes that are on a list** (2026-10-13). `JsonPlusSerializer(allowed_msgpack_modules=SAVED_TYPES)` with `Chunk`, `ArtifactRecord`, `StoredArtifact`, `Attempt` and `LLMResult`. A class that is NOT on the list does not raise an error: it comes back as a plain dict and leaves one log line, so the code that reads it fails later in a strange place. A new class in `State` must be added to `SAVED_TYPES`. `tests/api/test_checkpoints.py` checks the type that comes back |
+| **D38** | **The server makes the chat id, D17 as built** (2026-10-13). `thread_id = (body.thread_id or "").strip() or uuid.uuid4().hex`, so a missing id and a blank id both start a new chat. The reply always carries the id. The page keeps it in `localStorage` under `labpilot.thread` and sends it with every question |
 
 #### 17.4 What the state holds (D20)
 
@@ -18031,7 +18040,7 @@ are estimates, not promises.
 |---|---|---|
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
-| **2 (IN PROGRESS: lessons 1, 2 and 3 DONE, lesson 4 IN PROGRESS: parts 1 and 2 of 3 DONE, part 3 next)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
+| **2 (DONE 2026-10-14: lessons 1 to 4 and the closing review, 17.14)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | run two independent steps at the same time | medium, 2 |
 | 4 | a step that can STOP the graph (the gate) | medium, 2 |
 | 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
@@ -18044,15 +18053,13 @@ are estimates, not promises.
 (2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
-**How a new session continues slice 2:** read this section, 17.7, 17.10, 17.11 and 17.13, check
-git (branch, status, `git log -5`). Lessons 1, 2 and 3 are DONE (all three exercise files are
-committed). **Lesson 4 is IN PROGRESS: parts 1 and 2 of 3 are DONE (17.12, 17.13).** Resume with
-part 3 (the Postgres saver, `thread_id` in the request and the response, one measured chat, the D35
-cleanup), on the branch `feat/agent-nodes` (it already exists, so no new branch is needed).
-**Two rules the user set (17.13): they type ALL product code (only tests are copy-paste), and a
-step is given WHOLE in one message.** Part 3 starts by measuring whether the saver accepts the
-objects that are in the state now (17.13, open items).
-Lessons call no model, so the exit-ISP check is not needed until the first live test.
+**How a new session continues:** slice 2 is DONE (17.14). Read 17.14 first, check git (branch,
+status, `git log -5`), and start slice 3 (two independent steps run at the same time: fan-out and
+fan-in; medium, 2 lessons). **Two rules the user set (17.13) still hold: they type ALL product code
+(only tests are copy-paste), and a step is given WHOLE in one message.** Lessons call no model, so
+the exit-ISP check is not needed until the first live test. The chat tables must exist in the
+database the app uses: run `python -m scripts.setup_checkpoints` once from the repository root
+(17.14).
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
 
@@ -18281,7 +18288,7 @@ keep only the latest copy of each chat (D22).
 #### 17.12 Lesson 4 was started, 2026-10-11
 
 **Status: part 1 of 3 DONE (taught and run on 2026-10-11). Part 2 is DONE too (17.13). Part 3 is
-NOT started.** Lesson 4 was split into three parts so each
+DONE too (17.14).** Lesson 4 was split into three parts so each
 one stays short: (1) the nodes get their functions from outside, as a small
 script; (2) `ask()` is cut into nodes, the first change inside `labpilot/`;
 (3) the Postgres saver, `thread_id` in the API, one measured chat and the
@@ -18392,7 +18399,7 @@ copy and paste (the user's rule, below). `ruff check .` and `ruff format --check
 The full suite is **1113 passed, 115 skipped** of 1228 tests: 110 of the skips are smoke tests that need
 `--run-smoke`, 5 skip by their own rule, and the 83 database tests ran. The work is committed on
 `feat/agent-nodes`: `74fb3b6` (the toy script `graph_with_branch.py` and docs) and `b1f4ba3` (graph, tests,
-wiring), both pushed. Part 3 is NOT started.
+wiring), both pushed. Part 3 was done later (17.14).
 
 **Part 2 had two steps.**
 
@@ -18448,7 +18455,8 @@ repo, each caught: an inverted `pick` (7 tests), search losing `totals` (1), stu
 `LLMResult`), while D20 says the state should keep chunk ids and not text. The Postgres saver must turn the
 state into bytes. Whether it accepts these objects is NOT known and must be measured first in part 3,
 together with the size of one real chat (17.5). The graph is built again on every `ask()`; its cost alone was
-not timed (the 12 new tests run in 0.06 s).
+not timed (the 12 new tests run in 0.06 s). **Answered in 17.14:** the saver accepts the objects if their five classes
+are on an allowlist (D37), one real chat is about 160 KB, and building the graph takes 1.7 ms.
 
 **Process rules the user set on 2026-10-12.** (1) The user types ALL product code; only tests are
 copy-paste. Claude never edits repo files. A temp copy for checking is allowed, but Claude says so first (the
@@ -18456,6 +18464,110 @@ user stopped a session when edits at repo-looking temp paths looked like a broke
 WHOLE in one message: code, tests, wiring, commands and the answers to Claude's own check questions. No new
 "2a, 2b, 2b-1" splits. This overrides the line "about one screen, split and ask" in the banner at the top of
 this file for the size of a build step; the words stay simple (B1-B2).
+
+#### 17.14 Lesson 4, part 3 was done, and slice 2 is CLOSED — 2026-10-13 and 2026-10-14
+
+**Status: DONE.** The user typed the part 3 code on 2026-10-13 (branch `feat/agent-nodes`, `9bc94c6` and
+`15d398a`). On 2026-10-14 Claude ran a closing review of the whole slice (parts 1 to 3), added the tests it
+found missing, and replayed everything onto `main`, one file per commit (the user asked for this). **Slice 2
+is closed. Slice 3 is next.** `feat/agent-nodes` is kept.
+
+**What part 3 built** (all of it is on `main` now):
+
+- `labpilot/api/checkpoints.py`: `SAVED_TYPES`, `SERDE` (D37), the `PRUNE` query, `open_saver(conn)` and
+  `prune(conn, thread_id)`. It sits in `api/` because it needs `llm/` and `store/` classes.
+- `labpilot/agent/graph.py`: `State` has `history: Annotated[list[str], operator.add]`. A last node
+  `remember` appends the question. `build_graph(..., checkpointer=None)` passes the saver to `compile()`.
+  **Nothing reads `history` yet.** The first reader will be the node that rewrites a follow-up question
+  (D5, slice 6).
+- `ask(..., thread_id=None)` in `api/services.py`. Without an id nothing changes. With one: the graph gets
+  the Postgres saver, runs with `durability="exit"` (D36), and `_forget_old_copies` runs `PRUNE` afterwards.
+  A prune failure is only logged (D35). The unused helper `_cut` was deleted at the same time.
+- `POST /compare` (D38), `schemas.py` (`thread_id` optional in the request, required in the reply),
+  `connect(url=None, *, autocommit=False)` in `store/connection.py`, and `web/app.js`.
+- `scripts/setup_checkpoints.py` creates the four tables once: `checkpoints`, `checkpoint_blobs`,
+  `checkpoint_writes`, `checkpoint_migrations`. **Run it from the repository root as
+  `python -m scripts.setup_checkpoints`.** `python scripts/setup_checkpoints.py` fails with
+  `ModuleNotFoundError`, because Python then puts the script's folder on the path and not the repository
+  root. It needs an autocommit connection, because the library builds three indexes with
+  `CREATE INDEX CONCURRENTLY`. It was run once on the real database (the tables are in `public`). Tests get
+  the same tables in their own throwaway schema from the fixture `chat_tables` (about 12 s per test module).
+- `requirements.txt`: `langgraph-checkpoint-postgres==3.1.2` (it also brings `psycopg-pool`; about 1.4 MB
+  together) and `langgraph-checkpoint==4.2.0` (see the review below).
+
+**What the saved rows are, in plain words.** A *checkpoint* row is one saved copy of the state. A *blob*
+row holds the bytes of ONE state key at ONE version (a *channel* is a state key, plus a few internal ones).
+Small values (a string, a short list) are written inside the checkpoint row itself, and big objects are
+written as blobs. A *write* row is a pending write of a step that has not been saved as a copy yet. `PRUNE`
+keeps the newest copy of the chat, deletes the older copies and their writes, and deletes every blob that the
+newest copy does not point to. The newest copy points to its blobs through `channel_versions` (a JSON object
+`{key: version}` inside the checkpoint row). `checkpoint_ns = ''` means the main graph; subgraphs would have
+another namespace, and `PRUNE` assumes there are none.
+
+**Measured on 2026-10-13** with a fake model function and the real Supabase database through the VPN, one
+chat: with the default saving, 6 copies (~460 KB) and 4.5 to 6.5 s per message; with `durability="exit"` and
+the prune, a steady 1 checkpoint and 4 blobs (~160 KB) and about 1 s per message. At ~160 KB per chat, 500 MB
+holds at most about 3,100 chats, **but only if nothing else used the space, and the artifacts are the big
+users (17.6)**. `build_graph()` takes 1.7 ms. **A chat with a real model was NOT measured.**
+
+**The closing review, 2026-10-14.** Claude read the whole system (parts 1 to 3 and the code around them) and
+ran 33 deliberate breaks on throwaway copies, each in one line. Most were caught. What was NOT caught:
+
+- **Five real gaps in the `PRUNE` query.** It has 13 breaks (C5 to C17). Seven were caught by the earlier
+  tests. Six survived: C9 (the writes rule deletes the newest copy's writes), C10 (the writes rule has no
+  chat filter), C11 (the writes rule deletes nothing), C15 (a blob is matched by version only and not by
+  channel), C16 (the newest copy is picked among ALL chats), and C17 (no `checkpoint_ns` filter). **C17 is an
+  equivalent break**: it changes nothing today, because the graph has no subgraphs. The other five are real.
+- **The page.** Deleting the line that sends `thread_id` (J1), or the line that saves the id from the reply
+  (J2), left the whole suite green. The server then makes a new chat for every message and the page looks
+  fine.
+- **A missing pin.** `labpilot` imports `langgraph.checkpoint.*`, which is shipped by `langgraph-checkpoint`,
+  a different package from `langgraph`. It was not in `requirements.txt` (it only arrived through another
+  package). The old pin test read the first word of an import (`langgraph`), so it was happy.
+- **Two gaps found by reading the system:** the length of the report could be lost on the way to the
+  provider (S1), and a node in `agent/` could import `requests` or `psycopg` and still pass the layer test
+  (X1, X2: D7 is about functions handed in from outside). A third idea, that the stuffed path could invent
+  totals (S6x), was checked and is NOT a gap (see below).
+
+**11 new tests** (each one was shown to pass on clean code AND to fail when its own break is made):
+
+| file | tests | what they guard |
+|---|---|---|
+| `tests/integration/test_prune.py` (new) | 6 | one rule of `PRUNE` each, on rows inserted by hand: only the newest copy stays; the writes of old copies go and the newest writes stay; an old blob that the newest copy points to stays; a blob only an old copy points to goes; another chat is never touched even when its ids are newer; the newest copy is chosen among the chat's own copies |
+| `tests/unit/test_frontend_contract.py` | 2 | the page sends every field of the compare request, and reads `thread_id` from the reply |
+| `tests/unit/test_packaging.py` | 1 | every module `labpilot` imports comes from a package that is pinned. It maps each dotted import to the installed package that ships it, using the file lists in the package metadata. It found the missing pin |
+| `tests/unit/test_architecture.py` | 1 | `agent/` imports none of: `requests`, `httpx`, `aiohttp`, `psycopg`, `psycopg_pool`, `socket`, `subprocess`, `urllib`, `urllib3` |
+| `tests/integration/test_api_over_the_chain.py` | 1 | the request that reaches the provider asks for `REPORT_MAX_TOKENS` |
+
+Before the review the part 3 work had its own tests too (savers, route, graph history, four database tests
+for chat memory, the connection flag). The full suite on `main` after all of it: 1151 passed, 115 skipped (almost all smoke tests that need `--run-smoke`). **Two of the review ideas were checked on a copy of the repo from before their test existed.** S1 (the report length dropped): the break passed unit, api and integration (1139 passed), so it was a real gap. S6x (an invented total on the stuffed path): NOT a gap, because six older tests in `test_api_over_the_chain.py` already fail on it (they check the chunk counts in the reply). The test written for it was removed again (`ab1cb9e`), which is why this section says 11 new tests and not 12.
+
+**Known limits. None of them is fixed.**
+
+- If the chat tables do not exist in the database, `/compare` answers with a 500, not with a clean error.
+  Run the setup script first.
+- `PRUNE` assumes no subgraphs (`checkpoint_ns = ''`). Add the filter back if a subgraph is ever used.
+- The server does not limit the length of the `thread_id` it receives.
+- A chat that nobody uses again is never deleted (the same problem as the artifacts, D23).
+- Anyone who knows a chat id can read and continue that chat. There is no login.
+- The page has no "new chat" button. To start a new chat, clear `labpilot.thread` in the browser.
+- A chat with a real model was not measured (only a fake function).
+- `history` is saved and not read by any node yet.
+
+**Process notes.** (1) The user's editor kept an old copy of `services.py` open and overwrote a fix with it.
+Close the old tab with "Don't Save", reopen the file, and check the line. (2) A mutation sweep that ran while
+the network was down gave "caught" verdicts that were only connection errors. A result that is only `ERROR`
+and has no `FAILED` line is not a result; it was run again with `-rfE`. (3) A `git checkout` is never used to
+undo a break (it restores to the last commit, not to the state before the break); the breaks ran on copies.
+(4) The replay onto `main` was one file per commit, with the suite green at each commit except for two short
+windows where a file and its test depend on each other (the `ask()` change and `test_ask_graph.py`, and the
+route with `schemas.py` and `test_compare.py`). Their commit messages say so. (5) Two commit messages on
+`main` are wrong, and they were not rewritten (history on `main` is not rewritten). The message of
+`test_prune.py` says "ten of the sixteen mutations of the query survived the earlier tests"; the right
+figures are above (6 of 13 survived, five real and one equivalent). The message of the S6x test (`62248fa`)
+says the break "broke nothing before this test"; that is false, and `ab1cb9e` removes the test and says
+why. (6) **A claim in a commit message is checked before it is written.** Both wrong figures came from
+memory, not from the logs.
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
