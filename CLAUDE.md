@@ -138,7 +138,7 @@ Read the two rule sections first — they change *how* everything below is done.
 [Slice 4 Result](#the-measurement--five-runs-all-saved) ·
 [**Next: Coverage**](#why-coverage-is-stuck--diagnosed-2026-08-14) ·
 [Comparison Template](#the-comparison-template--designed-2026-08-14) ·
-[**STEP 2 — THE PLAN, 9 slices**](#step-2--the-plan-recorded-2026-09-22) ·
+[**STEP 2 — THE PLAN, 14 slices**](#step-2--the-plan-recorded-2026-09-22) ·
 [Agent Design](#agent-design--step-2-recorded-2026-08-11) ·
 [Build Plan](#build-plan--walking-skeleton) · [Fine-Tuning](#fine-tuning-plan) ·
 [Risks](#open-risks--revisit-before-or-during-the-build) ·
@@ -587,9 +587,9 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 **Phase: STEP 2 IS IN PROGRESS — status of 2026-10-14. STEP 0 AND STEP 1 ARE COMPLETE AND
 CLOSED.** Step 1 was nine slices (1, 1b, 2, 3, 4, 5, 6, 7 and 8), all done, and slice 8 ran
-three times (v1, v2, v3). Step 2 is planned as NINE slices (0 to 9): **slices 0 (does
+three times (v1, v2, v3). Step 2 is planned as FOURTEEN slices (0 to 13, rewritten on 2026-10-14, see section 21): **slices 0 (does
 LangGraph fit), 1 (the latency ranking) and 2 (the skeleton and chat memory) are done, and slice 3
-(two independent nodes at once) is next.** The user writes the graph code lesson by lesson, so
+(`summarize` for A and B at the same time) is next.** The user writes the graph code lesson by lesson, so
 `labpilot/agent/` holds the first real graph (`build_graph`: measure, stuff or search, prompt, generate,
 remember). `ask()` runs it, and with a `thread_id` the chat is saved in Postgres. Read
 [Where Step 2 stands](#where-step-2-stands--updated-2026-10-14) below and
@@ -838,13 +838,17 @@ generation-time problem below — it cannot generate.
 | 0 | does LangGraph fit 512 MB | **DONE 2026-09-23** — yes, ~55 MB imported, whole container 74 MiB (section 10) |
 | 1 | latency ranking of the chain | **DONE 2026-09-29/30** — 50 tiers ranked (section 15) |
 | 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **DONE 2026-10-14** — lessons 1 to 4 (part 3 on 2026-10-13), then a closing review that added 11 tests (sections 17, 17.10 to 17.14) |
-| 3 | two independent nodes run at once | **NEXT** — not started |
-| 4 | a node that can halt the graph (the gate) | not started |
-| 5 | claims, `verify` per claim, the bounded re-search loop | not started |
-| 6 | the planner (nodes, queries, `effort`) | not started — preceded by a small function calling lesson (D34) |
-| 7 | routing: a chain, `max_tokens` and thinking level per task | not started |
-| 8 | measure findings against `EXPECTED.md` and the wall clock | not started |
-| 9 | a big repository as side A (rank files and claims) | not started (section 18) |
+| 3 | `summarize` for A and B, run at the same time (fan-out, fan-in) | **NEXT** — not started |
+| 4 | the planner: the outline is used, one call returns the steps and the queries | not started — preceded by a small function calling lesson (D34) |
+| 5 | run the plan: one search per query at the same time, the merge step (duplicates removed), the final `respond` node | not started |
+| 6 | follow-ups: rewrite a follow-up question into a standalone one | not started |
+| 7 | claims, one check per claim, the bounded re-search loop | not started |
+| 8 | the gate: halt when A and B do not correspond | not started |
+| 9 | nodes for B alone: `find_missing` and `find_bugs` | not started |
+| 10 | outcomes and comparability: `extract_outcomes`, "are these numbers comparable?" | not started |
+| 11 | routing: a chain, `max_tokens` and thinking level per node | not started |
+| 12 | the size gate and big repositories (was slice 9) | not started (sections 18 and 21) |
+| 13 | measure findings against `EXPECTED.md` and the wall clock | not started |
 
 **What landed, and the section that tells the story:**
 
@@ -889,6 +893,15 @@ generation-time problem below — it cannot generate.
   each message). A closing review found five real gaps in the prune query, a page that could forget the
   chat id, and an unpinned package (`langgraph-checkpoint`); 11 tests were added. Decisions D36 to D38 → 17.14.
   Everything was replayed onto `main`, one file per commit.
+- **2026-10-14 (after slice 2 closed)** — the chat tables and the artifact tables are locked with row level
+  security (Supabase's web API sees nothing in them, and the app is not affected), and the five lesson scripts
+  moved from `scripts/` to `examples/langgraph/`. Six commits on `main`, `d0492d4` to `6a32137` → 17.15.
+- **2026-10-14 (the final design)** — the user asked why we need claims if the planner writes
+  queries, and the answer showed an overlap in the plan and a hole in the slice list. We agreed one
+  final flow (the planner's queries are the front door, claims are a safety net, `find_missing` and
+  `find_bugs` cover B alone, a merge step removes duplicate chunks, one size gate guards big
+  repositories) and rewrote the slice list: **fourteen slices, 0 to 13**. Nothing is built from it
+  yet → section 21 and the table in section 4.
 
 **The blocking problem of the whole step is GENERATION TIME** (the red block at the top of this section).
 Read it before designing a node.
@@ -931,7 +944,11 @@ Read it before designing a node.
 As of 2026-10-14 the checked-out branch is `main`, the same as `origin/main`. The user re-committed the part 2 work onto
 `main` piece by piece (`5cb6388` to `ec5b91f`). On 2026-10-14 the part 3 work and the slice 2 closing-review tests were
 replayed onto `main`, one file per commit (26 commits, `187d759` to `ab1cb9e`), at the user's explicit request. `git diff main feat/agent-nodes`
-now shows, for code and tests, only what `main` has more: the five review test files (`test_prune`, `test_architecture`, `test_packaging`, `test_frontend_contract`, `test_api_over_the_chain`) and the extra `langgraph-checkpoint` pin. `feat/agent-nodes` (`15d398a`, also on origin) is kept, not deleted. A new branch always needs the user's permission. **Only the
+now shows, for code and tests, only what `main` has more: the five review test files (`test_prune`, `test_architecture`, `test_packaging`, `test_frontend_contract`, `test_api_over_the_chain`) and the extra `langgraph-checkpoint` pin, plus the five lesson scripts, which are in `scripts/` on the branch and in
+`examples/langgraph/` on `main` (17.15). `feat/agent-nodes` (`b72955a`, also on origin) is kept, not deleted. It holds the
+row level security work as ONE commit (`b72955a`) where `main` has it as five (17.15). **It also holds a docs commit that
+`main` does NOT have: `63a0381`, the reminder that better citations are owed at the end of Step 2 (a short note in
+"Where Step 2 stands" and a longer one in the nine slices, in both files). Bring it to `main`, or write it again.** A new branch always needs the user's permission. **Only the
 user commits to `main`** (or says "merge and commit"; on 2026-10-14 they said so for this one task). **Dead branches — never
 resume there:** `feat/reranking` (it holds an OLDER `test_llm_layer.py` that hardcodes key names), `feat/selector`
 (an older squashed variant; the work lives on `main`, re-committed piece by piece), and `feat/jev-probe`
@@ -3635,7 +3652,7 @@ report and the stuff path still share, so the split rule has to be right today.
 #### 13.7 Three holes this opened, recorded rather than built
 
 1. **A HUGE REFERENCE HAS NO DESIGN** (claim extraction assumes A fits one call; a reference *repository* needs its own map-reduce, one pass per file then a merge) — a Step 2
-   hole, **now Step 2 slice 9 (D26-D28)**.
+   hole, **now Step 2 slice 12 (was 9; D26-D28)**.
 2. **LOW COVERAGE SHOULD ASK THE USER, NOT GUESS** *(the user's idea)*: on a huge repo `sent 266 of 8,333` is 3% coverage and a confident report over 3% is the wrong answer; the
    honest one: "I could not find what you asked about in the 266 parts I retrieved of 8,333. Point me at a file or a folder and I will look there." The same pattern as a missing
    artifact, applied to COVERAGE instead of PRESENCE. Needs the agent + the UI (Step 2 + Step 3).
@@ -9415,7 +9432,7 @@ Claude Code indexing (vadim.blog) · Cursor indexing
 | # | decision |
 |---|---|
 | **D1** | **Step 2 is PLAN-AND-EXECUTE as the main shape, and ReAct is used in exactly ONE place (D4).** *(Clarified 2026-10-08: the old wording "not ReAct" misled the user. The design is a mixture with the focus on plan-and-execute. See [19.1](#191-plan-and-execute-and-react-together-d1-clarified).)* This confirms the existing LangGraph choice — but it was taste before and it is evidence now (F9). LabPilot is report generation with a knowable structure and independent, parallelizable steps, which is the exact case the benchmark gives to plan-and-execute |
-| **D2** | **THE PLANNER WRITES THE QUERIES**, from the user's question. Queries are NOT fixed. `extract_claims` stops being the front door and becomes ONE node the planner may choose |
+| **D2** | **THE PLANNER WRITES THE QUERIES**, from the user's question. Queries are NOT fixed. `extract_claims` stops being the front door and becomes ONE node the planner may choose *(clarified 2026-10-14, [D39](#212-decisions): claims stay as a safety net for questions with A and B, and a small A merges the planner and the claim call)* |
 | **D3** | **REVISED BY D13 — read that first.** *(Fixed 2026-10-08: this row used to say "STRUCTURED OUTPUT, not function calling", which was the OLD decision.)* The asking channel is **FUNCTION CALLING first, with first-valid-JSON parsing as the fallback**, for every node whose output code reads. Nodes that write prose for a person use plain text. Scope and table: [19.3](#193-where-function-calling-is-used-d13-scope--d29) |
 | **D4** | **Exactly ONE ReAct loop**: re-search when `verify` reports *not found*. **Max 2 retries**, against a budget (F12) |
 | **D5** | A **decontextualization node** for turn 2 onward, rewriting a follow-up into a standalone query (F11) |
@@ -9528,32 +9545,50 @@ selector that slice 7 deleted.
 > baseline therefore has to be measured before Step 2 can be said to beat
 > anything — M6 below.
 
-### 4. THE NINE SLICES
+### 4. THE SLICES — fourteen since 2026-10-14 (nine before)
 
-*(Eight until 2026-10-07. Slice 9 was added by the user's decision, see
-[section 18](#18-slice-9--a-big-repository-as-side-a-decided-2026-10-07). Other
-notes in this file that say "eight slices" mean slices 0 to 8.)*
+*(Eight until 2026-10-07, nine until 2026-10-14. On 2026-10-14 the user saw that the nine
+slices did not build most of the nodes the capability library promises (`summarize`,
+`find_missing`, `find_bugs`, the final `respond` node and others), and the list was rewritten
+together. The reasons, the new decisions D39 to D44 and the map from every planned node to its
+slice are in [section 21](#21-the-final-design-and-the-new-slice-list--agreed-2026-10-14).
+Notes elsewhere in this file that name a Step 2 slice were changed to the new numbers. Notes
+about Step 1 slices (for example "slice 7 wired the ask path") are history and keep theirs.)*
 
-| # | slice | what it must prove | teaching |
+| # | slice | what it builds | teaching |
 |---|---|---|---|
-| **0** | **does LangGraph fit?** | the real install tree and resident size against the 512MB ceiling | none |
-| 1 | **latency ranking** | how fast each of the 40 tiers is, and which support function calling | none — measurement |
-| 2 | **the skeleton** | a graph replaces `ask()` and nothing else moves | **heavy** — state, nodes, edges, reducers, checkpoints |
-| 3 | **parallel nodes** | two independent nodes really run at once | medium — fan-out / fan-in |
-| 4 | **the gate** | a node can HALT the graph, on a calibrated threshold | medium — and Jev's typed `choice` fits it exactly |
-| 5 | **claims + verify** | the LOOP: N claims, N retrievals, N verdicts, bounded retry | **heavy** — the thing only a graph can do |
-| 6 | **the planner** | nodes AND queries chosen from the question plus a corpus map | medium |
-| 7 | **routing** | a chain, a `max_tokens` and a thinking level PER TASK | light — every number already exists |
-| 8 | **measure** | findings against `EXPECTED.md`, and the wall clock | none |
-| **9** | **a big repository as side A** | claims from an A that does not fit one call, ranked and limited, measured on a NEW test pair | medium |
+| **0** | **does LangGraph fit?** | the real install tree and resident size against the 512MB ceiling | none — DONE |
+| 1 | **latency ranking** | how fast each of the 40 tiers is, and which support function calling | none — measurement, DONE |
+| 2 | **the skeleton** | a graph replaces `ask()`, and the chat is saved (checkpointer, `thread_id`) | **heavy** — DONE |
+| 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers) | medium, 2 lessons |
+| 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 2 lessons, plus a small one on function calling (D34) |
+| 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31); "stuff when it fits" stays | **heavy**, 3 lessons |
+| 6 | **follow-ups** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6) | light, 1 lesson |
+| 7 | **claims, check, retry** | `extract_claims`; each claim searches B with its own text; one check per claim at the same time; the bounded retry loop (D4); the findings list; a small A merges with the planner (D40) | **heavy**, 3 lessons |
+| 8 | **the gate** | halt when A and B do not correspond, on a threshold calibrated per embedder; the answer is then the two summaries from slice 3 | medium, 2 lessons |
+| 9 | **nodes for B alone** | `find_missing` (the claim table read by chunk) and `find_bugs` (a scan of B) | medium, 2 lessons |
+| 10 | **outcomes and comparability** | `extract_outcomes`; "are these two numbers comparable?" YES / NO / CANNOT TELL; "does it add up?" | medium, 2 lessons |
+| 11 | **routing** | a chain, a `max_tokens` and a thinking level for each node; the chain of `respond` for each plan; the quota-leak test | light, 1 lesson |
+| 12 | **the size gate and big repositories** | one `fits(side, budget)` check (D43); the top-N path for claims on a big A; the scan of a big B; claim ranking (D28); the new test pair. This was slice 9 | medium, 2 lessons |
+| 13 | **measure** | findings against `EXPECTED.md` on the search path (M6), the wall clock (M8), M4 and M7 | none |
 
 **Slice 0 is first because it can change the plan.** If LangGraph is 200MB
 resident we write the graph in plain Python instead. Check the gate before the
 quality work — the same rule that checked pgvector's 2000-dimension ceiling
 before scoring five embedders.
 
-**Parallelism is slice 3, not slice 8.** Generation is 98.2% of a 497-second
+**Parallelism starts in slice 3, not in slice 13.** Generation is 98.2% of a 497-second
 answer, so the shape must be proven early rather than bolted on.
+
+**Why this order.** Slice 3 is small and teaches the parallel shape that slices 5, 7 and 9
+reuse. Slices 4 and 5 build the new spine (plan, search, merge, respond) before anything is
+added to it. Slice 7 needs slice 5 (merge and respond). Slice 8 needs slices 3 and 7 (the
+summaries and the claim scores). Slices 9 and 10 need slice 7 (the claim table). Slice 11 needs
+the nodes to exist. Slice 12 needs a new test pair. Slice 13 comes last because it measures
+all of it.
+
+**Lessons in all:** 21 for slices 3 to 12 (2 + 3 + 3 + 1 + 3 + 2 + 2 + 2 + 1 + 2), against 13
+in the old list. The extra 8 are the nodes the old list forgot.
 
 ### 5. THE OUTLINE GAP — the planner cannot use the outline we have
 
@@ -9703,7 +9738,7 @@ costs **zero extra calls**, because the question is embedded for search anyway.
 
 | # | decision |
 |---|---|
-| **D10** | The planner gets its **own budget**, `PLANNER_BUDGET`, not `OUTLINE_BUDGET` - the two compete with different things. Applied **per tier** as `min(PLANNER_BUDGET, what this tier can take)`, which is section 11.1's grid. **35 of 40 tiers hold 250,000+**; the line that matters is **16,000, Gemma's input cap**, which is the largest free quota in the project. **SET TO 12,000 on 2026-09-28** - what is left of that cap after the 10% margin and the rest of the call, not half of it. Slice 6 makes it DYNAMIC per call. See [section 12](#12-the-planner-map-is-built-and-its-budget-was-corrected--2026-09-28) |
+| **D10** | The planner gets its **own budget**, `PLANNER_BUDGET`, not `OUTLINE_BUDGET` - the two compete with different things. Applied **per tier** as `min(PLANNER_BUDGET, what this tier can take)`, which is section 11.1's grid. **35 of 40 tiers hold 250,000+**; the line that matters is **16,000, Gemma's input cap**, which is the largest free quota in the project. **SET TO 12,000 on 2026-09-28** - what is left of that cap after the 10% margin and the rest of the call, not half of it. Slice 4 makes it DYNAMIC per call. See [section 12](#12-the-planner-map-is-built-and-its-budget-was-corrected--2026-09-28) |
 | **D11** | The map is **RANKED and ELIDED**, aider-style, built from headers we already store. **Rank only when it does not fit** - most repositories fit, and then ranking is a cost with no benefit. **Cosine first (free), a reranker as a measured upgrade.** And **BIAS, never filter**: every file keeps at least one row, because hiding what the question does not mention is the one failure the map exists to prevent |
 | **D12** | Check the **Jev family and any new decision-model providers** in the catalogue, with M3. Jev is listwise, typed and ~1.2s, so it is a natural ranker for map rows as well as for chunks |
 | **D13** | **D3 IS REVISED, at the user's instruction: use FUNCTION CALLING where the tier supports it, and STRUCTURED OUTPUT where it does not.** The honest cost is **two code paths** in the LLM layer instead of one, and a per-tier capability flag that has to stay true. The honest gain is provider-enforced arguments on the tiers that have them. **M3 decides how many tiers that actually is** - if it is most of them the hybrid is worth it, and if it is few, D3 stands as written. **M3 RESULT: 23 of the 24 tiers that answered, so D13 stands (section 9).** *Scope, written 2026-10-08 as D29: which nodes use it and which do not — [19.3](#193-where-function-calling-is-used-d13-scope--d29).* |
@@ -9724,12 +9759,12 @@ Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
 | M1 | ~~does LangGraph fit 512MB~~ **MEASURED 2026-09-23 — yes, ~55MB imported and the whole container is 74 MiB under load. See [section 10](#10-slice-0-is-closed-and-the-memory-budget-was-6x-wrong--2026-09-23)** | done |
 | M2 | ~~latency ranking of all tiers~~ **MEASURED 2026-09-29 — 50 tiers ranked at a ~500-token answer. Report length is NOT measured. See [section 15](#15-slice-1-is-measured--every-tier-ranked-by-speed-2026-09-30)** | done |
 | M3 | ~~which tiers support function calling~~ **MEASURED 2026-09-23 — 23 of the 24 tiers that answered. See [section 9](#9-m3-is-measured--function-calling-2026-09-23)** | done |
-| M4 | the raw question **vs** planner-written queries **vs** claims, scored against `EXPECTED.md` | 5 |
-| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does. **AND THE BUDGET SWEEP** (added 2026-09-28): fixed **1k · 4k · 8k · 12k** against a **DYNAMIC** budget (the tier's input limit / 1.1, minus what the rest of the prompt really costs). Score the queries on how many known divergence locations in `EXPECTED.md` / `queries.json` they reach, not on how they read. Record planner latency beside it, and which tier answered | 6 |
-| M9 | **A's FULL TEXT in the planner call** (question + map + the paper) against question + map alone. When A is small this merges the planner and `extract_claims` into ONE call. Added 2026-09-28; an open choice, not a decision | 6 |
-| M6 | **a findings score on the SEARCH path** — never once measured, see C3. This is the baseline Step 2 must beat | 8 |
-| M7 | an exact-match tool vs vector alone (D8) | 8 |
-| M8 | **per-node output tokens and latency** — every time estimate in this section rests on an assumed 40s per node | 8 |
+| M4 | the raw question **vs** planner-written queries **vs** claims, scored against `EXPECTED.md`. Decides whether claims earn their cost (D39) | 13 |
+| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does. **AND THE BUDGET SWEEP** (added 2026-09-28): fixed **1k · 4k · 8k · 12k** against a **DYNAMIC** budget (the tier's input limit / 1.1, minus what the rest of the prompt really costs). Score the queries on how many known divergence locations in `EXPECTED.md` / `queries.json` they reach, not on how they read. Record planner latency beside it, and which tier answered | 4 |
+| M9 | **A's FULL TEXT in the planner call** (question + map + the paper) against question + map alone. When A is small this merges the planner and `extract_claims` into ONE call. Added 2026-09-28. **ANSWERED yes by the user on 2026-10-14 (D40); the time it saves is measured in slice 7** | 7 |
+| M6 | **a findings score on the SEARCH path** — never once measured, see C3. This is the baseline Step 2 must beat | 13 |
+| M7 | an exact-match tool vs vector alone (D8) | 13 |
+| M8 | **per-node output tokens and latency** — every time estimate in this section rests on an assumed 40s per node | 13 |
 
 **The cache pays for most of this.** `.cache/` holds 2.4GB: 26 corpora already
 embedded, 50 rerank result files, 18 top-N runs. M4 and M7 can reuse it instead
@@ -9746,7 +9781,7 @@ of spending quota.
 | CC5 | wiring — build the graph, inject the callables, map the new errors | `api/` |
 | CC6 | `requirements.txt` and `test_packaging.py`, if LangGraph is added | root |
 | CC7 | ~~a budget ladder for the map, for the 500-file case~~ **DONE 2026-09-28** — level 3 counts files by folder | `prompts/` |
-| CC8 | **the DYNAMIC planner budget** — `min(PLANNER_BUDGET, tier input limit / 1.1 − cost of instructions + question + schema)`, computed per call. Cannot be written before the planner instructions exist | slice 6 |
+| CC8 | **the DYNAMIC planner budget** — `min(PLANNER_BUDGET, tier input limit / 1.1 − cost of instructions + question + schema)`, computed per call. Cannot be written before the planner instructions exist | slice 4 |
 
 ### 9. M3 IS MEASURED — function calling, 2026-09-23
 
@@ -10201,7 +10236,7 @@ half:**
 
 And Gemma's cap counts **INPUT only** (measured 2026-08-16, see
 [two kinds of limit](#two-kinds-of-limit-and-they-are-not-the-same-thing)), so the planner's
-answer needs no room there. **Now 12,000.** Still a CEILING: slice 6 computes
+answer needs no room there. **Now 12,000.** Still a CEILING: slice 4 computes
 it per call (CC8), and M5 may still find smaller is better.
 
 > **A reserve that is never itemised grows to fill the gap.** "Half for the
@@ -10230,7 +10265,7 @@ planner call and merge it with `extract_claims`.
 
 #### 12.5 Still open
 
-- **Nothing calls the map.** The planner is slice 6.
+- **Nothing calls the map.** The planner is slice 4.
 - `PLANNER_BUDGET` - M5, including the dynamic variant.
 
 #### 12.6 Three small debts closed — 2026-09-28
@@ -11035,25 +11070,30 @@ are estimates, not promises.
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
 | **2 (DONE 2026-10-14: lessons 1 to 4 and the closing review, 17.14)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
-| 3 | run two independent steps at the same time | medium, 2 |
-| 4 | a step that can STOP the graph (the gate) | medium, 2 |
-| 5 | the loop: claims, check each one, search again at most 2 times | heavy, 3 |
-| 6 | the planner: one cheap call chooses the steps and the queries. **Preceded by a small lesson on function calling (D34)** | medium, 2 + 1 |
-| 7 | each step gets its own models, token limit and thinking level | light, 1 |
-| 8 | score the findings against the answer key and time the run | none |
-| 9 | a big repository as side A: rank the files and the claims | medium, 2 |
+| 3 | `summarize` for A and for B at the same time (two independent steps run together) | medium, 2 |
+| 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 2 + 1 |
+| 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3** |
+| 6 | follow-up questions: rewrite them into standalone ones | light, 1 |
+| 7 | the loop: claims, check each one, search again at most 2 times | **heavy, 3** |
+| 8 | a step that can STOP the graph (the gate) | medium, 2 |
+| 9 | the nodes for problems in B alone: `find_missing` and `find_bugs` | medium, 2 |
+| 10 | outcomes and comparability (are two numbers comparable?) | medium, 2 |
+| 11 | each step gets its own models, token limit and thinking level | light, 1 |
+| 12 | the size gate and big repositories (was slice 9) | medium, 2 |
+| 13 | score the findings against the answer key and time the run | none |
 
 **The 4 lessons of slice 2:** (1) state, node and edge, with a graph of 2 steps;
 (2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
-**How a new session continues:** slice 2 is DONE (17.14). Read 17.14 first, check git (branch,
-status, `git log -5`), and start slice 3 (two independent steps run at the same time: fan-out and
+**How a new session continues:** slice 2 is DONE (17.14, and 17.15 for what came after). Read 17.14 and 17.15 first, check git (branch,
+status, `git log -5`), and start slice 3 (`summarize` for A and for B at the same time: fan-out and
 fan-in; medium, 2 lessons). **Two rules the user set (17.13) still hold: they type ALL product code
 (only tests are copy-paste), and a step is given WHOLE in one message.** Lessons call no model, so
 the exit-ISP check is not needed until the first live test. The chat tables must exist in the
 database the app uses: run `python -m scripts.setup_checkpoints` once from the repository root
-(17.14).
+(17.14). Since 2026-10-14 that script also locks the four tables (17.15). **The lesson scripts named
+in 17.9 to 17.13 as `scripts/<name>.py` now live in `examples/langgraph/`.**
 
 #### 17.9 Where we stopped — slice 2, lesson 1 is DONE, 2026-10-07
 
@@ -11137,7 +11177,7 @@ where it appears. About one screen.
 
 **Other open items from this session:**
 
-- Slice 9 (a big repository as side A) is recorded in section 18. Nothing is built.
+- The big repository as side A (now slice 12) is recorded in section 18. Nothing is built.
 - **EmbeddingGemma 2** (740M parameters, open weights): the Gemma releases page on
   Google lists it with the date 2026-10-06. It is NOT in our embedder list and is not
   scored. Our rule is: a new embedder joins `MIGRATION` only after we score it on the
@@ -11212,7 +11252,7 @@ two-file case even when nobody asked (19.6).
 reading "function calling" as "we send arguments TO the model". It is the other direction:
 the model WRITES a function name and arguments in its answer, it never runs anything, and
 our code reads them (19.2). It ended with the user saying they were dazed. **Decision D34:**
-function calling gets its own small lesson before slice 6, where the user runs a real
+function calling gets its own small lesson before slice 4, where the user runs a real
 request and sees the request and the answer. Until then, answer in ONE sentence only.
 
 **The "dazed" rule.** When the user says they are confused or dazed, STOP adding ideas. Give
@@ -11485,6 +11525,7 @@ is closed. Slice 3 is next.** `feat/agent-nodes` is kept.
   root. It needs an autocommit connection, because the library builds three indexes with
   `CREATE INDEX CONCURRENTLY`. It was run once on the real database (the tables are in `public`). Tests get
   the same tables in their own throwaway schema from the fixture `chat_tables` (about 12 s per test module).
+  Since 2026-10-14 the script also locks the four tables with row level security (17.15).
 - `requirements.txt`: `langgraph-checkpoint-postgres==3.1.2` (it also brings `psycopg-pool`; about 1.4 MB
   together) and `langgraph-checkpoint==4.2.0` (see the review below).
 
@@ -11562,7 +11603,58 @@ says the break "broke nothing before this test"; that is false, and `ab1cb9e` re
 why. (6) **A claim in a commit message is checked before it is written.** Both wrong figures came from
 memory, not from the logs.
 
+#### 17.15 After slice 2 closed: the lock on the tables, and the examples folder — 2026-10-14
+
+**Status: DONE and committed on `main` by the user: six commits on the night of 2026-10-14 (`d0492d4` to
+`6a32137`, between 01:40 and 01:44). It is not a slice. Claude wrote it down afterwards, at the user's request.**
+
+**Why the lock.** Supabase opens every table in the `public` schema to its own web API, and the roles `anon` and
+`authenticated` get full rights on new tables. That is what the comment in `schema.sql` says; it was not checked
+against Supabase's own pages in this session. *Row level security* (RLS) is a Postgres switch that works per table.
+With RLS ON and no rule (a *policy*) written, those two roles see no rows. Our app connects as `postgres`, which
+skips RLS, so the app should behave as before. These tables hold uploaded code and chat text, so they should not be
+open to that API.
+
+**What was built:**
+
+| commit | change |
+|---|---|
+| `d0492d4` | `labpilot/api/checkpoints.py`: `CHAT_TABLES` (the four names) and `lock_tables(conn)`, which runs `alter table <name> enable row level security` for each one. The list is needed because the saver library creates the chat tables, not our `schema.sql`, so we lock them by name afterwards |
+| `520470d` | `labpilot/store/schema.sql`: the same switch for `artifacts` and `chunks`. It runs every time `create_schema` runs, and repeating it changes nothing |
+| `b6c6735` | `scripts/setup_checkpoints.py` calls `lock_tables` after `setup()`, on the same autocommit connection |
+| `88e217b` | `tests/integration/test_chat_tables.py`, 2 tests: the list names exactly the tables the saver creates (so a new table in a library update turns the test red), and `lock_tables` turns RLS on for all four |
+| `d99e005` | `tests/unit/store/test_schema.py`, 1 test: it reads `schema.sql` and checks that every `create table` has a matching `enable row level security`. It also fails when the file creates no table at all, so it cannot pass on an empty read |
+| `6a32137` | the five lesson scripts (`intro_to_graph.py`, `graph_with_reducer.py`, `graph_with_memory.py`, `graph_with_tools.py`, `graph_with_branch.py`) moved from `scripts/` to `examples/langgraph/`. Only the path changed. `scripts/setup_checkpoints.py` stays in `scripts/`, because it is a real tool and not a lesson |
+
+**Checked in this session (2026-10-14).** Unit and api tests: 1039 passed, 5 skipped. The three new tests: 3 passed
+in 12.6 s against the real Supabase (in a throwaway schema), none skipped. The whole `tests/integration` folder
+and the new unit test, run together: 116 passed, none skipped, in 236 s. Those tests build the tables from
+`schema.sql` (RLS on) and the app code reads and writes them, so the app is not blocked by the lock.
+
+**NOT checked.** (1) Mutation checks of the three new tests were not run, so it is not shown that each one fails
+when its rule is broken. (2) Whether RLS is ON in the tables of the real project now. It is only on after
+`create_schema` and `scripts.setup_checkpoints` have been run against it, and nothing in the files says they were.
+(3) That the app reads and writes fine with the lock is shown in a throwaway schema. It was not tried on the real
+`public` tables, and that the web API (`anon`) really sees nothing was not tried at all.
+
+**What the lock does NOT do.**
+
+- It does not protect the app's own route. Anyone who knows an artifact id or a chat id can still use `/compare`,
+  because there is no login (17.6, 17.14).
+- It does not change how the app reads and writes, because the app connects as `postgres`.
+- A new table needs the same switch. The unit test covers `schema.sql`. A table made by a library needs its name
+  in `CHAT_TABLES`, and the integration test fails when the list and the library disagree.
+
+**Paths.** Sections 17.9 to 17.13 say `scripts/intro_to_graph.py` and so on. Those files are in
+`examples/langgraph/` now. The old text was not rewritten, because it tells what happened on those days.
+
+**Branches.** `feat/agent-nodes` (`b72955a`) has the lock as ONE commit and still has the lesson scripts in
+`scripts/`. It also has the docs commit `63a0381` (the reminder that better citations are owed at the end of
+Step 2), which `main` does not have.
+
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
+
+*(Renumbered on 2026-10-14: this is slice 12 now, see [section 21](#21-the-final-design-and-the-new-slice-list--agreed-2026-10-14). The heading is kept so that old links work.)*
 
 *Talked through with the user during lesson 1. The user was confused about what a
 claim is and where claims come from, and asked for the big-repository case to be
@@ -11600,11 +11692,11 @@ A (source) -> extract_claims (one cheap call) -> a list of claims
 |---|---|
 | **D24** | `extract_claims` is ONE cheap call over A. Its **instruction is fixed and versioned**, its **output has a fixed JSON shape** (`text` plus where it was seen), the **claims are saved beside the report** (a fallback tier writes different claims), and a **short fixed list is the backup** when the call fails |
 | **D25** | **The user's question goes inside the extract instruction**, for every A that fits one call. One line of text, no new design. The default question is general, so it filters almost nothing; a specific question narrows the list. Risk: a narrow question may hide a claim that explains the gap, so **M10** checks it |
-| **D26** | **Slice 5 only handles an A that fits one call.** If it does not fit, the program says *"A is too big, point me at a folder or a file"*. It never cuts the input silently |
-| **D27** | **Slice 9 builds the big-repository version, by the user's decision.** If A does not fit: (1) rank the files of A by closeness to the question (`file_scores()` exists), (2) take the closest files, (3) one cheap call per file, in PARALLEL, (4) join the lists and remove duplicates, (5) **rank the claims and keep the best N**. In graph words: "does it fit?" is a conditional edge and "one call per file" is the parallel part |
-| **D28** | **The claim ranking system is NOT designed yet.** The user wants a new ranking for claims. Candidates to measure: the closeness of each claim to the question (free, needs no call), a reranker tier on the claims, or asking the extract call to give each claim a score. Decide it in slice 9 with data |
+| **D26** | **Claims (slice 7) only handle an A that fits one call.** If it does not fit, the program says *"A is too big, point me at a folder or a file"*. It never cuts the input silently |
+| **D27** | **Slice 12 (was 9) builds the big-repository version, by the user's decision.** If A does not fit: (1) rank the files of A by closeness to the question (`file_scores()` exists), (2) take the closest files, (3) one cheap call per file, in PARALLEL, (4) join the lists and remove duplicates, (5) **rank the claims and keep the best N**. In graph words: "does it fit?" is a conditional edge and "one call per file" is the parallel part |
+| **D28** | **The claim ranking system is NOT designed yet.** The user wants a new ranking for claims. Candidates to measure: the closeness of each claim to the question (free, needs no call), a reranker tier on the claims, or asking the extract call to give each claim a score. Decide it in slice 12 with data |
 
-#### 18.3 What slice 9 needs first
+#### 18.3 What slice 12 (was 9) needs first
 
 **A test pair with a repository on side A.** We have none: every number in this
 project comes from one paper and one Python file. A design with no test data is a
@@ -11614,10 +11706,10 @@ guess, so the pair is built BEFORE the design, as slice 8's third corpus was.
 
 | # | measure | slice |
 |---|---|---|
-| M10 | the question inside the extract instruction against no question: does the model still find the same differences on `quora_siamese`? | 5 |
-| M11 | does the same instruction work when A is code (Python, Go) and not a paper? Nothing here is tested yet | 5 |
-| M12 | the number N (claims kept) and the number of files taken, on the new pair | 9 |
-| M13 | the claim ranking candidates of D28 against each other | 9 |
+| M10 | the question inside the extract instruction against no question: does the model still find the same differences on `quora_siamese`? | 7 |
+| M11 | does the same instruction work when A is code (Python, Go) and not a paper? Nothing here is tested yet | 7 |
+| M12 | the number N (claims kept), the number of files taken and the size-gate numbers (D43), on the new pair | 12 |
+| M13 | the claim ranking candidates of D28 against each other | 12 |
 
 #### 18.5 Tools that already exist
 
@@ -11639,7 +11731,7 @@ Claude's reading and not the user's decision, it says so.*
 | D31 | one final node, `respond`, ends every plan | 19.7 |
 | D32 | the UI has two controls, Effort and Strength | 19.8 |
 | D33 | two kinds of web search; the one written in this file is the heavy kind | 19.9 |
-| D34 | function calling gets its own small lesson before slice 6 | 17.10 |
+| D34 | function calling gets its own small lesson before slice 4 | 17.10 |
 
 #### 19.1 Plan-and-execute and ReAct together (D1 clarified)
 
@@ -11662,7 +11754,7 @@ retrieved", never "the code does not do it". In the graph this is a cycle
 (`search -> verify -> search`) with a counter `tries` in the state. A loop with no limit
 can run forever, so the counter is the hard stop.
 
-*Claude's suggestion, NOT decided (decide in slice 5):* code decides to loop (verdict is
+*Claude's suggestion, NOT decided (decide in slice 7):* code decides to loop (verdict is
 `absent` and `tries < 2`), and the model only writes the new query.
 
 **What the big products do** (from the session of 2026-09-22/23, "Session context recall";
@@ -11799,7 +11891,7 @@ note (the older note said not to spend a model call to decide how to spend model
    models worse in this project).
 4. The plan is saved beside the report and shown to the user as steps, so a wrong plan is
    visible and the user can ask again.
-5. A measurement in slice 6: about 30 questions with the correct plan for each, scored on
+5. A measurement in slice 4: about 30 questions with the correct plan for each, scored on
    at least two models (the chain falls back, so another model may plan).
 
 **Backup:** the fixed default plan (every node, in order) runs when the planner fails.
@@ -11817,7 +11909,7 @@ ROUTES = {"summarize": SUMMARY_CHAIN, "find_bugs": BUGS_CHAIN}
 The planner does not know which model is free today. A decision that code can make should
 not be left to a model. Decided: `summarize` leads with Gemma. **NOT decided:** the chain
 for `find_bugs`. North Mini Code is a candidate, but this file lists it for `write_code`
-and nobody measured it for `find_bugs`. Decide in slice 7.
+and nobody measured it for `find_bugs`. Decide in slice 11.
 
 #### 19.6 `summarize` runs in the two-file case even when nobody asked
 
@@ -11860,7 +11952,7 @@ ten minutes for a simple task" rule). Also a deep question can arrive with zero 
 the file count cannot choose the chain.
 
 **OPEN:** (1) the chain `respond` uses for plans between chat and divergence: one fixed
-middle chain, or a chain chosen by the plan. Decide in slice 7, measure in slice 8.
+middle chain, or a chain chosen by the plan. Decide in slice 11, measure in slice 13.
 (2) A plan that ends in a text-only node (`summarize` alone): call `respond` after it
 (one more call) or not.
 
@@ -11887,7 +11979,7 @@ Presets plus an advanced panel were considered and dropped: too many options at 
   "Deep and hello" still gets High effort.
 - The planner also returns an `effort` guess. It means thinking and length, NOT model
   strength, and it should use the same three words as the UI. If unsure: Medium. It is
-  measured in slice 6 together with the plan.
+  measured in slice 4 together with the plan.
 - Do not map High to the provider's HIGH setting without a measurement: on the same prompt
   HIGH spent 93% of the budget on thinking and MEDIUM wrote 2.5 times more report.
 
@@ -12008,6 +12100,127 @@ passed, 5 skipped. Live: all 22 LiteRouter tiers answered through the real provi
 - **Report-length speed of the new tiers is NOT measured**, and Qwen3.8 Flash's 157s is one sample.
 - The `-cheap` / `-stable` meaning, and whether the daily limits on the dashboard are enforced per model.
 - The Chain 1 table in this file is stale (it lists 40 tiers); read `CHAIN`.
+
+### 21. THE FINAL DESIGN AND THE NEW SLICE LIST — agreed 2026-10-14
+
+*Agreed with the user in one long session that started from a simple question: "why do we
+need claims if the planner writes the queries?" Answering it showed two real problems in this
+plan. First, D2 (the planner writes the queries) and the claims node overlapped, and the plan
+did not say which one does what. Second, the nine slices of section 4 did not build most of the
+nodes that the capability library promises. **Nothing in this section is built.** The new slice
+list is in section 4. This section holds the flow, the reasons and the maps.*
+
+#### 21.1 The flow, for one question with A and B both uploaded
+
+| # | step | code or model | what it does |
+|---|---|---|---|
+| 1 | outline | code | the headers of A and B, no text (`build_map`) |
+| 2 | plan | ONE model call | the question and the outlines in; the steps to run and the queries out, each query tagged A or B |
+| 3 | main search | code | the planner's queries find chunks, in the side they are tagged for |
+| 4 | extract claims | ONE model call | only if A exists and the plan says so: A in, the claims out (one checkable fact each, with its source tag) |
+| 5 | claim search and gate | code | each claim's text finds ITS OWN chunks in B. The gate (slice 8) halts the graph when almost nothing in B looks like A |
+| 6 | check | one call per claim, all at once | match / mismatch / absent. Absent: a new query, at most 2 retries (D4) |
+| 7 | `find_missing` | model | pieces of B that no claim is near: B does it, A never says it |
+| 8 | `find_bugs` | model | a scan of B alone |
+| 9 | merge | code | the chunks of steps 3, 5, 7 and 8; duplicates removed; the budget applied with half for each side |
+| 10 | respond | ONE strong call | the findings, the merged chunks and the shown / not-shown outline in; the report with citations out |
+
+Early on, `summarize` runs for A and for B at the same time. The summaries are sections 1 and
+2 of the report, and they are the answer when the gate halts. Step 3, the chain from 4 to 6,
+step 7 and step 8 do not depend on each other, so they run at the same time. The planner
+chooses which of steps 4, 7 and 8 run. The slice 2 rule stays: when everything fits the prompt
+budget, step 3 is replaced by reading everything (stuffing). With no A there are no claims and
+no `find_missing`, and the planner's queries are the only search.
+
+**A claim and a query are different things.** A claim is DATA: a fact that A states ("gradients
+are clipped at norm 1.0"). A query is an ACTION: the text we search with. Every claim becomes a
+query (its own text), but not every query is a claim: the planner's queries come from the
+question, and a retry query is written by the model after an `absent`. A planner query says
+where to look in B. Only a claim carries the value that B must match.
+
+**Two groups of chunks, one job each.** The claim chunks (step 5) are compared with THAT claim in
+the check. The planner chunks (step 3) go to the report. The same chunk can be in both, and the
+merge step keeps one copy. Whether the planner chunks should also reach the check is not decided
+(M4).
+
+#### 21.2 Decisions
+
+| # | decision |
+|---|---|
+| **D39** | **The planner's queries are the front door (this is D2, and it was the user's idea). Claims are a SAFETY NET for questions with A and B.** The planner only guesses what to search for, from the question and from names. A mismatch it never asks about is the worst failure this tool can have, and claim extraction reads all of A, so every fact A states gets its own search. Retrieval is nearly free (8.8 s of a 497 s answer), so overlapping searches cost almost nothing. The real price is one short check call per claim, run at the same time. With no A there are no claims, and the planner's queries are the only search |
+| **D40** | **For a SMALL A the planner call and the claim extraction are ONE call** (M9, answered yes by the user on 2026-10-14). "Small" is the size gate, D43. The time it saves is measured in slice 7 |
+| **D41** | **Problems in B alone are found by `find_missing` and `find_bugs`, not by queries and not by claims.** You cannot search for a bug when you do not know what it looks like, and claims only cover what A states. 7 of the 19 known findings were found by reading B alone in one prompt |
+| **D42** | **A merge step runs before the prompt is built.** It collects the chunks from every search, removes duplicates (the same chunk id, and the ~50 tokens of overlap between neighbouring chunks, which the chunking section already says to deduplicate), then applies the budget with an equal share per side. The old rule was written, but no code applied it to several searches |
+| **D43** | **One size gate, counted in TOKENS from `measure()`, used in three places:** claim extraction on A (does A fit one call?), the outline (`build_map` already does it) and the `find_bugs` scan of B. The top-N path (rank the files, take N, one call per file, keep the best claims) runs only above the gate, and a small repository as A is treated like a paper. Files are not the unit (a Go file makes chunks about twice as large as a Python file); they appear only as "how many files we take". The number is calibrated per tier, never chosen (M12) |
+| **D44** | **Every planned node has a home** (21.3). The two folds are DECIDED (the user said yes on 2026-10-15): `align` is the table made by the claim searches (code, no model call, kept in the state), and `diff_choices` is a label on each finding, written by the check and by `find_missing`. The check prompt must ask for that label, or every difference may be called a bug. If slice 13 shows that design differences are missing, a node is added then |
+
+#### 21.3 Where every planned node lives
+
+| planned node (capability library, template, D-rows) | where it lives now | slice |
+|---|---|---|
+| `answer_question` | the plan `[respond]`, with the planner's queries when files exist | 4, 5 |
+| `summarize` | `summarize`, for A and B at the same time | 3 |
+| `find_bugs` | `find_bugs`, a scan of B | 9 (a big B: 12) |
+| `write_code` | `respond` with the code chain and a code instruction | 5, 11 |
+| `align(A, B)` | **folded (decided 2026-10-15):** the table made by the claim searches (claim against chunk) is the map. Code makes it, there is no model call, and it stays in the state | 7 |
+| `verify(claim, code)` | `check`, one call per claim | 7 |
+| `find_missing(A, B)` | `find_missing` | 9 |
+| `diff_choices(A, B)` | **folded (decided 2026-10-15):** a label on each finding. The check writes "A and B chose differently", `find_missing` writes "B chose this alone", and the check prompt must ask for the label | 7, 9 |
+| `explain_divergence` | `respond` with the divergence instruction on the strongest chain | 5, 11 |
+| `propose_next`, `propose_fix` | parts of `respond` | 5 |
+| `extract_claims` | `extract_claims`; merged with the planner for a small A (D40) | 7 |
+| `extract_outcomes` | `extract_outcomes`, with the "comparable?" check and "does it add up?" | 10 |
+| decontextualize (D5) | the follow-up node, the first reader of `history` | 6 |
+| the correspondence gate | `gate`, computed from the claim search scores | 8 |
+| the retry loop (D4) | inside `check` | 7 |
+| finding axes (kind, box, basis, impact) and the `representation` check | typed fields on each finding | 7 (decide there) |
+| the citation check | `resolve()` already runs on the report. Better citations are a closing task, see 21.6 | — |
+| `web_search` | outside Step 2 (Step 2.5) | — |
+| Effort and Strength controls (D32) | the UI is Step 3; the planner returns an `effort` guess | 4, Step 3 |
+
+#### 21.4 Old slice numbers and new ones
+
+Old 3 (parallel) is 3. Old 4 (the gate) is 8. Old 5 (claims and verify) is 7. Old 6 (the planner)
+is 4. Old 7 (routing) is 11. Old 8 (measure) is 13. Old 9 (a big repository) is 12. New: 5 (run
+the plan), 6 (follow-ups), 9 (nodes for B alone) and 10 (outcomes and comparability). The heading
+of section 18 still says "SLICE 9" so that old links work; it is slice 12 now.
+
+#### 21.5 Measurements and code that changed
+
+- M4 (the raw question against the planner's queries against claims) runs in slice 13, and it
+  decides whether claims earn their cost. M5 (the planner with and without the map, and the
+  budget sweep) runs in slice 4. M9 is answered (D40). M10 and M11 run in slice 7, M12 and M13
+  in slice 12 (M12 now also sets the size-gate numbers), and M6, M7 and M8 in slice 13.
+- Code owed, added: **CC9** the merge step (collect, remove duplicates, equal-share budget);
+  **CC10** the shared check `fits(side, budget)` built on `measure()`; **CC11** the nodes
+  `summarize`, `extract_claims`, `check`, `find_missing`, `find_bugs`, `extract_outcomes`,
+  `respond`, the follow-up rewrite and `gate`, each taking injected callables (D7); **CC12**
+  dynamic fan-out, one search per query at the same time (the LangGraph tool for this is called
+  `Send`; confirm in slice 5).
+
+#### 21.6 Still open
+
+1. Does the planner need the full outline of A? It may need only one line about A, such as
+   "paper, about 4,000 tokens", because claim extraction reads A anyway. Not decided: the user
+   restated the flow with the outlines of both.
+2. The planner's model. The plan says one cheap call; the user remembers a strong model. Slice 4
+   measures it on two models.
+3. Whether the planner's chunks also reach the check (M4).
+4. ~~The two proposed folds, `align` and `diff_choices` (D44).~~ DECIDED 2026-10-15: both are folded.
+5. Summarising each code unit in words before embedding, for cross-language comparisons. It
+   happens at ingest and is not scheduled in any slice.
+6. The closing citations task. A reminder exists in commit `63a0381` on `feat/agent-nodes` and
+   is not on `main`.
+7. How exactly `find_missing` reads the claim table by chunk (and whether a model judges the
+   candidates). Decide when slice 9 starts.
+8. Whether every finding carries typed fields for kind, box, basis and impact. Decide in slice 7.
+
+#### 21.7 What this changed in older text
+
+Section 4 was rewritten. The numbers in D26 to D28, M10 to M13, D34, CC8, M4 to M9, the
+lesson table in 17.8 and the notes in sections 12, 17.9, 18 and 19 were changed to the new slice
+numbers. The capability library has an UPDATE note. Step 1 slice numbers in older history were
+not touched.
 
 ---
 
@@ -12172,6 +12385,12 @@ missing** rather than failing or improvising — see
 > `propose_next`) are meant to become ONE final node, `respond`, added by code at the end
 > of every plan. The table above is left as it was until that is built. Which nodes return
 > a shape and which return plain text is in [19.3](#193-where-function-calling-is-used-d13-scope--d29).
+
+> **UPDATE 2026-10-14 ([21.3](#213-where-every-planned-node-lives)).** Every capability above now
+> has a slice. `summarize` is slice 3, `find_bugs` and `find_missing` are slice 9, `verify` is the
+> `check` of slice 7, and the nodes that write for a person are all `respond` (slice 5). `align`
+> and `diff_choices` are folded (decided 2026-10-15) into the claim searches and the check. The planner
+> is slice 4. The table above is left as it was.
 
 ### Model routing — a chain per task, not a model per task
 
