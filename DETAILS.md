@@ -167,6 +167,70 @@ text, so it never holds LESS than CLAUDE.md and may hold more.
   both were updated.
 - Claude does this without being asked, every time.
 
+### Modularization — the whole app, not only `agent/` (rule added 2026-10-15, D45)
+
+*The user asked for this more than once, and it was forgotten. It is written
+here, in Working Rules, so that every session reads it before it writes or
+teaches any code. The first version of this rule only talked about a big
+`graph.py`. The user corrected it: the point is a well-modularized APP, and a
+big file is only one symptom.*
+
+**Five points. Every new piece of code follows them, and Claude says which
+file a new piece goes in BEFORE a lesson starts.** (The details are in "Layout"
+and "The four layers" in Conventions; this list is the short version.)
+
+1. **Layers.** Shared, then adapters, then core, then entry. A new package is
+   assigned to a layer on the day it is created.
+   `tests/unit/test_architecture.py` enforces it.
+2. **One front door per package.** Other code imports from `labpilot.<package>`,
+   never from one of its files.
+3. **One reason to change per file.** Ask: "when X changes, how many files do I
+   touch?" Two jobs in one file means two files. A file past about 400 lines is
+   a symptom to investigate, not a rule by itself.
+4. **Contracts live alone.** Value objects and error types sit in small modules
+   that import nothing from their package.
+5. **Wiring is split by job too.** `agent/` is core, so `api/` hands it every
+   function it needs (D7). Those functions are the place where a big file grows
+   back, so they are not all collected in one `services.py`.
+
+**`labpilot/agent/`, the package that grows most in Step 2.** From slice 3 on,
+it is split by reason to change:
+
+- `state.py` holds the `State` class alone. Node files and `graph.py` both
+  import it, so there is no circular import.
+- **Every node gets its own file.** It is a factory: it receives the injected
+  functions (D7) and returns the node function. `summarize.py` first, then
+  `planner.py`, `check.py`, `respond.py` and so on.
+- `graph.py` holds only `build_graph`: it calls the factories, adds the nodes
+  and draws the arrows.
+- `__init__.py` keeps exporting `build_graph` and `State`.
+- The six nodes from slice 2 (`measure`, `stuff`, `search`, `prompt`,
+  `generate`, `remember`) stay in `graph.py` until a later slice touches them.
+  Then each moves to its own file. For a while the package has both styles.
+- The file names are the proposal of 2026-10-15. Slice 3 lesson 2 confirms them.
+- **Before a lesson adds a node, Claude says which file it goes in.** A node
+  written inside `build_graph` is a mistake, not a shortcut.
+
+**What was measured on 2026-10-15** (only file sizes, layers and front doors;
+the inside of the files was NOT read): 2 of 103 files are over 400 lines,
+`api/services.py` (873 lines, two jobs: INGEST and ASK) and `llm/registry.py`
+(1,273 lines, only data: the 73 model tiers, not urgent). 4 imports skip a
+front door, all in `api/`: `reranking.py` to `llm.registry`, `services.py` to
+`agent.graph`, `startup.py` to `llm.chain`, `uploads.py` to `sources.defaults`.
+
+**Owed at the END of slice 3, as its own task before slice 4 (the user's
+decision, 2026-10-15):**
+
+1. **A full check of the whole app.** Claude reads every package, file by file,
+   and gives one table: package, file, its job, one reason to change or more,
+   verdict. Read-only. It does not trust sizes.
+2. **Split `api/services.py`** into an ingest file and an ask file, and put the
+   functions handed to the graph in their own place if the check says so. A pure
+   move with no behaviour change; the existing tests are the safety net.
+3. Fix the 4 front-door imports, decide what to do with `llm/registry.py`, and
+   decide which of the six old nodes leave `graph.py`.
+4. Write the result into both docs.
+
 ### Learning mode — this is a learning project, not a delivery project
 This is the user's first project in RAG, agents, MCP, and LLM fine-tuning.
 The goal is to **learn these concepts**, not only to end up with a finished app.
@@ -16567,7 +16631,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | **0** | **does LangGraph fit?** | the real install tree and resident size against the 512MB ceiling | none — DONE |
 | 1 | **latency ranking** | how fast each of the 40 tiers is, and which support function calling | none — measurement, DONE |
 | 2 | **the skeleton** | a graph replaces `ask()`, and the chat is saved (checkpointer, `thread_id`) | **heavy** — DONE |
-| 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers) | medium, 2 lessons |
+| 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers). The slice ENDS with the modularization task (D45): a full read-only check of the whole app, then the split of `api/services.py` | medium, 2 lessons |
 | 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 2 lessons, plus a small one on function calling (D34) |
 | 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31); "stuff when it fits" stays | **heavy**, 3 lessons |
 | 6 | **follow-ups** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6) | light, 1 lesson |
@@ -18468,6 +18532,7 @@ wiring), both pushed. Part 3 was done later (17.14).
 1. **Closure, not class.** Shorter, and nothing has to be remembered between calls. The honest cost: a node
    cannot be tested alone, only the whole graph. Revisit when `build_graph` has about 10 nodes (slices 5 and
    6): then a class, or a dataclass that holds the functions. Only the inside of `agent/` would change.
+   **Superseded on 2026-10-15 for every new node: one file per node, see D45 and the Working Rules.**
 2. **`sides` and `result` are typed `Any`**, because `agent/` may not import `store/` or `llm/` (layer test).
    The graph only carries them.
 3. **The blank-question check stays in `ask()`, once, at the door** (before any database read or model call).
@@ -19159,6 +19224,7 @@ merge step keeps one copy. Whether the planner chunks should also reach the chec
 | **D42** | **A merge step runs before the prompt is built.** It collects the chunks from every search, removes duplicates (the same chunk id, and the ~50 tokens of overlap between neighbouring chunks, which the chunking section already says to deduplicate), then applies the budget with an equal share per side. The old rule was written, but no code applied it to several searches |
 | **D43** | **One size gate, counted in TOKENS from `measure()`, used in three places:** claim extraction on A (does A fit one call?), the outline (`build_map` already does it) and the `find_bugs` scan of B. The top-N path (rank the files, take N, one call per file, keep the best claims) runs only above the gate, and a small repository as A is treated like a paper. Files are not the unit (a Go file makes chunks about twice as large as a Python file); they appear only as "how many files we take". The number is calibrated per tier, never chosen (M12) |
 | **D44** | **Every planned node has a home** (21.3). The two folds are DECIDED (the user said yes on 2026-10-15): `align` is the table made by the claim searches (code, no model call, kept in the state), and `diff_choices` is a label on each finding, written by the check and by `find_missing`. The check prompt must ask for that label, or every difference may be called a bug. If slice 13 shows that design differences are missing, a node is added then |
+| **D45** | **The whole app is modular, and `agent/` is made of small files** (decided with the user, 2026-10-15, at slice 3; the user corrected the first version, which only talked about `graph.py`). The five points are in the Working Rules, "Modularization": layers, one front door per package, one reason to change per file, contracts alone, and wiring split by job. For `agent/`: `state.py`, one file per node (a factory that takes the injected functions of D7) and a `graph.py` that only wires. This replaces the closures inside `build_graph` (17.13) for every NEW node. **Owed at the END of slice 3, before slice 4:** a full read-only check of the whole app, then the split of `api/services.py` (873 lines, ingest and ask together) |
 
 #### 21.3 Where every planned node lives
 
