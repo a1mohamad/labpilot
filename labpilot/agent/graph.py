@@ -1,29 +1,12 @@
-import operator
 from collections.abc import Callable
-from typing import Annotated, Any, TypedDict
+from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from labpilot.ingest import Chunk
-
-Chunks = tuple[Chunk, ...]
-Totals = dict[str, int] | None
-
-
-class State(TypedDict):
-    question: str
-    a: str
-    b: str
-    history: Annotated[list[str], operator.add]
-    sides: Any
-    fits: bool
-    chunks: Chunks
-    totals: Totals
-    prompt: str
-    selected: Chunks
-    result: Any
+from labpilot.agent.state import Chunks, State, Totals
+from labpilot.agent.summarize import make_summarize_node
 
 
 def build_graph(
@@ -34,6 +17,7 @@ def build_graph(
     search: Callable[[Any, str], tuple[Chunks, Totals]],
     make_prompt: Callable[[Chunks, str, Totals], tuple[str, Chunks]],
     generate: Callable[[str], Any],
+    summarize: Callable[[str], str] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     def measure_node(state: State) -> dict[str, Any]:
@@ -71,6 +55,12 @@ def build_graph(
     builder.add_node("generate", generate_node)
     builder.add_node("remember", remember_node)
     builder.add_edge(START, "measure")
+    if summarize is not None:
+        for source in ("a", "b"):
+            name = f"summarize_{source}"
+            builder.add_node(name, make_summarize_node(source, summarize))
+            builder.add_edge(START, name)
+            builder.add_edge(name, END)
     builder.add_conditional_edges("measure", pick)
     builder.add_edge("stuff", "prompt")
     builder.add_edge("search", "prompt")
