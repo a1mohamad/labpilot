@@ -16,6 +16,12 @@ from labpilot.prompts.instructions import (
     SCAN,
     Instructions,
 )
+from labpilot.prompts.summary import (
+    SUMMARY,
+    SUMMARY_BUDGET,
+    SUMMARY_MAX_TOKENS,
+    build_summary_prompt,
+)
 
 __all__ = [
     "COMPARE",
@@ -26,6 +32,9 @@ __all__ = [
     "PRIOR_HEADING",
     "REPORT",
     "SCAN",
+    "SUMMARY",
+    "SUMMARY_BUDGET",
+    "SUMMARY_MAX_TOKENS",
     "PROMPT_BUDGET",
     "REPORT_MAX_TOKENS",
     "Citation",
@@ -34,6 +43,7 @@ __all__ = [
     "build_context",
     "build_map",
     "build_prompt",
+    "build_summary_prompt",
     "find_citations",
     "reserve",
     "resolve",
