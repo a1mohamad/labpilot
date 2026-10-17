@@ -653,7 +653,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 CLOSED.** Step 1 was nine slices (1, 1b, 2, 3, 4, 5, 6, 7 and 8), all done, and slice 8 ran
 three times (v1, v2, v3). Step 2 is planned as FOURTEEN slices (0 to 13, rewritten on 2026-10-14, see section 21): **slices 0 (does
 LangGraph fit), 1 (the latency ranking) and 2 (the skeleton and chat memory) are done, and slice 3
-(`summarize` for A and B at the same time) is next.** The user writes the graph code lesson by lesson, so
+(`summarize` for A and B at the same time) is in progress: lesson 1 is done, lesson 2 is next.** The user writes the graph code lesson by lesson, so
 `labpilot/agent/` holds the first real graph (`build_graph`: measure, stuff or search, prompt, generate,
 remember). `ask()` runs it, and with a `thread_id` the chat is saved in Postgres. Read
 [Where Step 2 stands](#where-step-2-stands--updated-2026-10-14) below and
@@ -902,7 +902,7 @@ generation-time problem below — it cannot generate.
 | 0 | does LangGraph fit 512 MB | **DONE 2026-09-23** — yes, ~55 MB imported, whole container 74 MiB (section 10) |
 | 1 | latency ranking of the chain | **DONE 2026-09-29/30** — 50 tiers ranked (section 15) |
 | 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **DONE 2026-10-14** — lessons 1 to 4 (part 3 on 2026-10-13), then a closing review that added 11 tests (sections 17, 17.10 to 17.14) |
-| 3 | `summarize` for A and B, run at the same time (fan-out, fan-in) | **IN PROGRESS** — lesson 1 taught 2026-10-15 (the toy file `examples/langgraph/graph_with_parallel.py`). The slice ends with the modularization task of D45: a full check of the whole app, then the split of `api/services.py` |
+| 3 | `summarize` for A and B, run at the same time (fan-out, fan-in) | **IN PROGRESS** — lesson 1 DONE 2026-10-17 (the toy file `examples/langgraph/graph_with_parallel.py`: 2.0 s in a line, 1.0 s in parallel; section 17.16). Lesson 2, the real `summarize` nodes, is next. The slice ends with the modularization task of D45: a full check of the whole app, then the split of `api/services.py` |
 | 4 | the planner: the outline is used, one call returns the steps and the queries | not started — preceded by a small function calling lesson (D34) |
 | 5 | run the plan: one search per query at the same time, the merge step (duplicates removed), the final `respond` node | not started |
 | 6 | follow-ups: rewrite a follow-up question into a standalone one | not started |
@@ -966,6 +966,10 @@ generation-time problem below — it cannot generate.
   `find_bugs` cover B alone, a merge step removes duplicate chunks, one size gate guards big
   repositories) and rewrote the slice list: **fourteen slices, 0 to 13**. Nothing is built from it
   yet → section 21 and the table in section 4.
+- **2026-10-15 to 17** — slice 3 lesson 1 DONE (fan-out and fan-in with a toy graph, 2.0 s against
+  1.0 s). The user also made Claude write the modularization rule for the WHOLE app (D45, Working Rules),
+  with a full check of the app and the split of `api/services.py` owed at the end of slice 3. Commit
+  `18b2948` on `feat/parallel-nodes` → 17.16.
 
 **The blocking problem of the whole step is GENERATION TIME** (the red block at the top of this section).
 Read it before designing a node.
@@ -11151,8 +11155,8 @@ are estimates, not promises.
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
 **How a new session continues:** slice 2 is DONE (17.14, and 17.15 for what came after). Read 17.14 and 17.15 first, check git (branch,
-status, `git log -5`), and start slice 3 (`summarize` for A and for B at the same time: fan-out and
-fan-in; medium, 2 lessons). **Two rules the user set (17.13) still hold: they type ALL product code
+status, `git log -5`), and continue slice 3 (`summarize` for A and for B at the same time: fan-out and
+fan-in; medium, 2 lessons). **Lesson 1 is DONE (17.16); lesson 2, the real `summarize` nodes, is next.** **Two rules the user set (17.13) still hold: they type ALL product code
 (only tests are copy-paste), and a step is given WHOLE in one message.** Lessons call no model, so
 the exit-ISP check is not needed until the first live test. The chat tables must exist in the
 database the app uses: run `python -m scripts.setup_checkpoints` once from the repository root
@@ -11716,6 +11720,68 @@ when its rule is broken. (2) Whether RLS is ON in the tables of the real project
 **Branches.** `feat/agent-nodes` (`b72955a`) has the lock as ONE commit and still has the lesson scripts in
 `scripts/`. It also has the docs commit `63a0381` (the reminder that better citations are owed at the end of
 Step 2), which `main` does not have.
+
+#### 17.16 Slice 3, lesson 1 was done, 2026-10-17
+
+**Status: DONE.** Taught on 2026-10-15, run by the user on 2026-10-17. The user typed
+`examples/langgraph/graph_with_parallel.py` and ran it from the repository root with
+`py -m examples.langgraph.graph_with_parallel`. The output:
+
+```
+parallel=False    2.0s   A is about paper | B is about code
+parallel=True     1.0s   A is about paper | B is about code
+```
+
+The file holds one `State` (`a`, `b`, `summary_a`, `summary_b`, `report`), three nodes (`summarize_a` and
+`summarize_b`, each with `time.sleep(1)`, and `join`) and two graphs. In a line: `START -> summarize_a ->
+summarize_b -> join`, so the time is 1 + 1 = 2 seconds. In parallel: `START` goes to both summary nodes, and
+`add_edge(["summarize_a", "summarize_b"], "join")` makes `join` wait for both, so the time is the longest
+branch, 1 second. The file and the D45 rule are committed together in `18b2948` on `feat/parallel-nodes`. No
+product code was changed in lesson 1.
+
+**What the user now knows** (settled in a long question and answer; do not re-teach). The uneven-branch case was
+tested with scratch scripts, which are not in the repo.
+
+- **Fan-out** means more than one arrow leaves a node (or `START`), so several nodes run in the same step.
+  **Fan-in** means a node waits for them. In LangGraph they come together: there is one `START` and one `END`,
+  and `END` is an automatic join that runs no code. Only the explicit join node is optional (it is just the
+  place where the results get used).
+- Arrows carry order, not data. Data travels in the state.
+- A conditional edge is a choice (if / else), not a fan-out. A node that two branches of a choice both point to
+  (like `prompt` in the real graph) is a meeting point, not a fan-in: only one parent runs.
+- `add_edge(["a", "b"], "join")` waits for ALL parents. Two separate arrows into one node start it when ANY
+  parent finishes. If the branches have different lengths, the node runs twice, the first time on old data
+  (in the scratch test the first run saw `'A first draft'`), and everything after it runs twice.
+- Two nodes that write the same key in the same step: without a reducer, `InvalidUpdateError`. In a line, the
+  later write replaces the earlier one. With `Annotated[list, operator.add]` both are kept, in node order and
+  not in finish order. Different keys (`summary_a` and `summary_b`) need no reducer.
+- A plain `def` node runs in a Python thread (one sequence of work), as a FastAPI `def` route does. The GIL is
+  released while a thread waits for the network, so two model calls overlap. `thread_id` (the chat name) has
+  nothing to do with Python threads. Async is different: one event loop that switches only at an `await`, so the
+  second task starts while the first one waits, and a blocking call inside `async def` freezes everything.
+- `invoke` returns after the slowest branch. One graph has one `END`; the caller reads the state, and
+  `StateGraph(State, output_schema=Out)` limits the keys that come back.
+
+**Mistakes of Claude in this lesson, so they are not repeated.** (1) Claude called `prompt` a "fan-in without
+fan-out"; it is only a meeting point after a choice. (2) Claude said fan-out can live alone; the user was right
+that `END` is the automatic fan-in (checked with `draw`). (3) The first uneven-branch test did not show real
+damage; a better one with `improve_a` did. (4) A thread was described as "one line of Python work"; it is one
+sequence of work. (5) The async order was first described wrongly: the loop starts B at once while A waits.
+
+**Lesson 2, the file plan (D45), asked to the user on 2026-10-17 and not yet confirmed:**
+
+| file | what goes in it |
+|---|---|
+| `labpilot/agent/state.py` (new) | The `State` class moves here, with two new keys, `summary_a` and `summary_b`. |
+| `labpilot/agent/summarize.py` (new) | The node as a factory: it receives a model function from `api/` (D7) and returns the node. |
+| `labpilot/agent/graph.py` | Only the new arrows: one summary node per side started together, then a join. |
+| `labpilot/api/summaries.py` (new, Claude's proposal) | The real function handed to the graph, so `services.py` does not grow again. |
+| `tests/unit/agent/test_summarize.py` | The tests (copy and paste). |
+
+Open for lesson 2: where the two summaries sit in the existing graph; and the model function is called from two
+threads at once. `dead_pools` in `llm/chain.py` is a local variable of each `generate` call, so there is no data
+race, but two parallel calls do not share what they learn about dead pools. LiteRouter allows one request at a
+time and paces 7 seconds, so two parallel calls on that route can be slowed or refused.
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
