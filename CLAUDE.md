@@ -208,7 +208,8 @@ it is split by reason to change:
 - The six nodes from slice 2 (`measure`, `stuff`, `search`, `prompt`,
   `generate`, `remember`) stay in `graph.py` until a later slice touches them.
   Then each moves to its own file. For a while the package has both styles.
-- The file names are the proposal of 2026-10-15. Slice 3 lesson 2 confirms them.
+- The file names are the proposal of 2026-10-15. Slice 3 lesson 2 confirmed `state.py`, `summarize.py` and
+  `graph.py` (17.17).
 - **Before a lesson adds a node, Claude says which file it goes in.** A node
   written inside `build_graph` is a mistake, not a shortcut.
 
@@ -653,7 +654,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 CLOSED.** Step 1 was nine slices (1, 1b, 2, 3, 4, 5, 6, 7 and 8), all done, and slice 8 ran
 three times (v1, v2, v3). Step 2 is planned as FOURTEEN slices (0 to 13, rewritten on 2026-10-14, see section 21): **slices 0 (does
 LangGraph fit), 1 (the latency ranking) and 2 (the skeleton and chat memory) are done, and slice 3
-(`summarize` for A and B at the same time) is in progress: lesson 1 is done, lesson 2 is next.** The user writes the graph code lesson by lesson, so
+(`summarize` for A and B at the same time) is in progress: lesson 1 is done, lessons 2 and 3 are done (2026-10-17, 17.17), and the slice now ends with the D45 task.** The user writes the graph code lesson by lesson, so
 `labpilot/agent/` holds the first real graph (`build_graph`: measure, stuff or search, prompt, generate,
 remember). `ask()` runs it, and with a `thread_id` the chat is saved in Postgres. Read
 [Where Step 2 stands](#where-step-2-stands--updated-2026-10-14) below and
@@ -902,7 +903,7 @@ generation-time problem below — it cannot generate.
 | 0 | does LangGraph fit 512 MB | **DONE 2026-09-23** — yes, ~55 MB imported, whole container 74 MiB (section 10) |
 | 1 | latency ranking of the chain | **DONE 2026-09-29/30** — 50 tiers ranked (section 15) |
 | 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **DONE 2026-10-14** — lessons 1 to 4 (part 3 on 2026-10-13), then a closing review that added 11 tests (sections 17, 17.10 to 17.14) |
-| 3 | `summarize` for A and B, run at the same time (fan-out, fan-in) | **IN PROGRESS** — lesson 1 DONE 2026-10-17 (the toy file `examples/langgraph/graph_with_parallel.py`: 2.0 s in a line, 1.0 s in parallel; section 17.16). Lesson 2, the real `summarize` nodes, is next. The slice ends with the modularization task of D45: a full check of the whole app, then the split of `api/services.py` |
+| 3 | `summarize` for A and B, run at the same time (fan-out, fan-in) | **IN PROGRESS** — lesson 1 DONE 2026-10-17 (the toy file `examples/langgraph/graph_with_parallel.py`: 2.0 s in a line, 1.0 s in parallel; section 17.16). Lessons 2 (the summary nodes in the graph) and 3 (the real summary function) DONE 2026-10-17 (section 17.17). The summary of a BIG artifact is weak on purpose for now and is owed in slice 12 (D46). The slice ends with the modularization task of D45: a full check of the whole app, then the split of `api/services.py` |
 | 4 | the planner: the outline is used, one call returns the steps and the queries | not started — preceded by a small function calling lesson (D34) |
 | 5 | run the plan: one search per query at the same time, the merge step (duplicates removed), the final `respond` node | not started |
 | 6 | follow-ups: rewrite a follow-up question into a standalone one | not started |
@@ -911,7 +912,7 @@ generation-time problem below — it cannot generate.
 | 9 | nodes for B alone: `find_missing` and `find_bugs` | not started |
 | 10 | outcomes and comparability: `extract_outcomes`, "are these numbers comparable?" | not started |
 | 11 | routing: a chain, `max_tokens` and thinking level per node | not started |
-| 12 | the size gate and big repositories (was slice 9) | not started (sections 18 and 21) |
+| 12 | the size gate, big repositories and the summary of a big artifact (was slice 9) | not started (sections 18 and 21, D46) |
 | 13 | measure findings against `EXPECTED.md` and the wall clock | not started |
 
 **What landed, and the section that tells the story:**
@@ -969,7 +970,9 @@ generation-time problem below — it cannot generate.
 - **2026-10-15 to 17** — slice 3 lesson 1 DONE (fan-out and fan-in with a toy graph, 2.0 s against
   1.0 s). The user also made Claude write the modularization rule for the WHOLE app (D45, Working Rules),
   with a full check of the app and the split of `api/services.py` owed at the end of slice 3. Commit
-  `18b2948` on `feat/parallel-nodes` → 17.16.
+  `18b2948` on `feat/parallel-nodes` → 17.16. Lessons 2 (the summary nodes in the graph) and 3 (the real
+  summary function) were done on 2026-10-17 → 17.17. The user decided that the summary
+  of a big repository must be good, so slice 12 owns it (D46).
 
 **The blocking problem of the whole step is GENERATION TIME** (the red block at the top of this section).
 Read it before designing a node.
@@ -9628,7 +9631,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | **0** | **does LangGraph fit?** | the real install tree and resident size against the 512MB ceiling | none — DONE |
 | 1 | **latency ranking** | how fast each of the 40 tiers is, and which support function calling | none — measurement, DONE |
 | 2 | **the skeleton** | a graph replaces `ask()`, and the chat is saved (checkpointer, `thread_id`) | **heavy** — DONE |
-| 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers). The slice ENDS with the modularization task (D45): a full read-only check of the whole app, then the split of `api/services.py` | medium, 2 lessons |
+| 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers). The slice ENDS with the modularization task (D45): a full read-only check of the whole app, then the split of `api/services.py` | medium, 3 lessons |
 | 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 2 lessons, plus a small one on function calling (D34) |
 | 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31); "stuff when it fits" stays | **heavy**, 3 lessons |
 | 6 | **follow-ups** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6) | light, 1 lesson |
@@ -9637,7 +9640,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 9 | **nodes for B alone** | `find_missing` (the claim table read by chunk) and `find_bugs` (a scan of B) | medium, 2 lessons |
 | 10 | **outcomes and comparability** | `extract_outcomes`; "are these two numbers comparable?" YES / NO / CANNOT TELL; "does it add up?" | medium, 2 lessons |
 | 11 | **routing** | a chain, a `max_tokens` and a thinking level for each node; the chain of `respond` for each plan; the quota-leak test | light, 1 lesson |
-| 12 | **the size gate and big repositories** | one `fits(side, budget)` check (D43); the top-N path for claims on a big A; the scan of a big B; claim ranking (D28); the new test pair. This was slice 9 | medium, 2 lessons |
+| 12 | **the size gate and big repositories** | one `fits(side, budget)` check (D43); the top-N path for claims on a big A; the scan of a big B; claim ranking (D28); the good summary of a big artifact (D46); the new test pair. This was slice 9 | medium, 2 lessons, maybe more |
 | 13 | **measure** | findings against `EXPECTED.md` on the search path (M6), the wall clock (M8), M4 and M7 | none |
 
 **Slice 0 is first because it can change the plan.** If LangGraph is 200MB
@@ -9655,8 +9658,8 @@ summaries and the claim scores). Slices 9 and 10 need slice 7 (the claim table).
 the nodes to exist. Slice 12 needs a new test pair. Slice 13 comes last because it measures
 all of it.
 
-**Lessons in all:** 21 for slices 3 to 12 (2 + 3 + 3 + 1 + 3 + 2 + 2 + 2 + 1 + 2), against 13
-in the old list. The extra 8 are the nodes the old list forgot.
+**Lessons in all:** 22 for slices 3 to 12 (3 + 3 + 3 + 1 + 3 + 2 + 2 + 2 + 1 + 2), against 13
+in the old list. The extra 9 are the nodes the old list forgot (slice 3 grew to 3 lessons on 2026-10-17).
 
 ### 5. THE OUTLINE GAP — the planner cannot use the outline we have
 
@@ -11138,7 +11141,7 @@ are estimates, not promises.
 | 0 done | does LangGraph fit 512 MB (yes, about 55 MB) | none |
 | 1 done | the speed of each of the 56 models | none |
 | **2 (DONE 2026-10-14: lessons 1 to 4 and the closing review, 17.14)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
-| 3 | `summarize` for A and for B at the same time (two independent steps run together) | medium, 2 |
+| 3 | `summarize` for A and for B at the same time (two independent steps run together) | medium, 3 |
 | 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 2 + 1 |
 | 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3** |
 | 6 | follow-up questions: rewrite them into standalone ones | light, 1 |
@@ -11156,7 +11159,7 @@ are estimates, not promises.
 
 **How a new session continues:** slice 2 is DONE (17.14, and 17.15 for what came after). Read 17.14 and 17.15 first, check git (branch,
 status, `git log -5`), and continue slice 3 (`summarize` for A and for B at the same time: fan-out and
-fan-in; medium, 2 lessons). **Lesson 1 is DONE (17.16); lesson 2, the real `summarize` nodes, is next.** **Two rules the user set (17.13) still hold: they type ALL product code
+fan-in; medium, 2 lessons). **Lesson 1 is DONE (17.16). Lessons 2 and 3 are DONE (2026-10-17, 17.17); the next job is the D45 task, then slice 4.** **Two rules the user set (17.13) still hold: they type ALL product code
 (only tests are copy-paste), and a step is given WHOLE in one message.** Lessons call no model, so
 the exit-ISP check is not needed until the first live test. The chat tables must exist in the
 database the app uses: run `python -m scripts.setup_checkpoints` once from the repository root
@@ -11768,20 +11771,65 @@ that `END` is the automatic fan-in (checked with `draw`). (3) The first uneven-b
 damage; a better one with `improve_a` did. (4) A thread was described as "one line of Python work"; it is one
 sequence of work. (5) The async order was first described wrongly: the loop starts B at once while A waits.
 
-**Lesson 2, the file plan (D45), asked to the user on 2026-10-17 and not yet confirmed:**
+**Lesson 2, the file plan (D45), asked on 2026-10-17 and confirmed when the user typed it (17.17). The `api/summaries.py` row moved to lesson 3:**
 
 | file | what goes in it |
 |---|---|
 | `labpilot/agent/state.py` (new) | The `State` class moves here, with two new keys, `summary_a` and `summary_b`. |
 | `labpilot/agent/summarize.py` (new) | The node as a factory: it receives a model function from `api/` (D7) and returns the node. |
 | `labpilot/agent/graph.py` | Only the new arrows: one summary node per side started together, then a join. |
-| `labpilot/api/summaries.py` (new, Claude's proposal) | The real function handed to the graph, so `services.py` does not grow again. |
+| `labpilot/api/summaries.py` (new, lesson 3) | The real function handed to the graph, so `services.py` does not grow again. |
 | `tests/unit/agent/test_summarize.py` | The tests (copy and paste). |
 
 Open for lesson 2: where the two summaries sit in the existing graph; and the model function is called from two
 threads at once. `dead_pools` in `llm/chain.py` is a local variable of each `generate` call, so there is no data
 race, but two parallel calls do not share what they learn about dead pools. LiteRouter allows one request at a
 time and paces 7 seconds, so two parallel calls on that route can be slowed or refused.
+
+#### 17.17 Slice 3, lessons 2 and 3 were taught, 2026-10-17
+
+**Status: DONE 2026-10-17.** Claude read the files the user typed, fixed five mistakes (listed below), ran the tests, and ran 13 deliberate breaks on a scratch copy: all 13 were caught, each by the test meant to catch it. Unit and api tests: 1053 passed, 5 skipped. `ruff check` and `ruff format --check` are clean. Slice 3 became three lessons (it was planned as two).
+
+**Lesson 2, the summary nodes in the real graph.** Claude first built and checked the same code in a scratch copy of the repo outside it (18 agent tests passed there, 4 deliberate breaks were caught, the repo was untouched). The user typed it in two phases.
+
+| file | change |
+|---|---|
+| `labpilot/agent/state.py` (new) | `State` moved here (phase A, no behaviour change), then got `summary_a` and `summary_b` (phase B) |
+| `labpilot/agent/summarize.py` (new) | `make_summarize_node(source, summarize)`: a factory, a closure that remembers `"a"` or `"b"` |
+| `labpilot/agent/graph.py` | imports `State` from `state.py`; new optional parameter `summarize=None`; when it is given, two nodes start from `START` and go to `END` |
+| `labpilot/agent/__init__.py` | exports `build_graph` from `graph` and `State` from `state` |
+| `tests/unit/agent/test_summarize.py` (new) | 5 tests, copy and paste |
+
+- **No join node.** Nothing reads the summaries yet, and `END` is the automatic join (17.16). Slice 5 adds a real join when `respond` reads them.
+- **`summarize` is optional and `_ask_graph` does not pass it.** With `None` the graph is the one from slice 2, and the live app spends no model call on a result nobody reads.
+- **A step waits for its slowest node.** All nodes of a step run together and the next step starts when the last one ends. Measured in a toy graph: with summaries that sleep 1 s, `stuff` started at 1.0 s. So a step takes the maximum of its node times, and the whole run takes the sum of its steps.
+- **The parallel test needs no sleep.** The fake `summarize` waits on `threading.Barrier(2, timeout=2)`. Two threads together pass it. In a line the first call waits alone and fails with `BrokenBarrierError`. Only this test fires when the nodes are put in a line.
+- **The user's first run failed with 16 collection errors and ONE message:** `ImportError: cannot import name 'State' from partially initialized module`. `summarize.py` wrote `from labpilot.agent import State`. Python runs `__init__.py` from top to bottom: line 1 imports `graph`, `graph` imports `summarize`, and `summarize` asks the package for `State`, which line 2 would import. A circle. Fix: `from labpilot.agent.state import State`. **Rule: code OUTSIDE a package imports from its front door; files INSIDE a package import each other directly.** Claude then said the same would break in `prompts/`. That was too strong: there it works only because the `instructions` line comes before the `summary` line in `__init__.py`, so it would be luck. The direct import is the safe habit.
+
+**Lesson 3, the real summary function.** Claude first wrote it WITHOUT running it, because the user said "dont check, i will return the test results myself". Later the user asked Claude to check the typed code and correct it, and then everything was run (see below).
+
+| file | what |
+|---|---|
+| `labpilot/prompts/summary.py` (new) | `SUMMARY` (a short fixed instruction), `SUMMARY_BUDGET = 12_000`, `SUMMARY_MAX_TOKENS = 4_000`, `build_summary_prompt(parts)` |
+| `labpilot/prompts/__init__.py` | exports the four names |
+| `labpilot/api/summaries.py` (new) | `make_summarizer(conn, client)` returns `summarize(artifact_id) -> str` |
+| `tests/unit/prompts/test_summary.py` (new) | 5 tests |
+| `tests/api/test_summaries.py` (new) | 4 tests, a fake client and a patched `read_chunks` |
+
+- **What it reads.** The FIRST parts that fit `SUMMARY_BUDGET`, in order. The cut stops at the first part that does not fit, so "the first K of N parts" stays true. The prompt always says how many parts were sent, so nothing is cut silently. 12,000 is Gemma's 16,000 input tokens a minute divided by the 10% margin of the length check, minus room for the instruction (the same reasoning as `PLANNER_BUDGET`).
+- **What it asks.** At most 150 words, plain prose, no citations. Time follows the tokens written, so a short answer takes seconds where a report takes minutes. `max_tokens` is 4,000 only as a backstop: tiers that think spend tokens first, and a small cap would return nothing and waste a tier.
+- **Errors.** `AllFreeTiersExhausted` becomes `GenerationUnavailable`, and `UnknownArtifact` becomes `UnknownArtifactId`, the same conversions `generate` and `_sides` do.
+- **Not wired.** Slice 5 wires it into `_ask_graph`, when `respond` reads the summaries. Slice 11 gives it a cheap chain: today it would use the full chain, which has 20-a-day models in it. This is scaffolding with a scheduled consumer, like `ask()` before its route.
+- **Two threads at once.** `LLMClient.generate` keeps its state in local variables, so two calls share nothing (each learns alone that a quota pool is dead). The database connection is shared; psycopg locks it for each query, so the reads queue up and take milliseconds. This was NOT tested. LiteRouter's 7-second spacing is already reserved under a lock (20.3).
+- **Known limits.** Only the first 12,000 tokens are read: about 35 parts, roughly 8 files in a repository like ours (4.4 parts per file, measured). `read_chunks` reads every row before the cut. A summary cut by `max_tokens` is returned as it is.
+
+**The user's decision on big artifacts (D46, in 21.2).** For a repository of 200 files the summary is only the first files in sorted order. The user decided that this plan is too weak: a big repository needs a GOOD summary, and slice 12 owns it.
+
+**The five mistakes Claude found and fixed in the typed files** (the user asked for it): (1) `graph.py` registered the node as `"summarize"` instead of `name`, so both sides used one node name and the arrows pointed at nodes that did not exist; (2) `prompts/summary.py` compared the running total with `SUMMARY_MAX_TOKENS` (4,000) instead of `SUMMARY_BUDGET` (12,000); (3) `api/summaries.py` returned the whole `LLMResult` and not its `.text`; (4) two files had misspelled names (`api/summarize.py` and `test_summarries.py`); (5) `tests/unit/prompts/test_summary.py` was empty. The tests were right: each of the first three mistakes makes at least one test fail. The typo in an error message ("need") was fixed too.
+
+**Mutation check, 13 breaks on a scratch copy, 13 caught, each by its own test.** Examples: running the two summaries in a line is caught ONLY by the barrier test; both nodes writing `summary_a` is caught by 3 tests; adding the summary nodes when `summarize` is `None` is caught by 13 old graph tests; wrong budget, wrong order, a lying "All parts are sent" line, an empty parts list, a missing `.text`, a missing error conversion and a wrong `max_tokens` are each caught by one test. `tests/unit/test_error_boundaries.py` accepts the new `api/summaries.py`, and `tests/unit/prompts/` existed.
+
+**Open.** (1) Commits, one file per commit, on `feat/parallel-nodes`. Lesson 2: `agent/state.py`, `agent/summarize.py`, `agent/graph.py`, `agent/__init__.py`, `tests/unit/agent/test_summarize.py`. Lesson 3: `prompts/summary.py`, `prompts/__init__.py`, `tests/unit/prompts/test_summary.py`, `api/summaries.py`, `tests/api/test_summaries.py`. Then the two docs together. (2) The D45 task (a full read-only check of the whole app, then the split of `api/services.py`), then slice 4.
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
@@ -11826,6 +11874,7 @@ A (source) -> extract_claims (one cheap call) -> a list of claims
 | **D26** | **Claims (slice 7) only handle an A that fits one call.** If it does not fit, the program says *"A is too big, point me at a folder or a file"*. It never cuts the input silently |
 | **D27** | **Slice 12 (was 9) builds the big-repository version, by the user's decision.** If A does not fit: (1) rank the files of A by closeness to the question (`file_scores()` exists), (2) take the closest files, (3) one cheap call per file, in PARALLEL, (4) join the lists and remove duplicates, (5) **rank the claims and keep the best N**. In graph words: "does it fit?" is a conditional edge and "one call per file" is the parallel part |
 | **D28** | **The claim ranking system is NOT designed yet.** The user wants a new ranking for claims. Candidates to measure: the closeness of each claim to the question (free, needs no call), a reranker tier on the claims, or asking the extract call to give each claim a score. Decide it in slice 12 with data |
+| **D46** | **The summary of a big artifact must be good, and slice 12 builds it** (21.2). Slice 3 builds only the simple version: the first parts that fit 12,000 tokens |
 
 #### 18.3 What slice 12 (was 9) needs first
 
@@ -11841,6 +11890,7 @@ guess, so the pair is built BEFORE the design, as slice 8's third corpus was.
 | M11 | does the same instruction work when A is code (Python, Go) and not a paper? Nothing here is tested yet | 7 |
 | M12 | the number N (claims kept), the number of files taken and the size-gate numbers (D43), on the new pair | 12 |
 | M13 | the claim ranking candidates of D28 against each other | 12 |
+| M14 | the summary designs of D46 against each other on the new pair: does the summary tell what the repository does, and how many calls and seconds does it cost | 12 |
 
 #### 18.5 Tools that already exist
 
@@ -12282,16 +12332,17 @@ merge step keeps one copy. Whether the planner chunks should also reach the chec
 | **D40** | **For a SMALL A the planner call and the claim extraction are ONE call** (M9, answered yes by the user on 2026-10-14). "Small" is the size gate, D43. The time it saves is measured in slice 7 |
 | **D41** | **Problems in B alone are found by `find_missing` and `find_bugs`, not by queries and not by claims.** You cannot search for a bug when you do not know what it looks like, and claims only cover what A states. 7 of the 19 known findings were found by reading B alone in one prompt |
 | **D42** | **A merge step runs before the prompt is built.** It collects the chunks from every search, removes duplicates (the same chunk id, and the ~50 tokens of overlap between neighbouring chunks, which the chunking section already says to deduplicate), then applies the budget with an equal share per side. The old rule was written, but no code applied it to several searches |
-| **D43** | **One size gate, counted in TOKENS from `measure()`, used in three places:** claim extraction on A (does A fit one call?), the outline (`build_map` already does it) and the `find_bugs` scan of B. The top-N path (rank the files, take N, one call per file, keep the best claims) runs only above the gate, and a small repository as A is treated like a paper. Files are not the unit (a Go file makes chunks about twice as large as a Python file); they appear only as "how many files we take". The number is calibrated per tier, never chosen (M12) |
+| **D43** | **One size gate, counted in TOKENS from `measure()`, used in four places:** claim extraction on A (does A fit one call?), the outline (`build_map` already does it), the `find_bugs` scan of B and the summary of a side (D46). The top-N path (rank the files, take N, one call per file, keep the best claims) runs only above the gate, and a small repository as A is treated like a paper. Files are not the unit (a Go file makes chunks about twice as large as a Python file); they appear only as "how many files we take". The number is calibrated per tier, never chosen (M12) |
 | **D44** | **Every planned node has a home** (21.3). The two folds are DECIDED (the user said yes on 2026-10-15): `align` is the table made by the claim searches (code, no model call, kept in the state), and `diff_choices` is a label on each finding, written by the check and by `find_missing`. The check prompt must ask for that label, or every difference may be called a bug. If slice 13 shows that design differences are missing, a node is added then |
 | **D45** | **The whole app is modular, and `agent/` is made of small files** (decided with the user, 2026-10-15, at slice 3; the user corrected the first version, which only talked about `graph.py`). The five points are in the Working Rules, "Modularization": layers, one front door per package, one reason to change per file, contracts alone, and wiring split by job. For `agent/`: `state.py`, one file per node (a factory that takes the injected functions of D7) and a `graph.py` that only wires. This replaces the closures inside `build_graph` (17.13) for every NEW node. **Owed at the END of slice 3, before slice 4:** a full read-only check of the whole app, then the split of `api/services.py` (873 lines, ingest and ask together) |
+| **D46** | **The summary of a BIG artifact must be good** (the user's decision, 2026-10-17, after slice 3 lesson 3). Lesson 3 builds only the simple version: the summary reads the FIRST parts that fit `SUMMARY_BUDGET` (12,000 tokens, about 35 parts, roughly 8 files in a repository like ours) and the prompt says how many parts were sent. For a repository of 200 files that is a summary of the first files in sorted order, and the user called the plan too weak. The summaries are sections 1 and 2 of the report and the whole answer when the gate halts (19.6), so a weak one hurts twice. **Slice 12 builds the good version, and its design is NOT decided.** Candidates, to measure on the new test pair (M14): (a) the structural one: README, the file tree and the class and function names in one call (`build_map` renders most of it; cheap, weaker on what the code does); (b) map-reduce: one cheap call per file or per folder, in PARALLEL, then one call that joins them (the shape of D27 steps 3 and 4); (c) (a) first, then (b) only for the files that matter. Limits to respect: the per-minute input caps (Gemma 16,000), LiteRouter's one request at a time, and the wall-clock time (many calls are slow unless they run together). The size gate (D43) decides which path runs |
 
 #### 21.3 Where every planned node lives
 
 | planned node (capability library, template, D-rows) | where it lives now | slice |
 |---|---|---|
 | `answer_question` | the plan `[respond]`, with the planner's queries when files exist | 4, 5 |
-| `summarize` | `summarize`, for A and B at the same time | 3 |
+| `summarize` | `summarize`, for A and B at the same time. A small artifact is read whole or by its first parts (slice 3, lesson 3); a big one needs the good version of D46 | 3, 12 |
 | `find_bugs` | `find_bugs`, a scan of B | 9 (a big B: 12) |
 | `write_code` | `respond` with the code chain and a code instruction | 5, 11 |
 | `align(A, B)` | **folded (decided 2026-10-15):** the table made by the claim searches (claim against chunk) is the map. Code makes it, there is no model call, and it stays in the state | 7 |
