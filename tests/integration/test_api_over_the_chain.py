@@ -118,12 +118,10 @@ def client(monkeypatch):
     )
     # The route now opens a chat. There is no real database here, so the saver
     # lives in memory and there is nothing to clean up afterwards.
-    monkeypatch.setattr(
-        "labpilot.api.services.open_saver", lambda conn: InMemorySaver()
-    )
-    monkeypatch.setattr("labpilot.api.services.prune", lambda conn, thread_id: None)
-    monkeypatch.setattr("labpilot.api.services.measure", _measure)
-    monkeypatch.setattr("labpilot.api.services.read_chunks", _read_chunks)
+    monkeypatch.setattr("labpilot.api.asking.open_saver", lambda conn: InMemorySaver())
+    monkeypatch.setattr("labpilot.api.asking.prune", lambda conn, thread_id: None)
+    monkeypatch.setattr("labpilot.api.reading.measure", _measure)
+    monkeypatch.setattr("labpilot.api.reading.read_chunks", _read_chunks)
     monkeypatch.setenv("TEST_API_KEY", "secret-key")
     # The lifespan validates the real CHAIN, not the fake one injected below,
     # and refuses to start when no tier has a key.
