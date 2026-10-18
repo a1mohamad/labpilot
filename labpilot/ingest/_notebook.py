@@ -10,7 +10,7 @@ from labpilot.ingest.contracts import Piece
 from labpilot.ingest.errors import LoaderError
 
 CELL_MARK = re.compile(r"^# %% cell (\d+) \[(\w+)\]")
-OUTPUT_SEPARTOR = "# --- output ---"
+OUTPUT_SEPARATOR = "# --- output ---"
 TEXT_MIME = "text/plain"
 
 
@@ -76,7 +76,7 @@ def _with_outputs(source: str, outputs: Any) -> str:
         return source
 
     parts = [source] if source.strip() else []
-    parts.append(OUTPUT_SEPARTOR)
+    parts.append(OUTPUT_SEPARATOR)
     parts.extend(texts)
     return "\n".join(parts)
 
