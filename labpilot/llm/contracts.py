@@ -10,6 +10,13 @@ class Attempt:
     error: str
 
 
+@dataclass(forzen=True, slots=True)
+class Tool:
+    name: str
+    description: str
+    parameters: dict[str, object]
+
+
 @dataclass(frozen=True, slots=True)
 class LLMResult:
     text: str
@@ -17,3 +24,4 @@ class LLMResult:
     tier: int
     finish_reason: str = "unknown"
     attempts: tuple[Attempt, ...] = ()
+    arguments: dict[str, object] | None = None

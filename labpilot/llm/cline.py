@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from labpilot._text import truncate
+from labpilot.llm.contracts import Tool
 from labpilot.llm.errors import LLMError
 from labpilot.llm.openai_compatible import OpenAICompatibleProvider
 
@@ -36,6 +37,11 @@ class ClineProvider(OpenAICompatibleProvider):
             )
 
         return inner
+
+    def _extract_call(
+        self, body: dict, tool: Tool
+    ) -> tuple[dict[str, object], str, str] | None:
+        return OpenAICompatibleProvider._extract_call(self, self._inner(body), tool)
 
     def _extract_message(self, body: dict) -> tuple[str, str, str]:
         # Explicit rather than zero-argument super(): `slots=True` makes the

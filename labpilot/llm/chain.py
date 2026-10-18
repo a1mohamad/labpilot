@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, replace
 from typing import Protocol
 
-from labpilot.llm.contracts import Attempt, LLMResult
+from labpilot.llm.contracts import Attempt, LLMResult, Tool
 from labpilot.llm.defaults import (
     DEFAULT_BASE_DELAY,
     DEFAULT_MAX_DELAY,
@@ -32,7 +32,9 @@ class Provider(Protocol):
     @property
     def pool(self) -> str: ...
 
-    def complete(self, prompt: str, *, max_tokens: int = ...) -> LLMResult: ...
+    def complete(
+        self, prompt: str, *, max_tokens: int = ..., tool: Tool | None = ...
+    ) -> LLMResult: ...
 
 
 def delay_for(error: LLMError, attempt: int, *, base: float) -> float:
@@ -78,7 +80,11 @@ class LLMClient:
     total_budget: float = DEFAULT_TOTAL_BUDGET
 
     def generate(
-        self, prompt: str, *, max_tokens: int = DEFAULT_MAX_TOKENS
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        tool: Tool | None = None,
     ) -> LLMResult:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
@@ -100,7 +106,11 @@ class LLMClient:
 
             try:
                 result = self._complete_with_retries(
-                    provider, prompt, max_tokens=max_tokens, deadline=deadline
+                    provider,
+                    prompt,
+                    max_tokens=max_tokens,
+                    tool=tool,
+                    deadline=deadline,
                 )
             except LLMError as exc:
                 if model_is_unavailable(exc):
@@ -119,12 +129,18 @@ class LLMClient:
         raise AllFreeTiersExhausted(tuple(attempts))
 
     def _complete_with_retries(
-        self, provider: Provider, prompt: str, *, max_tokens: int, deadline: float
+        self,
+        provider: Provider,
+        prompt: str,
+        *,
+        max_tokens: int,
+        tool: Tool | None,
+        deadline: float,
     ) -> LLMResult:
         attempt = 0
         while True:
             try:
-                return provider.complete(prompt, max_tokens=max_tokens)
+                return provider.complete(prompt, max_tokens=max_tokens, tool=tool)
             except LLMError as exc:
                 if exc.status not in RETRYABLE_STATUSES:
                     raise

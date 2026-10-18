@@ -1,6 +1,6 @@
 from labpilot.llm.chain import LLMClient, Provider
 from labpilot.llm.cline import ClineProvider
-from labpilot.llm.contracts import Attempt, LLMResult
+from labpilot.llm.contracts import Attempt, LLMResult, Tool
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 from labpilot.llm.gemini import GeminiProvider
 from labpilot.llm.openai_compatible import OpenAICompatibleProvider
@@ -59,4 +59,5 @@ __all__ = [
     "LLMError",
     "LLMResult",
     "OpenAICompatibleProvider",
+    "Tool",
 ]

@@ -3,8 +3,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from labpilot._text import truncate
+from labpilot.llm._calls import read_arguments
 from labpilot.llm.base import HTTPProvider
+from labpilot.llm.contracts import Tool
 from labpilot.llm.errors import LLMError
+
+
+def _upper_types(schema: object) -> object:
+    # Gemini's schema dialect is not JSON Schema: "string" is refused and
+    # "STRING" is accepted (measured by scripts/probe_tools.py). Only the VALUE
+    # of a "type" key changes, so a property that is itself called "type" stays.
+    if isinstance(schema, dict):
+        return {
+            key: value.upper()
+            if key == "type" and isinstance(value, str)
+            else _upper_types(value)
+            for key, value in schema.items()
+        }
+    if isinstance(schema, list):
+        return [_upper_types(item) for item in schema]
+    return schema
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -21,7 +39,9 @@ class GeminiProvider(HTTPProvider):
             "Content-Type": "application/json",
         }
 
-    def _payload(self, prompt: str, max_tokens: int) -> dict[str, object]:
+    def _payload(
+        self, prompt: str, max_tokens: int, tool: Tool | None = None
+    ) -> dict[str, object]:
         config: dict[str, object] = {
             "maxOutputTokens": max_tokens,
             "temperature": self.temperature,
@@ -40,10 +60,49 @@ class GeminiProvider(HTTPProvider):
         if self.generation_config:
             config.update(self.generation_config)
 
-        return {
+        payload: dict[str, object] = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": config,
         }
+        if tool is not None:
+            payload["tools"] = [
+                {
+                    "functionDeclarations": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": _upper_types(tool.parameters),
+                        }
+                    ]
+                }
+            ]
+
+        return payload
+
+    def _extract_call(
+        self, body: dict, tool: Tool
+    ) -> tuple[dict[str, object], str, str] | None:
+        try:
+            candidate = body["candidates"][0]
+            parts = (candidate.get("content") or {}).get("parts") or []
+            calls = [part["functionCall"] for part in parts if "functionCall" in part]
+        except (AttributeError, IndexError, KeyError, TypeError):
+            return None
+        if not calls:
+            return None
+
+        if calls[0].get("name") != tool.name:
+            raise LLMError(
+                f"{self.name}: called {calls[0].get('name')!r}, not {tool.name!r}"
+            )
+
+        arguments = read_arguments(calls[0].get("args") or {}, self.name)
+
+        return (
+            arguments,
+            body.get("modelVersion") or self.name,
+            candidate.get("finishReason", "unknown"),
+        )
 
     def _extract_message(self, body: dict) -> tuple[str, str, str]:
         try:
