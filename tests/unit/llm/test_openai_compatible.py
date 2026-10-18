@@ -195,6 +195,32 @@ def test_nothing_extra_is_sent_when_extra_body_is_not_set():
     assert set(payload) == {"model", "messages", "max_tokens", "temperature"}
 
 
+@responses.activate
+def test_extra_headers_are_sent_with_the_request(monkeypatch):
+    monkeypatch.setenv("TEST_API_KEY", "secret-key")
+    responses.post(URL, json=ok_body())
+
+    build_provider(extra_headers={"X-Free-Fallback": "false"}).complete("hello")
+
+    sent = responses.calls[0].request.headers
+    assert sent["X-Free-Fallback"] == "false"
+    assert sent["Authorization"] == "Bearer secret-key"
+
+
+def test_only_the_credentials_are_sent_when_no_extra_header_is_set(provider):
+    assert set(provider._headers()) == {"Authorization", "Content-Type"}
+
+
+def test_an_extra_header_cannot_replace_the_credentials(monkeypatch):
+    monkeypatch.setenv("TEST_API_KEY", "secret-key")
+    headers = build_provider(
+        extra_headers={"Authorization": "Bearer other", "Content-Type": "text/plain"}
+    )._headers()
+
+    assert headers["Authorization"] == "Bearer secret-key"
+    assert headers["Content-Type"] == "application/json"
+
+
 def test_a_reasoning_model_answer_drops_the_thinking_block():
     content = [
         {"type": "thinking", "thinking": [{"type": "text", "text": "let me think"}]},
