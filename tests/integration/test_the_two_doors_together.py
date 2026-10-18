@@ -21,7 +21,7 @@ import contextlib
 import pytest
 from fastapi.testclient import TestClient
 
-from labpilot.api import ApiConfig, app, get_client, services
+from labpilot.api import ApiConfig, app, get_client, ingestion, searching
 from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.llm import LLMResult
@@ -91,8 +91,8 @@ class FakeClient:
 @pytest.fixture
 def embedder(db, chat_tables, monkeypatch) -> CountingEmbedder:
     counting = CountingEmbedder()
-    monkeypatch.setattr(services, "_pick_embedder", lambda **kw: (counting, 0.1))
-    monkeypatch.setattr(services, "MIGRATION", (counting,))
+    monkeypatch.setattr(ingestion, "_pick_embedder", lambda **kw: (counting, 0.1))
+    monkeypatch.setattr(searching, "MIGRATION", (counting,))
 
     # Both routes open their own connection. They must land in the TEST
     # schema, not the real one - the fixture connection already carries the
