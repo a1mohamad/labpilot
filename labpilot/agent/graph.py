@@ -5,6 +5,8 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from labpilot.agent.plan import Plan
+from labpilot.agent.planner import make_planner_node
 from labpilot.agent.state import Chunks, State, Totals
 from labpilot.agent.summarize import make_summarize_node
 
@@ -18,6 +20,7 @@ def build_graph(
     make_prompt: Callable[[Chunks, str, Totals], tuple[str, Chunks]],
     generate: Callable[[str], Any],
     summarize: Callable[[str], str] | None = None,
+    plan: Callable[[str, str, str], Plan] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     def measure_node(state: State) -> dict[str, Any]:
@@ -54,7 +57,12 @@ def build_graph(
     builder.add_node("prompt", prompt_node)
     builder.add_node("generate", generate_node)
     builder.add_node("remember", remember_node)
-    builder.add_edge(START, "measure")
+    first = "measure"
+    if plan is not None:
+        builder.add_node("plan", make_planner_node(plan))
+        builder.add_edge("plan", "measure")
+        first = "plan"
+    builder.add_edge(START, first)
     if summarize is not None:
         for slot in ("a", "b"):
             name = f"summarize_{slot}"

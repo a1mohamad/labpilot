@@ -16632,7 +16632,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 1 | **latency ranking** | how fast each of the 40 tiers is, and which support function calling | none — measurement, DONE |
 | 2 | **the skeleton** | a graph replaces `ask()`, and the chat is saved (checkpointer, `thread_id`) | **heavy** — DONE |
 | 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers). The slice ENDS with the modularization task (D45): a full read-only check of the whole app, then the split of `api/services.py` | medium, 3 lessons |
-| 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 2 lessons, plus a small one on function calling (D34) |
+| 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 5 lessons (revised 2026-10-18, see 17.19): the small one on function calling (D34, DONE), the planner node, the check in code, tool calls in the LLM layer, the real planner function |
 | 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31); "stuff when it fits" stays | **heavy**, 3 lessons |
 | 6 | **follow-ups** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6) | light, 1 lesson |
 | 7 | **claims, check, retry** | `extract_claims`; each claim searches B with its own text; one check per claim at the same time; the bounded retry loop (D4); the findings list; a small A merges with the planner (D40) | **heavy**, 3 lessons |
@@ -16659,7 +16659,7 @@ the nodes to exist. Slice 12 needs a new test pair. Slice 13 comes last because 
 all of it.
 
 **Lessons in all:** 22 for slices 3 to 12 (3 + 3 + 3 + 1 + 3 + 2 + 2 + 2 + 1 + 2), against 13
-in the old list. The extra 9 are the nodes the old list forgot (slice 3 grew to 3 lessons on 2026-10-17).
+in the old list. The extra 9 are the nodes the old list forgot (slice 3 grew to 3 lessons on 2026-10-17). Slice 4 grew from 3 to 5 lessons on 2026-10-18 (17.19), so the total is 24.
 
 ### 5. THE OUTLINE GAP — the planner cannot use the outline we have
 
@@ -18142,7 +18142,7 @@ are estimates, not promises.
 | 1 done | the speed of each of the 56 models | none |
 | **2 (DONE 2026-10-14: lessons 1 to 4 and the closing review, 17.14)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | `summarize` for A and for B at the same time (two independent steps run together) | medium, 3 |
-| 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 2 + 1 |
+| 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 5 (revised 2026-10-18, 17.19) |
 | 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3** |
 | 6 | follow-up questions: rewrite them into standalone ones | light, 1 |
 | 7 | the loop: claims, check each one, search again at most 2 times | **heavy, 3** |
@@ -18879,6 +18879,25 @@ The code was only moved. The logic did not change: the same tests pass before an
 - No test forbids a deep import (rule 2 of the Modularization rule). `test_architecture` checks layers only, and `test_public_api` checks that the names in `__all__` exist.
 - Smaller: `SIDES = ("A", "B")` is written 3 times; `REQUEST_ID_HEADER` twice; `INPUT_BUDGET` in `retrieval/selector.py` is an old default that nothing uses; the constant `CLOUDFLARE_RERANK` is in no chain although its comment says "deleted"; `normalised` and `normalized` are both used.
 - Later, not now: `llm/registry.py` split by gateway (slice 11); `embed/base.py` could give `embedding_minutes` its own file; `prompts/instructions.py` holds FULL and CORE, which only tests and scripts use; `routers/compare.py` builds the reply, and slices 5 to 7 add to it.
+
+#### 17.19 Slice 4, lesson 1 (function calling) was done, 2026-10-18
+
+**Status: DONE.** Taught and run on 2026-10-18, on the branch `feat/planner` (made by the user from `main`, `08a355d`). The user typed `examples/function_calling/ask_for_a_plan.py`; Claude checked only its syntax (parsed, not run, to save quota); the user ran it. When this was written the file was not committed yet. The result:
+
+```
+STATUS 200   functionCall  make_plan
+steps    ["extract_claims", "find_bugs", "verify", "respond"]
+queries  ["paper A gradient clipping value 1.0", "code B gradient clipping value 1.5"]
+137 tokens in, 58 out, model gemini-3.5-flash-lite
+```
+
+**What the lesson taught** (do not re-teach). (1) The direction: the model WRITES the function name and the arguments, our code reads them, and the model never runs anything. (2) `make_plan` is a shape only (case 2 in 19.2): no real function exists, the arguments are the answer. (3) `toolConfig` with mode `ANY` and `allowedFunctionNames` forces the call. (4) The idea behind it, constrained decoding: at each step only the allowed tokens keep their probability and the rest is rescaled. It was NOT checked that Google does it this way, and a tier may only ask for the shape without forcing it, so the code must check the plan anyway.
+
+**Facts measured with three live runs by Claude** (Flash-Lite, exit `185.204.170.210`, AS57568 ARVANCLOUD, Frankfurt, Google 200): mode `ANY` with `allowedFunctionNames` works. Mode `AUTO` with `allowedFunctionNames` answers 400 "Please set allowed_function_names only when function calling mode is ANY". Mode `AUTO` without names also called `make_plan`, but a greeting in `AUTO` was NOT tested (the test script had a mistake: `"hello" and "question"` returns the second text). The same question at temperature 0 gave different step lists in different runs: `summarize, find_bugs, verify, respond` once (`verify` without `extract_claims`), and `extract_claims, find_bugs, verify, respond` twice. The reply also carries an `id` and a `thoughtSignature`, which we ignore. Quota: 4 Flash-Lite requests (3 by Claude, 1 by the user) of 500 a day.
+
+**What the output showed, and what lesson 2 and 3 do about it.** (a) The queries are plain text with the side written inside the words ("paper A ...", "code B ..."). The real plan needs a `side` field on each query (D2 shows `{"side": "B", "text": ...}`), so lesson 2 adds `Query(side, text)`. (b) The planner listed `verify` and `respond`. In the real list `verify` is part of the `extract_claims` step and `respond` is added by code (D31), so the allowed names must come from code, which is lesson 3. (c) Names came from a list but the combination was not sensible in one run, so the plan is checked in code (lesson 3).
+
+**Slice 4 grows from 3 lessons to 5 (an estimate).** Checked on 2026-10-18: `labpilot/llm/` has no tool support at all (no `tools`, `tool_calls` or `functionCall` anywhere), and the first count of 3 forgot it. The plan now: 1 function calling (DONE); 2 the planner node with a fake planner function (`agent/plan.py` holds `Query` and `Plan`, `agent/planner.py` holds the node, `State` gets the key `plan`, and the graph gets an optional `plan` parameter and runs the planner first); 3 the check in code and the default plan; 4 tool calls in the LLM layer (CC4); 5 the real planner function (`api/planning.py`, the fixed instruction, the map, the dynamic budget CC8, and the measurements M5 and M16). **A trap for lesson 5:** `Plan` and `Query` are classes inside `State`, so they must be added to `SAVED_TYPES` in `api/checkpoints.py` when the planner is wired (D37), or a saved chat brings them back as plain dicts. Also written the same day: D48, M15 and M16 (the Jev measurement for `verify` and for the planner's steps, commit `08a355d`).
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
