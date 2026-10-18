@@ -22,7 +22,7 @@ keys), and ONE generation. It needs a live Postgres as well, so it carries the
 cost of both gates and skips when either is absent.
 
 WHY THE SEARCH PATH AND NOT THE STUFF PATH: `A_paper.md` + `B_train.py` is
-28,246 tokens against a PROMPT_BUDGET of 26,000, so `_fits` refuses and the
+28,246 tokens against a PROMPT_BUDGET of 26,000, so `fits_whole` refuses and the
 whole ladder runs. Stuffing would exercise measure, read_chunks and generate
 and skip everything in between.
 """
@@ -35,7 +35,7 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from labpilot.api import services
+from labpilot.api import asking, ingestion
 from labpilot.llm import LLMClient
 from labpilot.prompts import find_citations, resolve
 from labpilot.store import read_chunks
@@ -49,16 +49,16 @@ QUESTION = "Compare these and explain why the results diverge."
 
 @pytest.mark.smoke
 def test_a_stored_pair_answers_through_the_shipped_ask_path(db):
-    a = services.ingest_artifact(
+    a = ingestion.ingest_artifact(
         db, (SAMPLES / "A_paper.md").read_bytes(), name="A_paper.md", side="A"
     )
-    b = services.ingest_artifact(
+    b = ingestion.ingest_artifact(
         db, (SAMPLES / "B_train.py").read_bytes(), name="B_train.py", side="B"
     )
 
     assert a.chunks and b.chunks, "premise: both artifacts must really be stored"
 
-    out = services.ask(
+    out = asking.ask(
         db, a.artifact.id, b.artifact.id, question=QUESTION, client=LLMClient()
     )
 
@@ -95,13 +95,13 @@ def test_a_real_citation_survives_the_round_trip_to_postgres(db):
     It asserts a RATE rather than perfection: a model may quote a line it
     reworded, and that is the model's miss, not ours.
     """
-    a = services.ingest_artifact(
+    a = ingestion.ingest_artifact(
         db, (SAMPLES / "A_paper.md").read_bytes(), name="A_paper.md", side="A"
     )
-    b = services.ingest_artifact(
+    b = ingestion.ingest_artifact(
         db, (SAMPLES / "B_train.py").read_bytes(), name="B_train.py", side="B"
     )
-    out = services.ask(
+    out = asking.ask(
         db, a.artifact.id, b.artifact.id, question=QUESTION, client=LLMClient()
     )
 
