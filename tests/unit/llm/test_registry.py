@@ -30,7 +30,19 @@ ROUTEWAY_WITHOUT_REASONING = (
     "Gemma 4 26B A4B Chimerax (Routeway)",
     "Gemma 4 26B A4B MeroMero (Routeway)",
 )
-REJECTS_REASONING = ("Devstral 2", *ROUTEWAY_WITHOUT_REASONING)
+# Bazaarlink's two free models were probed 2026-10-18 without any reasoning
+# field: Qwen 3.7 Flash spent no reasoning tokens by default, DeepSeek 0731 about
+# 430. Whether a reasoning field is accepted was NOT tested, and an unlisted
+# field is a guess, so these are named one by one like Routeway's.
+BAZAARLINK_WITHOUT_REASONING = (
+    "Qwen 3.7 Flash (Bazaarlink)",
+    "DeepSeek V4 Flash 0731 (Bazaarlink)",
+)
+REJECTS_REASONING = (
+    "Devstral 2",
+    *ROUTEWAY_WITHOUT_REASONING,
+    *BAZAARLINK_WITHOUT_REASONING,
+)
 
 # The Gemini-shape twin of REJECTS_REASONING, and it cost a dead tier to find.
 # Gemma answers HTTP 400 - "Thinking level is not supported for this model" - to
@@ -55,6 +67,15 @@ GEMMA_LEVELS = ("MINIMAL", "HIGH")
 # and Step 2's small code jobs fit easily at 1,000 requests a day.
 OUTPUT_TOO_SMALL = (
     "Qwen3.8 27B (Groq)",
+    # Bazaarlink joined 2026-10-18 with a DELIBERATELY small output cap of 8,192.
+    # Its binding limit is a daily quota of 60 "units" for the whole account
+    # that grows with the prompt: 13 calls (~70,000 prompt tokens) used it up. A
+    # report would spend a large share of the day, so _check_fits turns one away
+    # for free and the two tiers serve small jobs only. The number is
+    # conservative, not measured - raise it, and take these names out, once the
+    # units per token are calibrated.
+    "Qwen 3.7 Flash (Bazaarlink)",
+    "DeepSeek V4 Flash 0731 (Bazaarlink)",
     "GPT-OSS 120B (Groq)",
     # the dead tiers, at the tail with the rest of KNOWN_DEAD, in chain order.
     # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
@@ -98,6 +119,7 @@ GATEWAYS = (
     "REQUESTY_API_KEY",
     "ORCAROUTER_API_KEY",
     "ROUTEWAY_API_KEY",
+    "BAZAARLINK_API_KEY",
 )
 
 # What LiteRouter itself says: "7 seconds between messages". 8 is the value that
@@ -580,6 +602,23 @@ def test_routeway_tiers_carry_a_short_read_timeout_of_their_own():
             f"Routeway hangs rather than refusing, so anything past 180s is "
             f"the chain budget spent on one dead tier."
         )
+
+
+def test_every_bazaarlink_tier_refuses_the_paid_fallback():
+    """Past the free quota, an account with a positive balance is billed.
+
+    Bazaarlink's docs: "if you exceed the free quota and your balance is
+    positive, the extra requests are billed at the model's listed paid price".
+    `X-Free-Fallback: false` turns that into a 429. The balance is $0 today, so
+    nothing could be billed - which is exactly why nobody would notice the
+    header going missing, and why a tier added later could cost real money the
+    day somebody tops the account up.
+    """
+    bazaarlink = [p for p in CHAIN if p.api_key_env == "BAZAARLINK_API_KEY"]
+
+    assert len(bazaarlink) >= 2, "expected both Bazaarlink tiers"
+    for provider in bazaarlink:
+        assert provider.extra_headers == {"X-Free-Fallback": "false"}, provider.name
 
 
 def test_every_cline_tier_is_a_model_the_api_actually_serves():
