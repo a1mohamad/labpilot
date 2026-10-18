@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from labpilot.api import services
+from labpilot.api import searching
 from labpilot.api.errors import EmbeddingUnavailable
 from labpilot.embed import EmbeddingError
 from labpilot.embed.contracts import EmbeddingBatch
@@ -49,7 +49,7 @@ def test_a_reranked_position_is_read_as_a_position_and_never_as_an_id():
     hits = tuple(hit(i) for i in range(3))
     reversed_order = Ranking(order=(2, 1, 0), model="fake-rerank")
 
-    best = services._best("q", hits, rank=lambda *_, **__: reversed_order)
+    best = searching.rerank_and_cut("q", hits, rank=lambda *_, **__: reversed_order)
 
     assert [h.chunk_index for h in best] == [102, 101, 100]
 
@@ -65,9 +65,9 @@ def test_a_skipped_rerank_keeps_the_VECTOR_number_not_the_reranked_one():
     hits = tuple(hit(i) for i in range(40))
     declined = Ranking(order=tuple(range(40)), model=SKIP)
 
-    best = services._best("q", hits, rank=lambda *_, **__: declined)
+    best = searching.rerank_and_cut("q", hits, rank=lambda *_, **__: declined)
 
-    assert len(best) == services.VECTOR_TOP_N
+    assert len(best) == searching.VECTOR_TOP_N
 
 
 def test_the_cut_is_never_handed_DOWN_to_the_rerank_chain():
@@ -91,10 +91,10 @@ def test_the_cut_is_never_handed_DOWN_to_the_rerank_chain():
         order = tuple(range(len(documents)))[: top_n or len(documents)]
         return Ranking(order=order, model=SKIP)
 
-    best = services._best("q", hits, rank=recording)
+    best = searching.rerank_and_cut("q", hits, rank=recording)
 
     assert seen["top_n"] is None, "asking for fewer would truncate the degraded path"
-    assert len(best) == services.VECTOR_TOP_N
+    assert len(best) == searching.VECTOR_TOP_N
 
 
 def test_a_real_reranker_cuts_to_the_reranked_number():
@@ -102,9 +102,9 @@ def test_a_real_reranker_cuts_to_the_reranked_number():
     hits = tuple(hit(i) for i in range(40))
     ordered = Ranking(order=tuple(range(40)), model="rerank-3-lite")
 
-    best = services._best("q", hits, rank=lambda *_, **__: ordered)
+    best = searching.rerank_and_cut("q", hits, rank=lambda *_, **__: ordered)
 
-    assert len(best) < services.VECTOR_TOP_N
+    assert len(best) < searching.VECTOR_TOP_N
 
 
 def test_the_reranker_reads_only_the_WINDOW_not_everything_search_returned():
@@ -127,14 +127,14 @@ def test_the_reranker_reads_only_the_WINDOW_not_everything_search_returned():
         seen["documents"] = len(documents)
         return Ranking(order=tuple(range(len(documents))), model="rerank-3-lite")
 
-    services._best("q", hits, rank=recording)
+    searching.rerank_and_cut("q", hits, rank=recording)
 
-    assert seen["documents"] == services.RERANK_WINDOW
+    assert seen["documents"] == searching.RERANK_WINDOW
 
 
 def test_nothing_found_is_not_an_error():
     """An empty result is an answer. Reranking nothing would be a ValueError."""
-    assert services._best("q", ()) == []
+    assert searching.rerank_and_cut("q", ()) == []
 
 
 # --- the query embed: which model, which task, and how it fails -------------
@@ -160,7 +160,7 @@ class FakeEmbedder:
 
 
 def only(monkeypatch, *embedders: FakeEmbedder) -> None:
-    monkeypatch.setattr(services, "MIGRATION", tuple(embedders))
+    monkeypatch.setattr(searching, "MIGRATION", tuple(embedders))
 
 
 def test_a_question_is_embedded_as_a_QUERY_and_never_as_a_document(monkeypatch):
@@ -173,7 +173,7 @@ def test_a_question_is_embedded_as_a_QUERY_and_never_as_a_document(monkeypatch):
     embedder = FakeEmbedder("codestral-embed")
     only(monkeypatch, embedder)
 
-    services._embed_question("why do they diverge?", model="codestral-embed")
+    searching._embed_question("why do they diverge?", model="codestral-embed")
 
     ((texts, task),) = embedder.calls
     assert task == "query"
@@ -193,7 +193,7 @@ def test_the_question_goes_to_the_embedder_THAT_MATCHES_the_stored_model(monkeyp
     second = FakeEmbedder("mistral-embed", value=2.0)
     only(monkeypatch, first, second)
 
-    vector = services._embed_question("a question", model="mistral-embed")
+    vector = searching._embed_question("a question", model="mistral-embed")
 
     assert vector == (2.0, 0.0, 0.0)
     assert first.calls == [], "the wrong space must not be asked"
@@ -213,7 +213,7 @@ def test_a_corpus_whose_embedder_is_gone_is_refused_and_not_searched_anyway(
     only(monkeypatch, FakeEmbedder("codestral-embed"))
 
     with pytest.raises(EmbeddingUnavailable, match="retired-embed"):
-        services._embed_question("a question", model="retired-embed")
+        searching._embed_question("a question", model="retired-embed")
 
 
 def test_an_embedder_that_fails_is_OUR_outage_not_the_users_mistake(monkeypatch):
@@ -228,14 +228,14 @@ def test_an_embedder_that_fails_is_OUR_outage_not_the_users_mistake(monkeypatch)
     only(monkeypatch, Broken("codestral-embed"))
 
     with pytest.raises(EmbeddingUnavailable, match="codestral is down"):
-        services._embed_question("a question", model="codestral-embed")
+        searching._embed_question("a question", model="codestral-embed")
 
 
 def test_a_skip_gate_that_says_no_really_stops_the_reranker(monkeypatch):
     """THE GATE IS WIRED, AND NOTHING PROVED IT.
 
     `SKIP_MARGIN` is None today, so `should_rerank` always answers True and
-    deleting the call from `_best` changes no behaviour whatever. That is
+    deleting the call from `rerank_and_cut` changes no behaviour whatever. That is
     exactly the condition under which a component quietly stops being
     connected - and this project has shipped that failure twice already:
 
@@ -260,12 +260,12 @@ def test_a_skip_gate_that_says_no_really_stops_the_reranker(monkeypatch):
         called.append(question)
         raise AssertionError("the gate said skip, so no tier may be asked")
 
-    monkeypatch.setattr(services, "should_rerank", lambda scores: False)
+    monkeypatch.setattr(searching, "should_rerank", lambda scores: False)
 
-    hits = tuple(hit(index) for index in range(services.VECTOR_TOP_N + 5))
-    kept = services._best("why do the results differ?", hits, rank=never)
+    hits = tuple(hit(index) for index in range(searching.VECTOR_TOP_N + 5))
+    kept = searching.rerank_and_cut("why do the results differ?", hits, rank=never)
 
     assert not called, "the reranker was called although the gate said skip"
     assert [found.chunk_index for found in kept] == [
-        FIRST_ID + index for index in range(services.VECTOR_TOP_N)
+        FIRST_ID + index for index in range(searching.VECTOR_TOP_N)
     ], "a skipped gate must fall back to the VECTOR number, in search order"
