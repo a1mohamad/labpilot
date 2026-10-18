@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from labpilot.api import services
+from labpilot.api import asking, searching
 from labpilot.api.checkpoints import open_saver
 from labpilot.api.errors import (
     ArtifactChanged,
@@ -77,10 +77,10 @@ def test_a_small_pair_is_stuffed_and_never_searched(db, monkeypatch):
     a = stored(db, "A", parts=3, words=20)
     b = stored(db, "B", parts=3, words=20)
     monkeypatch.setattr(
-        services, "search", lambda *a, **k: pytest.fail("search must not run")
+        searching, "search", lambda *a, **k: pytest.fail("search must not run")
     )
 
-    result = services.ask(db, a, b, question="why?", client=FakeClient())
+    result = asking.ask(db, a, b, question="why?", client=FakeClient())
 
     assert len(result.chunks) == 6, "every stored row was read back"
 
@@ -93,10 +93,10 @@ def test_a_large_pair_is_searched_and_admits_how_much_it_read(db, monkeypatch):
     """
     a = stored(db, "A", parts=60, words=300)
     b = stored(db, "B", parts=60, words=300)
-    monkeypatch.setattr(services, "_embed_question", lambda *a, **k: V)
+    monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: V)
     client = FakeClient()
 
-    services.ask(db, a, b, question="why?", client=client)
+    asking.ask(db, a, b, question="why?", client=client)
 
     assert "NOT searched" in client.prompts[0]
     assert "of 60 parts" in client.prompts[0]
@@ -112,7 +112,7 @@ def test_an_unknown_artifact_id_is_refused(db):
     b = stored(db, "B", parts=2, words=20)
 
     with pytest.raises(UnknownArtifactId, match="ghost"):
-        services.ask(db, "ghost", b, question="why?", client=FakeClient())
+        asking.ask(db, "ghost", b, question="why?", client=FakeClient())
 
 
 def test_two_artifacts_from_the_same_slot_are_refused(db):
@@ -124,7 +124,7 @@ def test_two_artifacts_from_the_same_slot_are_refused(db):
     a = stored(db, "A", parts=2, words=20)
 
     with pytest.raises(ArtifactSidesClash):
-        services.ask(db, a, a, question="why?", client=FakeClient())
+        asking.ask(db, a, a, question="why?", client=FakeClient())
 
 
 def test_a_re_ingest_mid_request_is_a_conflict_and_not_our_bug(db, monkeypatch):
@@ -141,17 +141,17 @@ def test_a_re_ingest_mid_request_is_a_conflict_and_not_our_bug(db, monkeypatch):
     """
     a_id = stored(db, "A", parts=400, words=60)
     b_id = stored(db, "B", parts=400, words=60)
-    monkeypatch.setattr(services, "_embed_question", lambda *a, **k: V)
+    monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: V)
 
     def re_ingested(*args, **kwargs):
         raise ModelMismatch(
             "artifact was embedded with 'mistral-embed', not 'codestral-embed'"
         )
 
-    monkeypatch.setattr(services, "search", re_ingested)
+    monkeypatch.setattr(searching, "search", re_ingested)
 
     with pytest.raises(ArtifactChanged, match="ask again"):
-        services.ask(db, a_id, b_id, question="why?", client=FakeClient())
+        asking.ask(db, a_id, b_id, question="why?", client=FakeClient())
 
 
 def test_the_side_comes_from_the_stored_row_and_not_from_the_slot(db, monkeypatch):
@@ -167,7 +167,7 @@ def test_the_side_comes_from_the_stored_row_and_not_from_the_slot(db, monkeypatc
     client = FakeClient()
 
     # deliberately the wrong way round
-    comparison = services.ask(db, b_id, a_id, question="why?", client=client)
+    comparison = asking.ask(db, b_id, a_id, question="why?", client=client)
 
     by_side = {chunk.side for chunk in comparison.chunks}
     assert by_side == {"A", "B"}
@@ -195,7 +195,7 @@ def talk(db, thread_id: str, *questions: str) -> None:
     a = stored(db, "A", parts=3, words=20)
     b = stored(db, "B", parts=3, words=20)
     for question in questions:
-        services.ask(
+        asking.ask(
             db, a, b, question=question, client=FakeClient(), thread_id=thread_id
         )
 
@@ -242,7 +242,7 @@ def test_a_question_with_no_chat_saves_nothing(db, chat_tables):
         cur.execute("select count(*) from checkpoints")
         before = cur.fetchone()[0]
 
-    services.ask(db, a, b, question="no chat?", client=FakeClient())
+    asking.ask(db, a, b, question="no chat?", client=FakeClient())
 
     with db.cursor() as cur:
         cur.execute("select count(*) from checkpoints")
