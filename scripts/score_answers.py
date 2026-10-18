@@ -52,7 +52,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from labpilot.api.reranking import CHAIN as RERANK_CHAIN
-from labpilot.api.services import RERANK_WINDOW
+from labpilot.api.searching import RERANK_WINDOW
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.llm.defaults import SAFETY_MARGIN_RATIO
 from labpilot.llm.registry import (
