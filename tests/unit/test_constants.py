@@ -66,7 +66,7 @@ def test_the_three_top_n_numbers_keep_their_order():
 
     Added 2026-09-18, when slice 8 v3 moved `VECTOR_TOP_N` 25 -> 30.
     """
-    from labpilot.api.services import RERANK_WINDOW, VECTOR_TOP_N
+    from labpilot.api.searching import RERANK_WINDOW, VECTOR_TOP_N
     from labpilot.rerank.defaults import RERANK_TOP_N
     from labpilot.store.defaults import SEARCH_LIMIT
 
@@ -121,7 +121,7 @@ def test_both_top_n_constants_are_in_PER_SIDE_units():
     below 15. This is a UNIT check, not a quality one: it cannot say the values
     are right, only that neither has silently doubled again.
     """
-    from labpilot.api.services import VECTOR_TOP_N
+    from labpilot.api.searching import VECTOR_TOP_N
     from labpilot.rerank.defaults import RERANK_TOP_N
 
     largest_measured_prompt = 30
