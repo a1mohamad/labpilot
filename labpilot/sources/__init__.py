@@ -1,6 +1,7 @@
 from labpilot.sources._walk import walk
 from labpilot.sources.archive import open_zip
 from labpilot.sources.contracts import Source, SourceFile
+from labpilot.sources.defaults import SECRET_SUFFIXES
 from labpilot.sources.errors import (
     CloneFailed,
     SourceError,
@@ -13,6 +14,7 @@ from labpilot.sources.folder import open_folder
 from labpilot.sources.git import open_git
 
 __all__ = [
+    "SECRET_SUFFIXES",
     "CloneFailed",
     "Source",
     "SourceError",
