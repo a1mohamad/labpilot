@@ -130,7 +130,7 @@ def test_an_unexpected_exception_becomes_a_500_in_the_same_envelope(
     def explode(*args, **kwargs):
         raise RuntimeError("something nobody predicted")
 
-    monkeypatch.setattr("labpilot.api.services.ask", explode)
+    monkeypatch.setattr("labpilot.api.asking.ask", explode)
 
     response = lenient_client.post(
         COMPARE, json={"a": "A-x", "b": "B-y", "question": QUESTION}
