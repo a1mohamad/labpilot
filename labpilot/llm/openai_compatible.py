@@ -75,6 +75,7 @@ def _visible_text(content: object) -> str:
 class OpenAICompatibleProvider(HTTPProvider):
     account_env: str | None = None
     extra_body: dict[str, object] | None = None
+    extra_headers: dict[str, str] | None = None
 
     def _endpoint(self) -> str:
         if self.account_env is None:
@@ -86,7 +87,9 @@ class OpenAICompatibleProvider(HTTPProvider):
         return self.url.format(account_id=account_id)
 
     def _headers(self) -> dict[str, str]:
+        # The credentials come last, so an extra header can never replace them.
         return {
+            **(self.extra_headers or {}),
             "Authorization": f"Bearer {self._api_key()}",
             "Content-Type": "application/json",
         }
