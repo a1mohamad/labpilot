@@ -77,7 +77,7 @@ def select(
     """
 
     if budget < 0:
-        raise ValueError(f"budget most not be negative, got {budget}")
+        raise ValueError(f"budget must not be negative, got {budget}")
 
     share = int(budget * SIDE_SHARE)
     on_side = {side: [c for c in chunks if c.side == side] for side in SIDES}
