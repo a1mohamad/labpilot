@@ -15,8 +15,9 @@ REASONING_FLOOR = 8192
 # almost in a row - the six Gemma variants are adjacent - so the last ones came
 # back 429 "Account per-minute rate limit exceeded (5 RPM)" on the first live
 # run. That is our test outrunning a published limit, not a dead tier. 13s
-# between calls keeps it under 5 a minute.
-SECONDS_BETWEEN_CALLS = {"ROUTEWAY_API_KEY": 13.0}
+# between calls keeps it under 5 a minute. Bazaarlink says 10 a minute for its
+# free models (its header says 20), so 7s stays under the stricter number.
+SECONDS_BETWEEN_CALLS = {"ROUTEWAY_API_KEY": 13.0, "BAZAARLINK_API_KEY": 7.0}
 
 _last_call: dict[str, float] = {}
 
