@@ -56,9 +56,9 @@ def build_graph(
     builder.add_node("remember", remember_node)
     builder.add_edge(START, "measure")
     if summarize is not None:
-        for source in ("a", "b"):
-            name = f"summarize_{source}"
-            builder.add_node(name, make_summarize_node(source, summarize))
+        for slot in ("a", "b"):
+            name = f"summarize_{slot}"
+            builder.add_node(name, make_summarize_node(slot, summarize))
             builder.add_edge(START, name)
             builder.add_edge(name, END)
     builder.add_conditional_edges("measure", pick)
