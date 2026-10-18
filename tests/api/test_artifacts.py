@@ -52,7 +52,7 @@ def no_database(monkeypatch):
 
 def test_a_file_is_stored_and_its_id_comes_back(client, no_database, monkeypatch):
     monkeypatch.setattr(
-        "labpilot.api.services.ingest_artifact", lambda *a, **k: stored(0.4)
+        "labpilot.api.ingestion.ingest_artifact", lambda *a, **k: stored(0.4)
     )
 
     response = client.post(
@@ -76,7 +76,7 @@ def test_a_long_ingest_is_flagged_but_still_done(client, no_database, monkeypatc
     person is one that times out. It reports, and the UI decides.
     """
     monkeypatch.setattr(
-        "labpilot.api.services.ingest_artifact", lambda *a, **k: stored(37.0)
+        "labpilot.api.ingestion.ingest_artifact", lambda *a, **k: stored(37.0)
     )
 
     response = client.post(
@@ -182,7 +182,7 @@ def test_an_upload_over_the_size_limit_is_rejected(client, no_database):
 def test_an_upload_under_the_size_limit_is_accepted(client, no_database, monkeypatch):
     """The other half, so the limit cannot silently drift down to zero."""
     monkeypatch.setattr(
-        "labpilot.api.services.ingest_artifact", lambda *a, **k: stored(0.1)
+        "labpilot.api.ingestion.ingest_artifact", lambda *a, **k: stored(0.1)
     )
     ordinary = b"x = 1\n" * 100_000
     assert len(ordinary) < ApiConfig.MAX_UPLOAD_BYTES
@@ -205,7 +205,7 @@ def test_a_pdf_is_read_as_a_document_not_refused_as_binary(
     """Papers are PDFs. The door must not decode before the loader runs -
     that is the whole reason LOADERS takes bytes rather than str."""
     monkeypatch.setattr(
-        "labpilot.api.services.ingest_artifact", lambda *a, **k: stored(0.1)
+        "labpilot.api.ingestion.ingest_artifact", lambda *a, **k: stored(0.1)
     )
     pdf = (SAMPLES.parent / "pdf" / "one_column.pdf").read_bytes()
 
@@ -236,7 +236,7 @@ def test_non_ascii_content_survives_the_door(client, no_database, monkeypatch):
         seen["raw"] = raw
         return stored(0.1)
 
-    monkeypatch.setattr("labpilot.api.services.ingest_artifact", fake_ingest)
+    monkeypatch.setattr("labpilot.api.ingestion.ingest_artifact", fake_ingest)
     body = "ratio = 0.5  # −4.1 F1, α ≤ 0.05".encode()
 
     upload(client, "odd.py", body)
@@ -245,7 +245,7 @@ def test_non_ascii_content_survives_the_door(client, no_database, monkeypatch):
 
 
 def test_a_broken_notebook_is_a_422_not_a_500(client, no_database):
-    """LoaderError is not an ApiError, so without the guard in services._cut_bytes a
+    """LoaderError is not an ApiError, so without the guard in ingestion._cut_bytes a
     malformed .ipynb reaches the 500 handler and reads as OUR bug rather than
     the user's file. Reachable only since .ipynb became an accepted upload.
 
@@ -288,7 +288,7 @@ def opened(monkeypatch):
         seen.append((source.name, files, side))
         return stored(0.2)
 
-    monkeypatch.setattr("labpilot.api.services.ingest_source", fake_ingest_source)
+    monkeypatch.setattr("labpilot.api.ingestion.ingest_source", fake_ingest_source)
     return seen
 
 
@@ -299,7 +299,7 @@ def never_a_single_file(monkeypatch):
     def refuse(*args, **kwargs):
         raise AssertionError("the single-file path ran for an archive")
 
-    monkeypatch.setattr("labpilot.api.services.ingest_artifact", refuse)
+    monkeypatch.setattr("labpilot.api.ingestion.ingest_artifact", refuse)
 
 
 def test_a_zip_is_unpacked_and_stored_as_one_artifact(
@@ -350,7 +350,7 @@ def test_an_ordinary_file_never_takes_the_archive_path(
 ):
     """The mirror of the two tests above: one file is ONE file."""
     monkeypatch.setattr(
-        "labpilot.api.services.ingest_artifact", lambda *a, **k: stored(0.1)
+        "labpilot.api.ingestion.ingest_artifact", lambda *a, **k: stored(0.1)
     )
 
     assert upload(client, "train.py", CODE).status_code == status.HTTP_201_CREATED
@@ -412,7 +412,7 @@ def test_a_repository_over_the_limit_is_a_413_that_names_the_size(
     def too_big(conn, source, *, side):
         raise SourceTooLarge("repo is 41000000 bytes, over the 20000000 limit")
 
-    monkeypatch.setattr("labpilot.api.services.ingest_source", too_big)
+    monkeypatch.setattr("labpilot.api.ingestion.ingest_source", too_big)
 
     response = client.post(
         "/api/v1/artifacts",
