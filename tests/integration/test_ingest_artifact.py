@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from labpilot.api.services import ingest_artifact
+from labpilot.api.ingestion import ingest_artifact
 from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.store import search
@@ -32,7 +32,7 @@ def only_fake(monkeypatch):
     """No provider is called. This test is about the WIRING, not the model."""
     fake = FakeEmbedder()
     monkeypatch.setattr(
-        "labpilot.api.services._pick_embedder", lambda **kw: (fake, 0.1)
+        "labpilot.api.ingestion._pick_embedder", lambda **kw: (fake, 0.1)
     )
     return fake
 
