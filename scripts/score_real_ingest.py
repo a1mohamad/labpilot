@@ -38,7 +38,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from labpilot.api.services import chunk_source
+from labpilot.api.source_chunks import chunk_source
 from labpilot.sources import Source, SourceError
 from scripts import corpora
 from scripts.score_hybrid import EMBEDDERS, embedded, targets
@@ -56,7 +56,7 @@ def real_chunks(name: str) -> tuple[list, dict[str, int]]:
     measuring the OLD pipeline, which is the one failure this whole script
     exists to catch, one level up.
 
-    So it calls `api.services.chunk_source` and reads the skips off the Source.
+    So it calls `api.source_chunks.chunk_source` and reads the skips off the Source.
     """
     spec, _ = corpora._spec(name)
     root = corpora._root(spec, name)
