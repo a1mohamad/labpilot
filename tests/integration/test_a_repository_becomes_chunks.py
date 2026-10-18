@@ -5,7 +5,7 @@ from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
-from labpilot.api.services import chunk_source
+from labpilot.api.source_chunks import chunk_source
 from labpilot.prompts._ids import assign_ids
 from labpilot.sources import open_folder
 
