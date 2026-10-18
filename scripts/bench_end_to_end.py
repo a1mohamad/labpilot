@@ -7,7 +7,7 @@ are both guesses that CLAUDE.md labels as guesses.
 
     PYTHONPATH=. python scripts/bench_end_to_end.py
 
-It drives the REAL ask path - `services.ask()` - so it measures what we
+It drives the REAL ask path - `asking.ask()` - so it measures what we
 ship, including the rerank chain assembled at the entry layer and the real
 generator chain with its fallbacks. Two shapes are timed, because they are
 different products:
@@ -28,12 +28,21 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from labpilot.api import services
+from labpilot.api import asking, ingestion, searching
 from labpilot.llm import CHAIN, LLMClient
 from labpilot.store import connect
 
 SAMPLES = Path("data/samples/quora_siamese")
 QUESTION = "Compare these and explain why the results diverge."
+
+# The pieces ask() calls, each in the module that LOOKS THEM UP - a patch on
+# the module that defines a name does nothing for a caller in another file.
+TIMED = (
+    (searching, "_embed_question"),
+    (searching, "search"),
+    (searching, "rerank_and_cut"),
+    (asking, "build_report_prompt"),
+)
 
 # THE STUFF PATH NEEDS A PAIR THAT ACTUALLY FITS, and the committed fixture
 # does not: A_paper.md + B_train.py is 28,246 tokens against a PROMPT_BUDGET of
@@ -61,7 +70,7 @@ QUORA_SRC = os.getenv("LABPILOT_QUORA_SRC")
 class Timed:
     """Wrap the pieces `ask()` calls so each stage reports its own seconds.
 
-    Patching the module attributes rather than editing `services` keeps the
+    Patching the module attributes rather than editing `asking` keeps the
     measurement outside the thing being measured - the same reason the
     scoring scripts live in `scripts/` and not in `labpilot/`.
     """
@@ -85,7 +94,7 @@ class Timed:
 def ingest(conn, path: Path, side: str) -> tuple[str, float, int]:
     raw = path.read_bytes()
     start = time.perf_counter()
-    got = services.ingest_artifact(conn, raw, name=path.name, side=side)
+    got = ingestion.ingest_artifact(conn, raw, name=path.name, side=side)
     return got.artifact.id, time.perf_counter() - start, got.chunks
 
 
@@ -121,7 +130,7 @@ def main() -> int:
         # THE FIRST LABEL WAS A LIE, and the numbers were published under it.
         #
         # `A_paper.md` + `B_train.py` needs 28,246 tokens against a
-        # PROMPT_BUDGET of 26,000, so `_fits()` refuses and ask() SEARCHES. The
+        # PROMPT_BUDGET of 26,000, so `fits_whole()` refuses and ask() SEARCHES. The
         # stuff path was never exercised, and the run's headline - "the cheap
         # path was six times slower than the expensive one" - was comparing two
         # SEARCH runs against each other.
@@ -131,15 +140,14 @@ def main() -> int:
         # sends every chunk and never calls search.
         for label, pair in rows:
             timer = Timed()
-            originals = {
-                name: getattr(services, name)
-                for name in ("_embed_question", "search", "_best", "_prompt")
-            }
-            for name, fn in originals.items():
-                setattr(services, name, timer.wrap(name, fn))
+            originals = [
+                (module, name, getattr(module, name)) for module, name in TIMED
+            ]
+            for module, name, fn in originals:
+                setattr(module, name, timer.wrap(name, fn))
             try:
                 start = time.perf_counter()
-                out = services.ask(
+                out = asking.ask(
                     conn, pair[0], pair[1], question=QUESTION, client=client
                 )
                 total = time.perf_counter() - start
@@ -147,8 +155,8 @@ def main() -> int:
                 print(f"\n{label}\n  FAILED: {str(exc)[:200]}")
                 continue
             finally:
-                for name, fn in originals.items():
-                    setattr(services, name, fn)
+                for module, name, fn in originals:
+                    setattr(module, name, fn)
 
             stages = dict(timer.spans)
             # WHICH PATH ACTUALLY RAN, printed rather than assumed. `search` is
@@ -160,7 +168,7 @@ def main() -> int:
             print(f"  PATH TAKEN      {path}")
             print(f"  served by       {out.result.model} (tier {out.result.tier})")
             print(f"  chunks sent     {len(out.selected)} of {len(out.chunks)}")
-            for name in ("_embed_question", "search", "_best", "_prompt"):
+            for _, name in TIMED:
                 secs = stages.get(name, 0.0)
                 print(f"  {name:<16}{secs:>8.2f}s{secs / total * 100:>7.1f}%")
             print(f"  {'generate':<16}{generate:>8.2f}s{generate / total * 100:>7.1f}%")
