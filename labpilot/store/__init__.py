@@ -19,7 +19,7 @@ from labpilot.store.errors import (
 )
 from labpilot.store.keyword import bm25_search, keyword_search
 from labpilot.store.reader import measure, read_chunks, read_headers
-from labpilot.store.search import file_scores, search
+from labpilot.store.vector_search import file_scores, search
 from labpilot.store.writer import write_artifact
 
 __all__ = [
