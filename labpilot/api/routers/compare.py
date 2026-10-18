@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, status
 
-from labpilot.api import services
+from labpilot.api import asking
 from labpilot.api.contracts import Comparison
 from labpilot.api.dependencies import LLMClientDep
 from labpilot.api.errors import StorageUnavailable
@@ -74,7 +74,7 @@ def compare(body: CompareRequest, client: LLMClientDep) -> CompareResponse:
 
     try:
         with connect(autocommit=True) as conn:
-            comparison = services.ask(
+            comparison = asking.ask(
                 conn,
                 body.a,
                 body.b,
