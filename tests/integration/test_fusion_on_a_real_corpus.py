@@ -35,7 +35,7 @@ import math
 
 import pytest
 
-from labpilot.api import services
+from labpilot.api import searching
 from labpilot.store import (
     ArtifactRecord,
     ChunkRecord,
@@ -131,7 +131,7 @@ def test_the_keyword_channel_lifts_what_cosine_buried(db, corpus):
         "for the keyword channel to rescue and this test proves nothing"
     )
 
-    fused = services._fused(db, corpus, QUESTION, dense)
+    fused = searching._fused(db, corpus, QUESTION, dense)
 
     assert places(fused)[ANSWER_AT] < places(dense)[ANSWER_AT], (
         "the keyword channel returned nothing, or the fusion discarded it - "
@@ -150,6 +150,6 @@ def test_a_question_matching_no_lexeme_still_answers_on_vector_alone(db, corpus)
     """
     dense = search(db, corpus, QUERY_VECTOR, model=MODEL, limit=50)
 
-    fused = services._fused(db, corpus, "zzzqqq unrelatedgibberish", dense)
+    fused = searching._fused(db, corpus, "zzzqqq unrelatedgibberish", dense)
 
     assert [hit.chunk_index for hit in fused] == [hit.chunk_index for hit in dense]
