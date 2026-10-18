@@ -36,7 +36,7 @@ API = pathlib.Path(__file__).resolve().parents[2] / "labpilot" / "api"
 ALLOWED_TO_ESCAPE: dict[str, str] = {
     # LLMClient's own loop catches this per tier and moves to the next one, so
     # it cannot reach api/. AllFreeTiersExhausted is the one that does escape,
-    # and services.py catches it.
+    # and asking.py and summaries.py catch it.
     "LLMError": "the fallback chain swallows it inside LLMClient",
     # rerank() catches this PER TIER and walks to the next one, ending in
     # skip() rather than an exception - so it cannot reach api/ at all. Exactly
@@ -110,7 +110,7 @@ def test_every_error_the_api_can_meet_is_caught_or_named():
         f"the API imports {sorted(unhandled)} and would let "
         f"{sorted(n for names in unhandled.values() for n in names)} reach the "
         f"500 handler, which reports the user's input as OUR bug. Catch each "
-        f"one in api/services.py and map it to an ApiError, or add it to "
+        f"one in a module of api/ and map it to an ApiError, or add it to "
         f"ALLOWED_TO_ESCAPE with the reason it is safe."
     )
 
