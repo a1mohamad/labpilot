@@ -1,0 +1,2 @@
+class PlanError(Exception):
+    pass

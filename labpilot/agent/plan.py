@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 from labpilot.ingest import Side
 
@@ -13,3 +14,4 @@ class Query:
 class Plan:
     steps: tuple[str, ...]
     queries: tuple[Query, ...]
+    source: Literal["planner", "default"] = "planner"

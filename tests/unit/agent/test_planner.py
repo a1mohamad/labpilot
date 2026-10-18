@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from labpilot.agent import Plan, Query, build_graph
+from labpilot.agent import Plan, PlanError, Query, build_graph
 from labpilot.agent.planner import make_planner_node
 
 PLAN = Plan(
@@ -80,3 +80,32 @@ def test_an_error_in_the_planner_reaches_the_caller_unchanged():
 
     with pytest.raises(Boom):
         run(plan)
+
+
+def test_a_plan_the_files_do_not_allow_is_replaced_by_the_default_plan():
+    state = {"question": "why?", "a": "", "b": "B-1"}
+
+    plan = make_planner_node(lambda question, a, b: PLAN)(state)["plan"]
+
+    assert plan.source == "default"
+    assert plan.queries == (Query("B", "why?"),)
+    assert "extract_claims" not in plan.steps
+
+
+def test_a_planner_that_cannot_read_the_model_answer_gives_the_default_plan():
+    def plan(question, a, b):
+        raise PlanError("no function call in the answer")
+
+    state = {"question": "why?", "a": "A-1", "b": "B-1"}
+
+    assert make_planner_node(plan)(state)["plan"].source == "default"
+
+
+def test_the_graph_still_answers_when_the_planner_cannot_make_a_plan():
+    def plan(question, a, b):
+        raise PlanError("no function call in the answer")
+
+    final = run(plan)
+
+    assert final["plan"].source == "default"
+    assert final["result"] == "the result"
