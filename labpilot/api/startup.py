@@ -3,8 +3,7 @@ from __future__ import annotations
 import logging
 import os
 
-from labpilot.llm import CHAIN
-from labpilot.llm.chain import Provider
+from labpilot.llm import CHAIN, Provider
 
 logger = logging.getLogger(__name__)
 
