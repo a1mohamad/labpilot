@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from labpilot.api.errors import EmptyArtifact
-from labpilot.api.services import ingest_source
+from labpilot.api.ingestion import ingest_source
 from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.sources import open_folder
@@ -44,7 +44,7 @@ class FakeEmbedder:
 @pytest.fixture
 def only_fake(monkeypatch):
     monkeypatch.setattr(
-        "labpilot.api.services._pick_embedder", lambda **kw: (FakeEmbedder(), 0.1)
+        "labpilot.api.ingestion._pick_embedder", lambda **kw: (FakeEmbedder(), 0.1)
     )
 
 
