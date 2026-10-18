@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from labpilot.api.errors import EmbeddingUnavailable
-from labpilot.api.services import (
+from labpilot.api.ingestion import (
     _artifact_id,
     _pick_embedder,
     _records,
