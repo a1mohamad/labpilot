@@ -13,7 +13,7 @@ import dataclasses
 
 import pytest
 
-from labpilot.api import services
+from labpilot.api import searching
 from labpilot.api.reranking import CHAIN, PROVIDERS, RANKING_CONFIG, _listwise, rank
 from labpilot.llm import GeminiProvider, LLMResult
 from labpilot.rerank import (
@@ -183,7 +183,7 @@ def test_the_ask_path_reaches_the_assembled_chain_and_not_the_bare_one():
     """
     import inspect
 
-    default = inspect.signature(services._best).parameters["rank"].default
+    default = inspect.signature(searching.rerank_and_cut).parameters["rank"].default
 
     assert default is rank
 
