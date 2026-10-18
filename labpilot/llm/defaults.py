@@ -34,3 +34,9 @@ RETRYABLE_STATUSES = frozenset(
 # 2s, which is too fast for a server that is failing rather than throttling.
 SERVER_ERROR_DELAYS: tuple[float, ...] = (3.0, 10.0)
 SAFETY_MARGIN_RATIO = 0.10
+
+# How many tiers may give an answer that the CALLER rejects (a plan that is
+# readable and still wrong) before the walk stops. A rejected answer costs a
+# real request, so without a limit one mistaken rule in the caller would walk
+# the whole chain on every call. 3 is a first guess, to be measured.
+DEFAULT_MAX_REJECTED_ANSWERS = 3
