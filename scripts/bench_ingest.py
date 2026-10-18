@@ -26,7 +26,7 @@ import time
 
 from dotenv import load_dotenv
 
-from labpilot.api import services
+from labpilot.api import ingestion, source_chunks
 from labpilot.embed.registry import MIGRATION
 from labpilot.sources import open_folder
 from labpilot.store import connect
@@ -60,7 +60,7 @@ def main() -> int:
             try:
                 with open_folder(root, name=name) as source:
                     start = time.perf_counter()
-                    got = services.ingest_source(conn, source, side="B")
+                    got = ingestion.ingest_source(conn, source, side="B")
                     measured = time.perf_counter() - start
             except Exception as exc:  # noqa: BLE001 - a failure IS a result here
                 print(f"{name:12}FAILED: {str(exc)[:70]}")
@@ -73,7 +73,7 @@ def main() -> int:
             with open_folder(root, name=name) as again:
                 tokens = sum(
                     estimate_tokens(c.embed_text)
-                    for c in services.chunk_source(again, side="B")
+                    for c in source_chunks.chunk_source(again, side="B")
                 )
             predicted = (
                 codestral.embedding_minutes(tokens=tokens, chunks=got.chunks) * 60
