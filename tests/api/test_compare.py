@@ -82,7 +82,7 @@ def stub(monkeypatch, outcome) -> None:
             raise outcome
         return outcome
 
-    monkeypatch.setattr("labpilot.api.services.ask", fake_ask)
+    monkeypatch.setattr("labpilot.api.asking.ask", fake_ask)
 
 
 def test_two_ids_and_a_question_are_enough(client, no_database, monkeypatch):
@@ -116,7 +116,7 @@ def test_the_ids_reach_the_ask_path_in_the_slots_they_were_sent_in(
         seen.update(a=a_id, b=b_id, question=question)
         return answered()
 
-    monkeypatch.setattr("labpilot.api.services.ask", fake_ask)
+    monkeypatch.setattr("labpilot.api.asking.ask", fake_ask)
 
     client.post(COMPARE, json=BODY)
 
@@ -285,7 +285,7 @@ def test_the_first_message_gets_a_new_chat_id_and_ask_receives_the_same_one(
         seen["thread_id"] = thread_id
         return answered()
 
-    monkeypatch.setattr("labpilot.api.services.ask", fake_ask)
+    monkeypatch.setattr("labpilot.api.asking.ask", fake_ask)
 
     sent = client.post(COMPARE, json=BODY).json()["thread_id"]
 
@@ -309,7 +309,7 @@ def test_a_chat_id_that_was_sent_is_kept(client, no_database, monkeypatch):
         seen["thread_id"] = thread_id
         return answered()
 
-    monkeypatch.setattr("labpilot.api.services.ask", fake_ask)
+    monkeypatch.setattr("labpilot.api.asking.ask", fake_ask)
 
     response = client.post(COMPARE, json={**BODY, "thread_id": "chat-7"})
 
