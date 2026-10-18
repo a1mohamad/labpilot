@@ -3,7 +3,7 @@ import logging
 import psycopg
 import pytest
 
-from labpilot.api import services
+from labpilot.api import asking
 from labpilot.api.errors import InvalidQuestion
 
 
@@ -31,7 +31,7 @@ def use(monkeypatch, graph):
         built.append(thread_id)
         return graph
 
-    monkeypatch.setattr(services, "_ask_graph", fake_ask_graph)
+    monkeypatch.setattr(asking, "_ask_graph", fake_ask_graph)
     return built
 
 
@@ -39,7 +39,7 @@ def test_ask_runs_the_graph_and_builds_the_comparison_from_its_state(monkeypatch
     graph = FakeGraph()
     use(monkeypatch, graph)
 
-    comparison = services.ask(None, "A-1", "B-1", question="why?", client=None)
+    comparison = asking.ask(None, "A-1", "B-1", question="why?", client=None)
 
     assert graph.calls[0][0] == {"question": "why?", "a": "A-1", "b": "B-1"}
     assert comparison.result == "the result"
@@ -52,9 +52,9 @@ def test_ask_runs_the_graph_and_builds_the_comparison_from_its_state(monkeypatch
 def test_a_chat_id_becomes_the_thread_and_the_graph_saves_once_at_the_end(monkeypatch):
     graph = FakeGraph()
     built = use(monkeypatch, graph)
-    monkeypatch.setattr(services, "prune", lambda conn, thread_id: None)
+    monkeypatch.setattr(asking, "prune", lambda conn, thread_id: None)
 
-    services.ask(None, "A-1", "B-1", question="why?", client=None, thread_id="chat-7")
+    asking.ask(None, "A-1", "B-1", question="why?", client=None, thread_id="chat-7")
 
     _, config, kwargs = graph.calls[0]
     assert config == {"configurable": {"thread_id": "chat-7"}}
@@ -66,10 +66,10 @@ def test_the_old_copies_are_deleted_after_the_answer_and_not_before(monkeypatch)
     events = []
     use(monkeypatch, FakeGraph(events))
     monkeypatch.setattr(
-        services, "prune", lambda conn, thread_id: events.append(("prune", thread_id))
+        asking, "prune", lambda conn, thread_id: events.append(("prune", thread_id))
     )
 
-    services.ask(None, "A-1", "B-1", question="why?", client=None, thread_id="chat-7")
+    asking.ask(None, "A-1", "B-1", question="why?", client=None, thread_id="chat-7")
 
     assert events == ["invoke", ("prune", "chat-7")]
 
@@ -78,10 +78,10 @@ def test_a_question_with_no_chat_saves_nothing_and_deletes_nothing(monkeypatch):
     graph = FakeGraph()
     built = use(monkeypatch, graph)
     monkeypatch.setattr(
-        services, "prune", lambda *a: pytest.fail("there is no chat to clean")
+        asking, "prune", lambda *a: pytest.fail("there is no chat to clean")
     )
 
-    services.ask(None, "A-1", "B-1", question="why?", client=None)
+    asking.ask(None, "A-1", "B-1", question="why?", client=None)
 
     assert graph.calls[0][1:] == (None, {})
     assert built == [None]
@@ -93,10 +93,10 @@ def test_a_failed_clean_up_is_logged_and_the_answer_still_arrives(monkeypatch, c
     def broken(conn, thread_id):
         raise psycopg.OperationalError("server closed the connection")
 
-    monkeypatch.setattr(services, "prune", broken)
+    monkeypatch.setattr(asking, "prune", broken)
 
     with caplog.at_level(logging.WARNING):
-        comparison = services.ask(
+        comparison = asking.ask(
             None, "A-1", "B-1", question="why?", client=None, thread_id="chat-7"
         )
 
@@ -109,7 +109,7 @@ def test_a_blank_question_is_refused_before_the_graph_is_built(monkeypatch, ques
     def built(conn, client, thread_id=None):
         raise AssertionError("the graph must not be built for a blank question")
 
-    monkeypatch.setattr(services, "_ask_graph", built)
+    monkeypatch.setattr(asking, "_ask_graph", built)
 
     with pytest.raises(InvalidQuestion):
-        services.ask(None, "A-1", "B-1", question=question, client=None)
+        asking.ask(None, "A-1", "B-1", question=question, client=None)
