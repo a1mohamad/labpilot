@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from labpilot.api import services
+from labpilot.api import searching
 from labpilot.store import ArtifactRecord, SearchHit, StoredArtifact, StoreError
 
 FIRST_ID = 100
@@ -49,22 +49,22 @@ def side_b():
 
 @pytest.fixture
 def no_embed(monkeypatch):
-    monkeypatch.setattr(services, "_embed_question", lambda *a, **k: (1.0, 0.0, 0.0))
+    monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: (1.0, 0.0, 0.0))
 
 
 def test_the_ask_path_really_calls_the_keyword_channel(monkeypatch, side_b, no_embed):
     """THE ONE THAT WOULD HAVE CAUGHT THREE SESSIONS OF THIS BEING OFF."""
     asked: list[tuple[str, str]] = []
-    monkeypatch.setattr(services, "search", lambda *a, **k: (hit(0, 0.9),))
+    monkeypatch.setattr(searching, "search", lambda *a, **k: (hit(0, 0.9),))
     monkeypatch.setattr(
-        services,
+        searching,
         "bm25_search",
         lambda conn, artifact_id, question, **k: (
             asked.append((artifact_id, question)) or (hit(0, 3.0),)
         ),
     )
 
-    services._retrieved(object(), side_b, question="where is the norm clipped?")
+    searching.retrieved_chunks(object(), side_b, question="where is the norm clipped?")
 
     assert asked == [("B-1", "where is the norm clipped?")]
 
@@ -77,10 +77,10 @@ def test_a_keyword_only_hit_can_enter_the_window(monkeypatch, side_b, no_embed):
     be able to arrive - otherwise fusion can only reorder, and the whole
     +8.7-query gain is unreachable.
     """
-    monkeypatch.setattr(services, "search", lambda *a, **k: (hit(0, 0.9),))
-    monkeypatch.setattr(services, "bm25_search", lambda *a, **k: (hit(7, 9.0),))
+    monkeypatch.setattr(searching, "search", lambda *a, **k: (hit(0, 0.9),))
+    monkeypatch.setattr(searching, "bm25_search", lambda *a, **k: (hit(7, 9.0),))
 
-    chunks = services._retrieved(object(), side_b, question="q")
+    chunks = searching.retrieved_chunks(object(), side_b, question="q")
 
     assert 107 in [c.chunk_index for c in chunks], (
         "a chunk found only by BM25 never reached the prompt, so fusion can "
@@ -97,14 +97,14 @@ def test_a_broken_keyword_channel_degrades_to_vector_alone(
     trips, so it has more ways to fail than the vector channel and far less to
     lose. Same shape as skip() when no reranker is available.
     """
-    monkeypatch.setattr(services, "search", lambda *a, **k: (hit(0, 0.9), hit(1, 0.8)))
+    monkeypatch.setattr(searching, "search", lambda *a, **k: (hit(0, 0.9), hit(1, 0.8)))
 
     def broken(*_args, **_kwargs):
         raise StoreError("the tsvector column is missing")
 
-    monkeypatch.setattr(services, "bm25_search", broken)
+    monkeypatch.setattr(searching, "bm25_search", broken)
 
-    chunks = services._retrieved(object(), side_b, question="q")
+    chunks = searching.retrieved_chunks(object(), side_b, question="q")
 
     assert [c.chunk_index for c in chunks] == [100, 101]
 
@@ -116,10 +116,10 @@ def test_the_fused_window_never_exceeds_what_search_returns(monkeypatch, side_b)
     window PER SIDE, so handing them 100 would silently change two measured
     numbers by changing what they are a fraction of.
     """
-    dense = tuple(hit(i, 1.0 - i / 100) for i in range(services.SEARCH_LIMIT))
-    sparse = tuple(hit(i, 1.0) for i in range(50, 50 + services.SEARCH_LIMIT))
-    monkeypatch.setattr(services, "bm25_search", lambda *a, **k: sparse)
+    dense = tuple(hit(i, 1.0 - i / 100) for i in range(searching.SEARCH_LIMIT))
+    sparse = tuple(hit(i, 1.0) for i in range(50, 50 + searching.SEARCH_LIMIT))
+    monkeypatch.setattr(searching, "bm25_search", lambda *a, **k: sparse)
 
-    fused = services._fused(object(), "B-1", "q", dense)
+    fused = searching._fused(object(), "B-1", "q", dense)
 
-    assert len(fused) == services.SEARCH_LIMIT
+    assert len(fused) == searching.SEARCH_LIMIT
