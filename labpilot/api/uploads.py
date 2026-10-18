@@ -7,7 +7,7 @@ from fastapi import UploadFile
 from labpilot.api.config import ApiConfig
 from labpilot.api.contracts import Artifact
 from labpilot.api.errors import SecretUpload, UnnamedUpload, UploadTooLarge
-from labpilot.sources.defaults import SECRET_SUFFIXES
+from labpilot.sources import SECRET_SUFFIXES
 
 
 def read_artifact(upload: UploadFile, *, field: str) -> Artifact:
