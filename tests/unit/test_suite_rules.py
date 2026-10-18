@@ -17,7 +17,7 @@ import pathlib
 import pytest
 import requests
 
-from labpilot.api import services
+from labpilot.api import searching
 from labpilot.store import SearchHit
 
 TESTS = pathlib.Path(__file__).resolve().parents[1]
@@ -100,7 +100,7 @@ def test_no_default_test_can_reach_a_real_reranker(monkeypatch):
     primary. Nothing caught it, because spending quota makes a suite slower
     and never redder.
 
-    It hid behind a Python detail worth remembering: _best takes its chain as
+    It hid behind a Python detail worth remembering: rerank_and_cut takes its chain as
     a DEFAULT ARGUMENT, evaluated once at import time, so monkeypatching the
     module attribute rebinds the name and never reaches the captured object.
     A test that looked stubbed was not.
@@ -128,6 +128,6 @@ def test_no_default_test_can_reach_a_real_reranker(monkeypatch):
         for index in range(3)
     )
 
-    kept = services._best("why do the results diverge?", hits)
+    kept = searching.rerank_and_cut("why do the results diverge?", hits)
 
     assert [hit.chunk_index for hit in kept] == [100, 101, 102]
