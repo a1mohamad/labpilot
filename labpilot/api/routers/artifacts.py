@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Form, UploadFile, status
 
-from labpilot.api import services
+from labpilot.api import ingestion
 from labpilot.api.contracts import Ingested
 from labpilot.api.errors import (
     SourceTooLargeToIngest,
@@ -98,7 +98,7 @@ def ingest(
         chunks=result.chunks,
         embedding_model=result.artifact.embedding_model,
         ingest_minutes=result.ingest_minutes,
-        slow=result.ingest_minutes > services.WARN_MINUTES,
+        slow=result.ingest_minutes > ingestion.WARN_MINUTES,
     )
 
 
@@ -111,11 +111,11 @@ def _ingest(conn, side: Side, file: UploadFile | None, url: str | None) -> Inges
     """
     if url is not None:
         with open_git(url) as source:
-            return services.ingest_source(conn, source, side=side)
+            return ingestion.ingest_source(conn, source, side=side)
 
     artifact = read_artifact(file, field="file")
     if not artifact.name.lower().endswith(".zip"):
-        return services.ingest_artifact(
+        return ingestion.ingest_artifact(
             conn, artifact.raw, name=artifact.name, side=side, field="file"
         )
 
@@ -126,4 +126,4 @@ def _ingest(conn, side: Side, file: UploadFile | None, url: str | None) -> Inges
         archive = Path(temporary) / artifact.name
         archive.write_bytes(artifact.raw)
         with open_zip(archive) as source:
-            return services.ingest_source(conn, source, side=side)
+            return ingestion.ingest_source(conn, source, side=side)
