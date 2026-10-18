@@ -219,18 +219,15 @@ the inside of the files was NOT read): 2 of 103 files are over 400 lines,
 front door, all in `api/`: `reranking.py` to `llm.registry`, `services.py` to
 `agent.graph`, `startup.py` to `llm.chain`, `uploads.py` to `sources.defaults`.
 
-**Owed at the END of slice 3, as its own task before slice 4 (the user's
-decision, 2026-10-15):**
-
-1. **A full check of the whole app.** Claude reads every package, file by file,
-   and gives one table: package, file, its job, one reason to change or more,
-   verdict. Read-only. It does not trust sizes.
-2. **Split `api/services.py`** into an ingest file and an ask file, and put the
-   functions handed to the graph in their own place if the check says so. A pure
-   move with no behaviour change; the existing tests are the safety net.
-3. Fix the 4 front-door imports, decide what to do with `llm/registry.py`, and
-   decide which of the six old nodes leave `graph.py`.
-4. Write the result into both docs.
+**DONE 2026-10-18: the task owed at the end of slice 3** (the user's decision of
+2026-10-15). The whole app was read file by file, then `api/services.py` was split
+and the rest was fixed. The full result is in 17.18. In short: the layers are
+correct; `api/services.py` (873 lines, four jobs) became six files and was deleted;
+`ingest/chunker.py` gave its size rules to `ingest/_sizing.py`; the 4 front-door
+imports were fixed; `store/search.py` is now `store/vector_search.py`; `Source` in
+`agent/` is now `Slot`. The old decisions stay: the six nodes of slice 2 leave
+`graph.py` in slices 5 and 6, when those slices rewrite them, and `llm/registry.py`
+is split later, by gateway, in slice 11.
 
 ### Learning mode — this is a learning project, not a delivery project
 This is the user's first project in RAG, agents, MCP, and LLM fine-tuning.
@@ -2679,6 +2676,8 @@ The shape follows the user's own two FastAPI projects — `sms-spam` and
 | `startup.py` | `validate_provider_keys()` |
 | `routers/` | `compare.py`, `health.py` |
 | `middleware/` | `request_id.py`, `body_limit.py` — both **pure ASGI** |
+
+**UPDATE 2026-10-18: `services.py` no longer exists.** It was split into `ingestion.py`, `source_chunks.py`, `reading.py`, `searching.py`, `prompting.py` and `asking.py`; the map from old names to new ones is in 17.18.
 
 **The split that carries the most weight is `services.py` having no FastAPI
 types in it.** Routers speak HTTP, `uploads.py` owns the multipart edge, services
@@ -18829,7 +18828,55 @@ time and paces 7 seconds, so two parallel calls on that route can be slowed or r
 
 **Mutation check, 13 breaks on a scratch copy, 13 caught, each by its own test.** Examples: running the two summaries in a line is caught ONLY by the barrier test; both nodes writing `summary_a` is caught by 3 tests; adding the summary nodes when `summarize` is `None` is caught by 13 old graph tests; wrong budget, wrong order, a lying "All parts are sent" line, an empty parts list, a missing `.text`, a missing error conversion and a wrong `max_tokens` are each caught by one test. `tests/unit/test_error_boundaries.py` accepts the new `api/summaries.py`, and `tests/unit/prompts/` existed.
 
-**Open.** (1) Commits, one file per commit, on `feat/parallel-nodes`. Lesson 2: `agent/state.py`, `agent/summarize.py`, `agent/graph.py`, `agent/__init__.py`, `tests/unit/agent/test_summarize.py`. Lesson 3: `prompts/summary.py`, `prompts/__init__.py`, `tests/unit/prompts/test_summary.py`, `api/summaries.py`, `tests/api/test_summaries.py`. Then the two docs together. (2) The D45 task (a full read-only check of the whole app, then the split of `api/services.py`), then slice 4.
+**Open.** (1) Commits, one file per commit, on `feat/parallel-nodes`. Lesson 2: `agent/state.py`, `agent/summarize.py`, `agent/graph.py`, `agent/__init__.py`, `tests/unit/agent/test_summarize.py`. Lesson 3: `prompts/summary.py`, `prompts/__init__.py`, `tests/unit/prompts/test_summary.py`, `api/summaries.py`, `tests/api/test_summaries.py`. Then the two docs together. (2) The D45 task (a full read-only check of the whole app, then the split of `api/services.py`) was DONE on 2026-10-18 (17.18). Then slice 4.
+
+#### 17.18 Slice 3 closed: the check of the whole app and the split, 2026-10-18
+
+**Status: DONE.** This was the D45 task that slice 3 owed (Working Rules, "Modularization"). The user asked for the files to be copied in whole and for the work to go on a new branch, `refactor/split-services`, then on `main` one file per commit. Because it is a pure move, this one task is an exception to the rule that the user types all product code; the user allowed it in words.
+
+**What was read.** All 107 `.py` files and `schema.sql` of `labpilot/`, file by file. One exception: `llm/registry.py` (1,273 lines, only data) was read by its top-level names, not line by line, because it changes in slice 11. Two read-only scripts checked the imports and the names. NOT done: the tests were not read, no mutation testing was run, and the smoke tests were not run (they spend quota).
+
+**What the check found.**
+
+- **Layers are correct.** No import goes in a wrong direction. `agent` imports only `ingest`; `store` and `sources` import nothing of ours.
+- **Four imports skipped a front door**, all in `api/`: `reranking.py` (`llm.registry`), `services.py` (`agent.graph`), `startup.py` (`llm.chain`) and `uploads.py` (`sources.defaults`). Fixed. Two names needed an export first: `GOOGLE_KEYS` from `labpilot.llm` and `SECRET_SUFFIXES` from `labpilot.sources`.
+- **Two files did more than one job.** `api/services.py` (873 lines, four jobs: save a file, read a repository into chunks, search and rerank, run the graph) and `ingest/chunker.py` (three jobs: the lists of loaders and splitters, the refusal of minified files, and the size cap with the merge of small pieces). Both were split.
+- **A module name was hidden by a function.** `store/__init__.py` exported the function `search`, and there was also a file `store/search.py`, so `labpilot.store.search` was the function. It is the same trap as `walk` in `sources/`. The file is now `store/vector_search.py`.
+- **Two typos:** `OUTPUT_SEPARTOR` in `ingest/_notebook.py`, and "most" for "must" in the error text of `retrieval/selector.py`.
+- **One word with two meanings:** `Source` in `agent/summarize.py` was `Literal["a", "b"]`, while `sources.Source` is a folder we read and `chunk.source` is a file name. It is now `Slot`.
+- **Every other file has one job.**
+
+**What changed (47 commits, one file each).**
+
+| Before | After |
+|---|---|
+| `api/services.py` | deleted |
+| `ingest_artifact`, `ingest_source`, `_store`, `_pick_embedder`, `_records`, `_cut_bytes`, `_artifact_id`, `_source_id`, `WARN_MINUTES`, `EMBEDDING_MINUTES_BUDGET`, `INGEST_OVERHEAD_SECONDS` | `api/ingestion.py`, same names |
+| `chunk_source`, `_newest_owner` | `api/source_chunks.py`, same names |
+| `_sides`, `_fits`, `_stuffed`, `_as_chunk` | `api/reading.py`: `measure_sides`, `fits_whole`, `stuffed_chunks`, `as_chunk` |
+| `_retrieved`, `_fused`, `_best`, `_embed_question`, `VECTOR_TOP_N`, `RERANK_WINDOW` | `api/searching.py`: `retrieved_chunks`, `_fused`, `rerank_and_cut`, `_embed_question`, same constants |
+| `_prompt` | `api/prompting.py`: `build_report_prompt` |
+| `ask`, `_ask_graph`, `_forget_old_copies` | `api/asking.py`, same names |
+| `store/search.py` | `store/vector_search.py` |
+| `_reserve`, `_enforce_cap`, `_merge_small` and their helpers in `ingest/chunker.py` | `ingest/_sizing.py`: `reserve`, `enforce_cap`, `merge_small` |
+| `Source` in `agent/summarize.py` | `Slot` |
+
+The code was only moved. The logic did not change: the same tests pass before and after. The routers call `ingestion` and `asking`. Twenty tests and four scripts changed only their imports and patch paths. Every older note in this file that says `api/services.py`, `services._best` and so on means the new place in this table.
+
+**A trap the split made visible.** A test must patch a name in the module that LOOKS IT UP. `monkeypatch.setattr("labpilot.api.asking.prune", ...)` works, because `asking.py` calls `prune`. A thin `services.py` that only re-exports names would have been worse than none: a patch on it could succeed and still change nothing, and the test would call the real function. With `services.py` deleted, an old path fails at once with `AttributeError`.
+
+**How it was tested.** The finished files were built first in a scratch copy of commit `1e5a828`, and the 47 commits were replayed one by one on a clean copy before they were made in the repo. Result in the repo, on the last commit: `ruff check` and `ruff format --check` clean, 1057 unit and api tests passed (5 skipped), 115 database tests passed on a temp schema of Supabase, and 1290 tests collected before and after, so none was lost. The committed tree is identical to the tested copy. The unit and api tests were run before every commit. Every commit is green except three, which are red on purpose because a test and its router must change together: the commits of `tests/api/test_compare.py` and `tests/api/test_errors.py` (13 tests red) until `routers/compare.py` switches, and of `tests/api/test_artifacts.py` (10 tests red) until `routers/artifacts.py` switches. At the `artifacts.py` commit the two chain tests (`test_api_over_the_chain.py`, `test_the_two_doors_together.py`, which need a database) are also red (9 tests, measured on a clean copy) until their own commits. The commit messages of those files say so. The smoke tests were collected but not run, because they spend quota.
+
+**Found and NOT fixed (open).**
+
+- `embed/rates.py`, lines 64 to 69: the line that logs the Cloudflare cost (`cf-ai-neurons`) is inside the `for` loop, so it logs only when a rate-limit header is also present. Checked by running it. No test covers it.
+- `Artifact` in `api/contracts.py` is an uploaded file, but `ArtifactRecord` and `StoredArtifact` are database rows. Rename `Artifact` to `Upload` later.
+- The same idea is spelled `a`/`b` (state keys), `A`/`B` (`Side`) and `a_id`/`b_id` (in `ask`).
+- The conversion "all tiers failed becomes 503" is written in `asking.py` and in `summaries.py`. The planner of slice 4 would be the third copy: write one shared helper first.
+- `build_graph` has 8 arguments and each slice adds more. Decide in slice 4 whether to hand the functions over as one small dataclass.
+- No test forbids a deep import (rule 2 of the Modularization rule). `test_architecture` checks layers only, and `test_public_api` checks that the names in `__all__` exist.
+- Smaller: `SIDES = ("A", "B")` is written 3 times; `REQUEST_ID_HEADER` twice; `INPUT_BUDGET` in `retrieval/selector.py` is an old default that nothing uses; the constant `CLOUDFLARE_RERANK` is in no chain although its comment says "deleted"; `normalised` and `normalized` are both used.
+- Later, not now: `llm/registry.py` split by gateway (slice 11); `embed/base.py` could give `embedding_minutes` its own file; `prompts/instructions.py` holds FULL and CORE, which only tests and scripts use; `routers/compare.py` builds the reply, and slices 5 to 7 add to it.
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
@@ -19334,7 +19381,7 @@ merge step keeps one copy. Whether the planner chunks should also reach the chec
 | **D42** | **A merge step runs before the prompt is built.** It collects the chunks from every search, removes duplicates (the same chunk id, and the ~50 tokens of overlap between neighbouring chunks, which the chunking section already says to deduplicate), then applies the budget with an equal share per side. The old rule was written, but no code applied it to several searches |
 | **D43** | **One size gate, counted in TOKENS from `measure()`, used in four places:** claim extraction on A (does A fit one call?), the outline (`build_map` already does it), the `find_bugs` scan of B and the summary of a side (D46). The top-N path (rank the files, take N, one call per file, keep the best claims) runs only above the gate, and a small repository as A is treated like a paper. Files are not the unit (a Go file makes chunks about twice as large as a Python file); they appear only as "how many files we take". The number is calibrated per tier, never chosen (M12) |
 | **D44** | **Every planned node has a home** (21.3). The two folds are DECIDED (the user said yes on 2026-10-15): `align` is the table made by the claim searches (code, no model call, kept in the state), and `diff_choices` is a label on each finding, written by the check and by `find_missing`. The check prompt must ask for that label, or every difference may be called a bug. If slice 13 shows that design differences are missing, a node is added then |
-| **D45** | **The whole app is modular, and `agent/` is made of small files** (decided with the user, 2026-10-15, at slice 3; the user corrected the first version, which only talked about `graph.py`). The five points are in the Working Rules, "Modularization": layers, one front door per package, one reason to change per file, contracts alone, and wiring split by job. For `agent/`: `state.py`, one file per node (a factory that takes the injected functions of D7) and a `graph.py` that only wires. This replaces the closures inside `build_graph` (17.13) for every NEW node. **Owed at the END of slice 3, before slice 4:** a full read-only check of the whole app, then the split of `api/services.py` (873 lines, ingest and ask together) |
+| **D45** | **The whole app is modular, and `agent/` is made of small files** (decided with the user, 2026-10-15, at slice 3; the user corrected the first version, which only talked about `graph.py`). The five points are in the Working Rules, "Modularization": layers, one front door per package, one reason to change per file, contracts alone, and wiring split by job. For `agent/`: `state.py`, one file per node (a factory that takes the injected functions of D7) and a `graph.py` that only wires. This replaces the closures inside `build_graph` (17.13) for every NEW node. **DONE 2026-10-18 (17.18):** the full read-only check of the whole app, and `api/services.py` (873 lines, ingest and ask together) split into six files |
 | **D46** | **The summary of a BIG artifact must be good** (the user's decision, 2026-10-17, after slice 3 lesson 3). Lesson 3 builds only the simple version: the summary reads the FIRST parts that fit `SUMMARY_BUDGET` (12,000 tokens, about 35 parts, roughly 8 files in a repository like ours) and the prompt says how many parts were sent. For a repository of 200 files that is a summary of the first files in sorted order, and the user called the plan too weak. The summaries are sections 1 and 2 of the report and the whole answer when the gate halts (19.6), so a weak one hurts twice. **Slice 12 builds the good version, and its design is NOT decided.** Candidates, to measure on the new test pair (M14): (a) the structural one: README, the file tree and the class and function names in one call (`build_map` renders most of it; cheap, weaker on what the code does); (b) map-reduce: one cheap call per file or per folder, in PARALLEL, then one call that joins them (the shape of D27 steps 3 and 4); (c) (a) first, then (b) only for the files that matter. Limits to respect: the per-minute input caps (Gemma 16,000), LiteRouter's one request at a time, and the wall-clock time (many calls are slow unless they run together). The size gate (D43) decides which path runs |
 | **D47** | **The planner may get the STORED SUMMARIES of A and B beside the outline** (the user liked the idea on 2026-10-18, with a condition: a FAST planner, and a SAFE summary of a big repository, which slice 12 builds). The outline says where things are and the summary says what they do, so the planner can write queries in the artifact's own words (F2, D14). Example: the outline of B lists `Trainer`, `fit`, `evaluate`; the summary says "trains an LSTM with attention to find duplicate Quora questions", so the planner can ask for the F1 threshold and the class weight. **Six rules.** (1) A summary depends only on its artifact, so it is computed ONCE per artifact and stored, not made again for every question. This removes the wait: without it the planner waits for the slowest summary call, a few seconds on a fast tier and much more on a slow one. (2) The summary is sent WITH the outline, never instead of it. (3) It carries the sentence that says how much was read ("the first 35 of 880 parts"), so the planner knows how far to trust it. (4) The planner is a FAST tier. (5) For a BIG artifact the lesson 3 summary reads only the first parts (D46), so the planner could write queries only about those files. Until slice 12 builds the good version, the summary of a cut artifact is sent only with the caveat of rule 3, or not at all; the M5 arm decides which. (6) The plan and the summaries that produced it are logged beside the report, because a fallback tier writes a different summary and so a different plan, with no error. **Not decided:** where the summary is stored (a column on `artifacts`, next to the model name and the instruction version, is the candidate) and who computes it (at ingest, which adds a model call to every upload, or on the first question and then saved). Decide in slice 4 |
 
