@@ -97,7 +97,7 @@ class OpenAICompatibleProvider(HTTPProvider):
         }
 
     def _payload(
-        self, prompt: str, max_tokens: int, tool: Tool | None
+        self, prompt: str, max_tokens: int, tool: Tool | None = None
     ) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": self.model,

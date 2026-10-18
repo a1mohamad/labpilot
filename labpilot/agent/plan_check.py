@@ -37,7 +37,7 @@ def allowed_steps(sides: tuple[Side, ...]) -> tuple[str, ...]:
 def default_plan(question: str, sides: tuple[Side, ...]) -> Plan:
     return Plan(
         steps=allowed_steps(sides),
-        queries=(Query(side, question) for side in sides),
+        queries=tuple(Query(side, question) for side in sides),
         source="default",
     )
 
@@ -46,7 +46,7 @@ def problem_with(plan: Plan, sides: tuple[Side, ...]) -> str | None:
     allowed = allowed_steps(sides)
     for step in plan.steps:
         if step not in allowed:
-            return f"step {step!r} in not allowed with {len(sides)} file(s)"
+            return f"step {step!r} is not allowed with {len(sides)} file(s)"
     if len(set(plan.steps)) != len(plan.steps):
         return "a step is listed twice"
     if len(plan.queries) > MAX_QUERIES:

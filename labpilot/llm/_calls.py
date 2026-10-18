@@ -18,7 +18,7 @@ def json_fallback(tool: Tool) -> str:
 def read_object(text: str, source: str) -> dict[str, object]:
     start = text.find("{")
     if start == -1:
-        raise LLMError(f"{source}: the answer is hold no JSON object: {truncate(text)}")
+        raise LLMError(f"{source}: the answer holds no JSON object: {truncate(text)}")
 
     try:
         value, _ = json.JSONDecoder().raw_decode(text, start)

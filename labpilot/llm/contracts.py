@@ -10,7 +10,7 @@ class Attempt:
     error: str
 
 
-@dataclass(forzen=True, slots=True)
+@dataclass(frozen=True, slots=True)
 class Tool:
     name: str
     description: str
