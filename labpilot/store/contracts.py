@@ -69,7 +69,12 @@ class StoredHeader:
 
     The planner's map of an artifact is built from these, BEFORE any search
     runs, so it can decide what to search for. The text is ~97% of a row and
-    the map never shows it, so it never leaves the database.
+    the map shows almost none of it, so almost none of it leaves the database.
+
+    `opening` is the one exception: the first few hundred characters of a chunk
+    that STARTS a function, class or section, so the map can show a signature
+    or a first sentence. It is empty for every later part of a split unit and
+    whenever the caller asked for none.
     """
 
     chunk_index: int
@@ -77,6 +82,7 @@ class StoredHeader:
     start_line: int
     end_line: int
     header: str = ""
+    opening: str = ""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
