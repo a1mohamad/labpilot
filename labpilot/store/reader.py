@@ -58,8 +58,19 @@ _CHUNKS = """
 
 # The same order rule as _CHUNKS, for the same reason: the map groups a file's
 # CONSECUTIVE chunks, so rows out of order would split one file into several.
+#
+# `opening` is the first N characters of the text, and ONLY for a chunk that
+# starts its unit. The chunker writes "part 2/5" into the header of every later
+# piece of a split function or section, and those pieces start mid-body, so a
+# signature or a first sentence is not there to be found. The pattern keeps the
+# separators around "part" so a FOLDER called "part 2" cannot match it: the
+# header starts with the source path.
 _HEADERS = """
-    select chunk_index, header, source, start_line, end_line
+    select chunk_index, header, source, start_line, end_line,
+        case
+            when header ~ ' · part ([2-9]|[1-9][0-9]+)/[0-9]+ · lines ' then ''
+            else left(text, %s)
+        end
     from chunks
     where artifact_id = %s
     order by chunk_index
@@ -121,10 +132,13 @@ def read_chunks(conn: psycopg.Connection, artifact_id: str) -> tuple[StoredChunk
 
 
 def read_headers(
-    conn: psycopg.Connection, artifact_id: str
+    conn: psycopg.Connection, artifact_id: str, *, opening_chars: int = 0
 ) -> tuple[StoredHeader, ...]:
+    if opening_chars < 0:
+        raise ValueError(f"opening_chars cannot be negative, got {opening_chars}")
+
     with conn.cursor() as cur:
-        cur.execute(_HEADERS, (artifact_id,))
+        cur.execute(_HEADERS, (opening_chars, artifact_id))
         rows = cur.fetchall()
 
         if not rows:
@@ -142,6 +156,7 @@ def read_headers(
             source=source,
             start_line=start_line,
             end_line=end_line,
+            opening=opening,
         )
-        for chunk_index, header, source, start_line, end_line in rows
+        for chunk_index, header, source, start_line, end_line, opening in rows
     )
