@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Protocol
 
-from labpilot.llm.contracts import Attempt, LLMResult
+from labpilot.llm.contracts import Attempt, LLMResult, Tool
 from labpilot.llm.defaults import (
     DEFAULT_BASE_DELAY,
     DEFAULT_MAX_DELAY,
+    DEFAULT_MAX_REJECTED_ANSWERS,
     DEFAULT_MAX_RETRIES_PER_TIER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TOTAL_BUDGET,
@@ -32,7 +34,9 @@ class Provider(Protocol):
     @property
     def pool(self) -> str: ...
 
-    def complete(self, prompt: str, *, max_tokens: int = ...) -> LLMResult: ...
+    def complete(
+        self, prompt: str, *, max_tokens: int = ..., tool: Tool | None = ...
+    ) -> LLMResult: ...
 
 
 def delay_for(error: LLMError, attempt: int, *, base: float) -> float:
@@ -76,9 +80,15 @@ class LLMClient:
     base_delay: float = DEFAULT_BASE_DELAY
     max_delay: float = DEFAULT_MAX_DELAY
     total_budget: float = DEFAULT_TOTAL_BUDGET
+    max_rejected_answers: int = DEFAULT_MAX_REJECTED_ANSWERS
 
     def generate(
-        self, prompt: str, *, max_tokens: int = DEFAULT_MAX_TOKENS
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        tool: Tool | None = None,
+        problem_with: Callable[[LLMResult], str | None] | None = None,
     ) -> LLMResult:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
@@ -86,6 +96,7 @@ class LLMClient:
         deadline = time.monotonic() + self.total_budget
         attempts: list[Attempt] = []
         dead_pools: set[str] = set()
+        rejected = 0
 
         for provider in self.chain:
             pool = provider.pool
@@ -100,7 +111,11 @@ class LLMClient:
 
             try:
                 result = self._complete_with_retries(
-                    provider, prompt, max_tokens=max_tokens, deadline=deadline
+                    provider,
+                    prompt,
+                    max_tokens=max_tokens,
+                    tool=tool,
+                    deadline=deadline,
                 )
             except LLMError as exc:
                 if model_is_unavailable(exc):
@@ -114,17 +129,35 @@ class LLMClient:
                 attempts.append(self._attempt(provider, str(exc)))
                 continue
 
-            return replace(result, attempts=tuple(attempts))
+            problem = problem_with(result) if problem_with is not None else None
+            if problem is None:
+                return replace(result, attempts=tuple(attempts))
+
+            # The tier answered, but the caller says the answer is wrong. The
+            # next tier may do better, so the walk goes on. The pool is NOT
+            # marked dead (the quota is fine) and the same tier is NOT asked
+            # again (at temperature 0 it would say the same thing).
+            logger.warning("tier %d: answer rejected: %s", provider.tier, problem)
+            attempts.append(self._attempt(provider, f"answer rejected: {problem}"))
+            rejected += 1
+            if rejected >= self.max_rejected_answers:
+                break
 
         raise AllFreeTiersExhausted(tuple(attempts))
 
     def _complete_with_retries(
-        self, provider: Provider, prompt: str, *, max_tokens: int, deadline: float
+        self,
+        provider: Provider,
+        prompt: str,
+        *,
+        max_tokens: int,
+        tool: Tool | None,
+        deadline: float,
     ) -> LLMResult:
         attempt = 0
         while True:
             try:
-                return provider.complete(prompt, max_tokens=max_tokens)
+                return provider.complete(prompt, max_tokens=max_tokens, tool=tool)
             except LLMError as exc:
                 if exc.status not in RETRYABLE_STATUSES:
                     raise
