@@ -4,11 +4,12 @@ import psycopg
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
+from labpilot.agent import Plan, Query
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
 from labpilot.store import ArtifactRecord, StoredArtifact
 
-SAVED_TYPES = [Chunk, ArtifactRecord, StoredArtifact, Attempt, LLMResult]
+SAVED_TYPES = [Chunk, ArtifactRecord, StoredArtifact, Plan, Query, Attempt, LLMResult]
 SERDE = JsonPlusSerializer(allowed_msgpack_modules=SAVED_TYPES)
 
 PRUNE = """
