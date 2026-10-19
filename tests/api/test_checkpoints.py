@@ -10,6 +10,7 @@ import logging
 
 import pytest
 
+from labpilot.agent import Plan, Query
 from labpilot.api.checkpoints import SERDE, open_saver
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
@@ -35,6 +36,10 @@ RESULT = LLMResult(
     attempts=(Attempt(tier=1, model="other", error="HTTP 429"),),
 )
 STORED = StoredArtifact(artifact=RECORD, chunks=1, characters=9)
+PLAN = Plan(
+    steps=("find_bugs",),
+    queries=(Query("B", "CLIP_NORM"),),
+)
 
 
 def round_trip(value):
@@ -42,7 +47,9 @@ def round_trip(value):
 
 
 @pytest.mark.parametrize(
-    "value", [CHUNK, RESULT, STORED, RECORD], ids=lambda value: type(value).__name__
+    "value",
+    [CHUNK, RESULT, STORED, RECORD, PLAN],
+    ids=lambda value: type(value).__name__,
 )
 def test_every_class_in_the_state_comes_back_as_itself(value, caplog):
     with caplog.at_level(logging.WARNING):
@@ -60,3 +67,12 @@ def test_a_class_nested_inside_another_comes_back_as_itself_too():
 
 def test_the_saver_uses_our_list_of_classes():
     assert open_saver(object()).serde is SERDE
+
+
+def test_a_plan_comes_back_with_its_queries_as_queries():
+    back = round_trip(PLAN)
+
+    assert [type(query) for query in back.queries] == [Query]
+    assert list(back.steps) == list(PLAN.steps)
+    assert list(back.queries) == list(PLAN.queries)
+    assert back.source == PLAN.source
