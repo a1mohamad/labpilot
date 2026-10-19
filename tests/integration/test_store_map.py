@@ -110,3 +110,66 @@ def test_a_query_from_another_embedder_is_refused(db):
 def test_scoring_an_artifact_never_stored_is_refused(db):
     with pytest.raises(UnknownArtifact):
         file_scores(db, "never-stored", QUERY, model=MODEL)
+
+
+# ---- the opening: a few characters of the text, for the map's hints --------
+
+
+def test_without_a_request_no_text_leaves_the_database(db):
+    write_artifact(db, artifact(), CHUNKS)
+
+    assert {h.opening for h in read_headers(db, "m1")} == {""}
+
+
+def test_the_opening_is_the_first_characters_of_the_text_and_no_more(db):
+    write_artifact(db, artifact(), CHUNKS)
+
+    headers = read_headers(db, "m1", opening_chars=12)
+
+    assert [h.opening for h in headers] == [c.text[:12] for c in CHUNKS]
+    assert {len(h.opening) for h in headers} == {12}
+
+
+SPLIT = [
+    chunk(FIRST_ID, "t.py", (1.0, 0.0, 0.0), "[t.py · def a · part 1/12 · lines 1-6]"),
+    chunk(
+        FIRST_ID + 1, "t.py", (1.0, 0.0, 0.0), "[t.py · def a · part 2/12 · lines 5-9]"
+    ),
+    chunk(
+        FIRST_ID + 2, "t.py", (1.0, 0.0, 0.0), "[t.py · def a · part 9/12 · lines 5-9]"
+    ),
+    chunk(
+        FIRST_ID + 3, "t.py", (1.0, 0.0, 0.0), "[t.py · def a · part 10/12 · lines 5-9]"
+    ),
+    chunk(FIRST_ID + 4, "t.py", (1.0, 0.0, 0.0), "[t.py · def b · lines 20-25]"),
+]
+
+
+def test_only_a_chunk_that_starts_its_unit_brings_an_opening(db):
+    # a later piece of a split function starts in the middle of its body, so
+    # there is no signature in it to find, and sending its text is waste
+    write_artifact(db, artifact(), SPLIT)
+
+    openings = [h.opening != "" for h in read_headers(db, "m1", opening_chars=12)]
+
+    assert openings == [True, False, False, False, True]
+
+
+def test_a_folder_called_part_2_does_not_hide_the_openings_of_its_files(db):
+    # the header starts with the source path, so "part 2/" is in it
+    headers = [
+        chunk(
+            FIRST_ID,
+            "part 2/main.py",
+            (1.0, 0.0, 0.0),
+            "[part 2/main.py · def f · lines 1-6]",
+        )
+    ]
+    write_artifact(db, artifact(), headers)
+
+    assert read_headers(db, "m1", opening_chars=12)[0].opening != ""
+
+
+def test_a_negative_opening_is_a_caller_bug(db):
+    with pytest.raises(ValueError, match="opening_chars"):
+        read_headers(db, "m1", opening_chars=-1)

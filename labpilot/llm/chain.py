@@ -79,7 +79,7 @@ class LLMClient:
     max_retries_per_tier: int = DEFAULT_MAX_RETRIES_PER_TIER
     base_delay: float = DEFAULT_BASE_DELAY
     max_delay: float = DEFAULT_MAX_DELAY
-    total_budget: float = (DEFAULT_TOTAL_BUDGET,)
+    total_budget: float = DEFAULT_TOTAL_BUDGET
     max_rejected_answers: int = DEFAULT_MAX_REJECTED_ANSWERS
 
     def generate(

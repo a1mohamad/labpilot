@@ -23,6 +23,7 @@ from labpilot.api.errors import UnknownArtifactId
 from labpilot.ingest import Side
 from labpilot.llm import AllFreeTiersExhausted, LLMClient, LLMResult, Tool
 from labpilot.prompts import (
+    OPENING_CHARS,
     PLANNER_MAX_TOKENS,
     PLANNER_VERSION,
     build_map,
@@ -57,7 +58,10 @@ def make_planner(
 
         ids = {"A": a, "B": b}
         try:
-            parts = {side: read_headers(conn, ids[side]) for side in sides}
+            parts = {
+                side: read_headers(conn, ids[side], opening_chars=OPENING_CHARS)
+                for side in sides
+            }
         except UnknownArtifact as exc:
             raise UnknownArtifactId(str(exc)) from exc
 

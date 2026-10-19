@@ -1,3 +1,4 @@
+from labpilot.prompts._hints import OPENING_CHARS
 from labpilot.prompts.builder import (
     PRIOR_HEADING,
     PROMPT_BUDGET,
@@ -37,6 +38,7 @@ __all__ = [
     "CORE",
     "FULL",
     "OUTLINE_BUDGET",
+    "OPENING_CHARS",
     "PLANNER_BUDGET",
     "PRIOR_HEADING",
     "REPORT",

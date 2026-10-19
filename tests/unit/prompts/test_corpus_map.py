@@ -16,11 +16,19 @@ class Part:
     source: str
     start_line: int
     end_line: int
+    opening: str = ""
 
 
-def part(source: str, *names: str, start: int, end: int, piece: str = "") -> Part:
+def part(
+    source: str,
+    *names: str,
+    start: int,
+    end: int,
+    piece: str = "",
+    opening: str = "",
+) -> Part:
     pieces = [source, *names, *([piece] if piece else []), f"lines {start}-{end}"]
-    return Part(f"[{' · '.join(pieces)}]", source, start, end)
+    return Part(f"[{' · '.join(pieces)}]", source, start, end, opening)
 
 
 # Headers exactly as the chunker writes them. `def fit` (a method) and `def main`
@@ -43,9 +51,11 @@ def test_a_map_that_fits_lists_every_file_its_units_and_their_members():
     text = build_map({"A": PAPER, "B": TRAIN + MODEL})
 
     assert "train.py   6 parts, lines 1-1440" in text
-    assert "class Trainer   lines 920-1100   def fit, def evaluate" in text
-    assert "def main   lines 1400-1440\n" in text
-    assert "class Net   lines 10-60   def forward" in text
+    assert "  class Trainer   lines 920-1100\n" in text
+    assert "    def fit   lines 920-1000\n" in text
+    assert "    def evaluate   lines 1001-1100\n" in text
+    assert "  def main   lines 1400-1440\n" in text
+    assert "  class Net   lines 10-60\n    def forward   lines 10-60" in text
     assert "4.1 Input representation   lines 53-72" in text
     assert NOT_LISTED not in text
     assert "Ranked" not in text, "a map that fits must not be ranked"
@@ -222,3 +232,113 @@ def test_neither_side_is_privileged():
 def test_a_budget_that_can_hold_nothing_is_a_caller_bug():
     with pytest.raises(ValueError, match="budget"):
         build_map({"B": MODEL}, budget=0)
+
+
+# ---- the hints reach the rows (how they are READ is test_hints.py) ----------
+
+
+def row(text: str, needle: str) -> str:
+    """The one line of the map that holds `needle`."""
+    found = [line for line in text.splitlines() if needle in line]
+    assert len(found) == 1, f"{needle!r} is on {len(found)} lines of:\n{text}"
+    return found[0]
+
+
+def test_a_member_row_shows_its_signature_and_its_line_range():
+    text = build_map(
+        {
+            "B": [
+                part(
+                    "mod.py",
+                    "class Trainer",
+                    "def fit",
+                    start=1,
+                    end=9,
+                    opening="    def fit(self, loader, epochs=3):\n",
+                )
+            ]
+        }
+    )
+
+    assert row(text, "def fit") == "    def fit(self, loader, epochs=3)   lines 1-9"
+
+
+def test_a_unit_row_shows_its_note_in_quotes_after_the_line_range():
+    opening = 'def seed(x):\n    """Makes runs repeatable."""\n'
+
+    text = build_map(
+        {"B": [part("mod.py", "def seed", start=1, end=9, opening=opening)]}
+    )
+
+    assert (
+        row(text, "def seed") == '  def seed(x)   lines 1-9   "Makes runs repeatable."'
+    )
+
+
+def test_a_section_row_shows_its_first_sentence_in_quotes():
+    opening = "## 4.1 Input\n\nQuestions are lowercased. More.\n"
+
+    text = build_map(
+        {"A": [part("paper.md", "4.1 Input", start=1, end=9, opening=opening)]}
+    )
+
+    assert row(text, "4.1 Input") == (
+        '  4.1 Input   lines 1-9   "Questions are lowercased."'
+    )
+
+
+def test_a_part_with_no_opening_shows_the_bare_name():
+    text = build_map({"B": [part("mod.py", "def fit", start=1, end=9)]})
+
+    assert row(text, "def fit") == "  def fit   lines 1-9"
+
+
+def test_only_the_first_part_of_a_split_function_is_read():
+    first = part(
+        "mod.py", "def f", start=1, end=9, piece="part 1/2", opening="def f(x):\n"
+    )
+    second = part(
+        "mod.py", "def f", start=8, end=20, piece="part 2/2", opening="def f(y):\n"
+    )
+
+    text = build_map({"B": [first, second]})
+
+    assert "def f(x)   lines 1-20" in text
+    assert "def f(y)" not in text
+
+
+# ---- the richest form first, then the same map with bare names -------------
+
+RICH = build_map({"B": BIG}, budget=1_000_000)
+
+
+def test_when_everything_fits_each_member_gets_a_row_of_its_own():
+    assert "    def step_0   lines 1-40\n" in RICH
+    assert "def step_0, def step_1" not in RICH
+
+
+def test_when_the_rich_map_is_too_big_the_members_share_their_unit_row():
+    budget = estimate_tokens(RICH) - 1
+
+    text = build_map({"B": BIG}, budget=budget)
+
+    assert estimate_tokens(text) <= budget
+    assert "Ranked" not in text, "premise: the bare map must still fit whole"
+    assert "    def step_0" not in text
+    assert "class Thing0   lines 1-140   def step_0, def step_1, def step_2" in text
+
+
+def test_a_map_with_hints_still_counts_every_part_of_every_file():
+    text = build_map({"B": BIG}, budget=1_000_000)
+
+    for source in SOURCES:
+        assert f"{source}   3 parts, lines 1-140" in text
+
+
+def test_a_ranked_map_gives_its_closest_files_bare_names_and_not_the_rich_form():
+    # once files have to be left out, room is worth more than hints
+    text = build_map({"B": BIG}, budget=TIGHT)
+
+    assert "Ranked by closeness" in text, "premise: the map must not fit whole"
+    assert "def step_0, def step_1, def step_2" in text
+    assert "    def step_0" not in text

@@ -4,7 +4,7 @@ from labpilot.prompts.corpus_map import PLANNER_BUDGET
 
 # The wording below is FIXED. Change it only together with this number, and the
 # number is logged beside every plan, so a plan can be tied to its wording.
-PLANNER_VERSION = 1
+PLANNER_VERSION = 2
 
 # The answer is a short plan, but a tier that thinks spends tokens first, so
 # this is only a backstop. A small number would give such a tier an empty
@@ -39,7 +39,10 @@ PLANNER = (
     "text that would appear in the file itself (a value, a name, a phrase), "
     "never a question, and it names the side it is for.\n"
     'Good query: "learning rate 3e-4 cosine decay". '
-    'Bad query: "what learning rate is used?"'
+    'Bad query: "what learning rate is used?"\n\n'
+    "The map lists the parts of each file with their line numbers. A signature "
+    "or a sentence in quotes was copied from the file itself, so its words are "
+    "good words for a query."
 )
 
 

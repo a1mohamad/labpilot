@@ -4,6 +4,7 @@ import pytest
 import responses
 
 from labpilot.llm import (
+    CHAIN,
     ClineProvider,
     GeminiProvider,
     LLMClient,
@@ -427,3 +428,32 @@ def test_a_tier_whose_answer_cannot_be_read_hands_over_to_the_next_tier():
     assert result.tier == 2
     assert len(result.attempts) == 1
     assert "no JSON object" in result.attempts[0].error
+
+
+# ---- every kind of provider the chain really holds ---------------------------
+
+COVERED_KINDS = {ClineProvider, GeminiProvider, OpenAICompatibleProvider}
+
+
+def test_the_chain_holds_no_kind_of_provider_that_has_no_tool_test_above():
+    # A new provider class (a gateway with its own envelope, as Cline has) can
+    # sit in CHAIN and work for plain text while its tool call is never read.
+    # The planner would then meet it on a bad day. Add the tests, then add the
+    # class to COVERED_KINDS.
+    assert {type(provider) for provider in CHAIN} <= COVERED_KINDS
+
+
+def _one_of_each_kind():
+    first = {}
+    for provider in CHAIN:
+        first.setdefault(type(provider), provider)
+    return list(first.values())
+
+
+@pytest.mark.parametrize(
+    "provider", _one_of_each_kind(), ids=lambda provider: type(provider).__name__
+)
+def test_every_kind_of_provider_in_the_chain_puts_the_tool_in_its_request(provider):
+    payload = provider._payload("choose", 100, TOOL)
+
+    assert TOOL.name in json.dumps(payload)

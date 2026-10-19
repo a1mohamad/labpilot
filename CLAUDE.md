@@ -651,16 +651,16 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 CLOSED.** Step 1 was nine slices (1, 1b, 2, 3, 4, 5, 6, 7 and 8), all done, and slice 8 ran
 three times (v1, v2, v3). Step 2 is planned as FOURTEEN slices (0 to 13, rewritten on 2026-10-14, see section 21): **slices 0 (does
 LangGraph fit), 1 (the latency ranking) and 2 (the skeleton and chat memory) are done, and slice 3
-(`summarize` for A and B at the same time) is DONE: lessons 1 to 3 on 2026-10-15 to 17 (17.16, 17.17) and the D45 task, a check of the whole app and the split of `api/services.py`, on 2026-10-18 (17.18). Slice 4, the planner, is in progress: lesson 1 (function calling) is done (17.19).** The user writes the graph code lesson by lesson, so
+(`summarize` for A and B at the same time) is DONE: lessons 1 to 3 on 2026-10-15 to 17 (17.16, 17.17) and the D45 task, a check of the whole app and the split of `api/services.py`, on 2026-10-18 (17.18). Slice 4, the planner, is DONE: lesson 1 (function calling) on 2026-10-18 (17.19), lessons 2 to 5 and the map with signatures and first sentences on 2026-10-18/19 (17.20), and a closing review of slices 3 and 4 on 2026-10-19 (17.21). The planner and the summarizer are built and tested but NOT wired into `ask()` (slice 5); M5 and M16 are owed.** The user writes the graph code lesson by lesson, so
 `labpilot/agent/` holds the first real graph (`build_graph`: measure, stuff or search, prompt, generate,
 remember). `ask()` runs it, and with a `thread_id` the chat is saved in Postgres. Read
-[Where Step 2 stands](#where-step-2-stands--updated-2026-10-14) below and
+[Where Step 2 stands](#where-step-2-stands--updated-2026-10-19) below and
 [STEP 2 — the plan](#step-2--the-plan-recorded-2026-09-22) before anything else. The plan
 OVERTURNS older text in two places: no findings score has ever been measured on the search
 path (C3), and the planner cannot use `build_context` (C5; the planner's map is now built,
 section 12).
 
-**1151 passed, 115 skipped, ruff clean — measured 2026-10-14, full suite without `--run-smoke`** (run `pytest` for the current
+**1374 passed, 120 skipped, ruff clean — measured 2026-10-19, full suite without `--run-smoke`** (run `pytest` for the current
 count; a number written here goes stale on the next commit). The RAG system ingests a
 file, a `.zip` or a git URL; stores it in pgvector; and answers a question by
 stuffing when the pair fits and by search + fusion + gate + rerank when it does
@@ -893,7 +893,7 @@ generation-time problem below — it cannot generate.
 > product (the text budget by `daily_text_budget`, the batch by `max_batch_size` plus pacing —
 > see the Google embed block above), and the script's private copy was deleted on 2026-09-28.
 
-### Where Step 2 stands — updated 2026-10-14
+### Where Step 2 stands — updated 2026-10-19
 
 | slice | what it is | state |
 |---|---|---|
@@ -901,7 +901,7 @@ generation-time problem below — it cannot generate.
 | 1 | latency ranking of the chain | **DONE 2026-09-29/30** — 50 tiers ranked (section 15) |
 | 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **DONE 2026-10-14** — lessons 1 to 4 (part 3 on 2026-10-13), then a closing review that added 11 tests (sections 17, 17.10 to 17.14) |
 | 3 | `summarize` for A and B, run at the same time (fan-out, fan-in) | **DONE 2026-10-18** — lesson 1 DONE 2026-10-17 (the toy file `examples/langgraph/graph_with_parallel.py`: 2.0 s in a line, 1.0 s in parallel; section 17.16). Lessons 2 (the summary nodes in the graph) and 3 (the real summary function) DONE 2026-10-17 (section 17.17). The summary of a BIG artifact is weak on purpose for now and is owed in slice 12 (D46). The slice ended with the modularization task of D45 (17.18): a full check of the whole app, and `api/services.py` split into six files |
-| 4 | the planner: the outline is used, one call returns the steps and the queries | **IN PROGRESS 2026-10-18** — lesson 1 (function calling) DONE on branch `feat/planner` (17.19); 4 more lessons planned |
+| 4 | the planner: the outline is used, one call returns the steps and the queries | **DONE 2026-10-19** (built and tested; NOT wired into `ask()` until slice 5) — lesson 1 (function calling) 2026-10-18 (17.19); lessons 2 to 5 and the map with signatures and first sentences 2026-10-18/19 (17.20); a closing review of slices 3 and 4 on 2026-10-19 that found a typo breaking every call (17.21). M5 and M16 are owed |
 | 5 | run the plan: one search per query at the same time, the merge step (duplicates removed), the final `respond` node | not started |
 | 6 | follow-ups: rewrite a follow-up question into a standalone one | not started |
 | 7 | claims, one check per claim, the bounded re-search loop | not started |
@@ -974,6 +974,8 @@ generation-time problem below — it cannot generate.
 - **2026-10-18 (later)** — the D45 task: the whole app was read file by file, `api/services.py` was split into six files, the chunker gave its size rules to `_sizing.py`, the 4 front-door imports were fixed, and a few names changed → 17.18. Slice 3 is closed.
 - **2026-10-18 (evening)** — slice 4 lesson 1 DONE (function calling, the toy script `examples/function_calling/ask_for_a_plan.py` on branch `feat/planner`); D48, M15 and M16 written (the Jev measurement for `verify` and the planner's steps); slice 4 grows from 3 to 5 lessons because the LLM layer has no tool support yet → 17.19.
 - **2026-10-18 (night)** — the user asked that LabPilot gives the best solution and not only the difference or the bug: the right code, the right logic or a better algorithm. It is planned as part of `respond` (`§12 CORRECTIONS`), but the one-artifact template has no fix part and nothing measures fix quality. Written as D49 and M17; if the fixes are weak, `propose_fix` becomes its own node → 21.2, section 6.
+- **2026-10-18/19** — slice 4 lessons 2 to 5 DONE: the planner node, the check in code, tool calls in the LLM layer ("detect, never configure"), the real planner `api/planning.py`, a wrong plan goes to the next tier (D50), the map budget is computed per call (D51), and the map shows signatures and first sentences (D52, `prompts/_hints.py`) → 17.20.
+- **2026-10-19** — the closing review of slices 3 and 4: a one-token typo (`total_budget` became a tuple) made every `LLMClient()` call fail, found by running the suite; 20 new integration, architecture, tool-call, docs and smoke tests; both docs updated; slice 4 committed on `feat/planner` and replayed on `main`, one file per commit → 17.21. **Slice 5 (run the plan) is next.**
 
 **The blocking problem of the whole step is GENERATION TIME** (the red block at the top of this section).
 Read it before designing a node.
@@ -1005,6 +1007,7 @@ Read it before designing a node.
 - **A rewound session can revert files on disk while git still holds the right versions.** Check
   `git status` and `git diff` before rewriting anything; `git checkout -- <file>` restores to whatever HEAD
   is NOW (see the mutation-testing rule in Conventions).
+- **A one-token typo can break every call, and only the suite shows it.** `total_budget: float = (DEFAULT_TOTAL_BUDGET,)` (a trailing comma made a tuple) came in with the lesson 5 commit and every `LLMClient()` call failed before its first request. Run the whole suite before each commit, not after (17.21).
 - **Never size a benchmark to the machine you wish you had.** A 30,000-row HNSW build with
   `maintenance_work_mem=512MB` took the Supabase free instance down on 2026-09-05. Run that class of
   work on a local container.
@@ -1013,19 +1016,19 @@ Read it before designing a node.
 
 ### Git state and branches
 
-As of 2026-10-14 the checked-out branch is `main`, the same as `origin/main`. The user re-committed the part 2 work onto
-`main` piece by piece (`5cb6388` to `ec5b91f`). On 2026-10-14 the part 3 work and the slice 2 closing-review tests were
-replayed onto `main`, one file per commit (26 commits, `187d759` to `ab1cb9e`), at the user's explicit request. `git diff main feat/agent-nodes`
-now shows, for code and tests, only what `main` has more: the five review test files (`test_prune`, `test_architecture`, `test_packaging`, `test_frontend_contract`, `test_api_over_the_chain`) and the extra `langgraph-checkpoint` pin, plus the five lesson scripts, which are in `scripts/` on the branch and in
-`examples/langgraph/` on `main` (17.15). `feat/agent-nodes` (`b72955a`, also on origin) is kept, not deleted. It holds the
-row level security work as ONE commit (`b72955a`) where `main` has it as five (17.15). **It also holds a docs commit that
-`main` does NOT have: `63a0381`, the reminder that better citations are owed at the end of Step 2 (a short note in
-"Where Step 2 stands" and a longer one in the nine slices, in both files). Bring it to `main`, or write it again.** A new branch always needs the user's permission. **Only the
-user commits to `main`** (or says "merge and commit"; on 2026-10-14 they said so for this one task). **Dead branches — never
-resume there:** `feat/reranking` (it holds an OLDER `test_llm_layer.py` that hardcodes key names), `feat/selector`
-(an older squashed variant; the work lives on `main`, re-committed piece by piece), and `feat/jev-probe`
-(byte-identical to `main`). This project re-commits work onto `main` piece by piece instead of merging, so
-hashes differ while the content is the same.
+As of 2026-10-19 slice 4 is on `feat/planner` (pushed) and on `main` (pushed), at the user's explicit request: ONE commit
+on `feat/planner` that holds the lesson 5 map work and the closing review, and `main` received every file of slice 4 as its
+own commit (the same content, different hashes). Slice 3 and the split of `api/services.py` were already on `main`.
+`feat/agent-nodes` (`b72955a`, also on origin) is kept, not deleted. It holds the row level security work as ONE commit
+where `main` has it as five (17.15). **It also holds a docs commit that `main` does NOT have: `63a0381`, the reminder that
+better citations are owed at the end of Step 2 (a short note in "Where Step 2 stands" and a longer one in the nine slices,
+in both files). Bring it to `main`, or write it again.** A new branch always needs the user's permission. **Only the user
+commits to `main`** (or says "merge and commit"; on 2026-10-14 and on 2026-10-19 they said so for one task each). **Dead
+branches — never resume there:** `feat/reranking` (it holds an OLDER `test_llm_layer.py` that hardcodes key names),
+`feat/selector` (an older squashed variant; the work lives on `main`, re-committed piece by piece), and `feat/jev-probe`
+(byte-identical to `main`). This project re-commits work onto `main` piece by piece instead of merging, so hashes differ
+while the content is the same. The branches of finished slices (`feat/parallel-nodes`, `refactor/split-services`,
+`feat/planner`) are kept.
 
 ### Older status notes
 
@@ -9633,7 +9636,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 1 | **latency ranking** | how fast each of the 40 tiers is, and which support function calling | none — measurement, DONE |
 | 2 | **the skeleton** | a graph replaces `ask()`, and the chat is saved (checkpointer, `thread_id`) | **heavy** — DONE |
 | 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers). The slice ENDS with the modularization task (D45): a full read-only check of the whole app, then the split of `api/services.py` | medium, 3 lessons |
-| 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 5 lessons (revised 2026-10-18, see 17.19): the small one on function calling (D34, DONE), the planner node, the check in code, tool calls in the LLM layer, the real planner function |
+| 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 5 lessons, **DONE 2026-10-19** (revised 2026-10-18, see 17.19 and 17.20): the small one on function calling (D34, DONE), the planner node, the check in code, tool calls in the LLM layer, the real planner function |
 | 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31) and carries the fix part (D49); "stuff when it fits" stays | **heavy**, 3 lessons |
 | 6 | **follow-ups** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6) | light, 1 lesson |
 | 7 | **claims, check, retry** | `extract_claims`; each claim searches B with its own text; one check per claim at the same time; the bounded retry loop (D4); the findings list; a small A merges with the planner (D40) | **heavy**, 3 lessons |
@@ -11146,7 +11149,7 @@ are estimates, not promises.
 | 1 done | the speed of each of the 56 models | none |
 | **2 (DONE 2026-10-14: lessons 1 to 4 and the closing review, 17.14)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | `summarize` for A and for B at the same time (two independent steps run together) | medium, 3 |
-| 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 5 (revised 2026-10-18, 17.19) |
+| 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 5, **DONE 2026-10-19** (17.19, 17.20) |
 | 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3** |
 | 6 | follow-up questions: rewrite them into standalone ones | light, 1 |
 | 7 | the loop: claims, check each one, search again at most 2 times | **heavy, 3** |
@@ -11902,6 +11905,63 @@ queries  ["paper A gradient clipping value 1.0", "code B gradient clipping value
 
 **Slice 4 grows from 3 lessons to 5 (an estimate).** Checked on 2026-10-18: `labpilot/llm/` has no tool support at all (no `tools`, `tool_calls` or `functionCall` anywhere), and the first count of 3 forgot it. The plan now: 1 function calling (DONE); 2 the planner node with a fake planner function (`agent/plan.py` holds `Query` and `Plan`, `agent/planner.py` holds the node, `State` gets the key `plan`, and the graph gets an optional `plan` parameter and runs the planner first); 3 the check in code and the default plan; 4 tool calls in the LLM layer (CC4); 5 the real planner function (`api/planning.py`, the fixed instruction, the map, the dynamic budget CC8, and the measurements M5 and M16). **A trap for lesson 5:** `Plan` and `Query` are classes inside `State`, so they must be added to `SAVED_TYPES` in `api/checkpoints.py` when the planner is wired (D37), or a saved chat brings them back as plain dicts. Also written the same day: D48, M15 and M16 (the Jev measurement for `verify` and for the planner's steps, commit `08a355d`).
 
+#### 17.20 Slice 4, lessons 2 to 5 were done, 2026-10-18 and 19
+
+**Status: DONE.** The user typed all the product code, lesson by lesson, on the branch `feat/planner` (five commits, `1c48e83` to `0acf417`), and then the richer map of lesson 5 (the signatures and sentences, below). The planner is BUILT and TESTED. It is **not wired into `ask()`** (`_ask_graph` passes neither `plan` nor `summarize`; slice 5 wires them, together with `respond`).
+
+**What each lesson built:**
+
+| lesson | files | what it is |
+|---|---|---|
+| 2 the planner node | `agent/plan.py`, `agent/planner.py`, `State.plan`, `build_graph(plan=...)` | `Plan(steps, queries, source)` and `Query(side, text)` are frozen value objects. The node calls the function it is given, `plan(question, a, b)`, and the planner runs before `measure` |
+| 3 the check in code | `agent/plan_check.py`, `agent/errors.py` | `STEPS_BY_FILES` (0 files: no step; 1 file: `summarize`, `find_bugs`; 2 files: five steps), `MAX_QUERIES = 12`, `present_sides`, `allowed_steps`, `default_plan`, `problem_with`, `check_plan`, and `PlanError`. A plan the rules reject is replaced by the default plan (every allowed step, the question searched on each side) |
+| 4 tool calls in the LLM layer | `llm/contracts.py` (`Tool`, `LLMResult.arguments`), `llm/_calls.py`, `HTTPProvider.complete(tool=)`, Gemini, OpenAI-compatible and Cline readers | "Detect, never configure": the tool is ALWAYS sent. A function call in the answer is used; if there is none, the first JSON object in the text is read; if there is no object either, the tier fails and the chain goes on. The JSON instruction is added to the prompt for tiers that ignore `tools` |
+| 5 the real planner | `agent/plan_schema.py`, `prompts/planner.py`, `api/planning.py` | `make_planner(conn, client)` reads the headers of each side, builds the map, asks with the `make_plan` tool, and reads the arguments. The schema holds the allowed steps and only the sides that have a file |
+
+**Decisions.**
+
+- **D50. A plan that is readable and wrong goes to the NEXT tier, not straight to the default plan** (the user's demand, 2026-10-19). `LLMClient.generate(..., problem_with=)` takes a function that returns a reason or `None`. A rejected answer is recorded as an `Attempt`, the tier is not asked again, its quota pool is NOT retired, and the walk stops after `max_rejected_answers` (default 3, `DEFAULT_MAX_REJECTED_ANSWERS`; a first guess that M16 may move). The planner node still runs `check_plan` as the last guard, and a planner that fails never stops the answer.
+- **D51. The map budget is computed for each call** (this is CC8). `B_map = max(1, min(PLANNER_BUDGET = 12,000, PLANNER_INPUT_LIMIT = 14,500 - f))`, where `f` is the size of the prompt without the map plus TWICE the size of the schema: the schema goes in `tools` and again as text in the JSON instruction. 14,500 is Gemma's 16,000 tokens a minute divided by the 10% margin of the length check; a test ties it to the tightest `max_input_tokens` in `CHAIN`.
+- **D52. The map shows signatures and first sentences** (the user remembered a richer outline, 2026-10-19). `StoredHeader.opening` is the first `OPENING_CHARS = 300` characters of a chunk, and only of a chunk that STARTS its unit (the SQL gives `''` for `part N/M` with N of 2 or more; the pattern keeps the separators, so a folder called `part 2` does not match). `read_headers(..., opening_chars=0)` sends nothing by default. `prompts/_hints.py` has `describe(name, opening)`, which gives `(signature, note)`: a Python `def` or `class` is found BY NAME (decorators kept, a signature over several lines joined, `async` kept) with one line of its docstring; a Markdown section gets its first sentence only when a heading equals the unit's name; display formulas are skipped; a text that was cut is never shown half-written. The ladder is: rich map, the same map with bare names, ranked, folded by folder. On the sample pair the map costs 868 tokens before, **2,150 rich** and 1,284 with bare names (the ceiling is 12,000). `PLANNER_VERSION` is 2. By rule D45 the work was split: `corpus_map.py` went from 454 to 310 lines and `_hints.py` has 148.
+
+**Checked, and what that does NOT show.** Four live planner calls on Flash-Lite (exit `185.204.170.210`, AS57568 ARVANCLOUD, Frankfurt, Google 200) used real names from the files in their queries (`BCEWithLabelSmoothing`, `find_optimal_threshold`, "base learning rate of 3e-4"). That is four calls on one tier and one sample pair: it is NOT a measurement that the plans are better (M5 owes that).
+
+**Owed.**
+
+- M5 (the map with and without, the budget sweep, the summaries arm, the query cap) and M16 (an LLM planner against Jev) were NOT run. Both spend quota and want the new test pair of slice 12.
+- The planner does not give `build_map` the file scores yet (`file_scores` exists in `store/`), so a map that does not fit is cut in the file's own order.
+- D47 (the stored summaries beside the map) is not built.
+- First guesses, not measurements: `MAX_QUERIES = 12`, `STEPS_BY_FILES`, `max_rejected_answers = 3`, `OPENING_CHARS = 300`, the 110-character cap of a row.
+- The hints are all-or-nothing: once the rich map does not fit, even the closest files show bare names. Only Python and Markdown units get hints; PDF pages, notebook cells and Word files get none.
+
+#### 17.21 The closing review of slices 3 and 4, 2026-10-19
+
+*The full review pass of slice 3 was forgotten, so one pass covered both slices. The user asked for the system to be seen from above, and the standing question was the usual one: **which real failure is still unprotected?***
+
+**Two real defects, both found by running the suite instead of reading it.**
+
+1. **`total_budget: float = (DEFAULT_TOTAL_BUDGET,)` in `llm/chain.py`.** A trailing comma made the default a tuple, so EVERY `LLMClient()` call failed with `TypeError: unsupported operand type(s) for +: 'float' and 'tuple'` before it sent one request. It came in with the lesson 5 commit `0acf417`, and `test_first_tier_answers_without_touching_the_rest` caught it the moment the suite ran; the suite had not been run after that commit. Fixed (one token). **Run the whole suite before every commit.**
+2. **`prompts/__init__.py` imported `OPENING_CHARS` from `corpus_map`** after the split moved it to `_hints`, so the whole `labpilot.prompts` package, and with it the app, failed to import. Fixed.
+
+Both were product code and were fixed by Claude, once, so that the tree could be committed. That was an exception to the rule that the user types all product code, and it was said plainly to the user.
+
+**Tests added** (all written by Claude and checked by deliberate breaks; every break was caught by the test meant to catch it, results below):
+
+| file | tests | what it guards |
+|---|---|---|
+| `tests/integration/test_planner_over_the_store.py` | 9 | the whole line, with only the provider's wire mocked: real rows, the SQL opening, the map, the request (the tool and the signature are in it, no body text is), the answer, the next tier on a wrong plan, a JSON answer in a code fence, and the plan saved in the real chat memory as a `Plan` |
+| `tests/integration/test_summaries_over_the_store.py` | 4 | the parts reach the provider in `chunk_index` order, a big artifact is cut and says so, and the two summaries run at the same time over ONE connection (a barrier makes a graph that ran them in a line fail) |
+| `tests/unit/test_architecture.py` (2 tests) | +2 | modularization rules 3 and 2 were only prose: no module past 400 lines unless it is named (the only name is `llm/registry.py`, which is data), and no code imports a file of another package |
+| `tests/unit/llm/test_tool_calls.py` (2 tests) | +2 | a new provider class in `CHAIN` that works for text and never reads a tool call is caught: the chain may hold only kinds that have tool tests, and each kind puts the tool in its request |
+| `tests/unit/test_docs.py` | 2 | CLAUDE.md and DETAILS.md must not drift (the rule was broken once, on 2026-10-11): every section heading of the first is in the second, with five excused by name |
+| `tests/smoke/test_summary_answers.py` | 1 | the summarizer had no weekly live check (needs `--run-smoke`; not run) |
+
+**Not added, and why.** A weekly tool-call test for every tier: M3 measured it once, and "detect, never configure" deliberately keeps no list per tier. A test that the planner and the summarizer are NOT wired: that is a plan, not a behaviour. The check of the 400-line limit does not look at tests, which are allowed to be long.
+
+**Numbers.** `ruff check` and `ruff format --check` are clean. Unit and api: 1241. Full suite without `--run-smoke` (database tests included): 1374 passed, 120 skipped. Deliberate breaks: 42, on the new code and tests: 20 on the map and the planner prompt, 7 on the SQL opening and 15 on the new integration, architecture, tool-kind and docs tests. Every one is caught by the test meant to catch it, after one missing test was added (the ranked form of the map).
+
+**Branches.** The slice 4 work is on `feat/planner` as one commit with this review and on `main` as one file per commit, both pushed (the user's explicit request on 2026-10-19).
+
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
 *(Renumbered on 2026-10-14: this is slice 12 now, see [section 21](#21-the-final-design-and-the-new-slice-list--agreed-2026-10-14). The heading is kept so that old links work.)*
@@ -12410,6 +12470,9 @@ merge step keeps one copy. Whether the planner chunks should also reach the chec
 | **D47** | **The planner may get the STORED SUMMARIES of A and B beside the outline** (the user liked the idea on 2026-10-18, with a condition: a FAST planner, and a SAFE summary of a big repository, which slice 12 builds). The outline says where things are and the summary says what they do, so the planner can write queries in the artifact's own words (F2, D14). Example: the outline of B lists `Trainer`, `fit`, `evaluate`; the summary says "trains an LSTM with attention to find duplicate Quora questions", so the planner can ask for the F1 threshold and the class weight. **Six rules.** (1) A summary depends only on its artifact, so it is computed ONCE per artifact and stored, not made again for every question. This removes the wait: without it the planner waits for the slowest summary call, a few seconds on a fast tier and much more on a slow one. (2) The summary is sent WITH the outline, never instead of it. (3) It carries the sentence that says how much was read ("the first 35 of 880 parts"), so the planner knows how far to trust it. (4) The planner is a FAST tier. (5) For a BIG artifact the lesson 3 summary reads only the first parts (D46), so the planner could write queries only about those files. Until slice 12 builds the good version, the summary of a cut artifact is sent only with the caveat of rule 3, or not at all; the M5 arm decides which. (6) The plan and the summaries that produced it are logged beside the report, because a fallback tier writes a different summary and so a different plan, with no error. **Not decided:** where the summary is stored (a column on `artifacts`, next to the model name and the instruction version, is the candidate) and who computes it (at ingest, which adds a model call to every upload, or on the first question and then saved). Decide in slice 4 |
 | **D48** | **Jev is a CANDIDATE for the `verify` verdict and for the planner's list of steps, and a measurement decides it, not an argument** (the user's call, 2026-10-18; M15 and M16). Jev (the decision model in chain 3) returns typed answers and cannot write text. So it fits a `choice` question (match / mismatch / absent) and a yes/no question per step ("should `find_bugs` run?"). It does NOT fit the planner's queries, `extract_claims`, `find_bugs` or any node that writes text. The user's reasoning: the LLM planner is one call and fast, but may be less exact; Jev may be more exact. **A correction to what Claude said first, that Jev makes the planner slower because it needs two calls:** the steps call (Jev) and the queries call (an LLM) both need only the question and the map, so they can run at the same time, and then the time is the slower of the two and not the sum. That is arm C of M16. **Build rule:** `verify` and the planner's steps receive their function from outside (D7), so Jev is a second implementation and not a rewrite. **Limits to check, not to assume:** Jev is unmeasured on `verify` (we measured "is this chunk relevant?", and "does the code do what the claim says?" is harder); on OpenRouter it is paid (very cheap), and the free Netlify route has 300 credits a month, so an LLM tier stays as the backup; and Jev's answers depend on the other questions in the same call (in the rerank test one chunk scored 0.62 among 2 documents and 0.85 among 10), so M15 also asks one claim per call. Jev gives only the verdict; the quote comes from the chunk the search found |
 | **D49** | **Fixes are part of `respond`, and one artifact gets a fix part too** (the user's call, 2026-10-18). LabPilot must not only say what is different, or what the bugs are. It must give the best solution it can: the right code, the right logic or a better algorithm. This holds for one artifact, for two artifacts, and for a question about one thing in one artifact. **Where it is today (read from `prompts/instructions.py` on 2026-10-18):** the two-artifact templates (`REPORT`, `COMPARE`) have `§12 CORRECTIONS` ("concrete changes to B, biggest effect first") and `§13 NEXT STEP`. The one-artifact template `SCAN` has only a description, the numbers and `§2 PROBLEMS`, so it lists bugs and never asks for the right code. **Three gaps:** (1) `SCAN` has no fix part; (2) the words "concrete changes" do not say to write the corrected code or a better algorithm, with the reason; (3) nothing measures fix quality, because M6 scores findings only (M17 is the new measurement). **Proposal, to build in slice 5** when the `respond` instruction is written: add a fix part to the one-artifact instruction; rewrite `§12` so it asks for corrected code or logic and the reason; mark every fix as a suggestion with a confidence, because a fix is the model's general knowledge and not evidence from the files (axis 3 of the template). **If M17 shows that the fixes are weak, for one artifact or for two, `propose_fix` becomes its own node: a second call after the findings.** The reason a split may help, to be tested and not assumed: asking for bugs already invents some bugs (the discovery framing finding), so the same call that writes the findings may write shallow fixes. Until M17 says so, the fixes stay inside `respond`, as 21.3 says |
+| **D50** | **A plan that is readable and wrong goes to the NEXT tier** (the user's demand, 2026-10-19). `LLMClient.generate(..., problem_with=)`; the rejected tier is not asked again and its pool is not retired; the walk stops after `max_rejected_answers = 3` (a first guess). Built in slice 4, lesson 5 → 17.20 |
+| **D51** | **The planner's map budget is computed for each call**: `max(1, min(12,000, 14,500 - f))`, with `f` = the prompt without the map plus twice the schema (it travels in `tools` and again as text). This is CC8. Built in slice 4 → 17.20 |
+| **D52** | **The map shows signatures and first sentences** (`StoredHeader.opening`, 300 characters, only for a chunk that starts its unit; `prompts/_hints.py`). The ladder is rich map, bare names, ranked, folded. Built in slice 4 → 17.20 |
 
 #### 21.3 Where every planned node lives
 
@@ -12475,6 +12538,7 @@ of section 18 still says "SLICE 9" so that old links work; it is slice 12 now.
 10. Which model gives the `verify` verdict and the planner's list of steps: an LLM with function calling, or Jev (D48). Decide with M16 in slice 4 (the planner's steps) and M15 in slice 7 (`verify`).
 11. Whether the fixes inside `respond` are good enough, or `propose_fix` needs its own node (D49). Decide with M17 after slice 5.
 12. The query cap `MAX_QUERIES = 12` and the allowed steps for each file count, both in `agent/plan_check.py`, are first guesses (slice 4, lesson 3). Set them from the plans measured in M5 and M16.
+13. Slice 4 is closed with the planner BUILT and not measured or wired. Slice 5 wires `plan` and `summarize` into `_ask_graph` together with `respond`. M5 and M16 are still owed (17.20), the file scores are not given to `build_map` yet, and D47 (stored summaries) is not built. Items 9 and 10 above therefore stay open: decide them with the first M5 and M16 runs.
 
 #### 21.7 What this changed in older text
 

@@ -76,3 +76,9 @@ def test_the_limit_fits_the_tightest_input_cap_in_the_chain():
     )
 
     assert PLANNER_INPUT_LIMIT * (1 + SAFETY_MARGIN_RATIO) <= tightest
+
+
+def test_the_instruction_says_what_a_quoted_signature_or_sentence_in_the_map_is():
+    assert "signature" in PLANNER
+    assert "in quotes" in PLANNER
+    assert "copied from the file" in PLANNER

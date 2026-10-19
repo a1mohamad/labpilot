@@ -11,7 +11,12 @@ from labpilot.agent import (
 from labpilot.api import planning
 from labpilot.api.errors import UnknownArtifactId
 from labpilot.llm import AllFreeTiersExhausted, LLMClient, LLMResult
-from labpilot.prompts import PLANNER, PLANNER_INPUT_LIMIT, PLANNER_MAX_TOKENS
+from labpilot.prompts import (
+    OPENING_CHARS,
+    PLANNER,
+    PLANNER_INPUT_LIMIT,
+    PLANNER_MAX_TOKENS,
+)
 from labpilot.store import StoredHeader, UnknownArtifact
 from labpilot.tokens import estimate_tokens
 
@@ -25,7 +30,7 @@ GOOD = {
 }
 
 
-def header(index, source="train.py"):
+def header(index, source="train.py", opening=""):
     first = index * 10 + 1
     return StoredHeader(
         chunk_index=index,
@@ -33,6 +38,7 @@ def header(index, source="train.py"):
         start_line=first,
         end_line=first + 9,
         header=f"[{source} · def step_{index} · lines {first}-{first + 9}]",
+        opening=opening,
     )
 
 
@@ -60,7 +66,7 @@ STORED = {
 
 
 def make(monkeypatch, client, stored=None, error=None):
-    def fake_read(conn, artifact_id):
+    def fake_read(conn, artifact_id, *, opening_chars=0):
         if error:
             raise error
         return (stored or STORED)[artifact_id]
@@ -130,16 +136,43 @@ def test_each_side_of_the_map_shows_the_file_of_its_own_artifact(monkeypatch):
     assert prompt.endswith(QUESTION)
 
 
+def test_the_planner_asks_the_store_for_the_opening_of_every_part(monkeypatch):
+    asked = []
+
+    def fake_read(conn, artifact_id, *, opening_chars=0):
+        asked.append((artifact_id, opening_chars))
+        return STORED[artifact_id]
+
+    monkeypatch.setattr(planning, "read_headers", fake_read)
+
+    planning.make_planner(object(), FakeClient(GOOD))(QUESTION, "A-1", "B-1")
+
+    assert asked == [("A-1", OPENING_CHARS), ("B-1", OPENING_CHARS)]
+
+
+def test_a_signature_read_from_the_store_reaches_the_prompt(monkeypatch):
+    stored = {
+        "A-1": STORED["A-1"],
+        "B-1": (header(0, "train.py", opening="def step_0(model, clip=1.5):\n"),),
+    }
+    client = FakeClient(GOOD)
+
+    make(monkeypatch, client, stored)(QUESTION, "A-1", "B-1")
+
+    assert "def step_0(model, clip=1.5)   lines 1-10" in client.calls[0][0]
+
+
 def test_the_tool_name_is_the_one_the_instruction_talks_about():
     assert PLAN_TOOL_NAME in PLANNER
 
 
 @pytest.mark.parametrize("question_size", [60, 30_000], ids=["short", "long"])
+@pytest.mark.parametrize("opening", ["", "def step(a, b):\n" + "x" * 280])
 def test_the_map_is_cut_so_the_whole_call_fits_the_tightest_tier(
-    monkeypatch, question_size
+    monkeypatch, question_size, opening
 ):
     client = FakeClient(GOOD)
-    big = tuple(header(i, f"module_{i // 3}.py") for i in range(1_200))
+    big = tuple(header(i, f"module_{i // 3}.py", opening=opening) for i in range(1_200))
     question = "why " * (question_size // 4)
 
     make(monkeypatch, client, {"A-1": big, "B-1": big})(question, "A-1", "B-1")
