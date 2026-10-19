@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Protocol
 
+from labpilot.prompts._hints import describe
 from labpilot.tokens import estimate_tokens
 
 SIDES = ("A", "B")
@@ -50,12 +51,23 @@ class MapPart(Protocol):
 
     A Protocol and not an import: prompts/ is core and may not see store/, so
     the entry layer hands over whatever it read and this module never names it.
+    `opening` may be empty (nothing was asked for, or this part is the middle
+    of a split unit); the map then shows the bare name.
     """
 
     header: str
     source: str
     start_line: int
     end_line: int
+    opening: str
+
+
+@dataclass
+class _Member:
+    start: int
+    end: int
+    signature: str = ""
+    note: str = ""
 
 
 @dataclass
@@ -63,7 +75,9 @@ class _Unit:
     name: str
     start: int
     end: int
-    members: dict[str, None] = field(default_factory=dict)
+    signature: str = ""
+    note: str = ""
+    members: dict[str, _Member] = field(default_factory=dict)
 
 
 @dataclass
@@ -84,9 +98,22 @@ class _File:
             return self.summary()
         return f"{self.summary()}   {NOT_LISTED}"
 
-    def detail(self) -> str:
+    def detail(self, *, hints: bool) -> str:
+        """Every unit of the file. `hints` adds what the part's own text said.
+
+        With hints, a unit and each of its members get a row of their own, with
+        the signature or the first sentence when one was found. Without hints,
+        the members share the unit's row as bare names: 1,284 tokens against
+        2,150 on the sample pair, and the form a long file list can afford.
+        """
         rows = [self.summary()]
         for unit in self.units.values():
+            if hints:
+                rows.append(_row("  ", unit.name, unit))
+                rows.extend(
+                    _row("    ", name, member) for name, member in unit.members.items()
+                )
+                continue
             row = f"  {unit.name}   lines {unit.start}-{unit.end}"
             if unit.members:
                 row += f"   {', '.join(unit.members)}"
@@ -170,10 +197,27 @@ def _files(parts: Sequence[MapPart]) -> list[_File]:
         )
         unit.start = min(unit.start, part.start_line)
         unit.end = max(unit.end, part.end_line)
-        if len(names) > 1:
-            unit.members[names[1]] = None
+
+        # A part describes the thing its LAST name points at: the unit when it
+        # has one name, the member when it has two. Only the first part that
+        # brings text is read - later parts of a split unit bring none.
+        if len(names) == 1:
+            target: _Unit | _Member = unit
+        else:
+            target = unit.members.setdefault(
+                names[1], _Member(part.start_line, part.end_line)
+            )
+            target.start = min(target.start, part.start_line)
+            target.end = max(target.end, part.end_line)
+        if not target.signature and not target.note:
+            target.signature, target.note = describe(names[-1], part.opening)
 
     return files
+
+
+def _row(indent: str, name: str, item: _Unit | _Member) -> str:
+    row = f"{indent}{item.signature or name}   lines {item.start}-{item.end}"
+    return f'{row}   "{item.note}"' if item.note else row
 
 
 def _names(part: MapPart) -> list[str]:
@@ -193,10 +237,14 @@ def _side(
     heading = f"SIDE {side} — {_count(len(files), 'file')}, {parts}"
 
     # 1. EVERYTHING FITS - no ranking at all. Most repositories land here, and
-    #    ranking then would be a cost with no benefit.
-    full = _join(heading, "FILES", [f.detail() for f in files])
-    if estimate_tokens(full) <= budget:
-        return _Rendered(full, estimate_tokens(full), complete=True)
+    #    ranking then would be a cost with no benefit. The richest form comes
+    #    first (a row per function, with its signature); if that is too big,
+    #    the same map with bare names is tried before anything is ranked or
+    #    left out.
+    for hints in (True, False):
+        full = _join(heading, "FILES", [f.detail(hints=hints) for f in files])
+        if estimate_tokens(full) <= budget:
+            return _Rendered(full, estimate_tokens(full), complete=True)
 
     # Closest to the question first; the artifact's own order breaks ties and
     # stands in when there are no scores, so the map is always deterministic.
@@ -212,7 +260,7 @@ def _side(
     text = _join(heading, RANKED_NOTE, [rows[f.order] for f in files])
     if estimate_tokens(text) <= budget:
         for file in ranked:
-            rows[file.order] = file.detail()
+            rows[file.order] = file.detail(hints=False)
             trial = _join(heading, RANKED_NOTE, [rows[f.order] for f in files])
             if estimate_tokens(trial) <= budget:
                 text = trial
