@@ -153,3 +153,80 @@ def test_the_agent_package_never_reaches_the_outside_world_itself():
         f"function it needs from api/ (decision D7), or it can no longer be "
         f"tested with a fake and no network."
     )
+
+
+# ---------------------------------------------------------------------------
+# The two modularization rules that were only prose until now (CLAUDE.md,
+# Working Rules, "Modularization"). The user asked for them more than once and
+# they were forgotten, so a test holds them.
+# ---------------------------------------------------------------------------
+
+MAX_MODULE_LINES = 400
+
+# A module past the limit is a SYMPTOM to investigate, not a crime, so the
+# exceptions are named here with the reason. A new name needs a reason too.
+LONG_MODULES = {
+    "llm/registry.py": "only data: the model tiers. It is split by gateway in "
+    "slice 11, when the routing work touches it anyway",
+}
+
+
+def _relative(path: Path) -> str:
+    return path.relative_to(PACKAGE_ROOT).as_posix()
+
+
+def test_no_module_is_past_the_line_limit_unless_it_is_named_above():
+    too_long = {
+        _relative(path): len(path.read_text(encoding="utf-8").splitlines())
+        for path in PACKAGE_ROOT.rglob("*.py")
+        if len(path.read_text(encoding="utf-8").splitlines()) > MAX_MODULE_LINES
+    }
+
+    unnamed = {
+        name: lines for name, lines in too_long.items() if name not in LONG_MODULES
+    }
+    assert not unnamed, (
+        f"{unnamed} are past {MAX_MODULE_LINES} lines. Ask: when X changes, how "
+        f"many files do I touch? Two jobs in one file means two files. If the "
+        f"length is honest (data, templates), name the file in LONG_MODULES."
+    )
+
+
+def test_a_named_long_module_is_still_long():
+    # an excuse that no longer applies must be removed, or the list rots
+    for name in LONG_MODULES:
+        path = PACKAGE_ROOT / name
+        assert path.exists(), f"{name} is named in LONG_MODULES and is gone"
+        lines = len(path.read_text(encoding="utf-8").splitlines())
+        assert lines > MAX_MODULE_LINES, f"{name} is {lines} lines now: remove it"
+
+
+def _deep_imports() -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        own = _unit_of(path)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names = [node.module]
+            elif isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            else:
+                continue
+            for name in names:
+                parts = name.split(".")
+                if parts[0] != "labpilot" or len(parts) < 3:
+                    continue
+                if parts[1] != own and parts[1] not in SHARED:
+                    found.append((_relative(path), name))
+    return found
+
+
+def test_code_outside_a_package_imports_it_by_its_front_door():
+    # Rule 2: other code imports from `labpilot.<package>`, never from one of
+    # its files, so a file can be renamed or split without touching a caller.
+    deep = _deep_imports()
+    assert not deep, (
+        f"{deep} import a file of another package. Import the name from the "
+        f"package itself, and export it in that package's __init__.py."
+    )
