@@ -11,9 +11,17 @@ class Attempt:
 
 
 @dataclass(frozen=True, slots=True)
+class Tool:
+    name: str
+    description: str
+    parameters: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
 class LLMResult:
     text: str
     model: str
     tier: int
     finish_reason: str = "unknown"
     attempts: tuple[Attempt, ...] = ()
+    arguments: dict[str, object] | None = None
