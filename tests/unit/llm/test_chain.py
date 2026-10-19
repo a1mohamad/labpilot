@@ -31,7 +31,7 @@ class FakeProvider:
     def pool(self):
         return self.quota_pool or self.api_key_env
 
-    def complete(self, prompt, *, max_tokens=1024):
+    def complete(self, prompt, *, max_tokens=1024, tool=None):
         self.calls += 1
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
