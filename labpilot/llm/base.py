@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -9,9 +10,10 @@ from dataclasses import dataclass
 import requests
 
 from labpilot._text import truncate
+from labpilot.llm._calls import json_fallback, read_object
 from labpilot.llm._http import error_from_response
 from labpilot.llm._pacing import wait_for_turn
-from labpilot.llm.contracts import LLMResult
+from labpilot.llm.contracts import LLMResult, Tool
 from labpilot.llm.defaults import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEMPERATURE,
@@ -46,10 +48,17 @@ class HTTPProvider(ABC):
         return self.quota_pool or self.api_key_env
 
     def complete(
-        self, prompt: str, *, max_tokens: int = DEFAULT_MAX_TOKENS
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        tool: Tool | None = None,
     ) -> LLMResult:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
+
+        if tool is not None:
+            prompt = f"{prompt}\n\n{json_fallback(tool)}"
 
         self._check_fits(prompt, max_tokens)
         # A call that is refused locally sends nothing, so it must not use up
@@ -62,7 +71,7 @@ class HTTPProvider(ABC):
             response = requests.post(
                 self._endpoint(),
                 headers=self._headers(),
-                json=self._payload(prompt, max_tokens),
+                json=self._payload(prompt, max_tokens, tool),
                 timeout=self.timeout,
             )
         except requests.exceptions.RequestException as exc:
@@ -78,7 +87,26 @@ class HTTPProvider(ABC):
                 f"{self.name}: response was not JSON: {truncate(response.text)}"
             ) from exc
 
+        if tool is not None:
+            call = self._extract_call(body, tool)
+            if call is not None:
+                arguments, served_model, finish_reason = call
+                return self._result(
+                    json.dumps(arguments), served_model, finish_reason, body, arguments
+                )
         text, served_model, finish_reason = self._extract_message(body)
+        arguments = read_object(text, self.name) if tool is not None else None
+
+        return self._result(text, served_model, finish_reason, body, arguments)
+
+    def _result(
+        self,
+        text: str,
+        served_model: str,
+        finish_reason: str,
+        body: dict,
+        arguments: dict[str, object] | None,
+    ) -> LLMResult:
 
         logger.info(
             "tier %d served by %s (finish_reason=%s, %d chars, %s)",
@@ -94,6 +122,7 @@ class HTTPProvider(ABC):
             model=served_model,
             tier=self.tier,
             finish_reason=finish_reason,
+            arguments=arguments,
         )
 
     def _check_fits(self, prompt: str, max_tokens: int) -> None:
@@ -134,7 +163,14 @@ class HTTPProvider(ABC):
     def _headers(self) -> dict[str, str]: ...
 
     @abstractmethod
-    def _payload(self, prompt: str, max_tokens: int) -> dict[str, object]: ...
+    def _payload(
+        self, prompt: str, max_tokens: int, tool: Tool | None = None
+    ) -> dict[str, object]: ...
+
+    def _extract_call(
+        self, body: dict, tool: Tool
+    ) -> tuple[dict[str, object], str, str] | None:
+        return None
 
     @abstractmethod
     def _extract_message(self, body: dict) -> tuple[str, str, str]: ...
