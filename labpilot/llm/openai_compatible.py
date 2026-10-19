@@ -4,8 +4,10 @@ import os
 from dataclasses import dataclass
 
 from labpilot._text import truncate
+from labpilot.llm._calls import read_arguments
 from labpilot.llm._http import rate_limit_ceiling, reset_at_epoch, retry_after_seconds
 from labpilot.llm.base import HTTPProvider
+from labpilot.llm.contracts import Tool
 from labpilot.llm.errors import LLMError
 
 _FIRST_ERROR_STATUS = 400
@@ -94,17 +96,56 @@ class OpenAICompatibleProvider(HTTPProvider):
             "Content-Type": "application/json",
         }
 
-    def _payload(self, prompt: str, max_tokens: int) -> dict[str, object]:
+    def _payload(
+        self, prompt: str, max_tokens: int, tool: Tool | None = None
+    ) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens,
             "temperature": self.temperature,
         }
+
+        if tool is not None:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters,
+                    },
+                }
+            ]
         if self.extra_body:
             payload.update(self.extra_body)
 
         return payload
+
+    def _extract_call(
+        self, body: dict, tool: Tool
+    ) -> tuple[dict[str, object], str, str] | None:
+        try:
+            choice = body["choices"][0]
+            calls = choice["message"].get("tool_calls") or []
+        except (AttributeError, KeyError, IndexError, TypeError):
+            return None
+        if not calls:
+            return None
+
+        function = calls[0].get("function") or {}
+        if function.get("name") != tool.name:
+            raise LLMError(
+                f"{self.name}: called {function.get('name')!r}, not {tool.name!r}"
+            )
+
+        arguments = read_arguments(function.get("arguments"), self.name)
+
+        return (
+            arguments,
+            body.get("model") or self.name,
+            choice.get("finish_reason", "unknown"),
+        )
 
     def _extract_message(self, body: dict) -> tuple[str, str, str]:
         hidden = _error_inside(body, self.name) if isinstance(body, dict) else None
