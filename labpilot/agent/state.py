@@ -1,6 +1,7 @@
 import operator
 from typing import Annotated, Any, TypedDict
 
+from labpilot.agent.plan import Plan
 from labpilot.ingest import Chunk
 
 Chunks = tuple[Chunk, ...]
@@ -12,6 +13,7 @@ class State(TypedDict):
     a: str
     b: str
     history: Annotated[list[str], operator.add]
+    plan: Plan
     summary_a: str
     summary_b: str
     sides: Any
