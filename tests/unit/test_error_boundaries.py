@@ -53,6 +53,9 @@ ALLOWED_TO_ESCAPE: dict[str, str] = {
     "StoreError": (
         "never raised directly - only its subclasses are, and both are caught"
     ),
+    # The planner node of the graph catches it and runs the default plan, so
+    # ask() never lets it out. It is raised in api/ and caught in agent/.
+    "PlanError": "the planner node catches it inside the graph",
 }
 
 
