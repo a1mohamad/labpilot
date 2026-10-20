@@ -115,37 +115,73 @@ def retrieved_chunks(
     rather than a rule something downstream has to honour.
     """
     chunks: list[Chunk] = []
-    for side, found in sides.items():
-        artifact = found.artifact
-        vector = _embed_question(question, model=artifact.embedding_model)
-
-        # measure() and search() are two round trips, and write_artifact
-        # deletes then re-inserts - so a re-ingest with a different embedder
-        # between them moves the model under a request already in flight.
-        # Rare, real, and the only thing that makes ModelMismatch reachable
-        # when we pass the model FROM the row search() checks it against.
-        try:
-            hits = search(
-                conn,
-                artifact.id,
-                vector,
-                model=artifact.embedding_model,
-                limit=SEARCH_LIMIT,
-            )
-        except ModelMismatch as exc:
-            raise ArtifactChanged(
-                f"{artifact.id!r} was re-ingested with a different embedder "
-                f"while this comparison was running: ask again"
-            ) from exc
-
+    for side in sides:
+        artifact = sides[side].artifact
+        hits = _searched(conn, sides, side=side, text=question)
         chunks.extend(
-            as_chunk(hit, side, artifact.id)
-            for hit in rerank_and_cut(
-                question, _fused(conn, artifact.id, question, hits)
-            )
+            as_chunk(hit, side, artifact.id) for hit in rerank_and_cut(question, hits)
         )
 
     return tuple(chunks)
+
+
+def retrieve_query(
+    conn: psycopg.Connection,
+    sides: dict[Side, StoredArtifact],
+    *,
+    side: Side,
+    text: str,
+) -> tuple[Chunk, ...]:
+    artifact = sides[side].artifact
+    hits = _searched(conn, sides, side=side, text=text)
+    return tuple(as_chunk(hit, side, artifact.id) for hit in hits)
+
+
+def rank_pile(
+    question: str,
+    pile: tuple[Chunk, ...],
+    *,
+    rank: Callable[..., Ranking] = _rank,
+) -> tuple[Chunk, ...]:
+    if not pile:
+        return ()
+    window = pile[:RERANK_WINDOW]
+    ranking = rank(question, [chunk.text for chunk in window], top_n=None)
+    if ranking.model == SKIP:
+        return pile[:VECTOR_TOP_N]
+
+    return tuple(window[position] for position in ranking.order[:RERANK_TOP_N])
+
+
+def _searched(
+    conn: psycopg.Connection,
+    sides: dict[Side, StoredArtifact],
+    *,
+    side: Side,
+    text: str,
+) -> tuple[SearchHit, ...]:
+    artifact = sides[side].artifact
+    vector = _embed_question(text, model=artifact.embedding_model)
+    # measure() and search() are two round trips, and write_artifact
+    # deletes then re-inserts - so a re-ingest with a different embedder
+    # between them moves the model under a request already in flight.
+    # Rare, real, and the only thing that makes ModelMismatch reachable
+    # when we pass the model FROM the row search() checks it against.
+    try:
+        hits = search(
+            conn,
+            artifact.id,
+            vector,
+            model=artifact.embedding_model,
+            limit=SEARCH_LIMIT,
+        )
+    except ModelMismatch as exc:
+        raise ArtifactChanged(
+            f"{artifact.id!r} was re-ingested with a different embedder "
+            f"while this comparison was running: ask again"
+        ) from exc
+
+    return _fused(conn, artifact.id, text, hits)
 
 
 def _fused(
