@@ -18,6 +18,7 @@ class State(TypedDict):
     summary_b: str
     sides: Any
     fits: bool
+    found: Annotated[list[Chunks], operator.add]
     chunks: Chunks
     totals: Totals
     prompt: str
