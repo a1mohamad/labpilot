@@ -6,8 +6,9 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import psycopg
+from psycopg_pool import ConnectionPool
 
-from labpilot.store.defaults import CONNECT_TIMEOUT
+from labpilot.store.defaults import CONNECT_TIMEOUT, POOL_SIZE
 from labpilot.store.errors import ConnectionFailed, NotConfigured
 
 DATABASE_URL_ENV = "DATABASE_URL"
@@ -36,6 +37,17 @@ def connect(
 
     with opened as conn:
         yield conn
+
+
+def make_pool(url: str | None = None) -> ConnectionPool:
+    return ConnectionPool(
+        url or database_url(),
+        min_size=POOL_SIZE,
+        max_size=POOL_SIZE,
+        kwargs={"autocommit": True, "connection_timeout": CONNECT_TIMEOUT},
+        check=ConnectionPool.check_connection,
+        open=False,
+    )
 
 
 def create_schema(conn: psycopg.Connection) -> None:
