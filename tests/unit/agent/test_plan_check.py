@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from labpilot.agent import Plan, Query, allowed_steps, present_sides
-from labpilot.agent.plan_check import check_plan, default_plan
+from labpilot.agent.plan_check import check_plan, default_plan, question_queries
 
 QUESTION = "why is the clip value 1.5?"
 BOTH = ("A", "B")
@@ -16,6 +16,15 @@ GOOD = Plan(
 
 def queries(count):
     return tuple(Query("A", f"query {i}") for i in range(count))
+
+
+def test_the_question_is_one_query_for_each_side_that_has_a_file():
+    assert question_queries(QUESTION, BOTH) == (
+        Query("A", QUESTION),
+        Query("B", QUESTION),
+    )
+    assert question_queries(QUESTION, ("B",)) == (Query("B", QUESTION),)
+    assert question_queries(QUESTION, ()) == ()
 
 
 def test_no_file_means_no_step():
@@ -74,8 +83,8 @@ def test_an_empty_plan_is_allowed_because_it_means_chat_only():
     assert check_plan(plan, QUESTION, BOTH) is plan
 
 
-def test_twelve_queries_are_allowed():
-    plan = Plan((), queries(12))
+def test_six_queries_are_allowed():
+    plan = Plan((), queries(6))
 
     assert check_plan(plan, QUESTION, BOTH) is plan
 
@@ -90,7 +99,7 @@ def test_twelve_queries_are_allowed():
         pytest.param(Plan((), (Query("A", "x"),)), ("B",), id="a side with no file"),
         pytest.param(Plan((), (Query("C", "x"),)), BOTH, id="an unknown side"),
         pytest.param(Plan((), (Query("A", "   "),)), BOTH, id="a blank query"),
-        pytest.param(Plan((), queries(13)), BOTH, id="thirteen queries"),
+        pytest.param(Plan((), queries(7)), BOTH, id="seven queries"),
     ],
 )
 def test_a_bad_plan_is_replaced_by_the_default_plan(plan, sides):
