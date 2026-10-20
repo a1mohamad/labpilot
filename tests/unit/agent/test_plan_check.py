@@ -84,7 +84,7 @@ def test_an_empty_plan_is_allowed_because_it_means_chat_only():
 
 
 def test_six_queries_are_allowed():
-    plan = Plan((), queries(12))
+    plan = Plan((), queries(6))
 
     assert check_plan(plan, QUESTION, BOTH) is plan
 
