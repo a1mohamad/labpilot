@@ -209,6 +209,15 @@ def test_a_small_side_hands_its_leftover_to_a_large_one():
     )
 
 
+# 640, 684, 770 and 900 are budgets where the text came out ONE token over when
+# the join between the sides was not counted.
+@pytest.mark.parametrize("budget", [640, 684, 770, 900])
+def test_two_sides_together_stay_within_the_budget_joiner_included(budget):
+    text = build_map({"A": BIG, "B": BIG}, budget=budget)
+
+    assert estimate_tokens(text) <= budget
+
+
 def test_neither_side_is_privileged():
     # the same content in either slot must get the same room: upload order
     # must not decide how much of a comparison the planner can see
