@@ -5,7 +5,7 @@ from labpilot.ingest import Side
 
 logger = logging.getLogger(__name__)
 
-MAX_QUERIES = 12
+MAX_QUERIES = 6
 
 STEPS_BY_FILES: dict[int, tuple[str, ...]] = {
     0: (),
@@ -34,10 +34,14 @@ def allowed_steps(sides: tuple[Side, ...]) -> tuple[str, ...]:
     return STEPS_BY_FILES[len(sides)]
 
 
+def question_queries(question: str, sides: tuple[Side, ...]) -> tuple[Query, ...]:
+    return tuple(Query(side, question) for side in sides)
+
+
 def default_plan(question: str, sides: tuple[Side, ...]) -> Plan:
     return Plan(
         steps=allowed_steps(sides),
-        queries=tuple(Query(side, question) for side in sides),
+        queries=question_queries(question, sides),
         source="default",
     )
 
