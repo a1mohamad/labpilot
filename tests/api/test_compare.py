@@ -112,7 +112,7 @@ def test_the_ids_reach_the_ask_path_in_the_slots_they_were_sent_in(
     """
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
         seen.update(a=a_id, b=b_id, question=question)
         return answered()
 
