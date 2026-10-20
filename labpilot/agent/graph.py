@@ -7,6 +7,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
 from labpilot.agent.fan_out import fan_out
+from labpilot.agent.merge import make_merge_node
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.planner import make_planner_node
 from labpilot.agent.search_one import make_one_search_node
@@ -74,7 +75,7 @@ def build_graph(
         builder.add_edge("search", "prompt")
     else:
         builder.add_node("search_one", make_one_search_node(search_one))
-        builder.add_node("merge", make_one_search_node(totals_of, rank_side))
+        builder.add_node("merge", make_merge_node(totals_of, rank_side))
         builder.add_edge("search_one", "merge")
         builder.add_edge("merge", "prompt")
     first = "measure"

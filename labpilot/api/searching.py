@@ -147,7 +147,7 @@ def rank_pile(
         return ()
     window = pile[:RERANK_WINDOW]
     ranking = rank(question, [chunk.text for chunk in window], top_n=None)
-    if ranking.model == "SKIP":
+    if ranking.model == SKIP:
         return pile[:VECTOR_TOP_N]
 
     return tuple(window[position] for position in ranking.order[:RERANK_TOP_N])
