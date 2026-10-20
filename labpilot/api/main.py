@@ -15,6 +15,7 @@ from labpilot.api.middleware.request_id import RequestIDMiddleware
 from labpilot.api.routers import api_router, service_router
 from labpilot.api.startup import validate_provider_keys
 from labpilot.llm import LLMClient
+from labpilot.store import NotConfigured, make_pool
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     app.state.providers = providers
     app.state.client = LLMClient()
+    # Built closed: it opens on the first search, so booting never needs the
+    # database. No DATABASE_URL means no pool, and the routes answer 503.
+    try:
+        app.state.pool = make_pool()
+    except NotConfigured:
+        app.state.pool = None
 
     try:
         yield
     finally:
+        if app.state.pool is not None:
+            app.state.pool.close()
         del app.state.client
         del app.state.providers
 

@@ -27,7 +27,7 @@ class FakeGraph:
 def use(monkeypatch, graph):
     built = []
 
-    def fake_ask_graph(conn, client, thread_id=None):
+    def fake_ask_graph(conn, client, thread_id=None, pool=None):
         built.append(thread_id)
         return graph
 

@@ -1,4 +1,9 @@
-from labpilot.store.connection import connect, create_schema, database_url
+from labpilot.store.connection import (
+    connect,
+    create_schema,
+    database_url,
+    make_pool,
+)
 from labpilot.store.contracts import (
     ArtifactRecord,
     ChunkRecord,
@@ -9,7 +14,7 @@ from labpilot.store.contracts import (
     StoredHeader,
     Vector,
 )
-from labpilot.store.defaults import SEARCH_LIMIT
+from labpilot.store.defaults import POOL_SIZE, SEARCH_LIMIT
 from labpilot.store.errors import (
     ConnectionFailed,
     ModelMismatch,
@@ -31,6 +36,7 @@ __all__ = [
     "measure",
     "ModelMismatch",
     "NotConfigured",
+    "POOL_SIZE",
     "read_chunks",
     "read_headers",
     "SearchHit",
@@ -46,6 +52,7 @@ __all__ = [
     "create_schema",
     "database_url",
     "file_scores",
+    "make_pool",
     "search",
     "write_artifact",
 ]

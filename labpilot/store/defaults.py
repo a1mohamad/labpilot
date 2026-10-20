@@ -20,3 +20,9 @@ SEARCH_LIMIT = 50
 # us -- slice 8 may move them.
 BM25_K1 = 1.2
 BM25_B = 0.75
+# One connection for each search that can run at once: the planner's queries
+# (MAX_QUERIES, 6) plus the question on each side (2). Measured 2026-10-20 on
+# one VPN exit, 8 searches of 7 round trips each: one shared connection 12.9 s,
+# a pool of 4 4.1 s, a pool of 8 1.7 s. store/ may not import agent/, so
+# tests/unit/test_pool_size.py ties this number to MAX_QUERIES.
+POOL_SIZE = 8

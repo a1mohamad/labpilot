@@ -33,6 +33,26 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
+def no_real_pool(request, monkeypatch):
+    """The app builds a connection pool from DATABASE_URL when it boots.
+
+    A test that runs the app with that variable set would otherwise search the
+    REAL database, where its own fixture rows do not exist (they live in a
+    throwaway schema). With no pool, the search shares the connection the test
+    holds. A test that wants a pool builds one itself, on the test schema.
+    """
+    if "smoke" in request.keywords:
+        return
+
+    from labpilot.store import NotConfigured
+
+    def not_configured():
+        raise NotConfigured("tests never open the real pool")
+
+    monkeypatch.setattr("labpilot.api.main.make_pool", not_configured)
+
+
+@pytest.fixture(autouse=True)
 def no_live_rerankers(request, monkeypatch):
     """Keep the rerank chain EMPTY for every test that is not a smoke test.
 

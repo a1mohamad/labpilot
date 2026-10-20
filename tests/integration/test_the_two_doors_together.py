@@ -79,11 +79,30 @@ class CountingEmbedder:
         )
 
 
+# What the planner's tool call returns: a plan with one query of its own.
+PLAN = {"steps": [], "queries": [{"side": "B", "text": "weights"}]}
+
+
 class FakeClient:
+    """Answers the planner with PLAN and the report with ANSWER, and keeps the
+    two kinds of call apart so `prompts` holds the report prompts only."""
+
     def __init__(self) -> None:
         self.prompts: list[str] = []
+        self.planner_prompts: list[str] = []
 
-    def generate(self, prompt: str, *, max_tokens: int = 0) -> LLMResult:
+    def generate(
+        self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
+    ) -> LLMResult:
+        if tool is not None:
+            self.planner_prompts.append(prompt)
+            return LLMResult(
+                text="a plan",
+                model="fake-model",
+                tier=1,
+                finish_reason="STOP",
+                arguments=PLAN,
+            )
         self.prompts.append(prompt)
         return LLMResult(text=ANSWER, model="fake-model", tier=1, finish_reason="STOP")
 
@@ -202,9 +221,11 @@ def test_a_second_question_searches_the_stored_corpus_and_never_re_ingests(
     assert embedder.documents == ingested, (
         "asking a question must never re-embed the corpus"
     )
-    # One query embed per SIDE per question: the two artifacts may hold two
-    # different embedders, so each side's question is embedded in its own space.
-    assert embedder.queries == 4
+    # One query embed per SEARCH: the question on each side (2) plus the one
+    # query the fake planner writes (1). The artifacts may hold two different
+    # embedders, so every search embeds its text in its own side's space.
+    searches_per_question = 2 + 1
+    assert embedder.queries == 2 * searches_per_question
 
     sent = response.json()["chunks"]["B"]
     assert sent["sent"] < sent["total"], "a large side must really be retrieved from"

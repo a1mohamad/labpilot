@@ -21,6 +21,7 @@ from labpilot.store import (
     ArtifactRecord,
     ChunkRecord,
     ModelMismatch,
+    make_pool,
     write_artifact,
 )
 
@@ -31,11 +32,33 @@ DIM = 3
 V = (1.0, 0.0, 0.0)
 
 
+# What the planner's tool call returns: a plan with one query of its own.
+PLAN = {"steps": [], "queries": [{"side": "B", "text": "weights"}]}
+
+
 class FakeClient:
+    """Answers the planner with PLAN and the report with a fixed text.
+
+    The two kinds of call are kept apart, so `prompts` still holds the report
+    prompts only.
+    """
+
     def __init__(self) -> None:
         self.prompts: list[str] = []
+        self.planner_prompts: list[str] = []
 
-    def generate(self, prompt: str, *, max_tokens: int = 0) -> LLMResult:
+    def generate(
+        self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
+    ) -> LLMResult:
+        if tool is not None:
+            self.planner_prompts.append(prompt)
+            return LLMResult(
+                text="a plan",
+                model="fake",
+                tier=1,
+                finish_reason="STOP",
+                arguments=PLAN,
+            )
         self.prompts.append(prompt)
         return LLMResult(text="an answer", model="fake", tier=1, finish_reason="STOP")
 
@@ -113,6 +136,31 @@ def test_an_unknown_artifact_id_is_refused(db):
 
     with pytest.raises(UnknownArtifactId, match="ghost"):
         asking.ask(db, "ghost", b, question="why?", client=FakeClient())
+
+
+def test_a_large_pair_is_searched_through_a_real_pool(db, schema_url, monkeypatch):
+    """Both sides come back through pooled connections on the TEST schema.
+
+    The pool is built closed and opens on the first search. If its
+    connections did not carry the schema option or did not autocommit, the
+    search would find no artifact at all.
+    """
+    a = stored(db, "A", parts=60, words=300)
+    b = stored(db, "B", parts=60, words=300)
+    monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: V)
+    pool = make_pool(schema_url)
+    assert pool.closed
+
+    try:
+        comparison = asking.ask(
+            db, a, b, question="why?", client=FakeClient(), pool=pool
+        )
+        opened_by_the_search = not pool.closed
+    finally:
+        pool.close()
+
+    assert opened_by_the_search
+    assert {chunk.side for chunk in comparison.chunks} == {"A", "B"}
 
 
 def test_two_artifacts_from_the_same_slot_are_refused(db):
