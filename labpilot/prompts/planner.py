@@ -4,7 +4,7 @@ from labpilot.prompts.corpus_map import PLANNER_BUDGET
 
 # The wording below is FIXED. Change it only together with this number, and the
 # number is logged beside every plan, so a plan can be tied to its wording.
-PLANNER_VERSION = 2
+PLANNER_VERSION = 3
 
 # The answer is a short plan, but a tier that thinks spends tokens first, so
 # this is only a backstop. A small number would give such a tier an empty
@@ -56,7 +56,8 @@ def build_planner_prompt(
     listed = "\n".join(f"- {step}: {STEP_MEANINGS[step]}" for step in steps)
     return (
         f"{PLANNER}\n"
-        f"Write at most {max_queries} queries.\n\n"
+        f"Write 2 to 5 queries, and never more than {max_queries}. "
+        "The question itself is searched too, so do not copy it.\n\n"
         f"STEPS YOU MAY CHOOSE\n{listed}\n\n"
         f"WHAT THE FILES CONTAIN\n{corpus_map}\n\n"
         f"THE QUESTION\n{question}"
