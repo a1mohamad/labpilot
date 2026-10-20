@@ -3,7 +3,15 @@ from __future__ import annotations
 import psycopg
 import pytest
 
-from labpilot.store import ConnectionFailed, NotConfigured, connect, database_url
+from labpilot.store import (
+    POOL_SIZE,
+    ConnectionFailed,
+    NotConfigured,
+    connect,
+    database_url,
+    make_pool,
+)
+from labpilot.store import connection as connection_module
 
 
 def test_a_missing_database_url_is_not_configured(monkeypatch):
@@ -103,3 +111,32 @@ def test_a_connection_is_not_autocommit_unless_someone_asks(monkeypatch):
             pass
 
     assert seen["autocommit"] is False
+
+
+def test_a_pool_is_built_closed_with_the_planned_size_and_a_health_check(monkeypatch):
+    seen = {}
+
+    class FakePool:
+        check_connection = staticmethod(lambda conn: None)
+
+        def __init__(self, url, **kwargs):
+            seen["url"] = url
+            seen.update(kwargs)
+
+    monkeypatch.setattr(connection_module, "ConnectionPool", FakePool)
+
+    make_pool("postgresql://u@h:5432/d")
+
+    assert seen["url"] == "postgresql://u@h:5432/d"
+    assert seen["min_size"] == POOL_SIZE
+    assert seen["max_size"] == POOL_SIZE
+    assert seen["open"] is False
+    assert seen["kwargs"]["autocommit"] is True
+    assert seen["check"] is FakePool.check_connection
+
+
+def test_a_pool_without_a_database_url_is_not_configured(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(NotConfigured, match="DATABASE_URL"):
+        make_pool()
