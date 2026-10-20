@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from labpilot.api.errors import (
     ArtifactsTooLargeToCompare,
 )
@@ -21,8 +23,11 @@ def build_report_prompt(
     *,
     question: str,
     totals: dict[str, int] | None = None,
+    summaries: Mapping[str, str] | None = None,
 ) -> tuple[str, tuple[Chunk, ...]]:
-    overhead = reserve(chunks, question=question, instructions=REPORT)
+    overhead = reserve(
+        chunks, question=question, instructions=REPORT, summaries=summaries
+    )
     room = PROMPT_BUDGET - overhead
     selected = select(chunks, budget=room) if room > 0 else ()
     prompt = build_prompt(
@@ -31,6 +36,7 @@ def build_report_prompt(
         question=question,
         instructions=REPORT,
         totals=totals,
+        summaries=summaries,
     )
 
     if not selected or estimate_tokens(prompt) > PROMPT_BUDGET:

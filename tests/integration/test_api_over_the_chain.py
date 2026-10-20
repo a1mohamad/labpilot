@@ -125,6 +125,10 @@ def client(monkeypatch):
     # requests the report makes. The planner is a second call of its own, tested
     # over the real store in test_planner_over_the_store.py, so it is stubbed.
     monkeypatch.setattr(
+        "labpilot.api.asking.make_summarizer",
+        lambda conn, client: lambda artifact_id: "",
+    )
+    monkeypatch.setattr(
         "labpilot.api.asking.make_planner",
         lambda conn, client: lambda question, a, b: Plan(steps=(), queries=()),
     )

@@ -283,7 +283,7 @@ def graph(planner, saver):
         fits=lambda sides, question: True,
         stuff=lambda sides, question: ((), None),
         search=lambda sides, question: ((), None),
-        make_prompt=lambda chunks, question, totals: ("the prompt", ()),
+        make_prompt=lambda chunks, question, totals, summaries: ("the prompt", ()),
         generate=lambda prompt: "the result",
         plan=planner,
         checkpointer=saver,

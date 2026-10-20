@@ -4,22 +4,23 @@ Until 2026-09-19 the only pipeline smoke test drove `chunk_file` -> `select` ->
 `build_prompt` -> `LLMClient`. That pipeline was replaced in slice 7 and has
 not been the product since: today a question goes
 
-    ingest_artifact  ->  Postgres  ->  ask()  ->  measure, fits?
-                                                  embed the question
-                                                  search per side
-                                                  the gate
-                                                  the rerank CHAIN
-                                                  select -> prompt -> generate
+    ingest_artifact  ->  Postgres  ->  ask()  ->  the planner and both summaries
+                                                  measure, fits?
+                                                  one search per query, together
+                                                  merge, rerank each side ONCE
+                                                  respond (prompt -> generate)
 
 So the weekly liveness check was watching a building we had moved out of. Four
 whole layers - the store, the ask ladder, the assembled rerank chain and both
 doors - had no live coverage at all, and the one thing smoke exists to tell us
 is that a free provider died in the night.
 
-WHAT THIS SPENDS, per run: 2 ingests of embedder quota, 2 query embeds, one
-rerank call PER SIDE on the live chain (flash-lite leads it, 500/day across two
-keys), and ONE generation. It needs a live Postgres as well, so it carries the
-cost of both gates and skips when either is absent.
+WHAT THIS SPENDS, per run: 2 ingests of embedder quota, one planner call, two
+summary calls (one per side), one query embed for every search (the question on
+each side plus the planner's queries, at most 8), one rerank call PER SIDE on
+the live chain (flash-lite leads it, 500/day across two keys), and ONE report.
+It needs a live Postgres as well, so it carries the cost of both gates and skips
+when either is absent.
 
 WHY THE SEARCH PATH AND NOT THE STUFF PATH: `A_paper.md` + `B_train.py` is
 28,246 tokens against a PROMPT_BUDGET of 26,000, so `fits_whole` refuses and the
@@ -38,7 +39,7 @@ from dotenv import load_dotenv
 from labpilot.api import asking, ingestion
 from labpilot.llm import LLMClient
 from labpilot.prompts import find_citations, resolve
-from labpilot.store import read_chunks
+from labpilot.store import make_pool, read_chunks
 
 load_dotenv()
 
@@ -48,7 +49,7 @@ QUESTION = "Compare these and explain why the results diverge."
 
 
 @pytest.mark.smoke
-def test_a_stored_pair_answers_through_the_shipped_ask_path(db):
+def test_a_stored_pair_answers_through_the_shipped_ask_path(db, schema_url):
     a = ingestion.ingest_artifact(
         db, (SAMPLES / "A_paper.md").read_bytes(), name="A_paper.md", side="A"
     )
@@ -58,11 +59,31 @@ def test_a_stored_pair_answers_through_the_shipped_ask_path(db):
 
     assert a.chunks and b.chunks, "premise: both artifacts must really be stored"
 
-    out = asking.ask(
-        db, a.artifact.id, b.artifact.id, question=QUESTION, client=LLMClient()
-    )
+    # The pool the app builds when it starts, here on the test schema, so this
+    # live run also proves that the searches use separate connections.
+    pool = make_pool(schema_url)
+    try:
+        out = asking.ask(
+            db,
+            a.artifact.id,
+            b.artifact.id,
+            question=QUESTION,
+            client=LLMClient(),
+            pool=pool,
+        )
+        searched_on_a_pool = not pool.closed
+    finally:
+        pool.close()
 
     assert out.result.text
+    assert searched_on_a_pool, "the searches never opened the pool"
+
+    # The summaries are made on every message and only `respond` reads them. If
+    # neither side reached the prompt, the summary chain is dead - and the
+    # report would still arrive, so only this assertion can tell.
+    assert "SUMMARY OF SIDE A" in out.prompt or "SUMMARY OF SIDE B" in out.prompt, (
+        "no summary reached the report: every tier failed for both sides"
+    )
 
     # WHICH PATH RAN, asserted rather than assumed. `totals` is None only when
     # the corpus was stuffed, and a stuffed run skips every stage this test

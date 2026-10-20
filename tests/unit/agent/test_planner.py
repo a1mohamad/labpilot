@@ -27,7 +27,10 @@ def run(plan=None, order=None):
         fits=lambda sides, question: True,
         stuff=lambda sides, question: (("whole",), None),
         search=lambda sides, question: (("found",), {"A": 1}),
-        make_prompt=lambda chunks, question, totals: ("the prompt", chunks[:1]),
+        make_prompt=lambda chunks, question, totals, summaries: (
+            "the prompt",
+            chunks[:1],
+        ),
         generate=lambda prompt: "the result",
         plan=plan,
     )

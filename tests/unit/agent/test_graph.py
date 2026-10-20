@@ -38,7 +38,7 @@ def run(*, fits_value, fail_in=None):
         fail("search")
         return SEARCHED, TOTALS
 
-    def make_prompt(chunks, question, totals):
+    def make_prompt(chunks, question, totals, summaries):
         calls.append(("make_prompt", chunks, question, totals))
         return "the prompt", chunks[:1]
 
@@ -121,7 +121,10 @@ def chat_graph(saver=None, *, generate=None):
         fits=lambda sides, question: True,
         stuff=lambda sides, question: (STUFFED, None),
         search=lambda sides, question: (SEARCHED, TOTALS),
-        make_prompt=lambda chunks, question, totals: ("the prompt", chunks[:1]),
+        make_prompt=lambda chunks, question, totals, summaries: (
+            "the prompt",
+            chunks[:1],
+        ),
         generate=generate or (lambda prompt: "the result"),
         checkpointer=saver,
     )

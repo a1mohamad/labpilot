@@ -8,6 +8,29 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+
+    # The smoke tests that store a pair (the ask path, the planner, the
+    # summary) need Postgres with pgvector, and they SKIP themselves when
+    # DATABASE_URL is missing. Without it the weekly run was green for all of
+    # them without running one. A container, not the real Supabase project,
+    # for the same reason as in ci.yaml: no secret, and no shared test schema.
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/labpilot
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: labpilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -15,6 +38,14 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements-dev.txt
+
+      # pgvector lives in `public` on Supabase, so put it there here too.
+      - name: install pgvector into public
+        run: >-
+          python -c "import os, psycopg;
+          psycopg.connect(os.environ['DATABASE_URL'], autocommit=True).execute(
+          'create extension if not exists vector')"
+
       - run: pytest -m smoke --run-smoke -q -rxX
         env:
           CLINE_API_KEY: ${{ secrets.CLINE_API_KEY }}

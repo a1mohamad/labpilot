@@ -10,6 +10,7 @@ from labpilot.agent.fan_out import fan_out
 from labpilot.agent.merge import make_merge_node
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.planner import make_planner_node
+from labpilot.agent.respond import make_respond_node
 from labpilot.agent.search_one import make_one_search_node
 from labpilot.agent.state import Chunks, State, Totals
 from labpilot.agent.summarize import make_summarize_node
@@ -24,7 +25,7 @@ def build_graph(
     search_one: Callable[[Any, Query], Chunks] | None = None,
     totals_of: Callable[[Any], Totals] | None = None,
     rank_side: Callable[[str, Chunks], Chunks] | None = None,
-    make_prompt: Callable[[Chunks, str, Totals], tuple[str, Chunks]],
+    make_prompt: Callable[[Chunks, str, Totals, dict[str, str]], tuple[str, Chunks]],
     generate: Callable[[str], Any],
     summarize: Callable[[str], str] | None = None,
     plan: Callable[[str, str, str], Plan] | None = None,
@@ -47,15 +48,6 @@ def build_graph(
         chunks, totals = search(state["sides"], state["question"])
         return {"chunks": chunks, "totals": totals}
 
-    def prompt_node(state: State) -> dict[str, Any]:
-        prompt, selected = make_prompt(
-            state["chunks"], state["question"], state["totals"]
-        )
-        return {"prompt": prompt, "selected": selected}
-
-    def generate_node(state: State) -> dict[str, Any]:
-        return {"result": generate(state["prompt"])}
-
     def remember_node(state: State) -> dict[str, Any]:
         return {"history": [state["question"]]}
 
@@ -67,32 +59,31 @@ def build_graph(
     builder = StateGraph(State)
     builder.add_node("measure", measure_node)
     builder.add_node("stuff", stuff_node)
-    builder.add_node("prompt", prompt_node)
-    builder.add_node("generate", generate_node)
+    builder.add_node("respond", make_respond_node(make_prompt, generate))
     builder.add_node("remember", remember_node)
     if search_one is None:
         builder.add_node("search", search_node)
-        builder.add_edge("search", "prompt")
+        builder.add_edge("search", "respond")
     else:
         builder.add_node("search_one", make_one_search_node(search_one))
         builder.add_node("merge", make_merge_node(totals_of, rank_side))
         builder.add_edge("search_one", "merge")
-        builder.add_edge("merge", "prompt")
-    first = "measure"
+        builder.add_edge("merge", "respond")
+    first_steps: list[str] = []
     if plan is not None:
         builder.add_node("plan", make_planner_node(plan))
-        builder.add_edge("plan", "measure")
-        first = "plan"
-    builder.add_edge(START, first)
+        first_steps.append("plan")
     if summarize is not None:
         for slot in ("a", "b"):
             name = f"summarize_{slot}"
             builder.add_node(name, make_summarize_node(slot, summarize))
-            builder.add_edge(START, name)
-            builder.add_edge(name, END)
+            first_steps.append(name)
+    for step in first_steps or ["measure"]:
+        builder.add_edge(START, step)
+    if first_steps:
+        builder.add_edge(first_steps, "measure")
     builder.add_conditional_edges("measure", pick)
-    builder.add_edge("stuff", "prompt")
-    builder.add_edge("prompt", "generate")
-    builder.add_edge("generate", "remember")
+    builder.add_edge("stuff", "respond")
+    builder.add_edge("respond", "remember")
     builder.add_edge("remember", END)
     return builder.compile(checkpointer=checkpointer)

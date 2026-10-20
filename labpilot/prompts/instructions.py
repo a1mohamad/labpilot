@@ -257,7 +257,8 @@ _LEAN_SECTIONS = """\
     If not, give every honest reading rather than choosing one.
 §10 EXPLANATION - the causal story, using only items from §7.
 §11 WHAT COULD NOT BE DETERMINED - and what would settle it.
-§12 CORRECTIONS - concrete changes to B, biggest effect first.
+§12 CORRECTIONS - for each problem: the corrected code or a better algorithm,
+    and why, in §8 order. A suggestion, not evidence: say how sure you are.
 §13 NEXT STEP - one experiment, and what each outcome would mean."""
 
 _SCAN_PREAMBLE = """\
@@ -301,7 +302,8 @@ _COMPARE_SECTIONS = """\
     If not, give every honest reading rather than choosing one.
 §10 EXPLANATION - the causal story, using only items from §7 and §4.
 §11 WHAT COULD NOT BE DETERMINED - and what would settle it.
-§12 CORRECTIONS - concrete changes to B, biggest effect first.
+§12 CORRECTIONS - for each problem: the corrected code or a better algorithm,
+    and why, in §8 order. A suggestion, not evidence: say how sure you are.
 §13 NEXT STEP - one experiment, and what each outcome would mean."""
 
 

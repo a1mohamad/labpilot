@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from labpilot.ingest import Chunk
 from labpilot.prompts.context import build_context
 from labpilot.prompts.instructions import Instructions
@@ -10,6 +12,20 @@ PROMPT_BUDGET = 26_000
 
 
 PRIOR_HEADING = "ALREADY FOUND IN SIDE B"
+SUMMARIES_NOTE = (
+    "SUMMARIES - a short guide, written by a fast model. For a big side it read "
+    "only the first parts. The parts below are the evidence: where a summary and "
+    "a part disagree, trust the part."
+)
+
+
+def _summaries_block(summaries: Mapping[str, str] | None) -> str:
+    written = [
+        f"SUMMARY OF SIDE {side}\n\n{text.strip()}"
+        for side, text in sorted((summaries or {}).items())
+        if text.strip()
+    ]
+    return "\n\n".join([SUMMARIES_NOTE, *written]) if written else ""
 
 
 def build_prompt(
@@ -20,12 +36,16 @@ def build_prompt(
     instructions: Instructions,
     prior: str = "",
     totals: dict[str, int] | None = None,
+    summaries: Mapping[str, str] | None = None,
 ) -> str:
     if not question.strip():
         raise ValueError("question must not be empty")
 
     ending = f"{instructions.closing}\n\nQUESTION: {question.strip()}"
-    blocks = [instructions.header, build_context(chunks, selected, totals=totals)]
+    blocks = [instructions.header]
+    if summary_block := _summaries_block(summaries):
+        blocks.append(summary_block)
+    blocks.append(build_context(chunks, selected, totals=totals))
     if prior.strip():
         blocks.append(f"{PRIOR_HEADING}\n\n{prior.strip()}")
     blocks.append(ending)
@@ -39,6 +59,7 @@ def reserve(
     question: str,
     instructions: Instructions,
     prior: str = "",
+    summaries: Mapping[str, str] | None = None,
 ) -> int:
     # The empty prompt already carries the WHOLE outline, because build_prompt
     # renders it with nothing selected - so the outline is counted exactly, at
@@ -61,7 +82,12 @@ def reserve(
     # under-estimate is caught by the caller's own check that the finished
     # prompt fits.
     empty = build_prompt(
-        chunks, (), question=question, instructions=instructions, prior=prior
+        chunks,
+        (),
+        question=question,
+        instructions=instructions,
+        prior=prior,
+        summaries=summaries,
     )
 
     return estimate_tokens(empty)

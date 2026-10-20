@@ -18,7 +18,10 @@ def run(summarize=None):
         fits=lambda sides, question: True,
         stuff=lambda sides, question: (STUFFED, None),
         search=lambda sides, question: (STUFFED, {"A": 1}),
-        make_prompt=lambda chunks, question, totals: ("the prompt", chunks[:1]),
+        make_prompt=lambda chunks, question, totals, summaries: (
+            "the prompt",
+            chunks[:1],
+        ),
         generate=lambda prompt: "the result",
         summarize=summarize,
     )

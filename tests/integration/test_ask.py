@@ -16,7 +16,9 @@ from labpilot.api.errors import (
     ArtifactSidesClash,
     UnknownArtifactId,
 )
-from labpilot.llm import LLMResult
+from labpilot.llm import AllFreeTiersExhausted, LLMResult
+from labpilot.prompts import SUMMARY_MAX_TOKENS
+from labpilot.prompts.builder import SUMMARIES_NOTE
 from labpilot.store import (
     ArtifactRecord,
     ChunkRecord,
@@ -46,6 +48,7 @@ class FakeClient:
     def __init__(self) -> None:
         self.prompts: list[str] = []
         self.planner_prompts: list[str] = []
+        self.summary_prompts: list[str] = []
 
     def generate(
         self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
@@ -59,8 +62,34 @@ class FakeClient:
                 finish_reason="STOP",
                 arguments=PLAN,
             )
+        if max_tokens == SUMMARY_MAX_TOKENS:
+            self.summary_prompts.append(prompt)
+            return LLMResult(
+                text="a summary", model="fake", tier=1, finish_reason="STOP"
+            )
         self.prompts.append(prompt)
         return LLMResult(text="an answer", model="fake", tier=1, finish_reason="STOP")
+
+
+class SummariesFail(FakeClient):
+    """The same client, except that a summary call fails on every tier.
+
+    `only` limits the failure to the summary prompts that contain that text, so
+    one side can fail while the other is still summarized.
+    """
+
+    def __init__(self, only: str = "") -> None:
+        super().__init__()
+        self.only = only
+
+    def generate(
+        self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
+    ) -> LLMResult:
+        if tool is None and max_tokens == SUMMARY_MAX_TOKENS and self.only in prompt:
+            raise AllFreeTiersExhausted(())
+        return super().generate(
+            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
+        )
 
 
 def stored(db, side: str, *, parts: int, words: int) -> str:
@@ -123,6 +152,78 @@ def test_a_large_pair_is_searched_and_admits_how_much_it_read(db, monkeypatch):
 
     assert "NOT searched" in client.prompts[0]
     assert "of 60 parts" in client.prompts[0]
+
+
+def test_both_summaries_reach_the_report_when_the_pair_is_stuffed(db):
+    """The summaries are written into the prompt of the answer, before the parts.
+
+    They are made at the start of every message, in parallel with the planner,
+    and only `respond` reads them. The stuffed path reaches `respond` without a
+    search, so it needs its own check.
+    """
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = FakeClient()
+
+    asking.ask(db, a, b, question="why?", client=client)
+
+    report = client.prompts[0]
+    assert "SUMMARY OF SIDE A\n\na summary" in report
+    assert "SUMMARY OF SIDE B\n\na summary" in report
+    assert report.index(SUMMARIES_NOTE) < report.index("[A.py - part 0]")
+
+
+def test_both_summaries_reach_the_report_when_the_pair_is_searched(db, monkeypatch):
+    a = stored(db, "A", parts=60, words=300)
+    b = stored(db, "B", parts=60, words=300)
+    monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: V)
+    client = FakeClient()
+
+    asking.ask(db, a, b, question="why?", client=client)
+
+    report = client.prompts[0]
+    assert "SUMMARY OF SIDE A\n\na summary" in report
+    assert "SUMMARY OF SIDE B\n\na summary" in report
+    assert report.index("SUMMARY OF SIDE A") < report.index("NOT searched")
+
+
+def test_each_side_is_summarized_from_its_own_parts(db):
+    """A summary of A written from B's parts would be a quiet, wrong report."""
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = FakeClient()
+
+    asking.ask(db, a, b, question="why?", client=client)
+
+    assert sorted(
+        ("[A.py - part 0]" in prompt, "[B.py - part 0]" in prompt)
+        for prompt in client.summary_prompts
+    ) == [(False, True), (True, False)]
+
+
+def test_a_report_is_still_written_when_every_summary_fails(db):
+    """A summary is a guide, not the evidence: no summary, no block, same report."""
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = SummariesFail()
+
+    comparison = asking.ask(db, a, b, question="why?", client=client)
+
+    assert comparison.result.text == "an answer"
+    assert "SUMMARY OF SIDE" not in client.prompts[0]
+    assert SUMMARIES_NOTE not in client.prompts[0]
+
+
+def test_one_failed_summary_does_not_remove_the_other(db):
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = SummariesFail(only="[A.py - part 0]")
+
+    asking.ask(db, a, b, question="why?", client=client)
+
+    report = client.prompts[0]
+    assert "SUMMARY OF SIDE A" not in report
+    assert "SUMMARY OF SIDE B\n\na summary" in report
 
 
 def test_an_unknown_artifact_id_is_refused(db):

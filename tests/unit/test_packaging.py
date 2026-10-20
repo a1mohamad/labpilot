@@ -17,6 +17,7 @@ SOURCE = pathlib.Path("labpilot")
 REQUIREMENTS = pathlib.Path("requirements.txt")
 ENV_EXAMPLE = pathlib.Path(".env.example")
 CI_WORKFLOW = pathlib.Path(".github/workflows/ci.yaml")
+SMOKE_WORKFLOW = pathlib.Path(".github/workflows/smoke.yaml")
 
 READERS = {("os", "getenv"), ("os", "environ", "get")}
 SAMPLES = pathlib.Path("data/samples")
@@ -283,4 +284,26 @@ def test_ci_really_runs_the_database_tests():
     assert "pgvector/pgvector" in workflow, (
         "CI must bring its own pgvector service. Pointing it at the real "
         "project makes concurrent jobs fight over the same test schema."
+    )
+
+
+def test_the_smoke_run_really_has_a_database():
+    """Three smoke tests store a pair, and they skip themselves without a database.
+
+    The ask path, the planner and the summary are the parts that change most.
+    A weekly run with no DATABASE_URL is green for all three while running none
+    of them. A container, as in CI: it needs no secret, and nothing else shares
+    its test schema.
+    """
+    workflow = SMOKE_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "DATABASE_URL:" in workflow, (
+        "the smoke run sets no DATABASE_URL, so every smoke test that needs "
+        "Postgres will skip there and the week will still look green."
+    )
+    assert "pgvector/pgvector" in workflow, (
+        "the smoke run must bring its own pgvector service, not use the real project."
+    )
+    assert "create extension if not exists vector" in workflow, (
+        "pgvector must be installed into `public`, as on Supabase."
     )

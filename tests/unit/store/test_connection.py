@@ -12,6 +12,7 @@ from labpilot.store import (
     make_pool,
 )
 from labpilot.store import connection as connection_module
+from labpilot.store.defaults import CONNECT_TIMEOUT
 
 
 def test_a_missing_database_url_is_not_configured(monkeypatch):
@@ -131,7 +132,7 @@ def test_a_pool_is_built_closed_with_the_planned_size_and_a_health_check(monkeyp
     assert seen["min_size"] == POOL_SIZE
     assert seen["max_size"] == POOL_SIZE
     assert seen["open"] is False
-    assert seen["kwargs"]["autocommit"] is True
+    assert seen["kwargs"] == {"autocommit": True, "connect_timeout": CONNECT_TIMEOUT}
     assert seen["check"] is FakePool.check_connection
 
 

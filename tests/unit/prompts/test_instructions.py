@@ -119,3 +119,11 @@ def test_scan_asks_for_problems_and_for_the_arithmetic_between_numbers():
 def test_compare_carries_forward_what_the_scan_pass_found():
     assert PRIOR_HEADING in COMPARE.header
     assert "carry over every problem" in COMPARE.header
+
+
+def test_the_reports_ask_for_a_fix_for_every_problem_and_for_how_sure_it_is():
+    for instructions in (item for item in LEAN if item.name != "scan"):
+        whole = _whole(instructions)
+        assert "the corrected code or a better algorithm" in whole, instructions.name
+        assert "say how sure you are" in whole, instructions.name
+        assert "in §8 order" in whole, instructions.name

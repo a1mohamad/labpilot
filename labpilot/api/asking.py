@@ -14,9 +14,11 @@ from labpilot.api.errors import (
     GenerationUnavailable,
     InvalidQuestion,
 )
+from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_report_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
-from labpilot.api.searching import retrieve_query
+from labpilot.api.searching import rank_pile, retrieve_query
+from labpilot.api.summaries import make_summarizer
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
     REPORT_MAX_TOKENS,
@@ -41,7 +43,8 @@ def ask(
 
         1  do A and B TOGETHER fit?  -> read every row back, STUFF, and neither
            embed nor search nor rerank runs at all
-        2  otherwise search per side, gate, rerank per side, never merged
+        2 otherwise the planner writes queries, each is searched alone, and
+            each side is reranked once.
 
     Stuffing is not a shortcut. When the corpus fits, retrieval is not neutral
     but HARMFUL: a bad retriever can hide the very line the report needed.
@@ -105,8 +108,23 @@ def _ask_graph(
     def totals_of(sides):
         return {side: found.chunks for side, found in sides.items()}
 
-    def make_prompt(chunks, question, totals):
-        return build_report_prompt(chunks, question=question, totals=totals)
+    def make_prompt(chunks, question, totals, summaries):
+        return build_report_prompt(
+            chunks, question=question, totals=totals, summaries=summaries
+        )
+
+    summarizer = make_summarizer(conn, client)
+
+    def summarize(artifact_id):
+        # A summary is a guide, not the evidence: when every tier fails the
+        # report is still written, from the parts alone.
+        try:
+            return summarizer(artifact_id)
+        except GenerationUnavailable:
+            logger.warning(
+                "no summary of %s: every tier failed", artifact_id, exc_info=True
+            )
+            return ""
 
     def generate(prompt):
         try:
@@ -122,6 +140,9 @@ def _ask_graph(
         stuff=stuff_sides,
         search_one=search_one,
         totals_of=totals_of,
+        rank_side=rank_pile,
+        plan=make_planner(conn, client),
+        summarize=summarize,
         make_prompt=make_prompt,
         generate=generate,
         checkpointer=open_saver(conn) if thread_id else None,

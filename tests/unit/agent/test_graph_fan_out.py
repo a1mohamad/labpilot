@@ -38,7 +38,10 @@ def required():
         "measure": lambda a, b: SIDES,
         "fits": lambda sides, question: False,
         "stuff": lambda sides, question: (STUFFED, None),
-        "make_prompt": lambda chunks, question, totals: ("the prompt", chunks[:1]),
+        "make_prompt": lambda chunks, question, totals, summaries: (
+            "the prompt",
+            chunks[:1],
+        ),
         "generate": lambda prompt: "the result",
     }
 
@@ -88,7 +91,7 @@ def test_the_merged_chunks_and_the_totals_reach_the_prompt():
     }
     seen = []
 
-    def make_prompt(chunks, question, totals):
+    def make_prompt(chunks, question, totals, summaries):
         seen.append((chunks, totals))
         return "the prompt", chunks[:1]
 

@@ -160,7 +160,7 @@ def graph(summarize):
         fits=lambda sides, question: True,
         stuff=lambda sides, question: ((), None),
         search=lambda sides, question: ((), None),
-        make_prompt=lambda chunks, question, totals: ("the prompt", ()),
+        make_prompt=lambda chunks, question, totals, summaries: ("the prompt", ()),
         generate=lambda prompt: "the result",
         summarize=summarize,
     )
