@@ -18,6 +18,7 @@ import responses
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
+from labpilot.agent import Plan
 from labpilot.api import ApiConfig, app, get_client
 from labpilot.llm import GeminiProvider, LLMClient
 from labpilot.prompts import REPORT_MAX_TOKENS
@@ -120,6 +121,13 @@ def client(monkeypatch):
     # lives in memory and there is nothing to clean up afterwards.
     monkeypatch.setattr("labpilot.api.asking.open_saver", lambda conn: InMemorySaver())
     monkeypatch.setattr("labpilot.api.asking.prune", lambda conn, thread_id: None)
+    # This file proves the chain's verdict reaches the HTTP body, counting the
+    # requests the report makes. The planner is a second call of its own, tested
+    # over the real store in test_planner_over_the_store.py, so it is stubbed.
+    monkeypatch.setattr(
+        "labpilot.api.asking.make_planner",
+        lambda conn, client: lambda question, a, b: Plan(steps=(), queries=()),
+    )
     monkeypatch.setattr("labpilot.api.reading.measure", _measure)
     monkeypatch.setattr("labpilot.api.reading.read_chunks", _read_chunks)
     monkeypatch.setenv("TEST_API_KEY", "secret-key")
