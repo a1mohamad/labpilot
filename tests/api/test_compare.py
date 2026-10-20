@@ -281,7 +281,7 @@ def test_the_first_message_gets_a_new_chat_id_and_ask_receives_the_same_one(
 ):
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id):
         seen["thread_id"] = thread_id
         return answered()
 
@@ -291,20 +291,6 @@ def test_the_first_message_gets_a_new_chat_id_and_ask_receives_the_same_one(
 
     assert len(sent) == 32
     assert seen["thread_id"] == sent
-
-
-def test_the_route_hands_ask_the_apps_pool(client, no_database, monkeypatch):
-    seen = {}
-
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
-        seen["pool"] = pool
-        return answered()
-
-    monkeypatch.setattr("labpilot.api.asking.ask", fake_ask)
-
-    client.post(COMPARE, json=BODY)
-
-    assert seen["pool"] is client.app.state.pool
 
 
 def test_two_first_messages_start_two_different_chats(client, no_database, monkeypatch):
@@ -319,7 +305,7 @@ def test_two_first_messages_start_two_different_chats(client, no_database, monke
 def test_a_chat_id_that_was_sent_is_kept(client, no_database, monkeypatch):
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id):
         seen["thread_id"] = thread_id
         return answered()
 

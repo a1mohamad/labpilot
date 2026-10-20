@@ -6,7 +6,7 @@ from fastapi import APIRouter, status
 
 from labpilot.api import asking
 from labpilot.api.contracts import Comparison
-from labpilot.api.dependencies import LLMClientDep
+from labpilot.api.dependencies import LLMClientDep, PoolDep
 from labpilot.api.errors import StorageUnavailable
 from labpilot.api.schemas import (
     AttemptOut,
@@ -58,7 +58,9 @@ FAILURES: dict[int | str, dict] = {
     responses=FAILURES,
     summary="Compare two stored artifacts and explain why their results diverge",
 )
-def compare(body: CompareRequest, client: LLMClientDep) -> CompareResponse:
+def compare(
+    body: CompareRequest, client: LLMClientDep, pool: PoolDep
+) -> CompareResponse:
     """Ask a question about two artifacts that are already stored.
 
     IDS, not files. Under the old shape every question re-chunked and
@@ -81,6 +83,7 @@ def compare(body: CompareRequest, client: LLMClientDep) -> CompareResponse:
                 question=body.question,
                 client=client,
                 thread_id=thread_id,
+                pool=pool,
             )
     except (NotConfigured, ConnectionFailed) as exc:
         raise StorageUnavailable(str(exc)) from exc
