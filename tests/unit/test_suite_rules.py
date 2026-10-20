@@ -131,3 +131,19 @@ def test_no_default_test_can_reach_a_real_reranker(monkeypatch):
     kept = searching.rerank_and_cut("why do the results diverge?", hits)
 
     assert [hit.chunk_index for hit in kept] == [100, 101, 102]
+
+
+def test_no_default_test_can_open_the_real_pool(monkeypatch):
+    """The app builds its pool from DATABASE_URL, and a test that boots the app
+    with that variable set would search the REAL schema while its rows sit in a
+    throwaway one. Nothing would raise: the search would just find nothing.
+
+    This fires if the autouse fixture in tests/conftest.py is removed.
+    """
+    from labpilot.api import main
+    from labpilot.store import NotConfigured
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@127.0.0.1:1/db")
+
+    with pytest.raises(NotConfigured):
+        main.make_pool()
