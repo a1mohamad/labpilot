@@ -49,7 +49,8 @@ def test_the_prompt_holds_the_map_the_limit_and_the_question_last():
 
     assert text.startswith(PLANNER)
     assert "train.py   3 parts, lines 1-90" in text
-    assert "at most 7 queries" in text
+    assert "2 to 5 queries, and never more than 7" in text
+    assert "The question itself is searched too" in text
     assert text.endswith("why do the results differ?")
 
 
