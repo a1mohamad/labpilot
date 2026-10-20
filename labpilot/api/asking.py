@@ -5,6 +5,7 @@ from functools import partial
 
 import psycopg
 from langgraph.graph.state import CompiledStateGraph
+from psycopg_pool import ConnectionPool
 
 from labpilot.agent import build_graph
 from labpilot.api.checkpoints import open_saver, prune
@@ -15,7 +16,7 @@ from labpilot.api.errors import (
 )
 from labpilot.api.prompting import build_report_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
-from labpilot.api.searching import retrieved_chunks
+from labpilot.api.searching import retrieve_query
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
     REPORT_MAX_TOKENS,
@@ -32,6 +33,7 @@ def ask(
     question: str,
     client: LLMClient,
     thread_id: str | None = None,
+    pool: ConnectionPool | None = None,
 ) -> Comparison:
     """Answer a question about two STORED artifacts.
 
@@ -47,7 +49,7 @@ def ask(
     if not question.strip():
         raise InvalidQuestion("question must not be empty")
 
-    graph = _ask_graph(conn, client, thread_id)
+    graph = _ask_graph(conn, client, thread_id, pool)
     start = {"question": question, "a": a_id, "b": b_id}
     if thread_id is None:
         final = graph.invoke(start)
@@ -74,7 +76,10 @@ def _forget_old_copies(conn: psycopg.Connection, thread_id: str) -> None:
 
 
 def _ask_graph(
-    conn: psycopg.Connection, client: LLMClient, thread_id: str | None = None
+    conn: psycopg.Connection,
+    client: LLMClient,
+    thread_id: str | None = None,
+    pool: ConnectionPool | None = None,
 ) -> CompiledStateGraph:
     """The graph ask() runs, with the real functions handed to it.
 
@@ -89,9 +94,16 @@ def _ask_graph(
     def stuff_sides(sides, question):
         return stuffed_chunks(conn, sides), None
 
-    def search_sides(sides, question):
-        chunks = retrieved_chunks(conn, sides, question=question)
-        return chunks, {side: found.chunks for side, found in sides.items()}
+    def search_one(sides, query):
+        if pool is None:
+            return retrieve_query(conn, sides, side=query.side, text=query.text)
+        if pool.closed:
+            pool.open(wait=False)
+        with pool.connection() as pooled:
+            return retrieve_query(pooled, sides, side=query.side, text=query.text)
+
+    def totals_of(sides):
+        return {side: found.chunks for side, found in sides.items()}
 
     def make_prompt(chunks, question, totals):
         return build_report_prompt(chunks, question=question, totals=totals)
@@ -108,7 +120,8 @@ def _ask_graph(
         measure=partial(measure_sides, conn),
         fits=fits,
         stuff=stuff_sides,
-        search=search_sides,
+        search_one=search_one,
+        totals_of=totals_of,
         make_prompt=make_prompt,
         generate=generate,
         checkpointer=open_saver(conn) if thread_id else None,
