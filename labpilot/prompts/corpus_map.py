@@ -10,6 +10,7 @@ from labpilot.prompts._hints import describe
 from labpilot.tokens import estimate_tokens
 
 SIDES = ("A", "B")
+SIDE_JOINER = "\n\n\n"
 
 # How much of the planner's prompt the map of BOTH artifacts may spend.
 #
@@ -155,14 +156,15 @@ def build_map(
     # EQUAL SHARE, and the leftover flows over - the selector's rule, for the
     # same reason: fixed halves waste a small side's room, and "A before B"
     # would let a large reference starve B out of the map entirely.
-    share = budget // len(sides)
+    room = budget - estimate_tokens(SIDE_JOINER) * (len(sides) - 1)
+    share = max(1, room // len(sides))
     rendered = {side: _side(side, files[side], ranks[side], share) for side in sides}
     spare = sum(share - r.tokens for r in rendered.values() if r.complete)
     for side in sides:
         if not rendered[side].complete and spare > 0:
             rendered[side] = _side(side, files[side], ranks[side], share + spare)
 
-    return "\n\n\n".join(rendered[side].text for side in sides)
+    return SIDE_JOINER.join(rendered[side].text for side in sides)
 
 
 def _files(parts: Sequence[MapPart]) -> list[_File]:
