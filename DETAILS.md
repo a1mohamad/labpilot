@@ -645,7 +645,7 @@ read [STEP 2 — the plan](#step-2--the-plan-recorded-2026-09-22) before anythin
 else, because it OVERTURNS this file in two places — no findings score has ever
 been measured on the search path, and the planner cannot use `build_context`.**
 
-**UPDATE 2026-10-19: slices 3 and 4 are DONE.** Slice 3 (`summarize` for A and B at the same time, and the split of `api/services.py`) is in 17.16 to 17.18. Slice 4 (the planner: function calling, the planner node, the check in code, tool calls in the LLM layer, the real planner, and a map with signatures) is in 17.19 and 17.20, and the closing review of slices 3 and 4 is in 17.21. The planner and the summarizer are not wired into `ask()` yet (slice 5). The next job is slice 5, run the plan.
+**UPDATE 2026-10-19: slices 3 and 4 are DONE.** Slice 3 (`summarize` for A and B at the same time, and the split of `api/services.py`) is in 17.16 to 17.18. Slice 4 (the planner: function calling, the planner node, the check in code, tool calls in the LLM layer, the real planner, and a map with signatures) is in 17.19 and 17.20, and the closing review of slices 3 and 4 is in 17.21. The planner and the summarizer are not wired into `ask()` yet (slice 5). The next job is slice 5, run the plan. **Slice 5 is IN PROGRESS: lesson 1 (`Send`, a fan-out whose size is decided while the program runs) is DONE on 2026-10-19 (17.22), on the branch `feat/plan-to-run` (made by the user from `main` at `0ac80d4`, commit `00cb059`, the toy file of lesson 1). Lessons 2 and 3 are next.**
 
 **936 passed, 87 skipped (82 smoke + 5 environment), ruff clean - measured
 2026-09-28, just before the three fixes in
@@ -16635,7 +16635,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 2 | **the skeleton** | a graph replaces `ask()`, and the chat is saved (checkpointer, `thread_id`) | **heavy** — DONE |
 | 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers). The slice ENDS with the modularization task (D45): a full read-only check of the whole app, then the split of `api/services.py` | medium, 3 lessons |
 | 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 5 lessons, **DONE 2026-10-19** (revised 2026-10-18, see 17.19 and 17.20): the small one on function calling (D34, DONE), the planner node, the check in code, tool calls in the LLM layer, the real planner function |
-| 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31) and carries the fix part (D49); "stuff when it fits" stays | **heavy**, 3 lessons |
+| 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31) and carries the fix part (D49); "stuff when it fits" stays | **heavy**, 3 lessons; lesson 1 DONE 2026-10-19 (17.22) |
 | 6 | **follow-ups** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6) | light, 1 lesson |
 | 7 | **claims, check, retry** | `extract_claims`; each claim searches B with its own text; one check per claim at the same time; the bounded retry loop (D4); the findings list; a small A merges with the planner (D40) | **heavy**, 3 lessons |
 | 8 | **the gate** | halt when A and B do not correspond, on a threshold calibrated per embedder; the answer is then the two summaries from slice 3 | medium, 2 lessons |
@@ -16833,13 +16833,13 @@ Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
 | M2 | ~~latency ranking of all tiers~~ **MEASURED 2026-09-29 — 50 tiers ranked at a ~500-token answer. Report length is NOT measured. See [section 15](#15-slice-1-is-measured--every-tier-ranked-by-speed-2026-09-30)** | done |
 | M3 | ~~which tiers support function calling~~ **MEASURED 2026-09-23 — 23 of the 24 tiers that answered. See [section 9](#9-m3-is-measured--function-calling-2026-09-23)** | done |
 | M4 | the raw question **vs** planner-written queries **vs** claims, scored against `EXPECTED.md`. Decides whether claims earn their cost (D39) | 13 |
-| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does. **AND THE BUDGET SWEEP** (added 2026-09-28): fixed **1k · 4k · 8k · 12k** against a **DYNAMIC** budget (the tier's input limit / 1.1, minus what the rest of the prompt really costs). Score the queries on how many known divergence locations in `EXPECTED.md` / `queries.json` they reach, not on how they read. Record planner latency beside it, and which tier answered. **A THIRD ARM (added 2026-10-18, D47):** the map PLUS the stored summaries of A and B, against the map alone. Count any wait for a summary as planner latency. Measure a small artifact (summary read whole) and a big one (summary cut) as two separate cases **AND THE QUERY CAP** (added 2026-10-18): `MAX_QUERIES = 12` in `agent/plan_check.py` is a first guess that only stops a runaway list, not a measurement. Record how many queries the planner writes for each question, and set the cap above the largest good plan and below a runaway, with the cost of one search (embed, search, rerank) and the quota beside it. | 4 |
+| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does. **AND THE BUDGET SWEEP** (added 2026-09-28): fixed **1k · 4k · 8k · 12k** against a **DYNAMIC** budget (the tier's input limit / 1.1, minus what the rest of the prompt really costs). Score the queries on how many known divergence locations in `EXPECTED.md` / `queries.json` they reach, not on how they read. Record planner latency beside it, and which tier answered. **A THIRD ARM (added 2026-10-18, D47):** the map PLUS the stored summaries of A and B, against the map alone. Count any wait for a summary as planner latency. Measure a small artifact (summary read whole) and a big one (summary cut) as two separate cases **AND THE QUERY CAP** (added 2026-10-18): `MAX_QUERIES` in `agent/plan_check.py` (12 until 2026-10-20, 6 now) is a first guess that only stops a runaway list, not a measurement. Record how many queries the planner writes for each question, and set the cap above the largest good plan and below a runaway, with the cost of one search (embed, search, rerank) and the quota beside it. | 13 (was 4) |
 | M9 | **A's FULL TEXT in the planner call** (question + map + the paper) against question + map alone. When A is small this merges the planner and `extract_claims` into ONE call. Added 2026-09-28. **ANSWERED yes by the user on 2026-10-14 (D40); the time it saves is measured in slice 7** | 7 |
 | M6 | **a findings score on the SEARCH path** — never once measured, see C3. This is the baseline Step 2 must beat | 13 |
 | M7 | an exact-match tool vs vector alone (D8) | 13 |
 | M8 | **per-node output tokens and latency** — every time estimate in this section rests on an assumed 40s per node | 13 |
 | M15 | **`verify`: an LLM with function calling against Jev** (added 2026-10-18, the user's call, D48). The same claims and the same evidence chunks go to both. Score the verdicts (match / mismatch / absent) against the known answers, and record the speed of the checks, the cost and how often each one fails. Run the LLM arm on at least two tiers, because the chain falls back. Run the Jev arm twice: all claims in one call, and one claim per call, because Jev's answer depends on the other questions in the same call. Jev gives only the verdict; the quote comes from the best chunk found by code. Name the corpus beside every number: `quora_siamese` is the only pair with known verdicts | 7 |
-| M16 | **the planner's list of steps: one LLM call against Jev** (added 2026-10-18, the user's call, D48). Arm A: ONE LLM call returns the steps and the queries (function calling). Arm B: Jev answers one yes/no question per allowed step, then an LLM writes the queries, one after the other. Arm C: the same as B, but the two calls run at the same time (both need only the question and the map). Score the steps against about 30 questions, each with the correct plan (the set planned in 19.5, point 5), with the LLM on at least two tiers. Score the queries as M5 does (how many known divergence locations they reach). Record the planner's time and cost. The user's worry is that the LLM steps may be fast but less exact; arm C tests the other worry, that Jev is slower The same questions test the allowed steps for each file count (`STEPS_BY_FILES` in `agent/plan_check.py`, a first proposal): count how often a correct plan needs a step that the list does not allow. | 4 |
+| M16 | **the planner's list of steps: one LLM call against Jev** (added 2026-10-18, the user's call, D48). Arm A: ONE LLM call returns the steps and the queries (function calling). Arm B: Jev answers one yes/no question per allowed step, then an LLM writes the queries, one after the other. Arm C: the same as B, but the two calls run at the same time (both need only the question and the map). Score the steps against about 30 questions, each with the correct plan (the set planned in 19.5, point 5), with the LLM on at least two tiers. Score the queries as M5 does (how many known divergence locations they reach). Record the planner's time and cost. The user's worry is that the LLM steps may be fast but less exact; arm C tests the other worry, that Jev is slower The same questions test the allowed steps for each file count (`STEPS_BY_FILES` in `agent/plan_check.py`, a first proposal): count how often a correct plan needs a step that the list does not allow. | 13 (was 4) |
 | M17 | **fix quality** (added 2026-10-18, D49). For the known findings of `quora_siamese` (and of the new pair from slice 12), is the fix that the report proposes right? Score each proposed fix as right, partly right, wrong or not given, and count the fixes that would break the code. Run it for the one-artifact report and for the two-artifact report, on at least two tiers. Compare `respond` writing the fix in the same call against a separate `propose_fix` call after the findings, and record the extra time and the extra calls. `EXPECTED.md` needs a "right fix" column first. As with every answer key, it may be used to score the fixes and never to write the prompt | 13 |
 
 **The cache pays for most of this.** `.cache/` holds 2.4GB: 26 corpora already
@@ -18146,7 +18146,7 @@ are estimates, not promises.
 | **2 (DONE 2026-10-14: lessons 1 to 4 and the closing review, 17.14)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | `summarize` for A and for B at the same time (two independent steps run together) | medium, 3 |
 | 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 5, **DONE 2026-10-19** (17.19, 17.20) |
-| 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3** |
+| 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3** (lesson 1 DONE 2026-10-19, 17.22) |
 | 6 | follow-up questions: rewrite them into standalone ones | light, 1 |
 | 7 | the loop: claims, check each one, search again at most 2 times | **heavy, 3** |
 | 8 | a step that can STOP the graph (the gate) | medium, 2 |
@@ -18925,7 +18925,7 @@ queries  ["paper A gradient clipping value 1.0", "code B gradient clipping value
 
 **Owed.**
 
-- M5 (the map with and without, the budget sweep, the summaries arm, the query cap) and M16 (an LLM planner against Jev) were NOT run. Both spend quota and want the new test pair of slice 12.
+- M5 (the map with and without, the budget sweep, the summaries arm, the query cap) and M16 (an LLM planner against Jev) were NOT run. Both spend quota and want the new test pair of slice 12. They moved to slice 13 on 2026-10-20.
 - The planner does not give `build_map` the file scores yet (`file_scores` exists in `store/`), so a map that does not fit is cut in the file's own order.
 - D47 (the stored summaries beside the map) is not built.
 - First guesses, not measurements: `MAX_QUERIES = 12`, `STEPS_BY_FILES`, `max_rejected_answers = 3`, `OPENING_CHARS = 300`, the 110-character cap of a row.
@@ -18958,6 +18958,85 @@ Both were product code and were fixed by Claude, once, so that the tree could be
 **Numbers.** `ruff check` and `ruff format --check` are clean. Unit and api: 1241. Full suite without `--run-smoke` (database tests included): 1374 passed, 120 skipped. Deliberate breaks: 42, on the new code and tests: 20 on the map and the planner prompt, 7 on the SQL opening and 15 on the new integration, architecture, tool-kind and docs tests. Every one is caught by the test meant to catch it, after one missing test was added (the ranked form of the map).
 
 **Branches.** The slice 4 work is on `feat/planner` as one commit with this review and on `main` as one file per commit, both pushed (the user's explicit request on 2026-10-19).
+
+#### 17.22 Slice 5, lesson 1 was done, 2026-10-19
+
+**Status: DONE.** Taught on 2026-10-19. The user typed `examples/langgraph/graph_with_send.py` on `feat/plan-to-run`, ran it with `py -m examples.langgraph.graph_with_send`, and committed it (`00cb059`). The output matched the one Claude got on a scratch copy outside the repo:
+
+```
+1 queries    1.0s   chunk for lr
+3 queries    1.0s   chunk for lr | chunk for clip | chunk for seed
+5 queries    1.0s   chunk for a | chunk for b | chunk for c | chunk for d | chunk for e
+```
+
+The user's file has two extra blank lines and wider spaces in the print line; `ruff check` and `ruff format --check` pass on it. A toy in `examples/` has no test. No file in `labpilot/` changed. The user did not report the three breaks of the lesson (A: no add rule, B: zero queries, C: a typo in the node name), so it is unknown if they ran them.
+
+**What the lesson taught** (do not re-teach):
+
+- `Send(node, input)` is one message: "run this node once, with this input". A function on a conditional edge returns a list of them, one for each query, and LangGraph runs them in the same step. It is the fan-out of slice 3, but the number of branches is decided while the program runs: the planner returns 1 to 12 queries, so the nodes cannot be drawn in advance. In plain Python it is `pool.map(search_one, queries)`.
+- Three rules, each tested. (1) The node gets only the input of its `Send`, not the state: `task["queries"]` gives `KeyError: 'queries'`. (2) The result key needs the add rule (`Annotated[list, operator.add]`): without it, 3 queries give `InvalidUpdateError`, but exactly 1 query works with no error, so the bug stays hidden until the first plan with 2 or more queries. (3) A node after the fan-out runs once, after all the runs, and the results are in the order of the `Send` list and not in the order the runs finished (the slowest query first stayed first).
+- The list `["search_one"]` in `add_conditional_edges(START, fan_out, ["search_one"])` is for drawing the graph and does not stop a wrong name. The conditional edge goes from `START` to `search_one`; `fan_out` is a plain function and not a node (like `pick` in 17.13).
+- The math: `T_line = sum of t_i` and `T_Send ≈ max of t_i`, where `t_i` is the time of search number `i`.
+
+**Measured by Claude on a scratch copy** (Python 3.13.14, langgraph 1.2.12; the scripts are not in the repo):
+
+- 12 runs of 0.5 s took 0.5 s, 40 took 1.5 s and 100 took 3.5 s, so the runs use a limited number of threads. The exact rule (how many threads) was NOT checked, so "a slower machine may need two rounds" is a guess. `MAX_QUERIES = 12` fits one round on the development machine.
+- Zero queries: the result is `{'queries': [], 'found': []}`. There is no error, `join` never ran and there is no `report`.
+- A typo in the node name inside `Send`: one log line (`Ignoring unknown node name search_on in pending sends`), then the run ends with `found` empty and no `report`.
+- A list returned by the conditional function may mix a plain node name and `Send` objects (tested: it works).
+
+**Questions of the user, and the answers** (do not repeat):
+
+- Is `Send` a kind of fan-out? Yes; only the "how many" is decided at run time.
+- Is the number of queries fixed at 12? No. `MAX_QUERIES = 12` in `agent/plan_check.py` is only a cap. The default plan has 1 or 2 queries (one for each side that has a file), a plan for zero files has none, and a normal planner answer has maybe 3 to 8 (a guess; M5 owes the real number).
+- Does `search_one` mean the first artifact? No: it is the node that searches ONE query, and it runs once for each query. The name is Claude's and can be changed (for example `search_query`).
+
+**Proposal for lessons 2 and 3** (the names are confirmed when each lesson starts, D45):
+
+| lesson | piece | file |
+|---|---|---|
+| 2 | the state key `found` with the add rule | `agent/state.py` |
+| 2 | the node that searches ONE query | `agent/search_one.py` (new) |
+| 2 | the function that makes one `Send` for each query | `agent/fan_out.py` (new) |
+| 2 | the merge node: remove duplicates, apply the budget | `agent/merge.py` (new) |
+| 2 | the real search for one query | `api/searching.py` |
+| 3 | the final node `respond` | `agent/respond.py` (new) |
+| 3 | only the new arrows; `plan` and `summarize` handed in | `agent/graph.py`, `api/asking.py` |
+
+**Open for lesson 2** (design points, NOT decided with the user):
+
+1. **An empty list must be handled on purpose.** The zero-file plan has no queries, and `default_plan` with no sides gives `queries=()`. The toy shows that an empty fan-out ends the run quietly. The real graph was not tried, but it would likely end without `prompt` and `generate`.
+2. **Where the rerank runs.** The old rule in the retrieval design ("Six queries, ONE rerank") is: search for every query, merge, remove duplicates, then rerank ONCE against the ORIGINAL question, for each side. Then `search_one` would do the embed, the vector search and the keyword search only, and not the rerank. This is Claude's reading of the old rule and must be decided with the user.
+3. **Many searches at once share one database connection** and call the embedders at the same time. psycopg locks the connection for each query, so the reads queue up; this was not tested (the same open point as the two summaries, 17.17). The per-minute limits of the embedders against up to 12 calls at once were not measured.
+4. `SAVED_TYPES` in `api/checkpoints.py` already holds `Plan` and `Query` (checked 2026-10-19), so the saved plan needs no new entry. A new class that goes into `State` still needs one (D37).
+
+**Process notes.** The popup question about the branch (the AskUserQuestion tool) was declined by the user, so the branch question was asked in plain text, and then the app quit; Claude continued from git, which had not changed. Claude does NOT commit: the user committed the toy file and asked Claude only to write these notes. Claude wrote them to CLAUDE.md and DETAILS.md in the same session (the two-file rule). Git: `feat/plan-to-run` was made by the user from `main` at `0ac80d4`; Claude suggested a NEW branch from `main` and not `feat/planner`, because `feat/planner` is 47 commits behind `main` (they split at `08a355d`) and holds slice 4 as 6 older commits. Whether the new branch is pushed was not checked.
+
+**Update 2026-10-20, before lesson 2 was typed: the design changed twice (D53, D54).** The user asked what
+others do when a question makes many queries, and a search showed the usual order is: search with all
+the queries, merge, remove duplicates, rerank ONCE, cut to a small number. Lesson 2 as first written
+reranked every query on its own (up to 12 reranks). It was rebuilt in the scratch copy, and the user
+agreed to both changes:
+
+- **D53, rerank once per side.** `search_one` only searches. The merge node groups the lists by side,
+  mixes them by rank, drops duplicates, and calls an injected `rank_side(question, pile)` once for each
+  side. The real function is `rank_pile` in `api/searching.py` (window 20, keep 10, or 15 when no tier
+  answered). `build_graph` gets a new argument `rank_side`.
+- **D54, fewer queries and the question always searched.** `MAX_QUERIES` 12 to 6, the planner is told
+  2 to 5 (`PLANNER_VERSION` 3), and `fan_out` puts the question on each side that has a file in front of
+  the planner's queries. This closes open points 1 and 2 above (an empty plan, and where the rerank runs).
+- **Also fixed:** `build_map` did not count the join between the two sides in its budget.
+- **M5 and M16 moved from slice 4 to slice 13** at the user's request: the planner is only measured once
+  it runs in the real flow, and that starts with slice 5 lesson 3.
+
+Checked on the scratch copy only (the user's repo was not touched): 1,288 unit and api tests pass, 24
+deliberate breaks were caught (17 for lesson 2, 7 for D54), and the 9 planner database tests pass. Two
+`test_ask` database tests stopped on a statement timeout and a dropped connection over the VPN and were
+not run again. The user types the code. The tests come after the user says "typed". Three old tests must
+change: `test_plan_check` (12 queries to 6), `test_planner` (the old wording) and the map test in
+`test_corpus_map` gets one new case. Lesson 3 must pass `rank_side=rank_pile`, remove the old `search`
+path (`retrieved_chunks` and its only reason to exist, `rerank_and_cut`), and decide what to do with
+`rerank_and_cut` and its tests.
 
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
@@ -19470,6 +19549,8 @@ merge step keeps one copy. Whether the planner chunks should also reach the chec
 | **D50** | **A plan that is readable and wrong goes to the NEXT tier** (the user's demand, 2026-10-19). `LLMClient.generate(..., problem_with=)`; the rejected tier is not asked again and its pool is not retired; the walk stops after `max_rejected_answers = 3` (a first guess). Built in slice 4, lesson 5 → 17.20 |
 | **D51** | **The planner's map budget is computed for each call**: `max(1, min(12,000, 14,500 - f))`, with `f` = the prompt without the map plus twice the schema (it travels in `tools` and again as text). This is CC8. Built in slice 4 → 17.20 |
 | **D52** | **The map shows signatures and first sentences** (`StoredHeader.opening`, 300 characters, only for a chunk that starts its unit; `prompts/_hints.py`). The ladder is rich map, bare names, ranked, folded. Built in slice 4 → 17.20 |
+| **D53** | **The fan-out search does not rerank each query. The merge step reranks ONCE per side** (the user's call, 2026-10-20, after a search of what other systems do; the rule "six queries, ONE rerank, against the original question" was already in this file, and lesson 2 first broke it). Each query only searches (embed, search, keyword fusion). The merge step makes one pile for each side (the best chunk of each query first, then the second best, and so on; duplicates dropped), cuts the pile to `RERANK_WINDOW` (20), reranks it ONCE with the user's original question, and keeps `RERANK_TOP_N` (10), or `VECTOR_TOP_N` (15) when no tier answered. So the reranker is called at most 2 times for a question and not up to 12, and what reaches the prompt does not grow with the number of queries. Per side stays (slice 8: one mixed pile starved a side on 43 of 57 questions); one rerank over a mixed pile with a cut per side was NOT tested. There is no skip gate here: `SKIP_MARGIN` is off and the best scores of different queries cannot be compared. **The evidence is weak and from other systems:** the Dell paper (2026, 115 questions, one knowledge base) found that the extra recall of query fusion mostly disappears after reranking and cutting, and that reranking against a rewrite did far worse than against the original (read through a summary, not in full); a 2025 ACL student workshop paper merges up to 6 queries of 10 chunks, reranks once against the original question and keeps 10. **Open numbers, for slice 13:** the window of 20 was measured on the pile of ONE query, and with many queries it holds only about the top 2 of each; a larger window (up to 50) or a rank by how many queries found a chunk (RRF) are the two options. Code: `api/searching.py` (`retrieve_query` without rerank, `rank_pile`, `_searched`), `agent/merge.py` (`rank_side`), `agent/graph.py` |
+| **D54** | **Fewer queries, and the user's question is always one of them** (the user's call, 2026-10-20). (1) The planner is told "write 2 to 5 queries, and never more than 6; the question itself is searched too, so do not copy it". (2) `MAX_QUERIES` is 6 (it was 12) and the check rejects a longer plan, so the next tier writes a new one (D50). The gap between 5 and 6 is on purpose: a model does not count exactly, and a plan with one query too many is not worth another model call. (3) `fan_out` always searches the user's question on each side that has a file, first, and then the planner's queries; a planner query equal to the question is dropped. So one question makes at most 6 + 2 = 8 searches. This also fixes the worst case where all the planner's queries are for A and B would get nothing. `PLANNER_VERSION` is 3. **Evidence:** LangChain asks for 3 queries (a default nobody tuned); Anthropic's research system added effort rules after its agents made 50 subagents for a simple question; a 2025 paper uses at most 5 sub-queries plus the original. No study found proves a best number, so 2 to 5 and 6 are guesses for M5 (slice 13). **A side finding:** `build_map` did not count the join between the two sides in its budget (`SIDE_JOINER`), so the map could be one token over; fixed in the same change |
 
 #### 21.3 Where every planned node lives
 
@@ -19506,7 +19587,7 @@ of section 18 still says "SLICE 9" so that old links work; it is slice 12 now.
 
 - M4 (the raw question against the planner's queries against claims) runs in slice 13, and it
   decides whether claims earn their cost. M5 (the planner with and without the map, and the
-  budget sweep) runs in slice 4. M9 is answered (D40). M10 and M11 run in slice 7, M12 and M13
+  budget sweep) runs in slice 13 (it was slice 4 until 2026-10-20, and M16 moved with it). M9 is answered (D40). M10 and M11 run in slice 7, M12 and M13
   in slice 12 (M12 now also sets the size-gate numbers), and M6, M7 and M8 in slice 13.
 - Code owed, added: **CC9** the merge step (collect, remove duplicates, equal-share budget);
   **CC10** the shared check `fits(side, budget)` built on `measure()`; **CC11** the nodes
@@ -19531,11 +19612,11 @@ of section 18 still says "SLICE 9" so that old links work; it is slice 12 now.
 7. How exactly `find_missing` reads the claim table by chunk (and whether a model judges the
    candidates). Decide when slice 9 starts.
 8. Whether every finding carries typed fields for kind, box, basis and impact. Decide in slice 7.
-9. Where the stored summary lives and who computes it, and whether the planner gets the summary of a CUT artifact before slice 12 (D47). Decide in slice 4, with the M5 arm.
-10. Which model gives the `verify` verdict and the planner's list of steps: an LLM with function calling, or Jev (D48). Decide with M16 in slice 4 (the planner's steps) and M15 in slice 7 (`verify`).
+9. Where the stored summary lives and who computes it, and whether the planner gets the summary of a CUT artifact before slice 12 (D47). Decide with the M5 arm (slice 13).
+10. Which model gives the `verify` verdict and the planner's list of steps: an LLM with function calling, or Jev (D48). Decide with M16 in slice 13 (the planner's steps) and M15 in slice 7 (`verify`).
 11. Whether the fixes inside `respond` are good enough, or `propose_fix` needs its own node (D49). Decide with M17 after slice 5.
-12. The query cap `MAX_QUERIES = 12` and the allowed steps for each file count, both in `agent/plan_check.py`, are first guesses (slice 4, lesson 3). Set them from the plans measured in M5 and M16.
-13. Slice 4 is closed with the planner BUILT and not measured or wired. Slice 5 wires `plan` and `summarize` into `_ask_graph` together with `respond`. M5 and M16 are still owed (17.20), the file scores are not given to `build_map` yet, and D47 (stored summaries) is not built. Items 9 and 10 above therefore stay open: decide them with the first M5 and M16 runs.
+12. The query cap `MAX_QUERIES` (6 since 2026-10-20, it was 12; D54) and the allowed steps for each file count, both in `agent/plan_check.py`, are first guesses (slice 4, lesson 3). Set them from the plans measured in M5 and M16.
+13. Slice 4 is closed with the planner BUILT and not measured or wired. Slice 5 wires `plan` and `summarize` into `_ask_graph` together with `respond`. M5 and M16 are still owed and now belong to slice 13 (17.20, D53, D54), the file scores are not given to `build_map` yet, and D47 (stored summaries) is not built. Items 9 and 10 above therefore stay open: decide them with the first M5 and M16 runs.
 
 #### 21.7 What this changed in older text
 
