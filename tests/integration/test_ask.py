@@ -7,8 +7,11 @@ rather than from anything held in memory.
 
 from __future__ import annotations
 
+from collections import Counter
+
 import pytest
 
+from labpilot.agent import Plan
 from labpilot.api import asking, searching
 from labpilot.api.checkpoints import open_saver
 from labpilot.api.errors import (
@@ -16,6 +19,7 @@ from labpilot.api.errors import (
     ArtifactSidesClash,
     UnknownArtifactId,
 )
+from labpilot.ingest import Chunk
 from labpilot.llm import AllFreeTiersExhausted, LLMResult
 from labpilot.prompts import SUMMARY_MAX_TOKENS
 from labpilot.prompts.builder import SUMMARIES_NOTE
@@ -23,6 +27,7 @@ from labpilot.store import (
     ArtifactRecord,
     ChunkRecord,
     ModelMismatch,
+    StoredArtifact,
     make_pool,
     write_artifact,
 )
@@ -45,7 +50,8 @@ class FakeClient:
     prompts only.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, plan: dict | None = None) -> None:
+        self.plan = PLAN if plan is None else plan
         self.prompts: list[str] = []
         self.planner_prompts: list[str] = []
         self.summary_prompts: list[str] = []
@@ -60,7 +66,7 @@ class FakeClient:
                 model="fake",
                 tier=1,
                 finish_reason="STOP",
-                arguments=PLAN,
+                arguments=self.plan,
             )
         if max_tokens == SUMMARY_MAX_TOKENS:
             self.summary_prompts.append(prompt)
@@ -90,6 +96,48 @@ class SummariesFail(FakeClient):
         return super().generate(
             prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
         )
+
+
+class PlannerFails(FakeClient):
+    """The same client, except that the planner call fails on every tier."""
+
+    def generate(
+        self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
+    ) -> LLMResult:
+        if tool is not None:
+            raise AllFreeTiersExhausted(())
+        return super().generate(
+            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
+        )
+
+
+def watched_searches(monkeypatch) -> list[str]:
+    """The artifact id of every vector search, in the order they ran.
+
+    The real search still runs, so the rows are really read. Two searches of
+    one side are two entries with the same id.
+    """
+    real = searching.search
+    seen: list[str] = []
+
+    def watch(conn, artifact_id, vector, **kwargs):
+        seen.append(artifact_id)
+        return real(conn, artifact_id, vector, **kwargs)
+
+    monkeypatch.setattr(searching, "search", watch)
+    return seen
+
+
+def embedded_texts(monkeypatch) -> list[str]:
+    """Every text that was embedded as a search question."""
+    seen: list[str] = []
+
+    def embed(text, *, model):
+        seen.append(text)
+        return V
+
+    monkeypatch.setattr(searching, "_embed_question", embed)
+    return seen
 
 
 def stored(db, side: str, *, parts: int, words: int) -> str:
@@ -264,6 +312,62 @@ def test_a_large_pair_is_searched_through_a_real_pool(db, schema_url, monkeypatc
     assert {chunk.side for chunk in comparison.chunks} == {"A", "B"}
 
 
+def test_many_queries_make_one_pile_per_side_with_no_duplicates(db, monkeypatch):
+    """What reaches the prompt must not grow with the number of queries (D53).
+
+    Every vector is the same here, so every query finds nearly the same rows:
+    without the merge, three queries would put each chunk in the prompt three
+    times. And the cut must be the one for a side with no reranker (the rerank
+    chain is empty under test), not a number per query.
+    """
+    a = stored(db, "A", parts=60, words=300)
+    b = stored(db, "B", parts=60, words=300)
+    texts = embedded_texts(monkeypatch)
+    searched = watched_searches(monkeypatch)
+    plan = {
+        "steps": [],
+        "queries": [
+            {"side": "B", "text": "weights"},
+            {"side": "B", "text": "bias"},
+            {"side": "A", "text": "learning rate"},
+        ],
+    }
+
+    comparison = asking.ask(db, a, b, question="why?", client=FakeClient(plan))
+
+    keys = [(chunk.artifact_id, chunk.chunk_index) for chunk in comparison.chunks]
+    assert len(keys) == len(set(keys)), "a chunk found by two queries came twice"
+    assert Counter(chunk.side for chunk in comparison.chunks) == {
+        "A": searching.VECTOR_TOP_N,
+        "B": searching.VECTOR_TOP_N,
+    }
+    # the question on each side, then the three queries of the plan
+    assert sorted(searched) == ["A-fixture"] * 2 + ["B-fixture"] * 3
+    assert set(texts) == {"why?", "weights", "bias", "learning rate"}
+
+
+def test_a_report_is_still_written_when_the_planner_fails_on_every_tier(
+    db, monkeypatch
+):
+    """The planner only guesses where to look, so it must never stop the answer.
+
+    The default plan searches the question on each side, and that is exactly
+    what the report is written from.
+    """
+    a = stored(db, "A", parts=60, words=300)
+    b = stored(db, "B", parts=60, words=300)
+    texts = embedded_texts(monkeypatch)
+    searched = watched_searches(monkeypatch)
+    client = PlannerFails()
+
+    comparison = asking.ask(db, a, b, question="why?", client=client)
+
+    assert comparison.result.text == "an answer"
+    assert sorted(searched) == ["A-fixture", "B-fixture"]
+    assert texts == ["why?", "why?"]
+    assert "NOT searched" in client.prompts[0]
+
+
 def test_two_artifacts_from_the_same_slot_are_refused(db):
     """The side is baked into the id by _artifact_id, so two A ids is not a pair.
 
@@ -360,6 +464,46 @@ def test_a_chat_remembers_every_question_and_comes_back_as_real_objects(
     assert values["history"] == ["first?", "second?", "third?"]
     assert isinstance(values["result"], LLMResult)
     assert "langgraph" not in caplog.text
+
+
+def test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects(
+    db, chat_tables, monkeypatch, caplog
+):
+    """The searched path puts more kinds of value in the state than the stuffed one.
+
+    The searches are started with a `Send` that carries the stored sides and a
+    `Query`, the found lists are emptied at the end of the merge, and the plan
+    is a `Plan`. A class the saver was not told about does not raise: it comes
+    back as a plain dict and leaves one log line, so the next message fails far
+    from the cause. The stuffed path above never meets any of this.
+
+    It is also the only test whose checkpoint has a real size (about 150 KB). With
+    the plain Postgres saver that save failed in about half the runs of an
+    afternoon (`SSL error: bad length`, a libpq bug in pipeline mode) and in none
+    of the runs of the next hour, so THIS TEST CANNOT HOLD THAT RULE: the network
+    decides. The rule is held by the two unit tests of `open_saver` in
+    tests/api/test_checkpoints.py. This one fires only when the network is in the
+    bad mood, and then the message is the error above.
+    """
+    a = stored(db, "A", parts=60, words=300)
+    b = stored(db, "B", parts=60, words=300)
+    monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: V)
+    questions = ("first?", "second?")
+    for question in questions:
+        asking.ask(
+            db, a, b, question=question, client=FakeClient(), thread_id="chat-search"
+        )
+
+    saved = open_saver(db).get_tuple({"configurable": {"thread_id": "chat-search"}})
+    values = saved.checkpoint["channel_values"]
+
+    assert values["history"] == list(questions)
+    assert values["chunks"] and all(isinstance(c, Chunk) for c in values["chunks"])
+    assert isinstance(values["plan"], Plan)
+    assert all(isinstance(s, StoredArtifact) for s in values["sides"].values())
+    assert values.get("found", []) == []
+    assert "langgraph" not in caplog.text
+    assert rows(db, "checkpoints", "chat-search") == 1
 
 
 def test_only_the_newest_copy_of_a_chat_stays_in_the_database(db, chat_tables):
