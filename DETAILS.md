@@ -167,6 +167,35 @@ text, so it never holds LESS than CLAUDE.md and may hold more.
   both were updated.
 - Claude does this without being asked, every time.
 
+### Review pass after every slice, and a hand-off prompt at the end of every session
+
+*Two rules added 2026-10-21, at the user's request. Both are Claude's job, and both are done
+without being asked.*
+
+**1. After the last lesson of every slice, run a full review pass before the next slice
+starts.** Look at the whole system from above, not only at the new files: Step 2 so far, the
+slice, and the whole app. The standing question is the same as always: *which real failure is
+still unprotected?* The steps:
+
+- Read the code that joins the new slice to the rest: the wiring in `api/`, the state, the
+  saver, the page contract.
+- List the joins that no test crosses (a real database, the real saver, two threads at once, a
+  provider that fails) and add the missing tests.
+- Break one line for each new invariant test and read WHICH test fires (mutation testing; keep a
+  copy of the file aside and restore from the copy, never with `git checkout`).
+- Look for dead code and for scripts that still name removed functions.
+- Run the whole suite (unit, api and integration, without `--run-smoke`) and fix what is red.
+- Update CLAUDE.md and DETAILS.md together, then commit.
+- Write the pass down as a section "The closing review of slice N" (examples: 17.21 and 17.23).
+
+**2. At the end of a session, Claude gives the user the best prompt to continue in a new
+session.** Claude does this when the session is long or when the user asks. The prompt has a
+normal length, not a very long one: where we stopped (slice, branch, last commit), what to read
+first (section numbers in the two docs), the next job, the rules that bite (the user types the
+product code, nothing is committed on `main`, two docs in step), what is not done, and the first
+command to run. Claude sends it as the last message of the session. A copy of the current
+prompt lives in the memory file of the Step 2 plan.
+
 ### Modularization — the whole app, not only `agent/` (rule added 2026-10-15, D45)
 
 *The user asked for this more than once, and it was forgotten. It is written
@@ -18146,7 +18175,7 @@ are estimates, not promises.
 | **2 (DONE 2026-10-14: lessons 1 to 4 and the closing review, 17.14)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | `summarize` for A and for B at the same time (two independent steps run together) | medium, 3 |
 | 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 5, **DONE 2026-10-19** (17.19, 17.20) |
-| 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3** (lesson 1 DONE 2026-10-19, 17.22) |
+| 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3, DONE 2026-10-21** (17.22, 17.23) |
 | 6 | follow-up questions: rewrite them into standalone ones, and `respond` for 0, 1 and 2 files | medium, 2 |
 | 7 | the loop: claims, check each one, search again at most 2 times | **heavy, 3** |
 | 8 | a step that can STOP the graph (the gate) | medium, 2 |
@@ -18160,9 +18189,7 @@ are estimates, not promises.
 (2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
-**How a new session continues:** slice 2 is DONE (17.14, and 17.15 for what came after). Read 17.14 and 17.15 first, check git (branch,
-status, `git log -5`), and continue slice 3 (`summarize` for A and for B at the same time: fan-out and
-fan-in; medium, 2 lessons). **Lesson 1 is DONE (17.16). Lessons 2 and 3 are DONE (2026-10-17, 17.17); the next job is the D45 task, then slice 4.** **Two rules the user set (17.13) still hold: they type ALL product code
+**How a new session continues (updated 2026-10-21):** slices 0 to 5 are DONE. Read the Phase paragraph of Current Status and the last section of 17 (17.23), check git (branch, status, `git log -5`), and continue with slice 6 (follow-ups, and `respond` for 0, 1 and 2 files; D56). The prompt that the last session gave the user is the best start (Working Rules, "Review pass after every slice, and a hand-off prompt at the end of every session"). **Two rules the user set (17.13) still hold: they type ALL product code
 (only tests are copy-paste), and a step is given WHOLE in one message.** Lessons call no model, so
 the exit-ISP check is not needed until the first live test. The chat tables must exist in the
 database the app uses: run `python -m scripts.setup_checkpoints` once from the repository root
@@ -19038,6 +19065,145 @@ change: `test_plan_check` (12 queries to 6), `test_planner` (the old wording) an
 path (`retrieved_chunks` and its only reason to exist, `rerank_and_cut`), and decide what to do with
 `rerank_and_cut` and its tests.
 
+#### 17.23 Slice 5 is DONE: lessons 2 and 3, the pool, the move to `search_one` only, and the closing review — 2026-10-20 and 21
+
+**Status: DONE.** Slice 5 is closed. The user typed lessons 2 and 3 on `feat/plan-to-run`
+(commits `3a46eb3` to `839ca21`). On 2026-10-21 Claude removed the old search, ran the review
+pass of the new rule (Working Rules) and wrote these notes, at the user's request, as commits on
+the same branch: `b47987f` (the move to `search_one` only), `511b63f` (the saver fix, below), `9a3986d` (the review tests) and the docs commit after them. Nothing is on `main` and nothing was pushed.
+
+**Lesson 2 (2026-10-20): one search for each query, all at the same time.**
+
+- `agent/search_one.py` is the node that searches ONE query and writes the chunks into the state
+  key `found` (a list that grows, with the add rule).
+- `agent/fan_out.py`: `fan_out(state)` makes one `Send` for each query. The user's question is
+  searched on every side that has a file, first, and then the planner's queries come (D54). With
+  no side that has a file it raises `ValueError` ("nothing to search"); that cannot happen today
+  because `ask()` needs both ids (see the open items).
+- `agent/merge.py`: `merge_chunks` mixes the lists by rank (the best chunk of each query first)
+  and drops duplicates (the key is the artifact id and the chunk index). The merge node makes one
+  pile for each side, calls the injected `rank_side(question, pile)` ONCE for each side with the
+  user's original question (D53), asks `totals_of(sides)` how many parts each side has, and empties
+  `found` with `Overwrite([])`, so the next message does not inherit the chunks of this one.
+- `api/searching.py`: `retrieve_query(conn, sides, side=, text=)` is embed, vector search and
+  keyword fusion, and it never reranks. `rank_pile(question, pile)` reads the first
+  `RERANK_WINDOW` (20) chunks of the pile, asks the chain for the whole order, keeps `RERANK_TOP_N`
+  (10), and keeps `VECTOR_TOP_N` (15) from the whole pile when no tier answered. There is no skip
+  gate: the best scores of different queries cannot be compared.
+- D55, the pool of database connections: eight searches that run together need eight connections.
+  `store.make_pool()` builds a CLOSED pool of `POOL_SIZE` = 8, and the first search opens it. The
+  lifespan builds it and closes it. `ask(..., pool=)` hands it to `_ask_graph`, and `search_one`
+  takes one connection from it for each query. Measured with 8 searches of 7 quick round trips each:
+  one shared connection 12.9 s, a pool of 2 6.2 s, of 4 4.1 s, of 8 1.7 s. Not measured: the real
+  queries, the memory, and the connection limit of the Supabase session pooler.
+
+**Lesson 3 (2026-10-20 and 21): `respond`, and the summaries join the answer.**
+
+- `agent/respond.py` is the one final node (D31). It replaces the old `prompt` and `generate`
+  nodes: it reads `chunks`, `question`, `totals` and the two summaries, builds the prompt with the
+  injected `make_prompt`, and calls `generate`.
+- The summaries are written on every message, at the same time as the planner: `plan`,
+  `summarize_a` and `summarize_b` all start from `START`, and `measure` waits for all three, so
+  `respond` can read the summaries on the stuff path and on the search path. A summary that fails
+  on every tier becomes an empty text, and the report is written without the block, because a
+  summary is a guide and not the evidence.
+- `prompts/builder.py` gained `SUMMARIES_NOTE` and a summaries block that sits before the parts.
+  The report instruction asks in its section 12 (CORRECTIONS) for corrected code or a better
+  algorithm, in the order of section 8, with a stated confidence (D49). The size guard for the
+  instructions is 2,200 bytes (`COLLAPSE_BYTES`).
+- **A real defect found:** `store.make_pool` passed `connection_timeout` to libpq, whose name is
+  `connect_timeout`. Fixed.
+- `.github/workflows/smoke.yaml` now starts a `pgvector/pgvector:pg17` service container, sets
+  `DATABASE_URL` (no secret) and installs the extension, because the smoke test for the ask path
+  needs a database. `test_the_smoke_run_really_has_a_database` fails the build if that is lost.
+
+**The move to `search_one` only (2026-10-21, D57).**
+
+- The old one-shot `search` node is gone. `build_graph(*, measure, fits, stuff, search_one,
+  totals_of, rank_side, plan, make_prompt, generate, summarize=None, checkpointer=None)` REQUIRES
+  `search_one`, `totals_of`, `rank_side` and `plan`. There is no default, so no graph can be built
+  the old way and no half-wired graph exists. After `measure`, a conditional edge sends the run to
+  `stuff` when the pair fits and to the fan-out when it does not.
+- Deleted from `api/searching.py`: `retrieved_chunks` and `rerank_and_cut`. Older notes in these
+  files that name them mean `retrieve_query` and `rank_pile` now.
+- **The skip gate is now unused.** `retrieval/gate.py` (`should_rerank`, `margin`, `SKIP_MARGIN`)
+  has no caller in `labpilot/`; its own tests stay. Slice 13 decides: delete it, or give it a
+  caller. The test that forced the gate to say NO was deleted with the function it tested.
+- `scripts/bench_end_to_end.py` times `asking.rank_pile` now.
+
+**The closing review of slice 5 (2026-10-21).** Looked at from above, the new slice joined four
+things that no test crossed together. Four tests were added, and the old ones were moved.
+
+| new test | the join it protects |
+|---|---|
+| `tests/integration/test_ask.py::test_many_queries_make_one_pile_per_side_with_no_duplicates` | real rows, three plan queries, five searches: no chunk comes twice and each side keeps exactly `VECTOR_TOP_N` |
+| `...::test_a_report_is_still_written_when_the_planner_fails_on_every_tier` | the planner failing on every tier still gives a report, from the default plan (the question on each side) |
+| `...::test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects` | the real Postgres saver with `Send`, `Overwrite`, `Plan`, `Chunk` and `StoredArtifact` in the state; the stuffed path never met them |
+| `tests/unit/test_scripts.py` (34 tests) | every name a script takes from `labpilot` still exists, and the functions the benchmark times still exist. This would have caught the stale script of this very migration |
+| `tests/unit/agent/test_graph.py` (rewritten) | the full order of calls on both paths, and the four functions are required, with `search` gone (by signature) |
+| `tests/api/test_checkpoints.py` (+3) | the saver does not use pipeline mode, and its `executemany` sends one statement at a time (the defect below) |
+
+Moved: the tests of `rerank_and_cut` were deleted, because the six tests of `rank_pile` in
+`tests/api/test_rank_pile.py` hold the same rules (the two number spaces, the whole order asked
+for, the cut after the call, the degraded cut, the empty pile). `test_ask.py` (api) keeps only the
+query-embed tests, and `tests/api/test_retrieve_query.py` and `tests/api/test_fusion_is_on.py` call
+`retrieve_query`.
+
+**A real defect found by the review pass: the chat save failed on a real size.** The first full
+run had one red test, the new chat test on the searched path, with `SSL error: bad length`. It was
+not a flake. The saver (LangGraph's `PostgresSaver`) writes the checkpoint with psycopg's
+`executemany`, and psycopg runs `executemany` in PIPELINE MODE. libpq has a bug there
+([PostgreSQL bug report #18907](https://www.postgresql.org/message-id/18907-d41b9bcf6f29edda%40postgresql.org)):
+when a large message goes over SSL and the network takes it in several pieces, the next message is
+added to the output while the first write is still being retried, and OpenSSL stops with `SSL
+error: bad length` (also seen as `connection not in pipeline mode`). A chat on the search path
+saves about 150 KB (the prompt, the text of the chunks, the report). The stuffed path saves a few
+hundred bytes and never failed. How it was found: the connection was traced thread by thread
+(no other thread used it at that moment), three variants were compared (shared connection, a
+pool, searches one at a time: all failed at the same rate, 9 of 15), and a plain stress test of
+three threads on one connection gave no error in 360 queries. Only a large save in pipeline mode
+fails. **The fix, `api/checkpoints.py`:** `open_saver` returns `_SafeSaver`, a `PostgresSaver` with
+`supports_pipeline = False` (one transaction, same statements) whose cursor is wrapped by
+`_OneAtATime`, so that `executemany` runs one `execute` for each row. The price is a few more round
+trips of about 0.12 s on a report that takes minutes. **The honest limit:** the failure depends on
+the network (about half the runs of one afternoon, none of the next hour), so no integration
+test can hold the rule. A test that saves 400 KB eight times was written, passed with the OLD saver
+too, and was deleted (a test that cannot fail). The rule is held by two deterministic unit tests
+(the flag, and the one-at-a-time `executemany`). Repeated eight times after the fix, the searched
+path chat test passed eight times.
+
+**Deliberate breaks, all caught by the test meant to catch them:** the benchmark naming a removed
+function; a script importing a removed name; `plan` made optional again; the question no longer
+searched on each side (16 tests); `pick` ignoring `fits` (4 tests); the merge keeping duplicates;
+the planner node not catching `PlanError`; `found` no longer emptied; the plain saver back (the
+flag test); the pipeline flag back on (the flag test); the `executemany` wrapper doing nothing (two
+tests). Each break was made on the file itself with the original bytes kept aside, and the file was
+restored from those bytes.
+
+**Suite on 2026-10-21: 1503 passed, 120 skipped** (unit, api and integration, without `--run-smoke`), `ruff
+check` and `ruff format --check` clean.
+
+**Open items (none is fixed).**
+
+- `fan_out` raises `ValueError` when no side has a file. Today `ask()` and the API need both ids,
+  so it cannot happen. **Slice 6 must handle 0 and 1 file** (D56).
+- The saved chat still holds the whole prompt (up to about 78,000 characters) and the text of
+  every chunk. After each message only the newest copy stays, so the growth is per chat, but the
+  size of a chat with a real search path was NOT measured.
+- The window of 20 was measured on the pile of ONE query; with many queries it holds about the
+  top 2 of each. A larger window or a rank by how many queries found a chunk are the options (D53).
+  Slice 13.
+- M5, M16 and M17 (slice 13); D46 and D47 (slice 12 and later).
+- The skip gate has no caller (above).
+- **`store/writer.py` also uses `executemany`** (the ingest of an upload, in batches of 96 chunks
+  with their vectors, over a megabyte each), so it runs in pipeline mode too and could meet the
+  same libpq bug. It did not fail in the tests (small batches over the VPN), and the ingest of
+  81,000 chunks in slice 4 went into a LOCAL container, so it says nothing about SSL. NOT
+  measured: a real repository uploaded to Supabase through the app. Do that once (the repository
+  door, about 500 chunks). If an upload ever fails with `SSL error: bad length`, give the writer
+  the same one-at-a-time cursor.
+- Both the saver and the writer should be looked at again when psycopg-binary or libpq changes.
+
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
 *(Renumbered on 2026-10-14: this is slice 12 now, see [section 21](#21-the-final-design-and-the-new-slice-list--agreed-2026-10-14). The heading is kept so that old links work.)*
@@ -19553,6 +19719,7 @@ merge step keeps one copy. Whether the planner chunks should also reach the chec
 | **D54** | **Fewer queries, and the user's question is always one of them** (the user's call, 2026-10-20). (1) The planner is told "write 2 to 5 queries, and never more than 6; the question itself is searched too, so do not copy it". (2) `MAX_QUERIES` is 6 (it was 12) and the check rejects a longer plan, so the next tier writes a new one (D50). The gap between 5 and 6 is on purpose: a model does not count exactly, and a plan with one query too many is not worth another model call. (3) `fan_out` always searches the user's question on each side that has a file, first, and then the planner's queries; a planner query equal to the question is dropped. So one question makes at most 6 + 2 = 8 searches. This also fixes the worst case where all the planner's queries are for A and B would get nothing. `PLANNER_VERSION` is 3. **Evidence:** LangChain asks for 3 queries (a default nobody tuned); Anthropic's research system added effort rules after its agents made 50 subagents for a simple question; a 2025 paper uses at most 5 sub-queries plus the original. No study found proves a best number, so 2 to 5 and 6 are guesses for M5 (slice 13). **A side finding:** `build_map` did not count the join between the two sides in its budget (`SIDE_JOINER`), so the map could be one token over; fixed in the same change |
 | **D55** | **A pool of 8 database connections for the fan-out searches** (the user's call, 2026-10-20, "right in this slice, it is obvious it is faster"). Measured the same day with 8 searches of 7 quick round trips each, on one VPN exit: one shared connection 12.9 s, a pool of 2 6.2 s, a pool of 4 4.1 s, a pool of 8 1.7 s (one search alone: 2.0 s). Opening the pool costs 0.8 to 4.2 s, once. `store.make_pool()` builds it CLOSED (`open=False`), so booting the app or a test never reaches the database; the first search opens it (`open(wait=False)`); `check` tests a connection when it is handed out, because the session pooler drops idle ones. `POOL_SIZE` is 8 and `tests/unit/test_pool_size.py` ties it to `MAX_QUERIES + 2`. The lifespan builds the pool and closes it at stop; no `DATABASE_URL` means no pool and `ask()` falls back to the one shared connection. `tests/conftest.py` makes every test build NO pool, so a test can never search the real schema. **Not measured:** the real queries (only `select 1`), memory, and the connection limit of the Supabase session pooler |
 | **D56** | **`respond` must work for every number of files, and slice 6 builds that** (the user's call, 2026-10-21, after asking whether the `respond` of slice 5 was the complete one: it is the RAW version, for two artifacts only). D31 says `respond` ends every plan and the planner already knows 0, 1 and 2 files (slice 4), but no slice built the 0-file and 1-file paths, and `ask()` and the API still require both ids. Slice 6 now adds: (1) `respond` chooses its instruction from the files that exist: none = a plain instruction for chat and for writing code, with no evidence; one = `SCAN`, which also needs the fix part of D49; two = the report; (2) the API and the page accept 0 or 1 artifact id; (3) `respond` reads the chat history, as the follow-up node does (D21). What stays for later: the chain, the thinking level and the length chosen by the plan (slice 11), the results of the other nodes (slices 7 to 10), and the user's controls (Step 3). The `respond` of slice 5 also reads two summaries written on every message; D47 (stored summaries, read by the planner) waits for M5 in slice 13 |
+| **D57** | **One way to search, and four required functions** (the user's call, 2026-10-21: remove the old search and use only `search_one`). The old one-shot `search` node, `retrieved_chunks` and `rerank_and_cut` are deleted. `build_graph` requires `search_one`, `totals_of`, `rank_side` and `plan` with no defaults, and a test reads the signature, so a graph cannot be built the old way and no half-wired graph exists. The skip gate is not called by any product code any more (D53); `retrieval/gate.py` and its tests stay until slice 13 decides to delete it or give it a caller. Built: 17.23 |
 
 #### 21.3 Where every planned node lives
 
@@ -19618,7 +19785,7 @@ of section 18 still says "SLICE 9" so that old links work; it is slice 12 now.
 10. Which model gives the `verify` verdict and the planner's list of steps: an LLM with function calling, or Jev (D48). Decide with M16 in slice 13 (the planner's steps) and M15 in slice 7 (`verify`).
 11. Whether the fixes inside `respond` are good enough, or `propose_fix` needs its own node (D49). Decide with M17 after slice 5.
 12. The query cap `MAX_QUERIES` (6 since 2026-10-20, it was 12; D54) and the allowed steps for each file count, both in `agent/plan_check.py`, are first guesses (slice 4, lesson 3). Set them from the plans measured in M5 and M16.
-13. Slice 4 is closed with the planner BUILT and not measured or wired. Slice 5 wires `plan` and `summarize` into `_ask_graph` together with `respond`. M5 and M16 are still owed and now belong to slice 13 (17.20, D53, D54), the file scores are not given to `build_map` yet, and D47 (stored summaries) is not built. Items 9 and 10 above therefore stay open: decide them with the first M5 and M16 runs.
+13. The planner and the summarizer are wired into `_ask_graph` since slice 5 (17.23). M5 and M16 are still owed and belong to slice 13 (17.20, D53, D54), the file scores are not given to `build_map` yet, and D47 (stored summaries) is not built. Items 9 and 10 above therefore stay open: decide them with the first M5 and M16 runs.
 
 #### 21.7 What this changed in older text
 
