@@ -49,7 +49,7 @@ def seen(monkeypatch):
     monkeypatch.setattr(searching, "_embed_question", embed)
     monkeypatch.setattr(searching, "search", search)
     monkeypatch.setattr(searching, "_fused", fuse)
-    monkeypatch.setattr(searching, "rerank_and_cut", rerank)
+    monkeypatch.setattr(searching, "rank_pile", rerank)
     return seen
 
 
@@ -89,15 +89,3 @@ def test_a_reingest_with_another_embedder_is_our_409_and_not_a_crash(seen, monke
 
     with pytest.raises(ArtifactChanged):
         searching.retrieve_query(None, sides(), side="B", text="seed")
-
-
-def test_the_old_path_still_reranks_each_side_once_with_the_question(seen):
-    chunks = searching.retrieved_chunks(None, sides(), question="why?")
-
-    assert seen["rerank"] == ["why?", "why?"]
-    assert [(c.side, c.chunk_index) for c in chunks] == [
-        ("A", 7),
-        ("A", 8),
-        ("B", 7),
-        ("B", 8),
-    ]

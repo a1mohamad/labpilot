@@ -18,7 +18,7 @@ import pytest
 import requests
 
 from labpilot.api import searching
-from labpilot.store import SearchHit
+from labpilot.ingest import Chunk
 
 TESTS = pathlib.Path(__file__).resolve().parents[1]
 FREE_OF_CREDENTIALS = ("unit", "api")
@@ -100,7 +100,7 @@ def test_no_default_test_can_reach_a_real_reranker(monkeypatch):
     primary. Nothing caught it, because spending quota makes a suite slower
     and never redder.
 
-    It hid behind a Python detail worth remembering: rerank_and_cut takes its chain as
+    It hid behind a Python detail worth remembering: rank_pile takes its chain as
     a DEFAULT ARGUMENT, evaluated once at import time, so monkeypatching the
     module attribute rebinds the name and never reaches the captured object.
     A test that looked stubbed was not.
@@ -115,22 +115,22 @@ def test_no_default_test_can_reach_a_real_reranker(monkeypatch):
 
     monkeypatch.setattr(requests, "post", blocked)
 
-    hits = tuple(
-        SearchHit(
-            chunk_index=100 + index,
+    pile = tuple(
+        Chunk(
             text=f"chunk {index}",
-            header=f"[train.py - part {index}]",
             source="train.py",
             start_line=index,
             end_line=index,
-            score=0.9 - index / 100,
+            side="B",
+            artifact_id="B-1",
+            chunk_index=100 + index,
         )
         for index in range(3)
     )
 
-    kept = searching.rerank_and_cut("why do the results diverge?", hits)
+    kept = searching.rank_pile("why do the results diverge?", pile)
 
-    assert [hit.chunk_index for hit in kept] == [100, 101, 102]
+    assert [chunk.chunk_index for chunk in kept] == [100, 101, 102]
 
 
 def test_no_default_test_can_open_the_real_pool(monkeypatch):

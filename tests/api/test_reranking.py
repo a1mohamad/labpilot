@@ -183,7 +183,7 @@ def test_the_ask_path_reaches_the_assembled_chain_and_not_the_bare_one():
     """
     import inspect
 
-    default = inspect.signature(searching.rerank_and_cut).parameters["rank"].default
+    default = inspect.signature(searching.rank_pile).parameters["rank"].default
 
     assert default is rank
 

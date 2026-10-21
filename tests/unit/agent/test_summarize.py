@@ -2,7 +2,7 @@ import threading
 
 import pytest
 
-from labpilot.agent import build_graph
+from labpilot.agent import Plan, build_graph
 from labpilot.agent.summarize import make_summarize_node
 
 STUFFED = ("whole one", "whole two")
@@ -17,7 +17,10 @@ def run(summarize=None):
         measure=lambda a, b: object(),
         fits=lambda sides, question: True,
         stuff=lambda sides, question: (STUFFED, None),
-        search=lambda sides, question: (STUFFED, {"A": 1}),
+        search_one=lambda sides, query: (),
+        totals_of=lambda sides: {"A": 1},
+        rank_side=lambda question, pile: pile,
+        plan=lambda question, a, b: Plan(steps=(), queries=()),
         make_prompt=lambda chunks, question, totals, summaries: (
             "the prompt",
             chunks[:1],

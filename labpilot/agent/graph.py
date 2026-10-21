@@ -21,21 +21,15 @@ def build_graph(
     measure: Callable[[str, str], Any],
     fits: Callable[[Any, str], bool],
     stuff: Callable[[Any, str], tuple[Chunks, Totals]],
-    search: Callable[[Any, str], tuple[Chunks, Totals]] | None = None,
-    search_one: Callable[[Any, Query], Chunks] | None = None,
-    totals_of: Callable[[Any], Totals] | None = None,
-    rank_side: Callable[[str, Chunks], Chunks] | None = None,
+    search_one: Callable[[Any, Query], Chunks],
+    totals_of: Callable[[Any], Totals],
+    rank_side: Callable[[str, Chunks], Chunks],
+    plan: Callable[[str, str, str], Plan],
     make_prompt: Callable[[Chunks, str, Totals, dict[str, str]], tuple[str, Chunks]],
     generate: Callable[[str], Any],
     summarize: Callable[[str], str] | None = None,
-    plan: Callable[[str, str, str], Plan] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
-    if (search is None) == (search_one is None):
-        raise ValueError("give exactly one of search and search one")
-    if search_one is not None and None in (plan, totals_of, rank_side):
-        raise ValueError("search_one needs plan, totals_of and rank_side too")
-
     def measure_node(state: State) -> dict[str, Any]:
         sides = measure(state["a"], state["b"])
         return {"sides": sides, "fits": fits(sides, state["question"])}
@@ -44,46 +38,36 @@ def build_graph(
         chunks, totals = stuff(state["sides"], state["question"])
         return {"chunks": chunks, "totals": totals}
 
-    def search_node(state: State) -> dict[str, Any]:
-        chunks, totals = search(state["sides"], state["question"])
-        return {"chunks": chunks, "totals": totals}
-
     def remember_node(state: State) -> dict[str, Any]:
         return {"history": [state["question"]]}
 
     def pick(state: State) -> str | list[Send]:
-        if state["fits"]:
-            return "stuff"
-        return "search" if search_one is None else fan_out(state)
+        return "stuff" if state["fits"] else fan_out(state)
 
     builder = StateGraph(State)
+    builder.add_node("plan", make_planner_node(plan))
     builder.add_node("measure", measure_node)
     builder.add_node("stuff", stuff_node)
+    builder.add_node("search_one", make_one_search_node(search_one))
+    builder.add_node("merge", make_merge_node(totals_of, rank_side))
     builder.add_node("respond", make_respond_node(make_prompt, generate))
     builder.add_node("remember", remember_node)
-    if search_one is None:
-        builder.add_node("search", search_node)
-        builder.add_edge("search", "respond")
-    else:
-        builder.add_node("search_one", make_one_search_node(search_one))
-        builder.add_node("merge", make_merge_node(totals_of, rank_side))
-        builder.add_edge("search_one", "merge")
-        builder.add_edge("merge", "respond")
-    first_steps: list[str] = []
-    if plan is not None:
-        builder.add_node("plan", make_planner_node(plan))
-        first_steps.append("plan")
+
+    # The planner and the two summaries start together, and measure waits for
+    # all of them, so respond can read the summaries whichever way it was reached.
+    first_steps = ["plan"]
     if summarize is not None:
         for slot in ("a", "b"):
             name = f"summarize_{slot}"
             builder.add_node(name, make_summarize_node(slot, summarize))
             first_steps.append(name)
-    for step in first_steps or ["measure"]:
+    for step in first_steps:
         builder.add_edge(START, step)
-    if first_steps:
-        builder.add_edge(first_steps, "measure")
+    builder.add_edge(first_steps, "measure")
     builder.add_conditional_edges("measure", pick)
     builder.add_edge("stuff", "respond")
+    builder.add_edge("search_one", "merge")
+    builder.add_edge("merge", "respond")
     builder.add_edge("respond", "remember")
     builder.add_edge("remember", END)
     return builder.compile(checkpointer=checkpointer)

@@ -22,7 +22,7 @@ import threading
 import pytest
 import responses
 
-from labpilot.agent import build_graph
+from labpilot.agent import Plan, build_graph
 from labpilot.api import summaries
 from labpilot.api.errors import UnknownArtifactId
 from labpilot.llm import GeminiProvider, LLMClient, LLMResult
@@ -159,7 +159,10 @@ def graph(summarize):
         measure=lambda a, b: "sides",
         fits=lambda sides, question: True,
         stuff=lambda sides, question: ((), None),
-        search=lambda sides, question: ((), None),
+        search_one=lambda sides, query: (),
+        totals_of=lambda sides: {"A": 1},
+        rank_side=lambda question, pile: pile,
+        plan=lambda question, a, b: Plan(steps=(), queries=()),
         make_prompt=lambda chunks, question, totals, summaries: ("the prompt", ()),
         generate=lambda prompt: "the result",
         summarize=summarize,

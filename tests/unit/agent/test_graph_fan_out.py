@@ -259,8 +259,8 @@ def test_an_error_in_the_ranking_reaches_the_caller_unchanged():
         ask(graph)
 
 
-def test_both_ways_to_search_at_once_is_refused():
-    with pytest.raises(ValueError, match="exactly one"):
+def test_the_old_one_shot_search_is_refused_by_the_builder():
+    with pytest.raises(TypeError):
         build_graph(
             **required(),
             search=lambda sides, question: ((), None),
@@ -271,19 +271,15 @@ def test_both_ways_to_search_at_once_is_refused():
         )
 
 
-def test_no_way_to_search_is_refused():
-    with pytest.raises(ValueError, match="exactly one"):
-        build_graph(**required())
-
-
-@pytest.mark.parametrize("missing", ["plan", "totals_of", "rank_side"])
-def test_search_one_without_the_plan_the_totals_or_the_ranking_is_refused(missing):
+@pytest.mark.parametrize("missing", ["search_one", "plan", "totals_of", "rank_side"])
+def test_a_graph_without_one_of_the_search_functions_cannot_be_built(missing):
     wiring = {
+        "search_one": lambda sides, query: (),
         "plan": lambda question, a, b: Plan(steps=(), queries=()),
         "totals_of": lambda sides: TOTALS,
         "rank_side": keep_all,
     }
     del wiring[missing]
 
-    with pytest.raises(ValueError, match="needs plan, totals_of and rank_side"):
-        build_graph(**required(), search_one=lambda sides, query: (), **wiring)
+    with pytest.raises(TypeError, match=missing):
+        build_graph(**required(), **wiring)

@@ -40,7 +40,7 @@ QUESTION = "Compare these and explain why the results diverge."
 TIMED = (
     (searching, "_embed_question"),
     (searching, "search"),
-    (searching, "rerank_and_cut"),
+    (asking, "rank_pile"),
     (asking, "build_report_prompt"),
 )
 

@@ -58,7 +58,7 @@ def no_live_rerankers(request, monkeypatch):
 
     MEASURED 2026-09-14, and it was live: any test that reached the search
     branch of the ask path went straight through to real providers. Nothing
-    stubs the reranker, because rerank_and_cut takes its chain as a DEFAULT ARGUMENT
+    stubs the reranker, because rank_pile takes its chain as a DEFAULT ARGUMENT
     captured at import time, so monkeypatching the module attribute does not
     reach it. One integration test was quietly spending four Gemini rerank
     calls and then Cohere on every full run - and Cohere's free tier is 1,000
