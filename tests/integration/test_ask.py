@@ -127,6 +127,19 @@ class PlannerFails(FakeClient):
         )
 
 
+class RewriteFails(FakeClient):
+    """The same client, except that the rewrite call fails on every tier."""
+
+    def generate(
+        self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
+    ) -> LLMResult:
+        if tool is None and max_tokens == FOLLOW_UP_MAX_TOKENS:
+            raise AllFreeTiersExhausted(())
+        return super().generate(
+            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
+        )
+
+
 def watched_searches(monkeypatch) -> list[str]:
     """The artifact id of every vector search, in the order they ran.
 
@@ -507,6 +520,51 @@ def test_a_follow_up_is_rewritten_and_the_chat_saves_the_standalone_question(
     # the answer of message 1 was saved, and the rewrite of message 2 was given it
     assert values["last_answer"] == "an answer"
     assert "The last answer the tool gave:\nan answer" in client.follow_up_prompts[0]
+
+
+def test_a_follow_up_is_searched_as_the_standalone_question(
+    db, chat_tables, monkeypatch
+):
+    """On the searched path the rewritten question is what gets embedded.
+
+    The small pair above is stuffed, so it never searches. This one is too big
+    to stuff, so the question is embedded once for each side, and the short
+    follow-up must never reach the embedder.
+    """
+    a = stored(db, "A", parts=60, words=300)
+    b = stored(db, "B", parts=60, words=300)
+    embedded = embedded_texts(monkeypatch)
+    client = FakeClient(rewrite_to="what is the learning rate in A and B?")
+
+    for question in ("why do results differ?", "and the learning rate?"):
+        asking.ask(
+            db, a, b, question=question, client=client, thread_id="chat-follow-search"
+        )
+
+    assert embedded.count("what is the learning rate in A and B?") == 2
+    assert "and the learning rate?" not in embedded
+
+
+def test_a_report_is_still_written_when_the_rewrite_fails_on_every_tier(
+    db, chat_tables
+):
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = RewriteFails()
+
+    for question in ("why do results differ?", "and the learning rate?"):
+        comparison = asking.ask(
+            db, a, b, question=question, client=client, thread_id="chat-rewrite-fails"
+        )
+
+    saved = open_saver(db).get_tuple(
+        {"configurable": {"thread_id": "chat-rewrite-fails"}}
+    )
+    values = saved.checkpoint["channel_values"]
+
+    assert comparison.result.text == "an answer"
+    assert values["history"] == ["why do results differ?", "and the learning rate?"]
+    assert "and the learning rate?" in client.prompts[-1]
 
 
 def test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects(
