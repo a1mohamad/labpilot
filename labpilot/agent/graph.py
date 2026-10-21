@@ -44,7 +44,7 @@ def build_graph(
     def remember_node(state: State) -> dict[str, Any]:
         remembered: dict[str, Any] = {"history": [state["question"]]}
         if answer_text is not None:
-            remembered["last_asnwer"] = answer_text(state["result"])
+            remembered["last_answer"] = answer_text(state["result"])
         return remembered
 
     def pick(state: State) -> str | list[Send]:

@@ -13,8 +13,8 @@ def make_rewrite_node(
             return {}
 
         question = state["question"]
-        last_answer = state.get("last_asnwer", "")
-        standalone = " ".join(rewrite(question, list[history], last_answer).split())
+        last_answer = state.get("last_answer", "")
+        standalone = " ".join(rewrite(question, list(history), last_answer).split())
         if not standalone or standalone == question:
             return {}
 

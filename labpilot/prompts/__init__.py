@@ -15,7 +15,7 @@ from labpilot.prompts.followups import (
     FOLLOW_UP_VERSION,
     build_follow_up_prompt,
     follow_up_problem,
-    last_asnwer_excerpt,
+    last_answer_excerpt,
 )
 from labpilot.prompts.instructions import (
     COMPARE,
@@ -76,7 +76,7 @@ __all__ = [
     "build_summary_prompt",
     "find_citations",
     "follow_up_problem",
-    "last_asnwer_excerpt",
+    "last_answer_excerpt",
     "reserve",
     "resolve",
 ]

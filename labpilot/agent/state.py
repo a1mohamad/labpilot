@@ -13,7 +13,7 @@ class State(TypedDict):
     a: str
     b: str
     history: Annotated[list[str], operator.add]
-    last_asnwer: str
+    last_answer: str
     plan: Plan
     summary_a: str
     summary_b: str

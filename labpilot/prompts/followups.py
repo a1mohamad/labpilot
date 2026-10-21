@@ -51,7 +51,7 @@ def last_answer_excerpt(text: str) -> str:
     text = text.strip()
     if len(text) <= LAST_ANSWER_CHARS:
         return text
-    return "..." + text[-(LAST_ANSWER_CHARS - 1) :]
+    return "…" + text[-(LAST_ANSWER_CHARS - 1) :]
 
 
 def build_follow_up_prompt(
@@ -60,7 +60,7 @@ def build_follow_up_prompt(
     if not question.strip():
         raise ValueError("a follow-up needs a question")
     if not history:
-        raise ValueError("a follow-up needs eariler question")
+        raise ValueError("a follow-up needs an earlier question")
 
     earlier = "\n".join(
         f"{number}. {truncate(text, QUESTION_CHARS)}"
@@ -69,9 +69,9 @@ def build_follow_up_prompt(
     blocks = [FOLLOW_UP.header, f"Earlier questions, oldest first:\n{earlier}"]
     answer = last_answer_excerpt(last_answer)
     if answer:
-        blocks.append(f"the last answer the tool gave:\n{answer}")
+        blocks.append(f"The last answer the tool gave:\n{answer}")
     blocks.append(f"New question:\n{question.strip()}")
-    blocks.appned(FOLLOW_UP.closing)
+    blocks.append(FOLLOW_UP.closing)
     return "\n\n".join(blocks)
 
 

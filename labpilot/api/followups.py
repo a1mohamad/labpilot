@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 
 from labpilot.llm import AllFreeTiersExhausted, LLMClient, LLMResult
-from labpilot.prompts.followups import (
+from labpilot.prompts import (
     FOLLOW_UP_MAX_TOKENS,
     FOLLOW_UP_VERSION,
     build_follow_up_prompt,
