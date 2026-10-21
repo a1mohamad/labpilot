@@ -9,6 +9,14 @@ from labpilot.prompts.builder import (
 from labpilot.prompts.citations import Citation, find_citations, resolve
 from labpilot.prompts.context import OUTLINE_BUDGET, build_context
 from labpilot.prompts.corpus_map import PLANNER_BUDGET, MapPart, build_map
+from labpilot.prompts.followups import (
+    FOLLOW_UP,
+    FOLLOW_UP_MAX_TOKENS,
+    FOLLOW_UP_VERSION,
+    build_follow_up_prompt,
+    follow_up_problem,
+    last_asnwer_excerpt,
+)
 from labpilot.prompts.instructions import (
     COMPARE,
     CORE,
@@ -36,6 +44,9 @@ from labpilot.prompts.summary import (
 __all__ = [
     "COMPARE",
     "CORE",
+    "FOLLOW_UP",
+    "FOLLOW_UP_MAX_TOKENS",
+    "FOLLOW_UP_VERSION",
     "FULL",
     "OUTLINE_BUDGET",
     "OPENING_CHARS",
@@ -59,10 +70,13 @@ __all__ = [
     "build_planner_prompt",
     "map_budget",
     "build_context",
+    "build_follow_up_prompt",
     "build_map",
     "build_prompt",
     "build_summary_prompt",
     "find_citations",
+    "follow_up_problem",
+    "last_asnwer_excerpt",
     "reserve",
     "resolve",
 ]

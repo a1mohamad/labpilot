@@ -14,6 +14,7 @@ from labpilot.api.errors import (
     GenerationUnavailable,
     InvalidQuestion,
 )
+from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_report_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
@@ -144,6 +145,8 @@ def _ask_graph(
         plan=make_planner(conn, client),
         summarize=summarize,
         make_prompt=make_prompt,
+        rewrite=make_rewriter(client),
+        answer_text=last_answer_text,
         generate=generate,
         checkpointer=open_saver(conn) if thread_id else None,
     )

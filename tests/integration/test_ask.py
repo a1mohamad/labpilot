@@ -21,7 +21,7 @@ from labpilot.api.errors import (
 )
 from labpilot.ingest import Chunk
 from labpilot.llm import AllFreeTiersExhausted, LLMResult
-from labpilot.prompts import SUMMARY_MAX_TOKENS
+from labpilot.prompts import FOLLOW_UP_MAX_TOKENS, SUMMARY_MAX_TOKENS
 from labpilot.prompts.builder import SUMMARIES_NOTE
 from labpilot.store import (
     ArtifactRecord,
@@ -50,11 +50,13 @@ class FakeClient:
     prompts only.
     """
 
-    def __init__(self, plan: dict | None = None) -> None:
+    def __init__(self, plan: dict | None = None, rewrite_to: str | None = None) -> None:
         self.plan = PLAN if plan is None else plan
+        self.rewrite_to = rewrite_to
         self.prompts: list[str] = []
         self.planner_prompts: list[str] = []
         self.summary_prompts: list[str] = []
+        self.follow_up_prompts: list[str] = []
 
     def generate(
         self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
@@ -68,6 +70,14 @@ class FakeClient:
                 finish_reason="STOP",
                 arguments=self.plan,
             )
+        if max_tokens == FOLLOW_UP_MAX_TOKENS:
+            self.follow_up_prompts.append(prompt)
+            return LLMResult(
+                text=self.standalone(prompt),
+                model="fake",
+                tier=1,
+                finish_reason="STOP",
+            )
         if max_tokens == SUMMARY_MAX_TOKENS:
             self.summary_prompts.append(prompt)
             return LLMResult(
@@ -75,6 +85,12 @@ class FakeClient:
             )
         self.prompts.append(prompt)
         return LLMResult(text="an answer", model="fake", tier=1, finish_reason="STOP")
+
+    def standalone(self, prompt: str) -> str:
+        """The rewrite of a follow-up: the fixed text, or the question unchanged."""
+        if self.rewrite_to is not None:
+            return self.rewrite_to
+        return prompt.split("New question:\n", 1)[1].rsplit("\n\n", 1)[0]
 
 
 class SummariesFail(FakeClient):
@@ -464,6 +480,33 @@ def test_a_chat_remembers_every_question_and_comes_back_as_real_objects(
     assert values["history"] == ["first?", "second?", "third?"]
     assert isinstance(values["result"], LLMResult)
     assert "langgraph" not in caplog.text
+
+
+def test_a_follow_up_is_rewritten_and_the_chat_saves_the_standalone_question(
+    db, chat_tables
+):
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = FakeClient(rewrite_to="what is the learning rate in A and B?")
+
+    for question in ("why do results differ?", "and the learning rate?"):
+        asking.ask(
+            db, a, b, question=question, client=client, thread_id="chat-follow-up"
+        )
+
+    saved = open_saver(db).get_tuple({"configurable": {"thread_id": "chat-follow-up"}})
+    values = saved.checkpoint["channel_values"]
+
+    assert values["history"] == [
+        "why do results differ?",
+        "what is the learning rate in A and B?",
+    ]
+    assert len(client.follow_up_prompts) == 1
+    assert "why do results differ?" in client.follow_up_prompts[0]
+    assert "what is the learning rate in A and B?" in client.prompts[-1]
+    # the answer of message 1 was saved, and the rewrite of message 2 was given it
+    assert values["last_answer"] == "an answer"
+    assert "The last answer the tool gave:\nan answer" in client.follow_up_prompts[0]
 
 
 def test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects(
