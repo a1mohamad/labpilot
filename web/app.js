@@ -10,6 +10,8 @@ const ARTIFACTS = "/api/v1/artifacts";
 const COMPARE = "/api/v1/compare";
 /** The chat this page is in. The server makes the id on the first answer. */
 const THREAD_KEY = "labpilot.thread";
+/** The stored files, kept the same way, so a refresh does not make the person upload again. */
+const STORED_KEY = "labpilot.artifacts";
 /** What each slot currently holds, once the server has stored it. */
 const stored = { A: null, B: null };
 
@@ -19,10 +21,28 @@ const ready = document.getElementById("ready");
 const status = document.getElementById("status");
 const result = document.getElementById("result");
 const failure = document.getElementById("failure");
+const questionBox = document.getElementById("question");
+
+// The question box is prefilled and EDITABLE, never a placeholder: this text is
+// also the retrieval query. What it says follows how many sides are stored, and
+// it stops following the moment the person types. Version 2 (version 1 was one
+// fixed sentence that only made sense for two files).
+const DEFAULT_QUESTION = [
+  "Ask a question, or add files to compare.",
+  "Summarize this and find likely bugs.",
+  "Compare these and explain why the results diverge.",
+];
+let questionTouched = false;
+questionBox.addEventListener("input", () => {
+  questionTouched = true;
+});
+/** True while a question is on its way, so it cannot be sent twice. */
+let waiting = false;
 
 for (const slot of document.querySelectorAll(".slot")) {
   wireSlot(slot);
 }
+restoreStored();
 refreshReady();
 
 function wireSlot(slot) {
@@ -63,6 +83,7 @@ async function upload(slot, side, source) {
   const label = source.url || source.file.name;
 
   stored[side] = null;
+  remember();
   refreshReady();
   slot.dataset.status = "working";
   state.className = "state working";
@@ -85,9 +106,8 @@ async function upload(slot, side, source) {
     }
 
     stored[side] = payload;
-    slot.dataset.status = "ready";
-    state.className = "state good";
-    state.replaceChildren(...describe(payload));
+    remember();
+    showReady(slot, payload);
   } catch (error) {
     slot.dataset.status = "error";
     state.className = "state bad";
@@ -95,6 +115,68 @@ async function upload(slot, side, source) {
   } finally {
     refreshReady();
   }
+}
+
+/** What a refresh must not lose: the ids are the only way back to a stored file. */
+function remember() {
+  try {
+    localStorage.setItem(STORED_KEY, JSON.stringify(stored));
+  } catch (error) {
+    // A private window can refuse storage. The page still works, it only forgets.
+  }
+}
+
+/** Put the slots back the way they were before the refresh. */
+function restoreStored() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(STORED_KEY) || "null");
+  } catch (error) {
+    return;
+  }
+  if (!saved) return;
+
+  for (const slot of document.querySelectorAll(".slot")) {
+    const payload = saved[slot.dataset.side];
+    // Only something that looks like an ingest reply comes back.
+    if (!payload || typeof payload.artifact_id !== "string") continue;
+    stored[slot.dataset.side] = payload;
+    showReady(slot, payload);
+  }
+}
+
+/** The slot of a file that is stored. */
+function showReady(slot, payload) {
+  const state = slot.querySelector("[data-state]");
+  slot.dataset.status = "ready";
+  state.className = "state good";
+  state.replaceChildren(...describe(payload));
+}
+
+/** The server no longer holds a file this page remembered: empty its slot. */
+function forgetMissing(error) {
+  if (!error || error.code !== "unknown_artifact") return error;
+
+  let cleared = false;
+  for (const slot of document.querySelectorAll(".slot")) {
+    const held = stored[slot.dataset.side];
+    if (!held || !error.message.includes(held.artifact_id)) continue;
+
+    const state = slot.querySelector("[data-state]");
+    stored[slot.dataset.side] = null;
+    slot.dataset.status = "empty";
+    state.className = "state";
+    state.textContent = "";
+    cleared = true;
+  }
+  if (!cleared) return error;
+
+  remember();
+  refreshReady();
+  return {
+    ...error,
+    message: "A file this page remembered is no longer stored, so its slot was emptied. Add it again.",
+  };
 }
 
 /** What came back, in the order a reader cares about. */
@@ -116,19 +198,26 @@ function describe(payload) {
   return parts;
 }
 
+/** What can be asked, from what is stored: nothing, one side, or both. */
 function refreshReady() {
   const have = ["A", "B"].filter((side) => stored[side]);
-  compareButton.disabled = have.length !== 2;
+  // Any number of sides is a valid question. Only a file still being read, or a
+  // question already on its way, holds the button.
+  const reading = document.querySelector('.slot[data-status="working"]') !== null;
+  compareButton.disabled = reading || waiting;
 
   if (have.length === 2) {
     ready.textContent = "Both sides are stored. Ask as many questions as you like.";
   } else if (have.length === 1) {
-    // The agent asks for what it is missing, rather than failing silently.
+    // The agent says what is missing, rather than failing silently.
     const missing = stored.A ? "B" : "A";
-    ready.textContent = `Add side ${missing} to compare.`;
+    ready.textContent = `Ask about this one, or add side ${missing} to compare.`;
   } else {
-    ready.textContent = "Add both sides to compare.";
+    ready.textContent =
+      "No file yet. You can still ask a question, or add files to ask about them.";
   }
+
+  if (!questionTouched) questionBox.value = DEFAULT_QUESTION[have.length];
 }
 
 ask.addEventListener("submit", async (event) => {
@@ -147,6 +236,7 @@ ask.addEventListener("submit", async (event) => {
 
   hide(result);
   hide(failure);
+  waiting = true;
   compareButton.disabled = true;
   status.hidden = false;
   document.getElementById("status-text").textContent =
@@ -158,19 +248,20 @@ ask.addEventListener("submit", async (event) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        a: stored.A.artifact_id,
-        b: stored.B.artifact_id,
+        a: stored.A ? stored.A.artifact_id : null,
+        b: stored.B ? stored.B.artifact_id : null,
         question,
         thread_id: localStorage.getItem(THREAD_KEY),
       }),
     });
     const payload = await response.json();
     if (response.ok) showReport(payload);
-    else showFailure(payload.error);
+    else showFailure(forgetMissing(payload.error));
   } catch (error) {
     showFailure({ code: "network_error", message: String(error), request_id: "-" });
   } finally {
     status.hidden = true;
+    waiting = false;
     refreshReady();
   }
 });
@@ -182,9 +273,11 @@ function showReport(body) {
     tag(`${body.model} · tier ${body.tier}`),
     // n of m, where m is what the artifact HOLDS. On the search path these
     // differ, and saying so is the difference between "I read 25 of 8,333
-    // parts" and a silent claim to have read the whole file.
-    tag(coverage("A", body.chunks.A), body.chunks.A.sent < body.chunks.A.total),
-    tag(coverage("B", body.chunks.B), body.chunks.B.sent < body.chunks.B.total),
+    // parts" and a silent claim to have read the whole file. Only the sides
+    // that really had a file are listed: a chat question has none.
+    ...Object.entries(body.chunks).map(([side, counts]) =>
+      tag(coverage(side, counts), counts.sent < counts.total)
+    ),
     // MAX_TOKENS means the report was CUT and looks complete otherwise.
     tag(body.finish_reason, body.finish_reason !== "STOP")
   );
