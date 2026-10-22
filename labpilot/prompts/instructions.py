@@ -223,7 +223,7 @@ _CORE_SECTIONS = """\
     The causal story. Use only D numbers from §5. Add no new claims."""
 
 
-_LEAN_PREAMBLE = """\
+LEAN_PREAMBLE = """\
 A is the reference: it says what should happen.
 B is the subject: it is the thing that actually runs.
 Read B on its own first. Only then compare it with A.
@@ -231,7 +231,7 @@ Read B on its own first. Only then compare it with A.
 Each side is a list of parts with ids like A-3 and B-17.
 Anything the list does not mark as included was not sent to you."""
 
-_LEAN_RULES = """\
+LEAN_RULES = """\
 Cite every claim as [B-17 "one line copied exactly from that part"].
 The id, one space, then one whole line in double quotes. Nothing else.
 An id on its own is not a citation and is dropped, so [B-17] and [B-8, B-25]
@@ -257,7 +257,8 @@ _LEAN_SECTIONS = """\
     If not, give every honest reading rather than choosing one.
 §10 EXPLANATION - the causal story, using only items from §7.
 §11 WHAT COULD NOT BE DETERMINED - and what would settle it.
-§12 CORRECTIONS - concrete changes to B, biggest effect first.
+§12 CORRECTIONS - for each problem: the corrected code or a better algorithm,
+    and why, in §8 order. A suggestion, not evidence: say how sure you are.
 §13 NEXT STEP - one experiment, and what each outcome would mean."""
 
 _SCAN_PREAMBLE = """\
@@ -301,7 +302,8 @@ _COMPARE_SECTIONS = """\
     If not, give every honest reading rather than choosing one.
 §10 EXPLANATION - the causal story, using only items from §7 and §4.
 §11 WHAT COULD NOT BE DETERMINED - and what would settle it.
-§12 CORRECTIONS - concrete changes to B, biggest effect first.
+§12 CORRECTIONS - for each problem: the corrected code or a better algorithm,
+    and why, in §8 order. A suggestion, not evidence: say how sure you are.
 §13 NEXT STEP - one experiment, and what each outcome would mean."""
 
 
@@ -356,8 +358,8 @@ CORE = _instructions("core", _CORE_SECTIONS)
 REPORT = _instructions(
     "report",
     _LEAN_SECTIONS,
-    preamble=_LEAN_PREAMBLE,
-    rules=_LEAN_RULES,
+    preamble=LEAN_PREAMBLE,
+    rules=LEAN_RULES,
     labels="",
     tail="",
 )
@@ -381,7 +383,7 @@ COMPARE = _instructions(
     "compare",
     _COMPARE_SECTIONS,
     preamble=_COMPARE_PREAMBLE,
-    rules=_LEAN_RULES,
+    rules=LEAN_RULES,
     labels="",
     tail="",
 )
