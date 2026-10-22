@@ -44,7 +44,7 @@ def make_pool(url: str | None = None) -> ConnectionPool:
         url or database_url(),
         min_size=POOL_SIZE,
         max_size=POOL_SIZE,
-        kwargs={"autocommit": True, "connection_timeout": CONNECT_TIMEOUT},
+        kwargs={"autocommit": True, "connect_timeout": CONNECT_TIMEOUT},
         check=ConnectionPool.check_connection,
         open=False,
     )
