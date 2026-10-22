@@ -6,12 +6,13 @@ from labpilot.prompts import Instructions
 from labpilot.store import ArtifactRecord, StoredArtifact
 
 
-def stored(artifact_id, side):
+def stored(artifact_id, side, files=1):
     return StoredArtifact(
         artifact=ArtifactRecord(
             id=artifact_id, name="m.py", side=side, embedding_model="m", dim=3
         ),
         chunks=2,
+        files=files,
         characters=100,
     )
 

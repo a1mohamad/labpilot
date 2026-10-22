@@ -647,6 +647,23 @@ def test_a_follow_up_about_two_files_carries_the_last_answer_into_the_report(
     assert client.prompts[-1].endswith("QUESTION: explain the last answer more simply")
 
 
+def test_a_lone_subject_sent_in_the_first_slot_is_still_searched_as_side_b(
+    db, monkeypatch
+):
+    """The door takes one id in EITHER slot, so ask() must put it where it belongs.
+
+    Left in slot `a`, the subject was searched as a side A that the question does
+    not have, and the search failed on a missing key.
+    """
+    b = stored(db, "B", parts=60, words=300)
+    embedded_texts(monkeypatch)
+
+    comparison = asking.ask(db, b, "", question="why is it slow?", client=FakeClient())
+
+    assert {chunk.side for chunk in comparison.chunks} == {"B"}
+    assert comparison.totals == {"B": 60}
+
+
 def test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects(
     db, chat_tables, monkeypatch, caplog
 ):

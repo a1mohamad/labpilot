@@ -24,11 +24,16 @@ class CitationOut(BaseModel):
 
 
 class CompareRequest(BaseModel):
-    """Two stored artifacts and a question.
+    """Up to two stored artifacts, and a question.
 
     JSON, not multipart, because there are no files left to upload - that is
     the whole point of the split: ingest is paid once at POST /artifacts, and
     what crosses the wire each turn is a question.
+
+    NO id, ONE id or TWO ids are all valid. With none the question is a chat
+    question; with one it is a question about that file; with two it is the
+    comparison. A missing id is left out or null, and a blank one counts as
+    missing, so a page can send what it holds without checking first.
 
     `question` is deliberately NOT constrained here. A blank one must come back
     through our own envelope as `invalid_question`; a min_length would make
@@ -36,14 +41,16 @@ class CompareRequest(BaseModel):
     different error formats from one endpoint.
     """
 
-    a: str = Field(
+    a: str | None = Field(
+        default=None,
         description="Artifact id of the reference - what SAYS what should "
-        "happen. Returned by POST /artifacts.",
+        "happen. Returned by POST /artifacts. Leave it out when there is none.",
         examples=["A-9f2c1b7e4d3a5c60"],
     )
-    b: str = Field(
+    b: str | None = Field(
+        default=None,
         description="Artifact id of the subject - the thing that actually "
-        "runs. Must be the opposite side to `a`.",
+        "runs. Must be the opposite side to `a`. Leave it out when there is none.",
         examples=["B-3e8a04f1c927bd55"],
     )
     question: str = Field(

@@ -54,7 +54,7 @@ def last_answer_excerpt(text: str) -> str:
     return "…" + text[-(LAST_ANSWER_CHARS - 1) :]
 
 
-def last_asnwer_block(last_answer: str) -> str:
+def last_answer_block(last_answer: str) -> str:
     answer = last_answer_excerpt(last_answer)
     return f"The last answer the tool gave:\n{answer}" if answer else ""
 
@@ -72,7 +72,7 @@ def build_follow_up_prompt(
         for number, text in enumerate(history[-RECENT_QUESTIONS:], start=1)
     )
     blocks = [FOLLOW_UP.header, f"Earlier questions, oldest first:\n{earlier}"]
-    if answer_block := last_asnwer_block(last_answer):
+    if answer_block := last_answer_block(last_answer):
         blocks.append(answer_block)
     blocks.append(f"New question:\n{question.strip()}")
     blocks.append(FOLLOW_UP.closing)

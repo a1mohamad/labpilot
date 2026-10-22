@@ -16,7 +16,7 @@ NOTHING_SENT = "(no part of this side was included)"
 # evidence, and CLAUDE.md's worst recorded case is 210,541. So the outline
 # needs a ceiling of its own, or it crowds out the thing it describes.
 #
-# 4,000 is about 15% of PROMPT_BUDGET and IS A GUESS, labelled like
+# 4,000 is about 13% of PROMPT_BUDGET and IS A GUESS, labelled like
 # WARN_MINUTES. Slice 8 owes the sweep, because the trade is real in both
 # directions: a bigger outline buys honesty about what was dropped and costs
 # the evidence that would have answered the question.
@@ -24,6 +24,15 @@ NOTHING_SENT = "(no part of this side was included)"
 # Derived here rather than imported: builder.py imports THIS module, so
 # importing PROMPT_BUDGET back would be a cycle.
 OUTLINE_BUDGET = 4000
+
+# What ONE row of the plain file list costs, in estimated tokens. When every
+# part is sent that list is all the outline there is: a heading and one row
+# per file (`_all_included`). Measured 2026-10-22: mean 17.6, p95 20 and max
+# 22 over the 129 rows of labpilot/ itself, and 15.5 on the sample pair. 24 is
+# 9% above that maximum. A deeper path adds a little, and the finished prompt
+# is checked whole afterwards, so this is a charge to decide with and not a
+# promise.
+FILE_ROW_TOKENS = 24
 
 Row = tuple[str, Chunk]
 

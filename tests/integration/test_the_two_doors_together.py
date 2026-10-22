@@ -192,6 +192,47 @@ def test_two_uploads_then_a_question_produces_a_cited_answer(api, embedder, llm)
     assert cited[0]["unique"] is True
 
 
+def test_a_question_with_no_file_is_answered_over_http(api, embedder, llm):
+    """Slice 6: the door takes no id at all, and nothing is read or embedded."""
+    response = api.post(
+        f"{ApiConfig.PREFIX}/compare", json={"question": "explain gradient clipping"}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["answer"] == ANSWER
+    assert body["chunks"] == {}
+    assert body["thread_id"]
+    assert len(llm.prompts) == 1
+    assert "No file was given with this question" in llm.prompts[0]
+    assert llm.planner_prompts == []
+    assert llm.summary_prompts == []
+    assert embedder.documents == 0
+    assert embedder.queries == 0
+
+
+@pytest.mark.parametrize("slot", ["a", "b"])
+def test_one_stored_file_is_enough_over_http_in_either_slot(api, embedder, llm, slot):
+    """One subject, asked about alone, with its citation resolved from the rows.
+
+    Sending it in slot `a` is the case that used to search a side A that did not
+    exist, so both slots are run.
+    """
+    b_id = ingest(api, "train.py", CODE, "B")
+
+    response = api.post(
+        f"{ApiConfig.PREFIX}/compare",
+        json={slot: b_id, "question": "what does add do?"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert list(body["chunks"]) == ["B"]
+    assert len(llm.summary_prompts) == 1
+    assert "Write ANSWER, then PROBLEMS now." in llm.prompts[-1]
+    assert body["citations"]["resolved_list"][0]["line"] == CITED_LINE
+
+
 def a_repository_sized_file(routines: int) -> bytes:
     """Big enough that the pair cannot be stuffed, so retrieval really runs."""
     body = "\n".join(f"    step_{n} = compute({n}) * 31 + offset" for n in range(20))

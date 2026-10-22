@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from labpilot.ingest import Chunk
 from labpilot.prompts.context import build_context
-from labpilot.prompts.followups import last_asnwer_block
+from labpilot.prompts.followups import last_answer_block
 from labpilot.prompts.instructions import Instructions
 from labpilot.tokens import estimate_tokens
 
@@ -18,6 +18,15 @@ SUMMARIES_NOTE = (
     "only the first parts. The parts below are the evidence: where a summary and "
     "a part disagree, trust the part."
 )
+
+# What the prompt carries BESIDES the evidence, the instruction and the
+# outline, and that `fits_whole` cannot see because it runs before the prompt
+# exists: two summaries of at most 150 words (about 350 estimated tokens each,
+# at 3 characters a token) with their note and headings, and the last-answer
+# excerpt of at most 2,000 characters (677 tokens). About 1,500 tokens at the
+# largest; 2,000 leaves room for the separators and a summary that runs a
+# little long. A test builds the largest of each and checks it stays under.
+PROMPT_EXTRAS_TOKENS = 2_000
 
 
 def _summaries_block(summaries: Mapping[str, str] | None) -> str:
@@ -50,7 +59,7 @@ def build_prompt(
     blocks.append(build_context(chunks, selected, totals=totals))
     if prior.strip():
         blocks.append(f"{PRIOR_HEADING}\n\n{prior.strip()}")
-    if answer_block := last_asnwer_block(last_answer):
+    if answer_block := last_answer_block(last_answer):
         blocks.append(answer_block)
     blocks.append(ending)
 

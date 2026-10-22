@@ -42,6 +42,7 @@ def side_b():
                 id="B-1", name="train.py", side="B", embedding_model="m", dim=3
             ),
             chunks=50,
+            files=5,
             characters=5_000,
         )
     }

@@ -93,8 +93,14 @@ class StoredArtifact:
     string ingest measured. store/ deliberately does NOT convert that to
     tokens: CHARS_PER_TOKEN belongs to tokens.py, and a second copy of it here
     is a number that can drift away from the one the prompt layer uses.
+
+    `files` is the number of distinct `source` values. A single upload is 1; a
+    repository is as many as it holds. It exists because the outline of a
+    prompt that sends everything has one row per FILE, so what it costs depends
+    on this number and on nothing else the table can tell us cheaply.
     """
 
     artifact: ArtifactRecord
     chunks: int
+    files: int
     characters: int

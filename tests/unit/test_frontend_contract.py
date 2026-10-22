@@ -129,6 +129,32 @@ def test_the_page_sends_every_field_of_the_compare_request():
     )
 
 
+@pytest.mark.parametrize("side", ["A", "B"])
+def test_the_page_never_reads_the_id_of_a_slot_that_may_be_empty(side):
+    """With no side, one side or both stored, an empty slot must send null.
+
+    `stored.A.artifact_id` on an empty slot throws, the click does nothing and
+    no request goes out, so the page looks alive and cannot ask. Every read of
+    an id has to sit behind a check of the slot, which is what the compare
+    request does: `stored.A ? stored.A.artifact_id : null`.
+    """
+    source = APP_JS.read_text(encoding="utf-8")
+    reads = source.count(f"stored.{side}.artifact_id")
+    guarded = source.count(f"stored.{side} ? stored.{side}.artifact_id")
+
+    assert reads, f"app.js no longer reads the id of side {side}; re-point this test"
+    assert guarded == reads, (
+        f"app.js reads stored.{side}.artifact_id {reads} times and guards it "
+        f"{guarded}. An empty slot would throw."
+    )
+
+
+def test_the_request_takes_no_ids_one_id_or_two():
+    assert CompareRequest(question="why?").a is None
+    assert CompareRequest(question="why?", b="B-1").b == "B-1"
+    assert CompareRequest(question="why?", a="A-1", b="B-1").a == "A-1"
+
+
 def test_the_page_keeps_the_chat_id_the_server_sent():
     """The other half: the id arrives in the FIRST reply, and the page must read
     it or there is nothing to send with the second question."""

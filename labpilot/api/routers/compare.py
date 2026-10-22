@@ -56,12 +56,15 @@ FAILURES: dict[int | str, dict] = {
 @router.post(
     "/compare",
     responses=FAILURES,
-    summary="Compare two stored artifacts and explain why their results diverge",
+    summary="Ask about no file, one stored file, or two stored files",
 )
 def compare(
     body: CompareRequest, client: LLMClientDep, pool: PoolDep
 ) -> CompareResponse:
-    """Ask a question about two artifacts that are already stored.
+    """Ask a question about up to two artifacts that are already stored.
+
+    No id is a chat question, one id is a question about that file, and two ids
+    are the comparison. A blank id is the same as none.
 
     IDS, not files. Under the old shape every question re-chunked and
     re-embedded both sides - measured at about fifteen minutes per question for
@@ -73,13 +76,15 @@ def compare(
     reaching the database and mapping the two ways that fails.
     """
     thread_id = (body.thread_id or "").strip() or uuid.uuid4().hex
+    a_id = (body.a or "").strip()
+    b_id = (body.b or "").strip()
 
     try:
         with connect(autocommit=True) as conn:
             comparison = asking.ask(
                 conn,
-                body.a,
-                body.b,
+                a_id,
+                b_id,
                 question=body.question,
                 client=client,
                 thread_id=thread_id,
@@ -103,10 +108,21 @@ def _response(comparison: Comparison, thread_id: str) -> CompareResponse:
             AttemptOut(tier=one.tier, model=one.model, error=one.error)
             for one in result.attempts
         ],
-        chunks={side: _counts(comparison, side) for side in ("A", "B")},
+        chunks={side: _counts(comparison, side) for side in _sides_read(comparison)},
         citations=_citations(result.text, comparison.chunks),
         thread_id=thread_id,
     )
+
+
+def _sides_read(comparison: Comparison) -> list[str]:
+    """The sides that really had a file. A chat question reads none: `{}`."""
+    held = comparison.totals or {}
+
+    return [
+        side
+        for side in ("A", "B")
+        if side in held or any(chunk.side == side for chunk in comparison.chunks)
+    ]
 
 
 def _counts(comparison: Comparison, side: str) -> SideChunks:

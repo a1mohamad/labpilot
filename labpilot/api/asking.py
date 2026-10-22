@@ -57,6 +57,7 @@ def ask(
     if not question.strip():
         raise InvalidQuestion("question must not be empty")
 
+    a_id, b_id = _in_their_own_slots(a_id, b_id)
     graph = _ask_graph(conn, client, thread_id, pool)
     start = {"question": question, "a": a_id, "b": b_id}
     if thread_id is None:
@@ -72,6 +73,30 @@ def ask(
         prompt=final["prompt"],
         totals=final["totals"],
     )
+
+
+def _in_their_own_slots(a_id: str, b_id: str) -> tuple[str, str]:
+    """Put a LONE artifact in the slot of its own side.
+
+    The id carries its side (`A-9f2c...`, `B-3e8a...`), and the graph reads slot
+    `a` as side A and slot `b` as side B: the planner writes queries for the
+    sides that exist, `fan_out` searches them, and the summaries are labelled
+    by slot. So a subject sent alone in slot `a` would be searched as a side A
+    this question does not have, and the search would fail on a missing key.
+
+    With two ids, or with none, nothing moves. Two ids is the old behaviour,
+    and `measure_sides` already refuses two ids of one side.
+    """
+    if bool(a_id) == bool(b_id):
+        return a_id, b_id
+
+    lone = a_id or b_id
+    if lone.startswith("A-"):
+        return lone, ""
+    if lone.startswith("B-"):
+        return "", lone
+
+    return a_id, b_id
 
 
 def _forget_old_copies(conn: psycopg.Connection, thread_id: str) -> None:

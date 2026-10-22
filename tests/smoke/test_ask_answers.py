@@ -23,9 +23,12 @@ It needs a live Postgres as well, so it carries the cost of both gates and skips
 when either is absent.
 
 WHY THE SEARCH PATH AND NOT THE STUFF PATH: `A_paper.md` + `B_train.py` is
-28,557 tokens against a PROMPT_BUDGET of 30,000, so `fits_whole` refuses and the
-whole ladder runs. Stuffing would exercise measure, read_chunks and generate
-and skip everything in between.
+28,557 tokens, which fits a PROMPT_BUDGET of 30,000, so `ask()` would read both
+whole: it would exercise measure, read_chunks and generate and skip everything
+in between. This test therefore lowers the "does it fit" limit for its own run
+(`reading.PROMPT_BUDGET`) so the whole ladder runs, whatever size the budget or
+the committed pair is. It used to rely on the pair being too big, and that
+premise broke the day the budget rose.
 """
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from labpilot.api import asking, ingestion
+from labpilot.api import asking, ingestion, reading
 from labpilot.llm import LLMClient
 from labpilot.prompts import find_citations, resolve
 from labpilot.store import make_pool, read_chunks
@@ -49,7 +52,10 @@ QUESTION = "Compare these and explain why the results diverge."
 
 
 @pytest.mark.smoke
-def test_a_stored_pair_answers_through_the_shipped_ask_path(db, schema_url):
+def test_a_stored_pair_answers_through_the_shipped_ask_path(
+    db, schema_url, monkeypatch
+):
+    monkeypatch.setattr(reading, "PROMPT_BUDGET", 20_000)
     a = ingestion.ingest_artifact(
         db, (SAMPLES / "A_paper.md").read_bytes(), name="A_paper.md", side="A"
     )

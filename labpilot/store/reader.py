@@ -37,7 +37,8 @@ _LENGTH = (
 # knows every other artifacts column is functionally dependent on it.
 _MEASURE = f"""
     select a.name, a.side, a.embedding_model, a.dim,
-        count(c.chunk_index), coalesce(sum({_LENGTH}), 0)
+        count(c.chunk_index), count(distinct c.source),
+        coalesce(sum({_LENGTH}), 0)
     from artifacts a
     left join chunks c on c.artifact_id = a.id
     where a.id = %s
@@ -91,7 +92,7 @@ def measure(conn: psycopg.Connection, artifact_id: str) -> StoredArtifact:
             f"whose fault it is"
         )
 
-    name, side, model, dim, chunks, characters = row
+    name, side, model, dim, chunks, files, characters = row
     return StoredArtifact(
         artifact=ArtifactRecord(
             id=artifact_id,
@@ -101,6 +102,7 @@ def measure(conn: psycopg.Connection, artifact_id: str) -> StoredArtifact:
             dim=dim,
         ),
         chunks=chunks,
+        files=files,
         characters=characters,
     )
 

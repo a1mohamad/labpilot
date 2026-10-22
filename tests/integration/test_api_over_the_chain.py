@@ -92,6 +92,7 @@ def _measure(conn, artifact_id):
             dim=3,
         ),
         chunks=1,
+        files=1,
         characters=len(text),
     )
 

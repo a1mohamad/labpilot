@@ -133,6 +133,111 @@ def test_the_response_counts_the_chunks_of_each_side(client, no_database, monkey
     assert chunks["B"] == {"total": 1, "sent": 1}
 
 
+def one_sided(side: str, text: str) -> Comparison:
+    """What ask() returns when only ONE artifact was read."""
+    only = (chunk(side, 0, text),)
+
+    return Comparison(
+        result=LLMResult(
+            text="an answer", model="fake-model", tier=2, finish_reason="STOP"
+        ),
+        chunks=only,
+        selected=only,
+        prompt="a prompt",
+    )
+
+
+def chat_only() -> Comparison:
+    """What ask() returns for a question with NO file: nothing was read."""
+    return Comparison(
+        result=LLMResult(
+            text="an answer", model="fake-model", tier=2, finish_reason="STOP"
+        ),
+        chunks=(),
+        selected=(),
+        prompt="a prompt",
+    )
+
+
+def record_ids(monkeypatch, outcome) -> dict:
+    seen = {}
+
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
+        seen.update(a=a_id, b=b_id)
+        return outcome
+
+    monkeypatch.setattr("labpilot.api.asking.ask", fake_ask)
+    return seen
+
+
+def test_a_question_with_no_ids_is_a_chat_question(client, no_database, monkeypatch):
+    """Slice 6: the door takes NO file, ONE file or TWO. Before, both were required."""
+    seen = record_ids(monkeypatch, chat_only())
+
+    response = client.post(COMPARE, json={"question": "explain gradient clipping"})
+
+    assert response.status_code == 200
+    assert seen == {"a": "", "b": ""}
+    assert response.json()["answer"] == "an answer"
+    # Nothing was read, so no side is claimed to have been.
+    assert response.json()["chunks"] == {}
+
+
+def test_one_id_is_enough_and_only_its_side_is_counted(
+    client, no_database, monkeypatch
+):
+    seen = record_ids(monkeypatch, one_sided("B", "return x + y"))
+
+    response = client.post(
+        COMPARE, json={"b": "B-code", "question": "what does this do?"}
+    )
+
+    assert response.status_code == 200
+    assert seen == {"a": "", "b": "B-code"}
+    assert response.json()["chunks"] == {"B": {"total": 1, "sent": 1}}
+
+
+@pytest.mark.parametrize("missing", [None, "", "  ", "\n"])
+def test_a_blank_or_null_id_is_the_same_as_no_id(
+    client, no_database, monkeypatch, missing
+):
+    seen = record_ids(monkeypatch, one_sided("B", "return x + y"))
+
+    client.post(COMPARE, json={"a": missing, "b": "B-code", "question": "why?"})
+
+    assert seen == {"a": "", "b": "B-code"}
+
+
+def test_an_id_with_spaces_around_it_is_trimmed(client, no_database, monkeypatch):
+    seen = record_ids(monkeypatch, answered())
+
+    client.post(COMPARE, json={"a": " A-paper ", "b": "B-code ", "question": "why?"})
+
+    assert seen == {"a": "A-paper", "b": "B-code"}
+
+
+def test_a_searched_side_is_counted_by_what_it_holds_not_by_what_was_read(
+    client, no_database, monkeypatch
+):
+    only = (chunk("B", 0, "return x + y"),)
+    searched = Comparison(
+        result=LLMResult(
+            text="an answer", model="fake-model", tier=2, finish_reason="STOP"
+        ),
+        chunks=only,
+        selected=only,
+        prompt="a prompt",
+        totals={"B": 120},
+    )
+    stub(monkeypatch, searched)
+
+    chunks = client.post(COMPARE, json={"b": "B-code", "question": "why?"}).json()[
+        "chunks"
+    ]
+
+    assert chunks == {"B": {"total": 120, "sent": 1}}
+
+
 def test_a_resolved_citation_carries_the_real_line_number(
     client, no_database, monkeypatch
 ):
@@ -251,12 +356,15 @@ def test_a_blank_question_answers_in_our_envelope_and_not_pydantics(
 
 
 def test_a_missing_field_is_reported_in_the_same_envelope(client, no_database):
-    """FastAPI's own validation must still come back in the house envelope."""
-    response = client.post(COMPARE, json={"a": "A-paper", "question": "why?"})
+    """FastAPI's own validation must still come back in the house envelope.
+
+    The ids are optional now, so the field that can be missing is the question.
+    """
+    response = client.post(COMPARE, json={"a": "A-paper", "b": "B-code"})
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_request"
-    assert "b" in response.json()["error"]["message"]
+    assert "question" in response.json()["error"]["message"]
 
 
 def test_the_old_upload_door_is_really_gone(client, no_database, monkeypatch):

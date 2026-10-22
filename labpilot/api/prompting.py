@@ -29,8 +29,26 @@ def build_answer_prompt(
     last_answer: str = "",
 ) -> tuple[str, tuple[Chunk, ...]]:
     if files == 0:
-        return build_chat_prompt(chunks, question=question), ()
+        return build_chat_prompt(question, last_answer), ()
+
     instructions = instructions_for(files)
+    if totals is None:
+        # Everything was read, so send everything whenever the whole prompt fits.
+        # Going through `reserve` first would charge the outline as if nothing
+        # were sent - the long list with a row for every part - and then drop
+        # real parts that `fits_whole` had just promised would fit. With every
+        # part included the outline is only a short list of files.
+        prompt = build_prompt(
+            chunks,
+            chunks,
+            question=question,
+            instructions=instructions,
+            summaries=summaries,
+            last_answer=last_answer,
+        )
+        if estimate_tokens(prompt) <= PROMPT_BUDGET:
+            return prompt, chunks
+
     overhead = reserve(
         chunks,
         question=question,

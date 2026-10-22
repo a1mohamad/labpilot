@@ -19,6 +19,23 @@ const ready = document.getElementById("ready");
 const status = document.getElementById("status");
 const result = document.getElementById("result");
 const failure = document.getElementById("failure");
+const questionBox = document.getElementById("question");
+
+// The question box is prefilled and EDITABLE, never a placeholder: this text is
+// also the retrieval query. What it says follows how many sides are stored, and
+// it stops following the moment the person types. Version 2 (version 1 was one
+// fixed sentence that only made sense for two files).
+const DEFAULT_QUESTION = [
+  "Ask a question, or add files to compare.",
+  "Summarize this and find likely bugs.",
+  "Compare these and explain why the results diverge.",
+];
+let questionTouched = false;
+questionBox.addEventListener("input", () => {
+  questionTouched = true;
+});
+/** True while a question is on its way, so it cannot be sent twice. */
+let waiting = false;
 
 for (const slot of document.querySelectorAll(".slot")) {
   wireSlot(slot);
@@ -116,19 +133,26 @@ function describe(payload) {
   return parts;
 }
 
+/** What can be asked, from what is stored: nothing, one side, or both. */
 function refreshReady() {
   const have = ["A", "B"].filter((side) => stored[side]);
-  compareButton.disabled = have.length !== 2;
+  // Any number of sides is a valid question. Only a file still being read, or a
+  // question already on its way, holds the button.
+  const reading = document.querySelector('.slot[data-status="working"]') !== null;
+  compareButton.disabled = reading || waiting;
 
   if (have.length === 2) {
     ready.textContent = "Both sides are stored. Ask as many questions as you like.";
   } else if (have.length === 1) {
-    // The agent asks for what it is missing, rather than failing silently.
+    // The agent says what is missing, rather than failing silently.
     const missing = stored.A ? "B" : "A";
-    ready.textContent = `Add side ${missing} to compare.`;
+    ready.textContent = `Ask about this one, or add side ${missing} to compare.`;
   } else {
-    ready.textContent = "Add both sides to compare.";
+    ready.textContent =
+      "No file yet. You can still ask a question, or add files to ask about them.";
   }
+
+  if (!questionTouched) questionBox.value = DEFAULT_QUESTION[have.length];
 }
 
 ask.addEventListener("submit", async (event) => {
@@ -147,6 +171,7 @@ ask.addEventListener("submit", async (event) => {
 
   hide(result);
   hide(failure);
+  waiting = true;
   compareButton.disabled = true;
   status.hidden = false;
   document.getElementById("status-text").textContent =
@@ -158,8 +183,8 @@ ask.addEventListener("submit", async (event) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        a: stored.A.artifact_id,
-        b: stored.B.artifact_id,
+        a: stored.A ? stored.A.artifact_id : null,
+        b: stored.B ? stored.B.artifact_id : null,
         question,
         thread_id: localStorage.getItem(THREAD_KEY),
       }),
@@ -171,6 +196,7 @@ ask.addEventListener("submit", async (event) => {
     showFailure({ code: "network_error", message: String(error), request_id: "-" });
   } finally {
     status.hidden = true;
+    waiting = false;
     refreshReady();
   }
 });
@@ -182,9 +208,11 @@ function showReport(body) {
     tag(`${body.model} · tier ${body.tier}`),
     // n of m, where m is what the artifact HOLDS. On the search path these
     // differ, and saying so is the difference between "I read 25 of 8,333
-    // parts" and a silent claim to have read the whole file.
-    tag(coverage("A", body.chunks.A), body.chunks.A.sent < body.chunks.A.total),
-    tag(coverage("B", body.chunks.B), body.chunks.B.sent < body.chunks.B.total),
+    // parts" and a silent claim to have read the whole file. Only the sides
+    // that really had a file are listed: a chat question has none.
+    ...Object.entries(body.chunks).map(([side, counts]) =>
+      tag(coverage(side, counts), counts.sent < counts.total)
+    ),
     // MAX_TOKENS means the report was CUT and looks complete otherwise.
     tag(body.finish_reason, body.finish_reason !== "STOP")
   );

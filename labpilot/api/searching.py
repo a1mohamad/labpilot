@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 # day, so "send more" is not free even where it still helps slightly.
 #
 # PER SIDE, so 15 is 30 chunks ~ 7,100 tokens at the measured 236/chunk,
-# against PROMPT_BUDGET 26,000. docs/slice8v3/DECISIONS.md row 18.
+# against PROMPT_BUDGET 30,000. docs/slice8v3/DECISIONS.md row 18.
 VECTOR_TOP_N = 15
 
 # How many of the searched chunks the RERANKER SEES.

@@ -9,12 +9,13 @@ from labpilot.prompts.answer import (
 from labpilot.prompts.builder import (
     PRIOR_HEADING,
     PROMPT_BUDGET,
+    PROMPT_EXTRAS_TOKENS,
     REPORT_MAX_TOKENS,
     build_prompt,
     reserve,
 )
 from labpilot.prompts.citations import Citation, find_citations, resolve
-from labpilot.prompts.context import OUTLINE_BUDGET, build_context
+from labpilot.prompts.context import FILE_ROW_TOKENS, OUTLINE_BUDGET, build_context
 from labpilot.prompts.corpus_map import PLANNER_BUDGET, MapPart, build_map
 from labpilot.prompts.followups import (
     FOLLOW_UP,
@@ -22,8 +23,8 @@ from labpilot.prompts.followups import (
     FOLLOW_UP_VERSION,
     build_follow_up_prompt,
     follow_up_problem,
+    last_answer_block,
     last_answer_excerpt,
-    last_asnwer_block,
 )
 from labpilot.prompts.instructions import (
     COMPARE,
@@ -54,6 +55,7 @@ __all__ = [
     "CORE",
     "FOLLOW_UP",
     "FOLLOW_UP_MAX_TOKENS",
+    "FILE_ROW_TOKENS",
     "FOLLOW_UP_VERSION",
     "FULL",
     "OUTLINE_BUDGET",
@@ -66,6 +68,7 @@ __all__ = [
     "SUMMARY_BUDGET",
     "SUMMARY_MAX_TOKENS",
     "PROMPT_BUDGET",
+    "PROMPT_EXTRAS_TOKENS",
     "REPORT_MAX_TOKENS",
     "Citation",
     "Instructions",
@@ -92,5 +95,5 @@ __all__ = [
     "TWO_FILES",
     "build_chat_prompt",
     "instructions_for",
-    "last_asnwer_block",
+    "last_answer_block",
 ]

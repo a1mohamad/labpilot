@@ -35,7 +35,7 @@ RESULT = LLMResult(
     finish_reason="STOP",
     attempts=(Attempt(tier=1, model="other", error="HTTP 429"),),
 )
-STORED = StoredArtifact(artifact=RECORD, chunks=1, characters=9)
+STORED = StoredArtifact(artifact=RECORD, chunks=1, files=1, characters=9)
 PLAN = Plan(
     steps=("find_bugs",),
     queries=(Query("B", "CLIP_NORM"),),

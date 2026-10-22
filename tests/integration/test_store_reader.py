@@ -175,3 +175,47 @@ def test_reading_an_unknown_artifact_is_refused(db):
     """
     with pytest.raises(UnknownArtifact, match="nope"):
         read_chunks(db, "nope")
+
+
+def test_measure_counts_the_distinct_files_and_not_the_chunks(db):
+    """`fits_whole` prices the outline by this number, one row per FILE.
+
+    Four chunks in three files is 3. Counting chunks would charge a long file
+    like a repository, and counting rows of one file as one each would make a
+    repository look like a single file.
+    """
+
+    def in_file(index: int, source: str) -> ChunkRecord:
+        return ChunkRecord(
+            chunk_index=index,
+            text="x",
+            header="[h]",
+            source=source,
+            start_line=1,
+            end_line=2,
+            vector=V,
+        )
+
+    write_artifact(
+        db,
+        artifact(),
+        [
+            in_file(FIRST_ID, "a.py"),
+            in_file(FIRST_ID + 1, "a.py"),
+            in_file(FIRST_ID + 2, "b.py"),
+            in_file(FIRST_ID + 3, "pkg/c.py"),
+        ],
+    )
+
+    size = measure(db, "r1")
+
+    assert size.chunks == 4
+    assert size.files == 3
+
+
+def test_one_uploaded_file_is_one_file(db):
+    write_artifact(
+        db, artifact(), [record(FIRST_ID, "x", "[h]"), record(FIRST_ID + 1, "y", "[h]")]
+    )
+
+    assert measure(db, "r1").files == 1
