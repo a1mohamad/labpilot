@@ -11,7 +11,7 @@ import logging
 import pytest
 
 from labpilot.agent import Plan, Query
-from labpilot.api.checkpoints import SERDE, open_saver
+from labpilot.api.checkpoints import SERDE, _OneAtATime, open_saver
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
 from labpilot.store import ArtifactRecord, StoredArtifact
@@ -35,7 +35,7 @@ RESULT = LLMResult(
     finish_reason="STOP",
     attempts=(Attempt(tier=1, model="other", error="HTTP 429"),),
 )
-STORED = StoredArtifact(artifact=RECORD, chunks=1, characters=9)
+STORED = StoredArtifact(artifact=RECORD, chunks=1, files=1, characters=9)
 PLAN = Plan(
     steps=("find_bugs",),
     queries=(Query("B", "CLIP_NORM"),),
@@ -76,3 +76,43 @@ def test_a_plan_comes_back_with_its_queries_as_queries():
     assert list(back.steps) == list(PLAN.steps)
     assert list(back.queries) == list(PLAN.queries)
     assert back.source == PLAN.source
+
+
+def test_the_saver_does_not_use_pipeline_mode():
+    assert open_saver(object()).supports_pipeline is False
+
+
+class Recorder:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, query, params=None):
+        self.calls.append(("execute", query, params))
+
+    def executemany(self, query, params_seq):
+        self.calls.append(("executemany", query, list(params_seq)))
+
+    def fetchone(self):
+        return "row"
+
+    def __iter__(self):
+        return iter(["a", "b"])
+
+
+def test_many_rows_are_sent_one_statement_at_a_time_and_never_as_a_batch():
+    cursor = Recorder()
+
+    _OneAtATime(cursor).executemany("insert", [(1,), (2,), (3,)])
+
+    assert cursor.calls == [
+        ("execute", "insert", (1,)),
+        ("execute", "insert", (2,)),
+        ("execute", "insert", (3,)),
+    ]
+
+
+def test_everything_else_goes_straight_to_the_real_cursor():
+    cursor = _OneAtATime(Recorder())
+
+    assert cursor.fetchone() == "row"
+    assert list(cursor) == ["a", "b"]
