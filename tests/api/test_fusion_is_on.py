@@ -42,6 +42,7 @@ def side_b():
                 id="B-1", name="train.py", side="B", embedding_model="m", dim=3
             ),
             chunks=50,
+            files=5,
             characters=5_000,
         )
     }
@@ -64,7 +65,9 @@ def test_the_ask_path_really_calls_the_keyword_channel(monkeypatch, side_b, no_e
         ),
     )
 
-    searching.retrieved_chunks(object(), side_b, question="where is the norm clipped?")
+    searching.retrieve_query(
+        object(), side_b, side="B", text="where is the norm clipped?"
+    )
 
     assert asked == [("B-1", "where is the norm clipped?")]
 
@@ -80,7 +83,7 @@ def test_a_keyword_only_hit_can_enter_the_window(monkeypatch, side_b, no_embed):
     monkeypatch.setattr(searching, "search", lambda *a, **k: (hit(0, 0.9),))
     monkeypatch.setattr(searching, "bm25_search", lambda *a, **k: (hit(7, 9.0),))
 
-    chunks = searching.retrieved_chunks(object(), side_b, question="q")
+    chunks = searching.retrieve_query(object(), side_b, side="B", text="q")
 
     assert 107 in [c.chunk_index for c in chunks], (
         "a chunk found only by BM25 never reached the prompt, so fusion can "
@@ -104,7 +107,7 @@ def test_a_broken_keyword_channel_degrades_to_vector_alone(
 
     monkeypatch.setattr(searching, "bm25_search", broken)
 
-    chunks = searching.retrieved_chunks(object(), side_b, question="q")
+    chunks = searching.retrieve_query(object(), side_b, side="B", text="q")
 
     assert [c.chunk_index for c in chunks] == [100, 101]
 
