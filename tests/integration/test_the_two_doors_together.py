@@ -25,6 +25,7 @@ from labpilot.api import ApiConfig, app, get_client, ingestion, searching
 from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.llm import LLMResult
+from labpilot.prompts import SUMMARY_MAX_TOKENS
 
 pytestmark = pytest.mark.database
 
@@ -90,6 +91,7 @@ class FakeClient:
     def __init__(self) -> None:
         self.prompts: list[str] = []
         self.planner_prompts: list[str] = []
+        self.summary_prompts: list[str] = []
 
     def generate(
         self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
@@ -102,6 +104,11 @@ class FakeClient:
                 tier=1,
                 finish_reason="STOP",
                 arguments=PLAN,
+            )
+        if max_tokens == SUMMARY_MAX_TOKENS:
+            self.summary_prompts.append(prompt)
+            return LLMResult(
+                text="a summary", model="fake-model", tier=1, finish_reason="STOP"
             )
         self.prompts.append(prompt)
         return LLMResult(text=ANSWER, model="fake-model", tier=1, finish_reason="STOP")
@@ -168,6 +175,11 @@ def test_two_uploads_then_a_question_produces_a_cited_answer(api, embedder, llm)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["answer"] == ANSWER
+    # The pair is small, so it was stuffed. Both summaries still reached the
+    # report: one call for each side, written into the prompt of the answer.
+    assert len(llm.summary_prompts) == 2
+    assert "SUMMARY OF SIDE A\n\na summary" in llm.prompts[-1]
+    assert "SUMMARY OF SIDE B\n\na summary" in llm.prompts[-1]
     assert body["chunks"]["A"]["total"] >= 1
     assert body["chunks"]["B"]["total"] >= 1
 
@@ -178,6 +190,47 @@ def test_two_uploads_then_a_question_produces_a_cited_answer(api, embedder, llm)
     assert cited[0]["line"] == CITED_LINE
     assert cited[0]["text"] == "    return x + y"
     assert cited[0]["unique"] is True
+
+
+def test_a_question_with_no_file_is_answered_over_http(api, embedder, llm):
+    """Slice 6: the door takes no id at all, and nothing is read or embedded."""
+    response = api.post(
+        f"{ApiConfig.PREFIX}/compare", json={"question": "explain gradient clipping"}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["answer"] == ANSWER
+    assert body["chunks"] == {}
+    assert body["thread_id"]
+    assert len(llm.prompts) == 1
+    assert "No file was given with this question" in llm.prompts[0]
+    assert llm.planner_prompts == []
+    assert llm.summary_prompts == []
+    assert embedder.documents == 0
+    assert embedder.queries == 0
+
+
+@pytest.mark.parametrize("slot", ["a", "b"])
+def test_one_stored_file_is_enough_over_http_in_either_slot(api, embedder, llm, slot):
+    """One subject, asked about alone, with its citation resolved from the rows.
+
+    Sending it in slot `a` is the case that used to search a side A that did not
+    exist, so both slots are run.
+    """
+    b_id = ingest(api, "train.py", CODE, "B")
+
+    response = api.post(
+        f"{ApiConfig.PREFIX}/compare",
+        json={slot: b_id, "question": "what does add do?"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert list(body["chunks"]) == ["B"]
+    assert len(llm.summary_prompts) == 1
+    assert "Write ANSWER, then PROBLEMS now." in llm.prompts[-1]
+    assert body["citations"]["resolved_list"][0]["line"] == CITED_LINE
 
 
 def a_repository_sized_file(routines: int) -> bytes:
@@ -233,3 +286,7 @@ def test_a_second_question_searches_the_stored_corpus_and_never_re_ingests(
         "a partial side must SAY it is partial, or the model reads a handful "
         "of chunks as the whole file"
     )
+    # The searched path reaches the same `respond` node, so the summaries are
+    # in the prompt here too.
+    assert "SUMMARY OF SIDE A\n\na summary" in llm.prompts[-1]
+    assert "SUMMARY OF SIDE B\n\na summary" in llm.prompts[-1]
