@@ -6,6 +6,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
+from labpilot.agent.claim import Claim
+from labpilot.agent.exract_claims import make_claims_node, wants_claim
 from labpilot.agent.fan_out import fan_out
 from labpilot.agent.merge import make_merge_node
 from labpilot.agent.plan import Plan, Query
@@ -30,6 +32,7 @@ def build_graph(
     generate: Callable[[str], Any],
     rewrite: Callable[[str, list[str], str], str] | None = None,
     summarize: Callable[[str], str] | None = None,
+    extract_claims: Callable[[str, str], tuple[Claim, ...]] | None = None,
     answer_text: Callable[[Any], str] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
@@ -49,6 +52,9 @@ def build_graph(
 
     def pick(state: State) -> str | list[Send]:
         return "stuff" if state["fits"] else fan_out(state)
+
+    def after_search(state: State):
+        return "extract_claims" if wants_claim(state) else "respond"
 
     builder = StateGraph(State)
     builder.add_node("plan", make_planner_node(plan))
@@ -78,9 +84,18 @@ def build_graph(
         builder.add_edge(first, step)
     builder.add_edge(first_steps, "measure")
     builder.add_conditional_edges("measure", pick)
-    builder.add_edge("stuff", "respond")
-    builder.add_edge("search_one", "merge")
-    builder.add_edge("merge", "respond")
+    builder.add("search_one", "merge")
+    if extract_claims is None:
+        builder.add_edge("stuff", "respond")
+        builder.add_edge("merge", "respond")
+    else:
+        # The plan decides: the claims step runs only when the planner listed it.
+        builder.add_node("extract_claims", make_claims_node(extract_claims))
+        for searched in ("stuff", "merge"):
+            builder.add_conditional_edges(
+                searched, after_search, ["extract_claims", "respond"]
+            )
+        builder.add_edge("extract_claims", "respond")
     builder.add_edge("respond", "remember")
     builder.add_edge("remember", END)
     return builder.compile(checkpointer=checkpointer)

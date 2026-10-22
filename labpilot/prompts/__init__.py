@@ -15,6 +15,15 @@ from labpilot.prompts.builder import (
     reserve,
 )
 from labpilot.prompts.citations import Citation, find_citations, resolve
+from labpilot.prompts.claims import (
+    CLAIMS,
+    CLAIMS_BUDGET,
+    CLAIMS_MAX_TOKENS,
+    CLAIMS_VERSION,
+    CLAIMS_WANTED,
+    build_claims_prompt,
+    claims_fit,
+)
 from labpilot.prompts.context import FILE_ROW_TOKENS, OUTLINE_BUDGET, build_context
 from labpilot.prompts.corpus_map import PLANNER_BUDGET, MapPart, build_map
 from labpilot.prompts.followups import (
@@ -51,6 +60,11 @@ from labpilot.prompts.summary import (
 )
 
 __all__ = [
+    "CLAIMS",
+    "CLAIMS_BUDGET",
+    "CLAIMS_MAX_TOKENS",
+    "CLAIMS_VERSION",
+    "CLAIMS_WANTED",
     "COMPARE",
     "CORE",
     "FOLLOW_UP",
@@ -78,6 +92,8 @@ __all__ = [
     "PLANNER_MAX_TOKENS",
     "PLANNER_VERSION",
     "STEP_MEANINGS",
+    "build_claims_prompt",
+    "claims_fit",
     "build_planner_prompt",
     "map_budget",
     "build_context",

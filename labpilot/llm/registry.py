@@ -54,7 +54,13 @@ GOOGLE_OUTPUT = 65_536
 # is what runs out; the key is only how we authenticate. Collapsing them would
 # mark BOTH accounts dead the first time either one is spent - the exact
 # mistake quota_pool was created to fix on 2026-08-16, one level up.
-GOOGLE_KEYS = ("GOOGLE_API_KEY", "GOOGLE_API_KEY_2")
+#
+# A THIRD account was added 2026-10-22. Proven live the same day: a 14,800-token
+# prompt on Gemma 4 31B was accepted on keys 2 and 3 at the same moment, so each
+# key is its own room (key x model). Three accounts driven from one VPN exit is
+# the pattern that got an account flagged on 2026-08-11, so do not add a fourth
+# without a decision.
+GOOGLE_KEYS = ("GOOGLE_API_KEY", "GOOGLE_API_KEY_2", "GOOGLE_API_KEY_3")
 
 
 def _gemini(
@@ -90,6 +96,21 @@ def _second_account(provider: GeminiProvider) -> GeminiProvider:
         api_key_env=GOOGLE_KEYS[1],
         quota_pool=f"{GOOGLE_KEYS[1]}:{provider.model}",
     )
+
+
+def _third_account(provider: GeminiProvider) -> GeminiProvider:
+    """The same model on the third key: its own tier, its own pool."""
+    return dataclasses.replace(
+        provider,
+        name=f"{provider.name} (key 3)",
+        api_key_env=GOOGLE_KEYS[2],
+        quota_pool=f"{GOOGLE_KEYS[2]}:{provider.model}",
+    )
+
+
+def _other_accounts(provider: GeminiProvider) -> tuple[GeminiProvider, ...]:
+    """The same model on every account after the first, in key order."""
+    return (_second_account(provider), _third_account(provider))
 
 
 # Free, and free in a way no other tier here is: Cline records what the call
@@ -1156,6 +1177,60 @@ BAZAARLINK_DEEPSEEK_V4_FLASH_0731 = _bazaarlink(
 )
 
 
+# ADDED 2026-10-23: the free Mistral text models that ANSWER on this account and
+# were not in the chain (one live call to every text model on 2026-10-22; the
+# console page lists more than the account may call). UNSCORED - no independent
+# score was looked up for any of them - so they sit below the measured Gemma
+# 4 31B. The only evidence is the quick size test of 2026-10-22, a PROXY (list
+# every named constant in 90K tokens of code, cut into parts of 12K):
+#
+#                   recall   seconds   invented names
+#   Ministral 8B     .91       22          15
+#   Mistral Nemo     .90       22          12
+#   Ministral 14B    .84       42           7
+#
+# Good recall and fast, but they INVENT names, so a claims chain may use them
+# only behind a quote check (CLAUDE.md section 23, D69, not built yet). The 14B
+# is the weakest of the three: a timeout on the whole text, a lost part at 28K,
+# and only 30 calls a minute. Ministral 3B (recall .50) and Codestral (.79)
+# were left out on purpose.
+#
+# A DELIBERATE output cap of 8,192, like Bazaarlink's: a local guard, not a
+# measured limit, so _check_fits turns a report away for free. These models
+# must not write a report, and claims are short.
+#
+# NOT reasoning models (the catalogue says reasoning: false), so no reasoning
+# field. ONE POOL PER MODEL: Mistral's console shows its per-minute limits per
+# model. The account's monthly cap, if it binds, takes all of them at once.
+MISTRAL_SMALL_MAX_OUTPUT = 8_192
+
+
+def _mistral_small(
+    *, name: str, model: str, context_window: int
+) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        name=name,
+        tier=0,
+        url=MISTRAL_URL,
+        model=model,
+        api_key_env="MISTRAL_API_KEY",
+        quota_pool=f"MISTRAL_API_KEY:{model}",
+        context_window=context_window,
+        max_output_tokens=MISTRAL_SMALL_MAX_OUTPUT,
+    )
+
+
+MINISTRAL_8B = _mistral_small(
+    name="Ministral 8B", model="ministral-8b-2512", context_window=262_144
+)
+MISTRAL_NEMO = _mistral_small(
+    name="Mistral Nemo", model="open-mistral-nemo", context_window=128_000
+)
+MINISTRAL_14B = _mistral_small(
+    name="Ministral 14B", model="ministral-14b-2512", context_window=262_144
+)
+
+
 def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
     """Tier is the POSITION, never a number somebody typed.
 
@@ -1171,11 +1246,11 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
     )
 
 
-# Each Google model appears TWICE, on two accounts, adjacent. Adjacency is
-# right here for the same reason the 2026-08-16 rewrite made it harmless: a
-# spent pool is skipped for free, so the twin costs nothing when the first key
+# Each Google model appears THREE times, on three accounts, adjacent. Adjacency
+# is right here for the same reason the 2026-08-16 rewrite made it harmless: a
+# spent pool is skipped for free, so a twin costs nothing when the first key
 # still works and is the strongest available model when it does not. Ordering
-# by capability then means "the same model on the other account" beats
+# by capability then means "the same model on another account" beats
 # "a weaker model on this one".
 CHAIN = _ordered(
     CLINE_GLM_5_3_FLASH,
@@ -1186,9 +1261,9 @@ CHAIN = _ordered(
     LITEROUTER_GLM_5_3_FLASH_CHEAP,
     ORCAROUTER_GLM_5_3_FLASH,
     GEMINI_3_8_FLASH,
-    _second_account(GEMINI_3_8_FLASH),
+    *_other_accounts(GEMINI_3_8_FLASH),
     GEMINI_3_7_FLASH,
-    _second_account(GEMINI_3_7_FLASH),
+    *_other_accounts(GEMINI_3_7_FLASH),
     # --- ADDED 2026-10-11: DeepSeek on LiteRouter, by AA v4.3.2 -------------
     # V4.1 Flash (39) ties Gemini 3.7 Flash, and 3.7 is now served by 3.8 (41),
     # so it goes after the pair. Each "-stable" and "-cheap" id follows its base.
@@ -1226,9 +1301,9 @@ CHAIN = _ordered(
     # MINUTE), and _check_fits refuses it locally for free.
     QWEN_3_8_27B_GROQ,
     GEMINI_3_6_FLASH,
-    _second_account(GEMINI_3_6_FLASH),
+    *_other_accounts(GEMINI_3_6_FLASH),
     GEMINI_3_5_FLASH,
-    _second_account(GEMINI_3_5_FLASH),
+    *_other_accounts(GEMINI_3_5_FLASH),
     LITEROUTER_GLM_5_2,
     LITEROUTER_GLM_5_2_CHEAP,
     CLINE_LAGUNA_S_2_1,
@@ -1248,7 +1323,7 @@ CHAIN = _ordered(
     LITEROUTER_KIMI_K2_7_CODE,
     KILO_INKLING_SMALL,
     GEMINI_3_5_FLASH_LITE,
-    _second_account(GEMINI_3_5_FLASH_LITE),
+    *_other_accounts(GEMINI_3_5_FLASH_LITE),
     # AA 23, a tie with Flash-Lite, which has a measured allowance.
     LITEROUTER_MINIMAX_M2_7,
     KILO_STEP_3_7_FLASH,
@@ -1257,17 +1332,21 @@ CHAIN = _ordered(
     # it is the reliable, fast Gemma. Adjacent to its key-2 twin for the same
     # reason every Google model is - a spent account costs nothing to skip.
     GEMMA_4_26B,
-    _second_account(GEMMA_4_26B),
+    *_other_accounts(GEMMA_4_26B),
     # AA 16 (an estimate) sits between the Gemma 26B (17) and the 31B (15).
     LITEROUTER_DEEPSEEK_V3_2,
     GEMMA_4_31B,
-    _second_account(GEMMA_4_31B),
+    *_other_accounts(GEMMA_4_31B),
     REQUESTY_GEMMA_4_31B,
     # ADDED 2026-10-18, UNSCORED, so below the measured Gemma 4 31B. Qwen first:
     # it is the fast one (3s against 6-12s) and its tools, JSON and big prompts
     # are all tested. Both serve small jobs only - see BAZAARLINK above.
     BAZAARLINK_QWEN_3_7_FLASH,
     BAZAARLINK_DEEPSEEK_V4_FLASH_0731,
+    # ADDED 2026-10-23, UNSCORED: see MINISTRAL_8B. Best recall first.
+    MINISTRAL_8B,
+    MISTRAL_NEMO,
+    MINISTRAL_14B,
     # UNSCORED community finetunes, below the measured Gemma 4 31B on purpose.
     *ROUTEWAY_GEMMA_VARIANTS,
     KILO_NORTH_MINI_CODE,
@@ -1277,7 +1356,7 @@ CHAIN = _ordered(
     GPT_OSS_120B,
     GPT_OSS_120B_GROQ,
     GEMINI_3_1_FLASH_LITE,
-    _second_account(GEMINI_3_1_FLASH_LITE),
+    *_other_accounts(GEMINI_3_1_FLASH_LITE),
     # Unscored and the worst on the one question asked of it, so it goes
     # last of the unscored. Then the weakest scored tier we have (AA 9).
     LITEROUTER_DEEPSEEK_V3_1,

@@ -218,6 +218,12 @@ GEMINI_EMBED_2_KEY2 = dataclasses.replace(
     api_key_env="GOOGLE_API_KEY_2",
 )
 
+GEMINI_EMBED_2_KEY3 = dataclasses.replace(
+    GEMINI_EMBED_2,
+    name="Gemini Embedding 2 (key 3)",
+    api_key_env="GOOGLE_API_KEY_3",
+)
+
 # Proven live 2026-08-27: 200, dim 3072 observed. PROMOTED ABOVE embedding-2 on
 # 2026-09-18, because it beats it on our own fixture on 3 of the 4 corpora where
 # both ran - see the note on GEMINI_EMBED_2. It is also the only model with
@@ -242,6 +248,14 @@ GEMINI_EMBED_001_KEY2 = dataclasses.replace(
     GEMINI_EMBED_001,
     name="Gemini Embedding 001 (key 2)",
     api_key_env="GOOGLE_API_KEY_2",
+)
+
+# The THIRD account, added 2026-10-22: one more 1,000 requests a day of the same
+# model, and the same vectors, so a corpus can be finished on any of the three.
+GEMINI_EMBED_001_KEY3 = dataclasses.replace(
+    GEMINI_EMBED_001,
+    name="Gemini Embedding 001 (key 3)",
+    api_key_env="GOOGLE_API_KEY_3",
 )
 
 # LAST IN THE STRENGTH ORDER, and not because it is weak. Cohere's 1,000 calls
@@ -309,9 +323,11 @@ MIGRATION = (
     CODESTRAL_EMBED,
     GEMINI_EMBED_001,
     GEMINI_EMBED_001_KEY2,
+    GEMINI_EMBED_001_KEY3,
     COHERE_EMBED,
     GEMINI_EMBED_2,
     GEMINI_EMBED_2_KEY2,
+    GEMINI_EMBED_2_KEY3,
     MISTRAL_EMBED,
     BGE_BASE,
 )

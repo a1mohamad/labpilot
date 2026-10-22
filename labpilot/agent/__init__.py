@@ -1,4 +1,11 @@
-from labpilot.agent.errors import PlanError
+from labpilot.agent.claim import Claim
+from labpilot.agent.claims_schema import (
+    CLAIMS_TOOL_NAME,
+    MAX_CLAIMS,
+    claims_schema,
+    read_claims,
+)
+from labpilot.agent.errors import ClaimsError, PlanError
 from labpilot.agent.graph import build_graph
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.plan_check import (
@@ -14,6 +21,12 @@ from labpilot.agent.state import State
 __all__ = [
     "MAX_QUERIES",
     "PLAN_TOOL_NAME",
+    "CLAIMS_TOOL_NAME",
+    "MAX_CLAIMS",
+    "claims_schema",
+    "read_claims",
+    "Claim",
+    "ClaimsError",
     "allowed_steps",
     "build_graph",
     "default_plan",

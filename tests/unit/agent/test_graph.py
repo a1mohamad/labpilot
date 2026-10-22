@@ -177,7 +177,7 @@ def test_the_final_state_holds_everything_ask_returns():
     assert final["prompt"] == "the prompt"
 
 
-@pytest.mark.parametrize("stage", ["measure", "search_one", "generate"])
+@pytest.mark.parametrize("stage", ["measure", "search_one", "generate", "make_prompt"])
 def test_an_error_from_a_function_reaches_the_caller_unchanged(stage):
     with pytest.raises(Boom, match=stage):
         run(fits_value=False, fail_in=stage)

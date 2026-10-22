@@ -38,10 +38,19 @@ BAZAARLINK_WITHOUT_REASONING = (
     "Qwen 3.7 Flash (Bazaarlink)",
     "DeepSeek V4 Flash 0731 (Bazaarlink)",
 )
+# The three small Mistral models added 2026-10-23 are not reasoning models (the
+# catalogue says reasoning: false), so a reasoning field would be a guess. Named
+# one by one, like the two groups above.
+MISTRAL_SMALL_WITHOUT_REASONING = (
+    "Ministral 8B",
+    "Mistral Nemo",
+    "Ministral 14B",
+)
 REJECTS_REASONING = (
     "Devstral 2",
     *ROUTEWAY_WITHOUT_REASONING,
     *BAZAARLINK_WITHOUT_REASONING,
+    *MISTRAL_SMALL_WITHOUT_REASONING,
 )
 
 # The Gemini-shape twin of REJECTS_REASONING, and it cost a dead tier to find.
@@ -76,6 +85,12 @@ OUTPUT_TOO_SMALL = (
     # units per token are calibrated.
     "Qwen 3.7 Flash (Bazaarlink)",
     "DeepSeek V4 Flash 0731 (Bazaarlink)",
+    # The three small Mistral models joined 2026-10-23 with the same kind of
+    # DELIBERATE cap of 8,192 (a local guard, not a measured limit): they must
+    # not write a report, and claims are short.
+    "Ministral 8B",
+    "Mistral Nemo",
+    "Ministral 14B",
     "GPT-OSS 120B (Groq)",
     # the dead tiers, at the tail with the rest of KNOWN_DEAD, in chain order.
     # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
@@ -249,6 +264,20 @@ def test_a_model_repeats_only_when_it_is_a_second_account():
     }
 
     assert not wrong, f"{wrong} repeat on ONE key, so the second is dead weight"
+
+
+def test_every_google_model_sits_on_every_account_in_key_order():
+    """Three accounts since 2026-10-22. A model that missed a twin would leave a
+    whole allowance unused (20 a day for a Flash, 500 for a Flash-Lite, 14,400
+    for a Gemma) and nothing would fail: the chain would just answer from a
+    weaker model sooner."""
+    for index, provider in enumerate(CHAIN):
+        if provider.api_key_env != GOOGLE_KEYS[0]:
+            continue
+        twins = CHAIN[index : index + len(GOOGLE_KEYS)]
+
+        assert [t.api_key_env for t in twins] == list(GOOGLE_KEYS), provider.name
+        assert {t.model for t in twins} == {provider.model}, provider.name
 
 
 def test_every_chain_provider_declares_its_token_limits():
