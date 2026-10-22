@@ -97,8 +97,23 @@ INPUT_LIMITED = ("gemma-4-26b-a4b-it", "gemma-4-31b-it")
 # Routeway's deepseek-v4-flash:free holds 42,000 tokens, prompt PLUS output,
 # measured 2026-09-29 (a 41,901-token prompt passed, 45,954 was a 400). Its
 # max_output_tokens equals that window, so the field test above cannot see it;
-# 26,000 of prompt and 32,000 of output is 58,000. Refused locally, for free.
-CONTEXT_TOO_SMALL = ("DeepSeek V4 Flash (Routeway)",)
+# 30,000 of prompt and 32,000 of output is 62,000. Refused locally, for free.
+#
+# The six Routeway Gemma finetunes hold 62,000 (also measured 2026-09-29). They
+# could serve a report while PROMPT_BUDGET was 26,000 (60,600 with the margin)
+# and cannot at 30,000 (65,000). That loss is deliberate: they write about 22
+# tokens a second and their gateway drops a request after about 121 seconds, so
+# they could not finish a report anyway. Checked 2026-10-22: of all 75 tiers,
+# these six are the ONLY ones a budget between 26,000 and 33,000 turns away.
+CONTEXT_TOO_SMALL = (
+    "DeepSeek V4 Flash (Routeway)",
+    "Gemma 4 26B A4B Darksoul (Routeway)",
+    "Gemma 4 26B A4B Moonlight (Routeway)",
+    "Gemma 4 26B A4B Musica (Routeway)",
+    "Gemma 4 26B A4B Luminous (Routeway)",
+    "Gemma 4 26B A4B Chimerax (Routeway)",
+    "Gemma 4 26B A4B MeroMero (Routeway)",
+)
 
 # Cline lists SIX free models and its API serves only these TWO. Measured
 # 2026-09-13: the other four answer
@@ -291,7 +306,7 @@ def test_every_tier_we_believe_can_serve_a_report_really_can():
     what the chain applies. `_check_fits` enforces the SUM - prompt plus
     reserved output against the context window - so a tier with a generous
     max_output and a small CONTEXT passes that test and still cannot serve a
-    report: 26,000 of prompt plus 32,000 of output is 58,000.
+    report: 30,000 of prompt plus 32,000 of output is 62,000.
 
     GLM-5.2's move to OpenRouter on 2026-09-19 brought exactly that shape, a
     32,768 context, and it was caught by its output cap rather than by the
