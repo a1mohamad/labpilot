@@ -1,4 +1,11 @@
 from labpilot.prompts._hints import OPENING_CHARS
+from labpilot.prompts.answer import (
+    CHAT,
+    ONE_FILE,
+    TWO_FILES,
+    build_chat_prompt,
+    instructions_for,
+)
 from labpilot.prompts.builder import (
     PRIOR_HEADING,
     PROMPT_BUDGET,
@@ -16,6 +23,7 @@ from labpilot.prompts.followups import (
     build_follow_up_prompt,
     follow_up_problem,
     last_answer_excerpt,
+    last_asnwer_block,
 )
 from labpilot.prompts.instructions import (
     COMPARE,
@@ -79,4 +87,10 @@ __all__ = [
     "last_answer_excerpt",
     "reserve",
     "resolve",
+    "CHAT",
+    "ONE_FILE",
+    "TWO_FILES",
+    "build_chat_prompt",
+    "instructions_for",
+    "last_asnwer_block",
 ]

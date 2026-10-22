@@ -16,7 +16,7 @@ from labpilot.api.errors import (
 )
 from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.planning import make_planner
-from labpilot.api.prompting import build_report_prompt
+from labpilot.api.prompting import build_answer_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
 from labpilot.api.searching import rank_pile, retrieve_query
 from labpilot.api.summaries import make_summarizer
@@ -38,7 +38,11 @@ def ask(
     thread_id: str | None = None,
     pool: ConnectionPool | None = None,
 ) -> Comparison:
-    """Answer a question about two STORED artifacts.
+    """Answer a question about up to two STORED artifacts.
+
+    An empty id means "no file in that slot". With no file the answer is a chat
+    answer, with one file it is an answer about that file, with two it is the
+    report.
 
     The ladder, and step 1 is the one that keeps being under-weighted:
 
@@ -109,11 +113,6 @@ def _ask_graph(
     def totals_of(sides):
         return {side: found.chunks for side, found in sides.items()}
 
-    def make_prompt(chunks, question, totals, summaries):
-        return build_report_prompt(
-            chunks, question=question, totals=totals, summaries=summaries
-        )
-
     summarizer = make_summarizer(conn, client)
 
     def summarize(artifact_id):
@@ -144,7 +143,7 @@ def _ask_graph(
         rank_side=rank_pile,
         plan=make_planner(conn, client),
         summarize=summarize,
-        make_prompt=make_prompt,
+        make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,
         generate=generate,

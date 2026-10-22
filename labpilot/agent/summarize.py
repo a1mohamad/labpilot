@@ -10,6 +10,9 @@ def make_summarize_node(
     slot: Slot, summarize: Callable[[str], str]
 ) -> Callable[[State], dict[str, str]]:
     def summarize_node(state: State) -> dict[str, str]:
-        return {f"summary_{slot}": summarize(state[slot])}
+        artifact_id = state[slot]
+        if not artifact_id:
+            return {}
+        return {f"summary_{slot}": summarize(artifact_id)}
 
     return summarize_node

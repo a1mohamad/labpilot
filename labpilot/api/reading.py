@@ -15,7 +15,7 @@ from labpilot.ingest import (
 from labpilot.prompts import (
     OUTLINE_BUDGET,
     PROMPT_BUDGET,
-    REPORT,
+    instructions_for,
 )
 from labpilot.retrieval import LABEL_TOKENS
 from labpilot.store import (
@@ -41,6 +41,8 @@ def measure_sides(
     """
     found: dict[Side, StoredArtifact] = {}
     for artifact_id in (a_id, b_id):
+        if not artifact_id:
+            continue
         try:
             stored = measure(conn, artifact_id)
         except UnknownArtifact as exc:
@@ -72,7 +74,8 @@ def fits_whole(sides: dict[Side, StoredArtifact], *, question: str) -> bool:
         math.ceil(found.characters / CHARS_PER_TOKEN) + found.chunks * LABEL_TOKENS
         for found in sides.values()
     )
-    fixed = estimate_tokens(f"{REPORT.header}{REPORT.closing}{question}")
+    instructions = instructions_for(len(sides))
+    fixed = estimate_tokens(f"{instructions.header}{instructions.closing}{question}")
 
     return evidence + fixed + OUTLINE_BUDGET <= PROMPT_BUDGET
 

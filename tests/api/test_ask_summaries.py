@@ -4,6 +4,7 @@ import pytest
 
 from labpilot.api import asking
 from labpilot.api.errors import GenerationUnavailable, UnknownArtifactId
+from labpilot.api.prompting import build_answer_prompt
 
 
 def capture(monkeypatch):
@@ -67,16 +68,12 @@ def test_a_missing_artifact_is_still_an_error_and_not_a_missing_summary(monkeypa
         seen["summarize"]("A-1")
 
 
-def test_the_prompt_builder_gets_the_summaries(monkeypatch):
-    calls = []
-    monkeypatch.setattr(
-        asking,
-        "build_report_prompt",
-        lambda chunks, **kwargs: calls.append(kwargs) or ("the prompt", ()),
-    )
+def test_the_graph_gets_the_one_prompt_builder_for_every_number_of_files(
+    monkeypatch,
+):
     seen = capture(monkeypatch)
+
     asking._ask_graph("conn", "client")
 
-    seen["make_prompt"]("chunks", "why?", {"A": 1}, {"A": "sa"})
-
-    assert calls == [{"question": "why?", "totals": {"A": 1}, "summaries": {"A": "sa"}}]
+    assert seen["make_prompt"] is build_answer_prompt
+    assert "make_answer_prompt" not in seen

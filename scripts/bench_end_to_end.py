@@ -41,17 +41,17 @@ TIMED = (
     (searching, "_embed_question"),
     (searching, "search"),
     (asking, "rank_pile"),
-    (asking, "build_report_prompt"),
+    (asking, "build_answer_prompt"),
 )
 
 # THE STUFF PATH NEEDS A PAIR THAT ACTUALLY FITS, and the committed fixture
-# does not: A_paper.md + B_train.py is 28,246 tokens against a PROMPT_BUDGET of
-# 26,000, which is why every earlier run of this script SEARCHED twice and the
+# does not: A_paper.md + B_train.py is 28,557 tokens against a PROMPT_BUDGET of
+# 30,000, which is why every earlier run of this script SEARCHED twice and the
 # stuff path went unmeasured.
 #
-# The evidence budget is PROMPT_BUDGET - fixed - OUTLINE_BUDGET = 21,324 tokens
+# The evidence budget is PROMPT_BUDGET - fixed - OUTLINE_BUDGET = 23,012 tokens
 # for BOTH sides, and A_paper.md spends 4,353 of it. So side B must come in
-# under ~16,971.
+# under ~18,659.
 #
 #   model_architecture.py   9 chunks   2,408 tok   pair  6,761  -> STUFFS
 #   01-tokenizer.ipynb     11 chunks   2,271 tok   pair  6,624  -> STUFFS
@@ -129,8 +129,8 @@ def main() -> int:
 
         # THE FIRST LABEL WAS A LIE, and the numbers were published under it.
         #
-        # `A_paper.md` + `B_train.py` needs 28,246 tokens against a
-        # PROMPT_BUDGET of 26,000, so `fits_whole()` refuses and ask() SEARCHES. The
+        # `A_paper.md` + `B_train.py` needs 28,557 tokens against a
+        # PROMPT_BUDGET of 30,000, so `fits_whole()` refuses and ask() SEARCHES. The
         # stuff path was never exercised, and the run's headline - "the cheap
         # path was six times slower than the expensive one" - was comparing two
         # SEARCH runs against each other.

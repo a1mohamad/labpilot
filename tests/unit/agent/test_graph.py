@@ -69,7 +69,7 @@ def run(*, fits_value, fail_in=None):
         calls.append(("totals_of", sides))
         return TOTALS
 
-    def make_prompt(chunks, question, totals, summaries):
+    def make_prompt(chunks, question, totals, summaries, files, last_answer):
         calls.append(("make_prompt", chunks, question, totals))
         return "the prompt", chunks[:1]
 
@@ -205,10 +205,7 @@ def chat_graph(saver=None, *, generate=None):
         totals_of=lambda sides: TOTALS,
         rank_side=lambda question, pile: pile,
         plan=lambda question, a, b: NO_QUERY,
-        make_prompt=lambda chunks, question, totals, summaries: (
-            "the prompt",
-            chunks[:1],
-        ),
+        make_prompt=lambda chunks, **_: ("the prompt", chunks[:1]),
         generate=generate or (lambda prompt: "the result"),
         checkpointer=saver,
     )

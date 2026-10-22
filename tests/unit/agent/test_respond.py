@@ -23,7 +23,7 @@ def chunk(index):
 def test_respond_builds_the_prompt_from_the_state_and_generates_from_it():
     seen = []
 
-    def make_prompt(chunks, question, totals, summaries):
+    def make_prompt(chunks, question, totals, summaries, files, last_answer):
         seen.append((chunks, question, totals, summaries))
         return "the prompt", chunks[:1]
 
@@ -51,7 +51,7 @@ def test_respond_builds_the_prompt_from_the_state_and_generates_from_it():
 def test_a_state_without_summaries_gives_empty_ones():
     seen = []
 
-    def make_prompt(chunks, question, totals, summaries):
+    def make_prompt(chunks, question, totals, summaries, files, last_answer):
         seen.append(summaries)
         return "the prompt", ()
 
@@ -63,7 +63,7 @@ def test_a_state_without_summaries_gives_empty_ones():
 
 
 def graph_with(summarize, seen, *, fits=False, plan=None):
-    def make_prompt(chunks, question, totals, summaries):
+    def make_prompt(chunks, question, totals, summaries, files, last_answer):
         seen.append(dict(summaries))
         return "the prompt", chunks[:1]
 

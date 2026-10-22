@@ -26,7 +26,7 @@ def build_graph(
     totals_of: Callable[[Any], Totals],
     rank_side: Callable[[str, Chunks], Chunks],
     plan: Callable[[str, str, str], Plan],
-    make_prompt: Callable[[Chunks, str, Totals, dict[str, str]], tuple[str, Chunks]],
+    make_prompt: Callable[..., tuple[str, Chunks]],
     generate: Callable[[str], Any],
     rewrite: Callable[[str, list[str], str], str] | None = None,
     summarize: Callable[[str], str] | None = None,

@@ -4,11 +4,12 @@ from collections.abc import Mapping
 
 from labpilot.ingest import Chunk
 from labpilot.prompts.context import build_context
+from labpilot.prompts.followups import last_asnwer_block
 from labpilot.prompts.instructions import Instructions
 from labpilot.tokens import estimate_tokens
 
 REPORT_MAX_TOKENS = 32_000
-PROMPT_BUDGET = 26_000
+PROMPT_BUDGET = 30_000
 
 
 PRIOR_HEADING = "ALREADY FOUND IN SIDE B"
@@ -37,6 +38,7 @@ def build_prompt(
     prior: str = "",
     totals: dict[str, int] | None = None,
     summaries: Mapping[str, str] | None = None,
+    last_answer: str = "",
 ) -> str:
     if not question.strip():
         raise ValueError("question must not be empty")
@@ -48,6 +50,8 @@ def build_prompt(
     blocks.append(build_context(chunks, selected, totals=totals))
     if prior.strip():
         blocks.append(f"{PRIOR_HEADING}\n\n{prior.strip()}")
+    if answer_block := last_asnwer_block(last_answer):
+        blocks.append(answer_block)
     blocks.append(ending)
 
     return "\n\n\n".join(blocks)
@@ -60,6 +64,7 @@ def reserve(
     instructions: Instructions,
     prior: str = "",
     summaries: Mapping[str, str] | None = None,
+    last_answer: str = "",
 ) -> int:
     # The empty prompt already carries the WHOLE outline, because build_prompt
     # renders it with nothing selected - so the outline is counted exactly, at
@@ -88,6 +93,7 @@ def reserve(
         instructions=instructions,
         prior=prior,
         summaries=summaries,
+        last_answer=last_answer,
     )
 
     return estimate_tokens(empty)

@@ -567,6 +567,86 @@ def test_a_report_is_still_written_when_the_rewrite_fails_on_every_tier(
     assert "and the learning rate?" in client.prompts[-1]
 
 
+def test_a_question_with_no_file_is_a_chat_answer(db):
+    client = FakeClient()
+
+    comparison = asking.ask(
+        db, "", "", question="explain gradient clipping", client=client
+    )
+
+    assert comparison.result.text == "an answer"
+    assert comparison.chunks == ()
+    assert comparison.totals is None
+    assert len(client.prompts) == 1
+    assert "No file was given with this question" in client.prompts[0]
+    assert client.planner_prompts == []
+    assert client.summary_prompts == []
+
+
+def test_a_question_about_one_file_is_answered_from_that_file_alone(db):
+    a = stored(db, "A", parts=3, words=20)
+    plan = {"steps": [], "queries": [{"side": "A", "text": "weights"}]}
+    client = FakeClient(plan=plan)
+
+    comparison = asking.ask(db, a, "", question="what does this do?", client=client)
+
+    prompt = client.prompts[0]
+    assert "Write ANSWER, then PROBLEMS now." in prompt
+    assert "DIVERGENCES" not in prompt
+    assert "SIDE A" in prompt
+    assert "SIDE B" not in prompt
+    assert len(client.summary_prompts) == 1
+    assert {chunk.side for chunk in comparison.chunks} == {"A"}
+
+
+def test_a_big_single_file_is_searched_and_ranked_for_its_one_side(db, monkeypatch):
+    b = stored(db, "B", parts=60, words=300)
+    embedded = embedded_texts(monkeypatch)
+
+    comparison = asking.ask(db, "", b, question="why is it slow?", client=FakeClient())
+
+    assert {chunk.side for chunk in comparison.chunks} == {"B"}
+    assert len(comparison.chunks) == searching.VECTOR_TOP_N
+    assert comparison.totals == {"B": 60}
+    assert embedded.count("why is it slow?") == 1
+
+
+def test_in_a_chat_with_no_file_the_last_answer_reaches_the_next_prompt(
+    db, chat_tables
+):
+    client = FakeClient(rewrite_to="write the code for the second change")
+
+    for question in ("what can I change?", "do the second one"):
+        asking.ask(
+            db, "", "", question=question, client=client, thread_id="chat-no-file"
+        )
+
+    label = "The last answer the tool gave:\nan answer"
+    assert label not in client.prompts[0]
+    assert label in client.follow_up_prompts[0]
+    assert label in client.prompts[-1]
+    assert client.prompts[-1].endswith("QUESTION: write the code for the second change")
+
+
+def test_a_follow_up_about_two_files_carries_the_last_answer_into_the_report(
+    db, chat_tables
+):
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = FakeClient(rewrite_to="explain the last answer more simply")
+
+    for question in ("why do results differ?", "explain that more simply"):
+        asking.ask(
+            db, a, b, question=question, client=client, thread_id="chat-two-files"
+        )
+
+    label = "The last answer the tool gave:\nan answer"
+    assert "Write ANSWER, COMPARABLE, DIFFERENCES" in client.prompts[0]
+    assert label not in client.prompts[0]
+    assert label in client.prompts[-1]
+    assert client.prompts[-1].endswith("QUESTION: explain the last answer more simply")
+
+
 def test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects(
     db, chat_tables, monkeypatch, caplog
 ):

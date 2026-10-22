@@ -285,7 +285,7 @@ def graph(planner, saver):
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1},
         rank_side=lambda question, pile: pile,
-        make_prompt=lambda chunks, question, totals, summaries: ("the prompt", ()),
+        make_prompt=lambda chunks, **_: ("the prompt", ()),
         generate=lambda prompt: "the result",
         plan=planner,
         checkpointer=saver,

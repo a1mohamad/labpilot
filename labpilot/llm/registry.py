@@ -197,8 +197,8 @@ GEMINI_3_5_FLASH = _gemini(name="Gemini 3.5 Flash", model="gemini-3.5-flash")
 # is a different failure from `limit: 0` and one the chain already retries.
 # A tier that answers a quarter of the time strictly beats one that is dead.
 #
-# ⚠ 32,768 CONTEXT, so it can NEVER serve a report: PROMPT_BUDGET 26,000 plus
-# REPORT_MAX_TOKENS 32,000 is 58,000. _check_fits refuses it locally for
+# ⚠ 32,768 CONTEXT, so it can NEVER serve a report: PROMPT_BUDGET 30,000 plus
+# REPORT_MAX_TOKENS 32,000 is 62,000. _check_fits refuses it locally for
 # nothing, and it is here for Step 2's smaller jobs - where it is worth
 # having, at Code Arena #19 (1592), ahead of Gemini 3.6 Flash.
 GLM_5_2 = OpenAICompatibleProvider(

@@ -314,7 +314,7 @@ def run_graph(plan):
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1},
         rank_side=lambda question, pile: pile,
-        make_prompt=lambda chunks, question, totals, summaries: ("the prompt", chunks),
+        make_prompt=lambda chunks, **_: ("the prompt", chunks),
         generate=lambda prompt: "the result",
         plan=plan,
     )

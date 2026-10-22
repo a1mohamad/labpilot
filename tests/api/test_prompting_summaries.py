@@ -1,4 +1,4 @@
-from labpilot.api.prompting import build_report_prompt
+from labpilot.api.prompting import build_answer_prompt
 from labpilot.ingest import Chunk
 
 CHUNKS = (
@@ -15,8 +15,8 @@ CHUNKS = (
 
 
 def test_the_report_prompt_carries_the_summaries():
-    prompt, selected = build_report_prompt(
-        CHUNKS, question="why?", summaries={"B": "B trains an LSTM."}
+    prompt, selected = build_answer_prompt(
+        CHUNKS, question="why?", files=2, summaries={"B": "B trains an LSTM."}
     )
 
     assert "B trains an LSTM." in prompt
@@ -24,6 +24,6 @@ def test_the_report_prompt_carries_the_summaries():
 
 
 def test_the_report_prompt_is_the_same_without_summaries():
-    prompt, _ = build_report_prompt(CHUNKS, question="why?")
+    prompt, _ = build_answer_prompt(CHUNKS, question="why?", files=2)
 
     assert "SUMMARY OF SIDE" not in prompt

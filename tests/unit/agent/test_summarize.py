@@ -21,10 +21,7 @@ def run(summarize=None):
         totals_of=lambda sides: {"A": 1},
         rank_side=lambda question, pile: pile,
         plan=lambda question, a, b: Plan(steps=(), queries=()),
-        make_prompt=lambda chunks, question, totals, summaries: (
-            "the prompt",
-            chunks[:1],
-        ),
+        make_prompt=lambda chunks, **_: ("the prompt", chunks[:1]),
         generate=lambda prompt: "the result",
         summarize=summarize,
     )

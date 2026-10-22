@@ -163,7 +163,7 @@ def graph(summarize):
         totals_of=lambda sides: {"A": 1},
         rank_side=lambda question, pile: pile,
         plan=lambda question, a, b: Plan(steps=(), queries=()),
-        make_prompt=lambda chunks, question, totals, summaries: ("the prompt", ()),
+        make_prompt=lambda chunks, **_: ("the prompt", ()),
         generate=lambda prompt: "the result",
         summarize=summarize,
     )

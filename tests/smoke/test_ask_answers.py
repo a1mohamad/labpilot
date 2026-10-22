@@ -23,7 +23,7 @@ It needs a live Postgres as well, so it carries the cost of both gates and skips
 when either is absent.
 
 WHY THE SEARCH PATH AND NOT THE STUFF PATH: `A_paper.md` + `B_train.py` is
-28,246 tokens against a PROMPT_BUDGET of 26,000, so `fits_whole` refuses and the
+28,557 tokens against a PROMPT_BUDGET of 30,000, so `fits_whole` refuses and the
 whole ladder runs. Stuffing would exercise measure, read_chunks and generate
 and skip everything in between.
 """

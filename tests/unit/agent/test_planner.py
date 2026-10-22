@@ -29,10 +29,7 @@ def run(plan=lambda question, a, b: PLAN, order=None):
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1},
         rank_side=lambda question, pile: pile,
-        make_prompt=lambda chunks, question, totals, summaries: (
-            "the prompt",
-            chunks[:1],
-        ),
+        make_prompt=lambda chunks, **_: ("the prompt", chunks[:1]),
         generate=lambda prompt: "the result",
         plan=plan,
     )
