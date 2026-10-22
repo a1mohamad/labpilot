@@ -14,9 +14,12 @@ from labpilot.api.errors import (
     GenerationUnavailable,
     InvalidQuestion,
 )
-from labpilot.api.prompting import build_report_prompt
+from labpilot.api.followups import last_answer_text, make_rewriter
+from labpilot.api.planning import make_planner
+from labpilot.api.prompting import build_answer_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
-from labpilot.api.searching import retrieve_query
+from labpilot.api.searching import rank_pile, retrieve_query
+from labpilot.api.summaries import make_summarizer
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
     REPORT_MAX_TOKENS,
@@ -35,13 +38,18 @@ def ask(
     thread_id: str | None = None,
     pool: ConnectionPool | None = None,
 ) -> Comparison:
-    """Answer a question about two STORED artifacts.
+    """Answer a question about up to two STORED artifacts.
+
+    An empty id means "no file in that slot". With no file the answer is a chat
+    answer, with one file it is an answer about that file, with two it is the
+    report.
 
     The ladder, and step 1 is the one that keeps being under-weighted:
 
         1  do A and B TOGETHER fit?  -> read every row back, STUFF, and neither
            embed nor search nor rerank runs at all
-        2  otherwise search per side, gate, rerank per side, never merged
+        2 otherwise the planner writes queries, each is searched alone, and
+            each side is reranked once.
 
     Stuffing is not a shortcut. When the corpus fits, retrieval is not neutral
     but HARMFUL: a bad retriever can hide the very line the report needed.
@@ -49,6 +57,7 @@ def ask(
     if not question.strip():
         raise InvalidQuestion("question must not be empty")
 
+    a_id, b_id = _in_their_own_slots(a_id, b_id)
     graph = _ask_graph(conn, client, thread_id, pool)
     start = {"question": question, "a": a_id, "b": b_id}
     if thread_id is None:
@@ -64,6 +73,30 @@ def ask(
         prompt=final["prompt"],
         totals=final["totals"],
     )
+
+
+def _in_their_own_slots(a_id: str, b_id: str) -> tuple[str, str]:
+    """Put a LONE artifact in the slot of its own side.
+
+    The id carries its side (`A-9f2c...`, `B-3e8a...`), and the graph reads slot
+    `a` as side A and slot `b` as side B: the planner writes queries for the
+    sides that exist, `fan_out` searches them, and the summaries are labelled
+    by slot. So a subject sent alone in slot `a` would be searched as a side A
+    this question does not have, and the search would fail on a missing key.
+
+    With two ids, or with none, nothing moves. Two ids is the old behaviour,
+    and `measure_sides` already refuses two ids of one side.
+    """
+    if bool(a_id) == bool(b_id):
+        return a_id, b_id
+
+    lone = a_id or b_id
+    if lone.startswith("A-"):
+        return lone, ""
+    if lone.startswith("B-"):
+        return "", lone
+
+    return a_id, b_id
 
 
 def _forget_old_copies(conn: psycopg.Connection, thread_id: str) -> None:
@@ -105,8 +138,18 @@ def _ask_graph(
     def totals_of(sides):
         return {side: found.chunks for side, found in sides.items()}
 
-    def make_prompt(chunks, question, totals):
-        return build_report_prompt(chunks, question=question, totals=totals)
+    summarizer = make_summarizer(conn, client)
+
+    def summarize(artifact_id):
+        # A summary is a guide, not the evidence: when every tier fails the
+        # report is still written, from the parts alone.
+        try:
+            return summarizer(artifact_id)
+        except GenerationUnavailable:
+            logger.warning(
+                "no summary of %s: every tier failed", artifact_id, exc_info=True
+            )
+            return ""
 
     def generate(prompt):
         try:
@@ -122,7 +165,12 @@ def _ask_graph(
         stuff=stuff_sides,
         search_one=search_one,
         totals_of=totals_of,
-        make_prompt=make_prompt,
+        rank_side=rank_pile,
+        plan=make_planner(conn, client),
+        summarize=summarize,
+        make_prompt=build_answer_prompt,
+        rewrite=make_rewriter(client),
+        answer_text=last_answer_text,
         generate=generate,
         checkpointer=open_saver(conn) if thread_id else None,
     )
