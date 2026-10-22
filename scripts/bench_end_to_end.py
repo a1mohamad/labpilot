@@ -40,22 +40,23 @@ QUESTION = "Compare these and explain why the results diverge."
 TIMED = (
     (searching, "_embed_question"),
     (searching, "search"),
-    (searching, "rerank_and_cut"),
-    (asking, "build_report_prompt"),
+    (asking, "rank_pile"),
+    (asking, "build_answer_prompt"),
 )
 
-# THE STUFF PATH NEEDS A PAIR THAT ACTUALLY FITS, and the committed fixture
-# does not: A_paper.md + B_train.py is 28,246 tokens against a PROMPT_BUDGET of
-# 26,000, which is why every earlier run of this script SEARCHED twice and the
-# stuff path went unmeasured.
+# THE STUFF PATH NEEDS A PAIR THAT ACTUALLY FITS. Until 2026-10-22 the committed
+# fixture did not: A_paper.md + B_train.py is 28,557 tokens and PROMPT_BUDGET
+# was 26,000, which is why every earlier run of this script SEARCHED twice and
+# the stuff path went unmeasured. At PROMPT_BUDGET 30,000 it fits, so that pair
+# now STUFFS, and the SEARCH row needs the 729-chunk Go repo.
 #
-# The evidence budget is PROMPT_BUDGET - fixed - OUTLINE_BUDGET = 21,324 tokens
+# The evidence budget is PROMPT_BUDGET - fixed - OUTLINE_BUDGET = 25,012 tokens
 # for BOTH sides, and A_paper.md spends 4,353 of it. So side B must come in
-# under ~16,971.
+# under ~20,659.
 #
 #   model_architecture.py   9 chunks   2,408 tok   pair  6,761  -> STUFFS
 #   01-tokenizer.ipynb     11 chunks   2,271 tok   pair  6,624  -> STUFFS
-#   B_train.py             82 chunks  19,217 tok   pair 23,570  -> searches
+#   B_train.py             82 chunks  19,217 tok   pair 23,570  -> STUFFS
 #
 # These two are not arbitrary small files: B_train.py was FLATTENED from
 # 02-train.ipynb and model_architecture.py, and A_paper.md's section 4
@@ -123,14 +124,14 @@ def main() -> int:
             print("  LABPILOT_QUORA_SRC unset - the STUFF rows are skipped")
 
         rows += [
-            ("SEARCH (paper + B_train.py)", (a_id, b_id)),
+            ("STUFF  (paper + B_train.py)", (a_id, b_id)),
             ("SEARCH (paper + 729-chunk Go repo)", (a_id, "B-bench-geo")),
         ]
 
         # THE FIRST LABEL WAS A LIE, and the numbers were published under it.
         #
-        # `A_paper.md` + `B_train.py` needs 28,246 tokens against a
-        # PROMPT_BUDGET of 26,000, so `fits_whole()` refuses and ask() SEARCHES. The
+        # `A_paper.md` + `B_train.py` needed 28,557 tokens against a
+        # PROMPT_BUDGET of 26,000, so `fits_whole()` refused and ask() SEARCHED. The
         # stuff path was never exercised, and the run's headline - "the cheap
         # path was six times slower than the expensive one" - was comparing two
         # SEARCH runs against each other.
