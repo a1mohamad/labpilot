@@ -1,7 +1,8 @@
-"""The two number spaces, and the cut that depends on which path ran.
+"""The question embed: which model, which task, and how it fails.
 
-No database and no network: these pin the pure decisions inside the ask path,
-which are the ones that fail SILENTLY rather than loudly.
+No database and no network: these pin the pure decisions inside the search
+path, which are the ones that fail SILENTLY rather than loudly. The rerank
+cut and the two number spaces live in test_rank_pile.py.
 """
 
 from __future__ import annotations
@@ -12,130 +13,6 @@ from labpilot.api import searching
 from labpilot.api.errors import EmbeddingUnavailable
 from labpilot.embed import EmbeddingError
 from labpilot.embed.contracts import EmbeddingBatch
-from labpilot.rerank import SKIP, Ranking
-from labpilot.store import SearchHit
-
-FIRST_ID = 100
-
-
-def hit(index: int, score: float = 0.5) -> SearchHit:
-    """Chunk ids start at 100, never at 0.
-
-    Slice 5 learned this: a fixture numbered from zero cannot tell a chunk_index
-    from a list position, because both are small integers. Offsetting makes the
-    confusion provable instead of plausible.
-    """
-    return SearchHit(
-        chunk_index=FIRST_ID + index,
-        text=f"chunk {FIRST_ID + index}",
-        header=f"[train.py - part {index}]",
-        source="train.py",
-        start_line=index * 10,
-        end_line=index * 10 + 5,
-        score=score,
-    )
-
-
-def test_a_reranked_position_is_read_as_a_position_and_never_as_an_id():
-    """THE TRAP THIS WHOLE STEP IS BUILT AROUND.
-
-        SearchHit.chunk_index   an ID in the corpus
-        Ranking.order           POSITIONS into the list we just passed
-
-    They are both small integers and they mean different things. `hits[p]` is
-    right; treating `p` as an id cites the wrong file and line with complete
-    confidence, and nothing raises.
-    """
-    hits = tuple(hit(i) for i in range(3))
-    reversed_order = Ranking(order=(2, 1, 0), model="fake-rerank")
-
-    best = searching.rerank_and_cut("q", hits, rank=lambda *_, **__: reversed_order)
-
-    assert [h.chunk_index for h in best] == [102, 101, 100]
-
-
-def test_a_skipped_rerank_keeps_the_VECTOR_number_not_the_reranked_one():
-    """skip() truncates to whatever top_n it is handed, so we must not hand it one.
-
-    If every tier fails, the chain returns the retrieval order unchanged - and
-    cutting that to RERANK_TOP_N would apply a number calibrated for a path
-    that did not run. Ranking carries model=SKIP, so the cut is made on the
-    visible fact rather than on a guess.
-    """
-    hits = tuple(hit(i) for i in range(40))
-    declined = Ranking(order=tuple(range(40)), model=SKIP)
-
-    best = searching.rerank_and_cut("q", hits, rank=lambda *_, **__: declined)
-
-    assert len(best) == searching.VECTOR_TOP_N
-
-
-def test_the_cut_is_never_handed_DOWN_to_the_rerank_chain():
-    """The other half of the skip rule, and it was unguarded.
-
-    Its neighbour above pins the CUT - VECTOR_TOP_N when the ranking is a
-    skip. This pins the CALL: rank() must be asked for everything, because
-    skip() truncates to whatever top_n it is given and would then apply the
-    reranked number to a path that never reranked.
-
-    The neighbour cannot catch it, because it injects a rank that returns a
-    full ranking and so never observes the argument. Found by a mutation that
-    handed top_n down and broke nothing at all.
-    """
-    hits = tuple(hit(index) for index in range(40))
-    seen: dict[str, int | None] = {}
-
-    def recording(question, documents, *, top_n):
-        seen["top_n"] = top_n
-        # what skip() really does with whatever it is handed
-        order = tuple(range(len(documents)))[: top_n or len(documents)]
-        return Ranking(order=order, model=SKIP)
-
-    best = searching.rerank_and_cut("q", hits, rank=recording)
-
-    assert seen["top_n"] is None, "asking for fewer would truncate the degraded path"
-    assert len(best) == searching.VECTOR_TOP_N
-
-
-def test_a_real_reranker_cuts_to_the_reranked_number():
-    """The other half: when a tier DID order them, the tighter cut is earned."""
-    hits = tuple(hit(i) for i in range(40))
-    ordered = Ranking(order=tuple(range(40)), model="rerank-3-lite")
-
-    best = searching.rerank_and_cut("q", hits, rank=lambda *_, **__: ordered)
-
-    assert len(best) < searching.VECTOR_TOP_N
-
-
-def test_the_reranker_reads_only_the_WINDOW_not_everything_search_returned():
-    """RERANK_WINDOW is the measured cut, and it is invisible unless recorded.
-
-    Search returns SEARCH_LIMIT per side; the reranker is handed the top
-    RERANK_WINDOW of those. Measured 2026-09-18 on 5 Python corpora: the
-    shipped w50 is nearly half as good as w20, and w10/w20/w30 are within
-    0.17 queries of each other.
-
-    Its neighbours cannot catch this. They inject a rank() that returns a full
-    ranking and never look at the ARGUMENT, so handing the reranker all 40
-    hits breaks none of them - proven by a mutation that deleted the cut and
-    left 757 tests green.
-    """
-    hits = tuple(hit(index) for index in range(40))
-    seen: dict[str, int] = {}
-
-    def recording(question, documents, *, top_n):
-        seen["documents"] = len(documents)
-        return Ranking(order=tuple(range(len(documents))), model="rerank-3-lite")
-
-    searching.rerank_and_cut("q", hits, rank=recording)
-
-    assert seen["documents"] == searching.RERANK_WINDOW
-
-
-def test_nothing_found_is_not_an_error():
-    """An empty result is an answer. Reranking nothing would be a ValueError."""
-    assert searching.rerank_and_cut("q", ()) == []
-
 
 # --- the query embed: which model, which task, and how it fails -------------
 
@@ -229,43 +106,3 @@ def test_an_embedder_that_fails_is_OUR_outage_not_the_users_mistake(monkeypatch)
 
     with pytest.raises(EmbeddingUnavailable, match="codestral is down"):
         searching._embed_question("a question", model="codestral-embed")
-
-
-def test_a_skip_gate_that_says_no_really_stops_the_reranker(monkeypatch):
-    """THE GATE IS WIRED, AND NOTHING PROVED IT.
-
-    `SKIP_MARGIN` is None today, so `should_rerank` always answers True and
-    deleting the call from `rerank_and_cut` changes no behaviour whatever. That is
-    exactly the condition under which a component quietly stops being
-    connected - and this project has shipped that failure twice already:
-
-        slice 6   the rerank chain was BUILT AND NEVER BOUND, so the ask path
-                  used only the cross-encoders and never the four tiers that
-                  beat them. Found by the user reading the code.
-        slice 8   score fusion was DECIDED and never applied for three
-                  sessions, while RESULTS.md claimed "it now has a caller".
-
-    Both were invisible because the unwired component still returned something
-    plausible. The gate would fail the same way: `retrieval/gate.py` stays
-    green, `SKIP_MARGIN` stays a documented knob, and turning it on would do
-    nothing at all.
-
-    So this forces the gate to say NO and asserts the reranker is never
-    reached. It fails the day the call is removed, which is the only day it
-    needs to.
-    """
-    called: list[str] = []
-
-    def never(question, documents, *, top_n=None):
-        called.append(question)
-        raise AssertionError("the gate said skip, so no tier may be asked")
-
-    monkeypatch.setattr(searching, "should_rerank", lambda scores: False)
-
-    hits = tuple(hit(index) for index in range(searching.VECTOR_TOP_N + 5))
-    kept = searching.rerank_and_cut("why do the results differ?", hits, rank=never)
-
-    assert not called, "the reranker was called although the gate said skip"
-    assert [found.chunk_index for found in kept] == [
-        FIRST_ID + index for index in range(searching.VECTOR_TOP_N)
-    ], "a skipped gate must fall back to the VECTOR number, in search order"
