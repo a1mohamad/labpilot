@@ -20,7 +20,7 @@ from labpilot.ingest import (
     Side,
 )
 from labpilot.rerank import RERANK_TOP_N, SKIP, Ranking
-from labpilot.retrieval import score_fusion, should_rerank
+from labpilot.retrieval import score_fusion
 from labpilot.store import (
     SEARCH_LIMIT,
     ModelMismatch,
@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 # day, so "send more" is not free even where it still helps slightly.
 #
 # PER SIDE, so 15 is 30 chunks ~ 7,100 tokens at the measured 236/chunk,
-# against PROMPT_BUDGET 26,000. docs/slice8v3/DECISIONS.md row 18.
+# against PROMPT_BUDGET 30,000. docs/slice8v3/DECISIONS.md row 18.
 VECTOR_TOP_N = 15
 
 # How many of the searched chunks the RERANKER SEES.
@@ -105,26 +105,6 @@ VECTOR_TOP_N = 15
 RERANK_WINDOW = 20
 
 
-def retrieved_chunks(
-    conn: psycopg.Connection, sides: dict[Side, StoredArtifact], *, question: str
-) -> tuple[Chunk, ...]:
-    """Search, gate and rerank PER SIDE - never merged.
-
-    Merged would halve the rerank cost and hand one call 100 documents, but it
-    also lets one side take every slot. Per side makes coverage STRUCTURAL
-    rather than a rule something downstream has to honour.
-    """
-    chunks: list[Chunk] = []
-    for side in sides:
-        artifact = sides[side].artifact
-        hits = _searched(conn, sides, side=side, text=question)
-        chunks.extend(
-            as_chunk(hit, side, artifact.id) for hit in rerank_and_cut(question, hits)
-        )
-
-    return tuple(chunks)
-
-
 def retrieve_query(
     conn: psycopg.Connection,
     sides: dict[Side, StoredArtifact],
@@ -132,6 +112,12 @@ def retrieve_query(
     side: Side,
     text: str,
 ) -> tuple[Chunk, ...]:
+    """Search ONE side for ONE query: embed, search, fuse. It never reranks.
+
+    The graph runs this once for every query, all at the same time. The rerank
+    happens later and once per side, in `rank_pile`, against the user's
+    question (D53).
+    """
     artifact = sides[side].artifact
     hits = _searched(conn, sides, side=side, text=text)
     return tuple(as_chunk(hit, side, artifact.id) for hit in hits)
@@ -143,6 +129,27 @@ def rank_pile(
     *,
     rank: Callable[..., Ranking] = _rank,
 ) -> tuple[Chunk, ...]:
+    """Rerank the merged pile of ONE side, once, and cut it.
+
+    THE TWO NUMBER SPACES MEET HERE, and they look identical:
+
+        Chunk.chunk_index   an ID in the corpus
+        Ranking.order       POSITIONS into the list we just passed
+
+    `window[position]` is right. Treating a position as an id cites the wrong
+    file and line with full confidence, which is why the tests number their
+    ids from 100.
+
+    The cut happens AFTER the call, never by handing `top_n` down: skip()
+    truncates to whatever it is given, so a chain that fell through to it would
+    return RERANK_TOP_N chunks - a number calibrated for a path that did not
+    run. The Ranking says which happened (`model == SKIP`), so the cut is made
+    on the visible fact. The degraded path reads `pile`, not `window`: a tier
+    that declined has not narrowed anything.
+
+    There is no skip gate here. A merged pile has no comparable scores, and
+    SKIP_MARGIN is off anyway (D53).
+    """
     if not pile:
         return ()
     window = pile[:RERANK_WINDOW]
@@ -237,49 +244,6 @@ def _fused(
     # everything downstream - RERANK_WINDOW, VECTOR_TOP_N - is calibrated
     # against a 50-candidate window per side.
     return tuple(by_index[index] for index in order[:SEARCH_LIMIT])
-
-
-def rerank_and_cut(
-    question: str, hits: tuple[SearchHit, ...], *, rank: Callable[..., Ranking] = _rank
-) -> list[SearchHit]:
-    """Gate, rerank, and map POSITIONS back to hits.
-
-    THE TWO NUMBER SPACES MEET HERE, and they look identical:
-
-        SearchHit.chunk_index   an ID in the corpus
-        Ranking.order           POSITIONS into the list we just passed
-
-    `hits[position]` is right. Treating a position as an id cites the wrong
-    file and line with full confidence, which is why
-    tests/integration/test_retrieval_to_rerank.py numbers its ids from 100.
-
-    And the cut happens AFTER, never by handing `top_n` down: skip() truncates
-    to whatever it is given, so a chain that fell through to it would return
-    RERANK_TOP_N chunks - a number calibrated for a path that did not run. The
-    Ranking says which happened, so we cut on the visible fact.
-    """
-    if not hits:
-        return []
-    if not should_rerank([hit.score for hit in hits]):
-        return list(hits[:VECTOR_TOP_N])
-
-    window = hits[:RERANK_WINDOW]
-    ranking = rank(question, [hit.text for hit in window], top_n=None)
-
-    # The DEGRADED path reads `hits`, never `window`. A tier that declined has
-    # not narrowed anything, so narrowing for it would throw away chunks the
-    # vector path had already paid for - and VECTOR_TOP_N is calibrated on the
-    # full list.
-    if ranking.model == SKIP:
-        return list(hits[:VECTOR_TOP_N])
-
-    # POSITIONS index the list we PASSED, which is `window`. Today `hits`
-    # would give the identical element, because `window` is a PREFIX of it and
-    # every position is inside the window - a mutation swapping the two broke
-    # nothing, which is the honest state and is recorded rather than tested.
-    # We index `window` because it is the list we handed over, and that stays
-    # right if the window is ever chosen rather than truncated.
-    return [window[position] for position in ranking.order[:RERANK_TOP_N]]
 
 
 def _embed_question(question: str, *, model: str) -> tuple[float, ...]:
