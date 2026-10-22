@@ -13,9 +13,10 @@ from labpilot.ingest import (
     Side,
 )
 from labpilot.prompts import (
-    OUTLINE_BUDGET,
+    FILE_ROW_TOKENS,
     PROMPT_BUDGET,
-    REPORT,
+    PROMPT_EXTRAS_TOKENS,
+    instructions_for,
 )
 from labpilot.retrieval import LABEL_TOKENS
 from labpilot.store import (
@@ -41,6 +42,8 @@ def measure_sides(
     """
     found: dict[Side, StoredArtifact] = {}
     for artifact_id in (a_id, b_id):
+        if not artifact_id:
+            continue
         try:
             stored = measure(conn, artifact_id)
         except UnknownArtifact as exc:
@@ -57,24 +60,34 @@ def measure_sides(
 
 
 def fits_whole(sides: dict[Side, StoredArtifact], *, question: str) -> bool:
-    """Would both artifacts fit the prompt whole, without reading a single row?
+    """Would everything fit the prompt whole, without reading a single row?
 
-    Deliberately CONSERVATIVE, and it errs toward searching. The outline is
-    charged at its full OUTLINE_BUDGET even though the ladder usually renders
-    far less, because the real cost cannot be known without the headers - and
-    the headers are the thing this check exists to avoid fetching.
+    Four things are added up, and none of them needs a row:
 
-    So a corpus near the line is searched when it could have been stuffed.
-    That is the safe direction: searching still answers, while a wrong `yes`
-    means reading ~14MB over the wire to discover it did not fit.
+      the evidence   characters / 3 plus a label per chunk (an over-estimate)
+      the outline    when every part is sent it is a plain list, a heading and
+                     one row per FILE, so it costs FILE_ROW_TOKENS times the
+                     number of files; no artifact, no outline
+      the fixed text the instruction for THIS many files, and the question
+      the extras     two summaries and the last answer, which are not known yet
+
+    Before 2026-10-22 the outline was a flat OUTLINE_BUDGET of 4,000, which
+    over-charged almost everything that fits (a 30-file repository really costs
+    about 700) and knew nothing about a repository with very many tiny files.
+
+    Still CONSERVATIVE, and it still errs toward searching: a wrong `no` costs
+    a search, while a wrong `yes` means reading ~14MB over the wire to learn it
+    did not fit. And `build_answer_prompt` checks the finished prompt anyway.
     """
     evidence = sum(
         math.ceil(found.characters / CHARS_PER_TOKEN) + found.chunks * LABEL_TOKENS
         for found in sides.values()
     )
-    fixed = estimate_tokens(f"{REPORT.header}{REPORT.closing}{question}")
+    outline = sum((found.files + 1) * FILE_ROW_TOKENS for found in sides.values())
+    instructions = instructions_for(len(sides))
+    fixed = estimate_tokens(f"{instructions.header}{instructions.closing}{question}")
 
-    return evidence + fixed + OUTLINE_BUDGET <= PROMPT_BUDGET
+    return evidence + outline + fixed + PROMPT_EXTRAS_TOKENS <= PROMPT_BUDGET
 
 
 def stuffed_chunks(
