@@ -7,7 +7,6 @@ import pytest
 from labpilot.ingest import chunk_bytes, chunk_file
 from labpilot.prompts import (
     FULL,
-    PROMPT_BUDGET,
     build_context,
     build_prompt,
     reserve,
@@ -19,6 +18,12 @@ from labpilot.tokens import estimate_tokens
 SAMPLES = Path("data/samples/quora_siamese")
 QUESTION = "Compare these and explain why the results diverge."
 
+# A budget the sample pair does NOT fit (its evidence alone is about 23,600
+# tokens), so the rules about dropped parts are exercised whatever the real
+# PROMPT_BUDGET is. The test used PROMPT_BUDGET until it rose to 30,000 and
+# the whole pair fitted, which left nothing to drop.
+BUDGET = 24_000
+
 
 @pytest.fixture(scope="module")
 def chunks():
@@ -29,7 +34,7 @@ def chunks():
 
 @pytest.fixture(scope="module")
 def picked(chunks):
-    room = PROMPT_BUDGET - reserve(chunks, question=QUESTION, instructions=FULL)
+    room = BUDGET - reserve(chunks, question=QUESTION, instructions=FULL)
     return select(chunks, budget=room)
 
 
@@ -39,7 +44,7 @@ def prompt(chunks, picked):
 
 
 def test_the_whole_prompt_fits_the_budget(prompt):
-    assert estimate_tokens(prompt) <= PROMPT_BUDGET
+    assert estimate_tokens(prompt) <= BUDGET
 
 
 def test_the_evidence_budget_is_not_eaten_by_the_instructions(picked):
