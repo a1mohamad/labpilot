@@ -15,7 +15,7 @@ class Boom(Exception):
     pass
 
 
-def run(plan=None, order=None):
+def run(plan=lambda question, a, b: PLAN, order=None):
     order = [] if order is None else order
 
     def measure(a, b):
@@ -26,8 +26,10 @@ def run(plan=None, order=None):
         measure=measure,
         fits=lambda sides, question: True,
         stuff=lambda sides, question: (("whole",), None),
-        search=lambda sides, question: (("found",), {"A": 1}),
-        make_prompt=lambda chunks, question, totals: ("the prompt", chunks[:1]),
+        search_one=lambda sides, query: (),
+        totals_of=lambda sides: {"A": 1},
+        rank_side=lambda question, pile: pile,
+        make_prompt=lambda chunks, **_: ("the prompt", chunks[:1]),
         generate=lambda prompt: "the result",
         plan=plan,
     )
@@ -65,13 +67,6 @@ def test_the_planner_runs_before_anything_reads_the_artifacts():
     run(plan, order)
 
     assert order == ["plan", "measure"]
-
-
-def test_a_graph_built_without_a_planner_has_no_plan():
-    final = run()
-
-    assert "plan" not in final
-    assert final["result"] == "the result"
 
 
 def test_an_error_in_the_planner_reaches_the_caller_unchanged():
