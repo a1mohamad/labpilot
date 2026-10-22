@@ -7,7 +7,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
 from labpilot.agent.claim import Claim
-from labpilot.agent.exract_claims import make_claims_node, wants_claim
+from labpilot.agent.extract_claims import make_claims_node, wants_claims
 from labpilot.agent.fan_out import fan_out
 from labpilot.agent.merge import make_merge_node
 from labpilot.agent.plan import Plan, Query
@@ -53,8 +53,8 @@ def build_graph(
     def pick(state: State) -> str | list[Send]:
         return "stuff" if state["fits"] else fan_out(state)
 
-    def after_search(state: State):
-        return "extract_claims" if wants_claim(state) else "respond"
+    def after_search(state: State) -> str:
+        return "extract_claims" if wants_claims(state) else "respond"
 
     builder = StateGraph(State)
     builder.add_node("plan", make_planner_node(plan))
@@ -84,7 +84,7 @@ def build_graph(
         builder.add_edge(first, step)
     builder.add_edge(first_steps, "measure")
     builder.add_conditional_edges("measure", pick)
-    builder.add("search_one", "merge")
+    builder.add_edge("search_one", "merge")
     if extract_claims is None:
         builder.add_edge("stuff", "respond")
         builder.add_edge("merge", "respond")

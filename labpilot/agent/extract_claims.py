@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 STEP = "extract_claims"
 
 
-def wants_claim(state: State) -> bool:
+def wants_claims(state: State) -> bool:
     return STEP in state["plan"].steps
 
 

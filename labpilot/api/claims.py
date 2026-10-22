@@ -23,7 +23,7 @@ from labpilot.store import UnknownArtifact, read_chunks
 
 logger = logging.getLogger(__name__)
 
-TOOL_DESCRIPTKION = "List the checkable facts that the refrence states."
+TOOL_DESCRIPTION = "List the checkable facts that the reference states."
 
 
 def _claims_problem(result: LLMResult, *, sources: list[str]) -> str | None:
@@ -55,13 +55,13 @@ def make_claims_extractor(
         sources = [chunk.header or chunk.source for chunk in stored]
         tool = Tool(
             name=CLAIMS_TOOL_NAME,
-            description=TOOL_DESCRIPTKION,
+            description=TOOL_DESCRIPTION,
             parameters=claims_schema(),
         )
 
         try:
             result = client.generate(
-                build_claims_prompt(parts, sources),
+                build_claims_prompt(parts, question),
                 max_tokens=CLAIMS_MAX_TOKENS,
                 tool=tool,
                 problem_with=partial(_claims_problem, sources=sources),
