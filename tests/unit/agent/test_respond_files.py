@@ -73,11 +73,11 @@ def test_a_state_with_no_last_answer_gives_an_empty_one():
 # ---- the summary node -------------------------------------------------------
 
 
-def test_an_empty_id_is_not_summarized():
+def test_an_empty_id_is_not_summarized_and_clears_the_old_summary():
     seen = []
     node = make_summarize_node("b", lambda artifact_id: seen.append(artifact_id))
 
-    assert node({"a": "A-1", "b": ""}) == {}
+    assert node({"a": "A-1", "b": ""}) == {"summary_b": ""}
     assert seen == []
 
 
@@ -124,7 +124,7 @@ def test_a_graph_with_one_file_summarizes_only_that_file():
     assert summaries_asked == ["A-1"]
     assert [call[0] for call in calls] == [1]
     assert final["summary_a"] == "summary of A-1"
-    assert "summary_b" not in final
+    assert final["summary_b"] == ""
 
 
 def test_a_graph_with_two_files_summarizes_both_and_asks_for_two_files():

@@ -664,6 +664,35 @@ def test_a_lone_subject_sent_in_the_first_slot_is_still_searched_as_side_b(
     assert comparison.totals == {"B": 60}
 
 
+def test_a_chat_that_sends_fewer_files_drops_the_summary_of_the_missing_one(
+    db, chat_tables
+):
+    """After a refresh the page sends only the files it remembers, in the SAME chat.
+
+    The real saver keeps every state key between messages, so a summary written
+    for a file in message 1 had to be cleared when message 2 did not send it.
+    """
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = FakeClient(rewrite_to="and what does B do?")
+
+    asking.ask(
+        db,
+        a,
+        b,
+        question="why do results differ?",
+        client=client,
+        thread_id="chat-fewer",
+    )
+    asking.ask(
+        db, "", b, question="and what does B do?", client=client, thread_id="chat-fewer"
+    )
+
+    assert "SUMMARY OF SIDE A" in client.prompts[0]
+    assert "SUMMARY OF SIDE A" not in client.prompts[-1]
+    assert "SUMMARY OF SIDE B" in client.prompts[-1]
+
+
 def test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects(
     db, chat_tables, monkeypatch, caplog
 ):

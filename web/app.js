@@ -10,6 +10,8 @@ const ARTIFACTS = "/api/v1/artifacts";
 const COMPARE = "/api/v1/compare";
 /** The chat this page is in. The server makes the id on the first answer. */
 const THREAD_KEY = "labpilot.thread";
+/** The stored files, kept the same way, so a refresh does not make the person upload again. */
+const STORED_KEY = "labpilot.artifacts";
 /** What each slot currently holds, once the server has stored it. */
 const stored = { A: null, B: null };
 
@@ -40,6 +42,7 @@ let waiting = false;
 for (const slot of document.querySelectorAll(".slot")) {
   wireSlot(slot);
 }
+restoreStored();
 refreshReady();
 
 function wireSlot(slot) {
@@ -80,6 +83,7 @@ async function upload(slot, side, source) {
   const label = source.url || source.file.name;
 
   stored[side] = null;
+  remember();
   refreshReady();
   slot.dataset.status = "working";
   state.className = "state working";
@@ -102,9 +106,8 @@ async function upload(slot, side, source) {
     }
 
     stored[side] = payload;
-    slot.dataset.status = "ready";
-    state.className = "state good";
-    state.replaceChildren(...describe(payload));
+    remember();
+    showReady(slot, payload);
   } catch (error) {
     slot.dataset.status = "error";
     state.className = "state bad";
@@ -112,6 +115,68 @@ async function upload(slot, side, source) {
   } finally {
     refreshReady();
   }
+}
+
+/** What a refresh must not lose: the ids are the only way back to a stored file. */
+function remember() {
+  try {
+    localStorage.setItem(STORED_KEY, JSON.stringify(stored));
+  } catch (error) {
+    // A private window can refuse storage. The page still works, it only forgets.
+  }
+}
+
+/** Put the slots back the way they were before the refresh. */
+function restoreStored() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(STORED_KEY) || "null");
+  } catch (error) {
+    return;
+  }
+  if (!saved) return;
+
+  for (const slot of document.querySelectorAll(".slot")) {
+    const payload = saved[slot.dataset.side];
+    // Only something that looks like an ingest reply comes back.
+    if (!payload || typeof payload.artifact_id !== "string") continue;
+    stored[slot.dataset.side] = payload;
+    showReady(slot, payload);
+  }
+}
+
+/** The slot of a file that is stored. */
+function showReady(slot, payload) {
+  const state = slot.querySelector("[data-state]");
+  slot.dataset.status = "ready";
+  state.className = "state good";
+  state.replaceChildren(...describe(payload));
+}
+
+/** The server no longer holds a file this page remembered: empty its slot. */
+function forgetMissing(error) {
+  if (!error || error.code !== "unknown_artifact") return error;
+
+  let cleared = false;
+  for (const slot of document.querySelectorAll(".slot")) {
+    const held = stored[slot.dataset.side];
+    if (!held || !error.message.includes(held.artifact_id)) continue;
+
+    const state = slot.querySelector("[data-state]");
+    stored[slot.dataset.side] = null;
+    slot.dataset.status = "empty";
+    state.className = "state";
+    state.textContent = "";
+    cleared = true;
+  }
+  if (!cleared) return error;
+
+  remember();
+  refreshReady();
+  return {
+    ...error,
+    message: "A file this page remembered is no longer stored, so its slot was emptied. Add it again.",
+  };
 }
 
 /** What came back, in the order a reader cares about. */
@@ -191,7 +256,7 @@ ask.addEventListener("submit", async (event) => {
     });
     const payload = await response.json();
     if (response.ok) showReport(payload);
-    else showFailure(payload.error);
+    else showFailure(forgetMissing(payload.error));
   } catch (error) {
     showFailure({ code: "network_error", message: String(error), request_id: "-" });
   } finally {

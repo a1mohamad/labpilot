@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pytest
 
+from labpilot.api.errors import UnknownArtifactId
 from labpilot.api.schemas import (
     CompareRequest,
     CompareResponse,
@@ -153,6 +154,48 @@ def test_the_request_takes_no_ids_one_id_or_two():
     assert CompareRequest(question="why?").a is None
     assert CompareRequest(question="why?", b="B-1").b == "B-1"
     assert CompareRequest(question="why?", a="A-1", b="B-1").a == "A-1"
+
+
+def test_the_page_keeps_its_stored_files_across_a_refresh():
+    """The chat id already survives a refresh; the files must too.
+
+    The ids are the only way back to a stored file, and the page held them in a
+    variable that a refresh empties. The person then had to upload the same
+    file again and wait for the whole ingest again. Saving and restoring have to
+    use the same key, or one half silently does nothing.
+    """
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert 'const STORED_KEY = "labpilot.artifacts"' in source
+    assert "localStorage.setItem(STORED_KEY" in source
+    assert "localStorage.getItem(STORED_KEY" in source
+    # and it is really CALLED once, before the first refreshReady() of the page
+    assert "\nrestoreStored();\nrefreshReady();" in source
+
+
+def test_the_page_saves_every_time_an_upload_changes_what_is_stored():
+    """Saving once is not enough: a refresh in the middle of a change must not
+    bring back a file that was already replaced or dropped.
+
+    An upload changes `stored[side]` twice, to null when it starts and to the
+    reply when it ends, and the line after each one has to save.
+    """
+    source = APP_JS.read_text(encoding="utf-8")
+    changes = re.findall(r"stored\[side\] = (?:payload|null);\n\s*(\S+)", source)
+
+    assert len(changes) == 2, "the upload no longer changes stored[side] twice"
+    assert changes == ["remember();", "remember();"], changes
+
+
+def test_the_page_forgets_a_file_the_server_says_it_no_longer_holds():
+    """A remembered id may stop existing (old artifacts will be cleaned up).
+
+    The page recognises that by the error CODE, so the code it compares with has
+    to be the one the server really sends.
+    """
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert f'"{UnknownArtifactId.code}"' in source
 
 
 def test_the_page_keeps_the_chat_id_the_server_sent():
