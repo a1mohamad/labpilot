@@ -168,6 +168,35 @@ text, so it never holds LESS than CLAUDE.md and may hold more.
   both were updated.
 - Claude does this without being asked, every time.
 
+### Review pass after every slice, and a hand-off prompt at the end of every session
+
+*Two rules added 2026-10-21, at the user's request. Both are Claude's job, and both are done
+without being asked.*
+
+**1. After the last lesson of every slice, run a full review pass before the next slice
+starts.** Look at the whole system from above, not only at the new files: Step 2 so far, the
+slice, and the whole app. The standing question is the same as always: *which real failure is
+still unprotected?* The steps:
+
+- Read the code that joins the new slice to the rest: the wiring in `api/`, the state, the
+  saver, the page contract.
+- List the joins that no test crosses (a real database, the real saver, two threads at once, a
+  provider that fails) and add the missing tests.
+- Break one line for each new invariant test and read WHICH test fires (mutation testing; keep a
+  copy of the file aside and restore from the copy, never with `git checkout`).
+- Look for dead code and for scripts that still name removed functions.
+- Run the whole suite (unit, api and integration, without `--run-smoke`) and fix what is red.
+- Update CLAUDE.md and DETAILS.md together, then commit.
+- Write the pass down as a section "The closing review of slice N" (examples: 17.21 and 17.23).
+
+**2. At the end of a session, Claude gives the user the best prompt to continue in a new
+session.** Claude does this when the session is long or when the user asks. The prompt has a
+normal length, not a very long one: where we stopped (slice, branch, last commit), what to read
+first (section numbers in the two docs), the next job, the rules that bite (the user types the
+product code, nothing is committed on `main`, two docs in step), what is not done, and the first
+command to run. Claude sends it as the last message of the session. A copy of the current
+prompt lives in the memory file of the Step 2 plan.
+
 ### Modularization — the whole app, not only `agent/` (rule added 2026-10-15, D45)
 
 *The user asked for this more than once, and it was forgotten. It is written
@@ -540,6 +569,19 @@ and it means the user never has to read instructions first:
 Because each capability declares its artifact precondition, the agent knows
 exactly what is absent. It never fails silently and never pretends.
 
+#### Notes for Step 3 from slice 6 (2026-10-22)
+
+The page of Steps 0 to 2 is throwaway. These are the limits it taught us, so the real page does not repeat them.
+
+- **A chat and its files must be kept together on the SERVER, not in one browser.** The page keeps two global `localStorage` keys, `labpilot.thread` and `labpilot.artifacts`. They are not tied to each other: they are right only while there is one chat per browser, and the page has no "new chat" button. The saved chat already holds the last `a`, `b`, `history` and `last_answer`, so a route such as `GET /chats/{thread_id}` can give a page the files and the earlier messages in any browser, and a real "new chat" is then safe.
+- **"Remove this file from the chat" means STOP SENDING ITS ID.** It does not delete the artifact. The server already accepts 0, 1 or 2 ids at every message and clears the summary of a file that is no longer sent (D62, 17.24). Replacing a file already works: a new upload takes the slot.
+- **Deleting old artifacts (D23, 17.6) will make `404 unknown_artifact` normal.** The page already empties the slot and says "add it again". The real message should say that the file was removed to free space.
+- **Show what the server did:** the rewritten question of a follow-up, which files an answer used, and `n of m` parts for each side (the last one exists).
+- **The prefilled question follows the number of stored sides** (version 2 of the three fixed strings). Keep the rule that the box is never sent empty, because its text is also the search query.
+- **Ids carry their side** (`A-...`, `B-...`), and `ask()` uses that to put a lone artifact in its own slot. If the id format changes, `_in_their_own_slots` changes with it.
+- **A refresh while a question is on its way loses that answer.** The saved chat holds an answer only after the message has finished. Showing progress (SSE) and giving the page a way to ask for the answer of a message it sent belong together.
+- **An "Optimize prompt" button (an idea of the user, 2026-10-22, D63).** It must work at turn 0, with no history and even with no file, so it needs its OWN small instruction: it clarifies and structures the question, and it does not resolve "it" or "the second one" (that is the job of the follow-up rewrite). It is a small new route that calls one cheap model and returns the new text; the page puts it in the box, so the person can edit it before sending. Showing the rewrite is also the safe form: today the follow-up rewrite is silent, and a wrong one is invisible. Rules: a question that is already good comes back unchanged; the prefilled default question needs no button; each click spends one call of a limited quota (use the cheap chain of slice 11); the saved history keeps ONE of the two questions (decide which, and show the rewritten one). Low priority: after chats kept on the server, "new chat" and the progress display (SSE).
+
 ### Reading a repository — Step 1, recorded 2026-08-11
 
 All three input kinds collapse to one shape after the first step:
@@ -647,20 +689,20 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
-**Phase: STEP 2 IS IN PROGRESS — status of 2026-10-14. STEP 0 AND STEP 1 ARE COMPLETE AND
+**Phase: STEP 2 IS IN PROGRESS — status of 2026-10-21. STEP 0 AND STEP 1 ARE COMPLETE AND
 CLOSED.** Step 1 was nine slices (1, 1b, 2, 3, 4, 5, 6, 7 and 8), all done, and slice 8 ran
 three times (v1, v2, v3). Step 2 is planned as FOURTEEN slices (0 to 13, rewritten on 2026-10-14, see section 21): **slices 0 (does
 LangGraph fit), 1 (the latency ranking) and 2 (the skeleton and chat memory) are done, and slice 3
-(`summarize` for A and B at the same time) is DONE: lessons 1 to 3 on 2026-10-15 to 17 (17.16, 17.17) and the D45 task, a check of the whole app and the split of `api/services.py`, on 2026-10-18 (17.18). Slice 4, the planner, is DONE: lesson 1 (function calling) on 2026-10-18 (17.19), lessons 2 to 5 and the map with signatures and first sentences on 2026-10-18/19 (17.20), and a closing review of slices 3 and 4 on 2026-10-19 (17.21). The planner and the summarizer are built and tested but NOT wired into `ask()` (slice 5); M5 and M16 are owed (moved to slice 13 on 2026-10-20). Slice 5, run the plan, is IN PROGRESS: lesson 1 (`Send`, a fan-out whose size is decided while the program runs) is DONE on 2026-10-19 (17.22); lessons 2 and 3 are next.** The user writes the graph code lesson by lesson, so
-`labpilot/agent/` holds the first real graph (`build_graph`: measure, stuff or search, prompt, generate,
-remember). `ask()` runs it, and with a `thread_id` the chat is saved in Postgres. Read
-[Where Step 2 stands](#where-step-2-stands--updated-2026-10-19) below and
+(`summarize` for A and B at the same time) is DONE: lessons 1 to 3 on 2026-10-15 to 17 (17.16, 17.17) and the D45 task, a check of the whole app and the split of `api/services.py`, on 2026-10-18 (17.18). Slice 4, the planner, is DONE: lesson 1 (function calling) on 2026-10-18 (17.19), lessons 2 to 5 and the map with signatures and first sentences on 2026-10-18/19 (17.20), and a closing review of slices 3 and 4 on 2026-10-19 (17.21). Slice 5, run the plan, is DONE: lesson 1 (`Send`, a fan-out whose size is decided while the program runs) on 2026-10-19 (17.22), lessons 2 and 3 (one search for each query, the merge, the pool, `respond` and the summaries) on 2026-10-20 and 21, the move to `search_one` only (D57) and its closing review on 2026-10-21 (17.23). The planner and the summarizer are wired into `ask()` now; M5 and M16 are owed (slice 13). Slice 6, follow-ups and `respond` for 0, 1 and 2 files, is DONE: lesson 1 (the follow-up rewrite and the last answer) on 2026-10-21, lesson 2 (one prompt function, three instructions, the budget of 30,000, the exact outline charge, the API and the page) on 2026-10-22, and its closing review (17.24). The instructions measured in slice 6 are a SMALL sample and M18 re-measures them in slice 13. Slice 7 is next.** The user writes the graph code lesson by lesson, so
+`labpilot/agent/` holds the real graph (`build_graph`: plan and two summaries together, measure, stuff or
+one search for each query then merge, respond, remember). `ask()` runs it, and with a `thread_id` the chat is saved in Postgres. Read
+[Where Step 2 stands](#where-step-2-stands--updated-2026-10-21) below and
 [STEP 2 — the plan](#step-2--the-plan-recorded-2026-09-22) before anything else. The plan
 OVERTURNS older text in two places: no findings score has ever been measured on the search
 path (C3), and the planner cannot use `build_context` (C5; the planner's map is now built,
 section 12).
 
-**1374 passed, 120 skipped, ruff clean — measured 2026-10-19, full suite without `--run-smoke`** (run `pytest` for the current
+**1653 passed, 120 skipped, ruff clean — measured 2026-10-22, full suite without `--run-smoke`** (run `pytest` for the current
 count; a number written here goes stale on the next commit). The RAG system ingests a
 file, a `.zip` or a git URL; stores it in pgvector; and answers a question by
 stuffing when the pair fits and by search + fusion + gate + rerank when it does
@@ -768,7 +810,7 @@ generation-time problem below — it cannot generate.
 >                                       a tier declined ->     VECTOR_TOP_N  15
 >                                     select, equal share      SIDE_SHARE    0.5
 >                                     outline ladder           OUTLINE_BUDGET 4,000
->                                     build_prompt             PROMPT_BUDGET 26,000
+>                                     build_prompt             PROMPT_BUDGET 30,000 (26,000 until 2026-10-22)
 >                                     generate                 REPORT_MAX_TOKENS 32,000
 > ```
 >
@@ -893,7 +935,7 @@ generation-time problem below — it cannot generate.
 > product (the text budget by `daily_text_budget`, the batch by `max_batch_size` plus pacing —
 > see the Google embed block above), and the script's private copy was deleted on 2026-09-28.
 
-### Where Step 2 stands — updated 2026-10-19
+### Where Step 2 stands — updated 2026-10-21
 
 | slice | what it is | state |
 |---|---|---|
@@ -902,8 +944,8 @@ generation-time problem below — it cannot generate.
 | 2 | the skeleton: a graph replaces `ask()`, plus a checkpointer and `thread_id` | **DONE 2026-10-14** — lessons 1 to 4 (part 3 on 2026-10-13), then a closing review that added 11 tests (sections 17, 17.10 to 17.14) |
 | 3 | `summarize` for A and B, run at the same time (fan-out, fan-in) | **DONE 2026-10-18** — lesson 1 DONE 2026-10-17 (the toy file `examples/langgraph/graph_with_parallel.py`: 2.0 s in a line, 1.0 s in parallel; section 17.16). Lessons 2 (the summary nodes in the graph) and 3 (the real summary function) DONE 2026-10-17 (section 17.17). The summary of a BIG artifact is weak on purpose for now and is owed in slice 12 (D46). The slice ended with the modularization task of D45 (17.18): a full check of the whole app, and `api/services.py` split into six files |
 | 4 | the planner: the outline is used, one call returns the steps and the queries | **DONE 2026-10-19** (built and tested; NOT wired into `ask()` until slice 5) — lesson 1 (function calling) 2026-10-18 (17.19); lessons 2 to 5 and the map with signatures and first sentences 2026-10-18/19 (17.20); a closing review of slices 3 and 4 on 2026-10-19 that found a typo breaking every call (17.21). M5 and M16 are owed (moved to slice 13 on 2026-10-20) |
-| 5 | run the plan: one search per query at the same time, the merge step (duplicates removed), the final `respond` node | **IN PROGRESS** — lesson 1 DONE 2026-10-19 (the toy file `examples/langgraph/graph_with_send.py`: `Send` runs one node for each query, 1.0 s for 1, 3 and 5 queries; section 17.22). Lesson 2 (the real fan-out, the search of one query and the merge) and lesson 3 (`respond` and the wiring) are next |
-| 6 | follow-ups: rewrite a follow-up question into a standalone one | not started |
+| 5 | run the plan: one search per query at the same time, the merge step (duplicates removed), the final `respond` node | **DONE 2026-10-21** — lesson 1 2026-10-19 (the toy file `examples/langgraph/graph_with_send.py`, 17.22); lessons 2 and 3 2026-10-20/21 (`search_one`, `fan_out`, `merge`, `respond`, the pool of D55, the summaries in the report); the old one-shot search was removed on 2026-10-21 (D57) and a closing review of the slice was done (17.23) |
+| 6 | follow-ups, and `respond` for 0, 1 and 2 files: rewrite a follow-up into a standalone question; `respond` picks its instruction by how many files exist and the API accepts 0 or 1 id (D56) | **DONE 2026-10-22** — lesson 1 (the rewrite and `last_answer`) 2026-10-21; lesson 2 (one prompt function, `CHAT` / `ONE_FILE` / `TWO_FILES`, the budget of 30,000, the exact outline charge, the API and the page take 0 or 1 id) 2026-10-22; closing review → 17.24 |
 | 7 | claims, one check per claim, the bounded re-search loop | not started |
 | 8 | the gate: halt when A and B do not correspond | not started |
 | 9 | nodes for B alone: `find_missing` and `find_bugs` | not started |
@@ -977,6 +1019,10 @@ generation-time problem below — it cannot generate.
 - **2026-10-18/19** — slice 4 lessons 2 to 5 DONE: the planner node, the check in code, tool calls in the LLM layer ("detect, never configure"), the real planner `api/planning.py`, a wrong plan goes to the next tier (D50), the map budget is computed per call (D51), and the map shows signatures and first sentences (D52, `prompts/_hints.py`) → 17.20.
 - **2026-10-19** — the closing review of slices 3 and 4: a one-token typo (`total_budget` became a tuple) made every `LLMClient()` call fail, found by running the suite; 20 new integration, architecture, tool-call, docs and smoke tests; both docs updated; slice 4 committed on `feat/planner` and replayed on `main`, one file per commit → 17.21. **Slice 5 (run the plan) is next.**
 - **2026-10-19 (later)** — slice 5 lesson 1 DONE: `Send`, the fan-out whose size is decided at run time (the planner returns 1 to 12 queries, so the nodes cannot be drawn in advance). The user typed the toy file `examples/langgraph/graph_with_send.py` on `feat/plan-to-run` and committed it (`00cb059`). No product code changed → 17.22.
+- **2026-10-20** — slice 5 lesson 2 DONE: the design changed first (D53: rerank ONCE for each side; D54: 2 to 5 queries, the cap is 6, the question is always searched), then the user typed `search_one`, `fan_out`, `merge` and `rank_pile`, and the pool of database connections (D55, 8 searches in 1.7 s instead of 12.9 s) → 17.22, 17.23.
+- **2026-10-20/21** — slice 5 lesson 3 DONE: `respond` replaces `prompt` and `generate`, the summaries are made together with the planner and written into the report, the report instruction asks for fixes (D49), the smoke run gets a database, and a wrong libpq name in the pool was fixed → 17.23.
+- **2026-10-21** — the old one-shot search was removed (D57), the review pass of the new rule was done (4 groups of tests, 8 deliberate breaks), the docs got the two new rules, and the full suite was run → 17.23. (Slice 6 came next.)
+- **2026-10-21 to 22** — slice 6 DONE: the follow-up rewrite and `last_answer` (D58), one prompt function and three instructions (D59, D60), the budget of 30,000 with an exact outline charge and a "fits" verdict that keeps every part (D61), and the API and page that take 0, 1 or 2 ids (D62). The closing review found 4 real defects (a misspelled name, a call that crashed every 0-file question, a lost-parts case, a lone artifact in the wrong slot). **The instructions measured here are a SMALL sample (M18).** → 17.24. **Slice 7 (claims, check, retry) is next.**
 
 **The blocking problem of the whole step is GENERATION TIME** (the red block at the top of this section).
 Read it before designing a node.
@@ -1009,6 +1055,7 @@ Read it before designing a node.
   `git status` and `git diff` before rewriting anything; `git checkout -- <file>` restores to whatever HEAD
   is NOW (see the mutation-testing rule in Conventions).
 - **A one-token typo can break every call, and only the suite shows it.** `total_budget: float = (DEFAULT_TOTAL_BUDGET,)` (a trailing comma made a tuple) came in with the lesson 5 commit and every `LLMClient()` call failed before its first request. Run the whole suite before each commit, not after (17.21).
+- **A save of a real size fails in a way a small test never shows.** psycopg's `executemany` runs in pipeline mode, and libpq has a bug there (PostgreSQL bug report #18907): a large message over SSL fails with `SSL error: bad length` when the network takes it in pieces. The chat save of the search path (about 150 KB) failed in about half the runs of one afternoon and in none the next hour. `open_saver` sends one statement at a time now; `store/writer.py` still uses `executemany` and has not been tried with a big upload through SSL (17.23).
 - **Never size a benchmark to the machine you wish you had.** A 30,000-row HNSW build with
   `maintenance_work_mem=512MB` took the Supabase free instance down on 2026-09-05. Run that class of
   work on a local container.
@@ -1029,10 +1076,7 @@ branches — never resume there:** `feat/reranking` (it holds an OLDER `test_llm
 `feat/selector` (an older squashed variant; the work lives on `main`, re-committed piece by piece), and `feat/jev-probe`
 (byte-identical to `main`). This project re-commits work onto `main` piece by piece instead of merging, so hashes differ
 while the content is the same. The branches of finished slices (`feat/parallel-nodes`, `refactor/split-services`,
-`feat/planner`) are kept. **Slice 5 is on `feat/plan-to-run`** (made by the user from `main` at `0ac80d4`, checked with git on
-2026-10-19: one commit so far, `00cb059`, the toy file of lesson 1; whether it is pushed was not checked). Claude suggested a
-NEW branch from `main` and not `feat/planner`, because `feat/planner` is 47 commits behind `main` (they split at `08a355d`)
-and holds slice 4 as 6 older commits.
+`feat/planner`) are kept. **Slice 5 is on `feat/plan-to-run`** (made by the user from `main` at `0ac80d4`). It holds the toy file of lesson 1 (`00cb059`), lessons 2 and 3 as the user's commits `3a46eb3` to `839ca21`, and the move to `search_one` only, the closing review and these docs as commits made by Claude on 2026-10-21 at the user's request (commit to this branch only, nothing on `main`). Whether the branch is pushed was not checked. Claude suggested a NEW branch from `main` and not `feat/planner`, because `feat/planner` is 47 commits behind `main` (they split at `08a355d`) and holds slice 4 as 6 older commits. **Slice 6 is on `feat/follow-ups`** (made by the user from the tip of `feat/plan-to-run`: the user's commits `4661ea0` and `2a1d812`, a fix and tests by Claude `dbdff35` and `2bef413`, and the closing review, the door and these docs by Claude on 2026-10-22 at the user's request, pushed to `origin/feat/follow-ups`). **Slice 7 should start on a NEW branch from the tip of `feat/follow-ups` (ask the user first).**
 
 ### Older status notes
 
@@ -9642,7 +9686,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 3 | **`summarize` + parallel nodes** | the `summarize` node; A and B summarized at the same time (fan-out, fan-in, reducers). The slice ENDS with the modularization task (D45): a full read-only check of the whole app, then the split of `api/services.py` | medium, 3 lessons |
 | 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 5 lessons, **DONE 2026-10-19** (revised 2026-10-18, see 17.19 and 17.20): the small one on function calling (D34, DONE), the planner node, the check in code, tool calls in the LLM layer, the real planner function |
 | 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31) and carries the fix part (D49); "stuff when it fits" stays | **heavy**, 3 lessons; lesson 1 DONE 2026-10-19 (17.22) |
-| 6 | **follow-ups** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6) | light, 1 lesson |
+| 6 | **follow-ups and `respond` for every case** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6). **Added 2026-10-21 (D56):** `respond` chooses its instruction by how many files exist (none: plain chat and code, one: `SCAN`, two: the report), and `ask()`, the API and the page accept 0 or 1 artifact id | medium, 2 lessons, **DONE 2026-10-22** (17.24) |
 | 7 | **claims, check, retry** | `extract_claims`; each claim searches B with its own text; one check per claim at the same time; the bounded retry loop (D4); the findings list; a small A merges with the planner (D40) | **heavy**, 3 lessons |
 | 8 | **the gate** | halt when A and B do not correspond, on a threshold calibrated per embedder; the answer is then the two summaries from slice 3 | medium, 2 lessons |
 | 9 | **nodes for B alone** | `find_missing` (the claim table read by chunk) and `find_bugs` (a scan of B) | medium, 2 lessons |
@@ -9839,7 +9883,7 @@ Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
 | M2 | ~~latency ranking of all tiers~~ **MEASURED 2026-09-29 — 50 tiers ranked at a ~500-token answer. Report length is NOT measured. See [section 15](#15-slice-1-is-measured--every-tier-ranked-by-speed-2026-09-30)** | done |
 | M3 | ~~which tiers support function calling~~ **MEASURED 2026-09-23 — 23 of the 24 tiers that answered. See [section 9](#9-m3-is-measured--function-calling-2026-09-23)** | done |
 | M4 | the raw question **vs** planner-written queries **vs** claims, scored against `EXPECTED.md`. Decides whether claims earn their cost (D39) | 13 |
-| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does. **AND THE BUDGET SWEEP** (added 2026-09-28): fixed **1k · 4k · 8k · 12k** against a **DYNAMIC** budget (the tier's input limit / 1.1, minus what the rest of the prompt really costs). Score the queries on how many known divergence locations in `EXPECTED.md` / `queries.json` they reach, not on how they read. Record planner latency beside it, and which tier answered. **A THIRD ARM (added 2026-10-18, D47):** the map PLUS the stored summaries of A and B, against the map alone. Count any wait for a summary as planner latency. Measure a small artifact (summary read whole) and a big one (summary cut) as two separate cases **AND THE QUERY CAP** (added 2026-10-18): `MAX_QUERIES` in `agent/plan_check.py` (12 until 2026-10-20, 6 now) is a first guess that only stops a runaway list, not a measurement. Record how many queries the planner writes for each question, and set the cap above the largest good plan and below a runaway, with the cost of one search (embed, search, rerank) and the quota beside it. | 13 (was 4) |
+| M5 | the planner **with** the corpus map vs **without** — a planner with no map is guessing, which is what HyDE does. **AND THE BUDGET SWEEP** (added 2026-09-28): fixed **1k · 4k · 8k · 12k** against a **DYNAMIC** budget (the tier's input limit / 1.1, minus what the rest of the prompt really costs). Score the queries on how many known divergence locations in `EXPECTED.md` / `queries.json` they reach, not on how they read. Record planner latency beside it, and which tier answered. **A THIRD ARM (added 2026-10-18, D47):** the map PLUS the stored summaries of A and B, against the map alone. Count any wait for a summary as planner latency. Measure a small artifact (summary read whole) and a big one (summary cut) as two separate cases **AND THE QUERY CAP** (added 2026-10-18): `MAX_QUERIES` in `agent/plan_check.py` (12 until 2026-10-20, 6 now) is a first guess that only stops a runaway list, not a measurement. Record how many queries the planner writes for each question, and set the cap above the largest good plan and below a runaway, with the cost of one search (embed, search, rerank) and the quota beside it. **ANOTHER ARM (added 2026-10-22, D63):** the planner returns a cleaned question beside its queries (asked FIRST in its answer), used for the search only. Score the queries as above, and add about 10 GOOD questions that must come back unchanged (count the unchanged rate, and read by hand any change of meaning). M4 gets the same arm. | 13 (was 4) |
 | M9 | **A's FULL TEXT in the planner call** (question + map + the paper) against question + map alone. When A is small this merges the planner and `extract_claims` into ONE call. Added 2026-09-28. **ANSWERED yes by the user on 2026-10-14 (D40); the time it saves is measured in slice 7** | 7 |
 | M6 | **a findings score on the SEARCH path** — never once measured, see C3. This is the baseline Step 2 must beat | 13 |
 | M7 | an exact-match tool vs vector alone (D8) | 13 |
@@ -9847,6 +9891,7 @@ Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
 | M15 | **`verify`: an LLM with function calling against Jev** (added 2026-10-18, the user's call, D48). The same claims and the same evidence chunks go to both. Score the verdicts (match / mismatch / absent) against the known answers, and record the speed of the checks, the cost and how often each one fails. Run the LLM arm on at least two tiers, because the chain falls back. Run the Jev arm twice: all claims in one call, and one claim per call, because Jev's answer depends on the other questions in the same call. Jev gives only the verdict; the quote comes from the best chunk found by code. Name the corpus beside every number: `quora_siamese` is the only pair with known verdicts | 7 |
 | M16 | **the planner's list of steps: one LLM call against Jev** (added 2026-10-18, the user's call, D48). Arm A: ONE LLM call returns the steps and the queries (function calling). Arm B: Jev answers one yes/no question per allowed step, then an LLM writes the queries, one after the other. Arm C: the same as B, but the two calls run at the same time (both need only the question and the map). Score the steps against about 30 questions, each with the correct plan (the set planned in 19.5, point 5), with the LLM on at least two tiers. Score the queries as M5 does (how many known divergence locations they reach). Record the planner's time and cost. The user's worry is that the LLM steps may be fast but less exact; arm C tests the other worry, that Jev is slower The same questions test the allowed steps for each file count (`STEPS_BY_FILES` in `agent/plan_check.py`, a first proposal): count how often a correct plan needs a step that the list does not allow. | 13 (was 4) |
 | M17 | **fix quality** (added 2026-10-18, D49). For the known findings of `quora_siamese` (and of the new pair from slice 12), is the fix that the report proposes right? Score each proposed fix as right, partly right, wrong or not given, and count the fixes that would break the code. Run it for the one-artifact report and for the two-artifact report, on at least two tiers. Compare `respond` writing the fix in the same call against a separate `propose_fix` call after the findings, and record the extra time and the extra calls. `EXPECTED.md` needs a "right fix" column first. As with every answer key, it may be used to score the fixes and never to write the prompt | 13 |
+| M18 | **the instructions and prompts of slice 6, on more data** (added 2026-10-22). Everything measured in slice 6 is a SMALL sample: one pair, at most 8 tiers, one run per cell, regex screens, 5 calls lost to Google 503. Re-measure `CHAT`, `ONE_FILE` and `TWO_FILES` (and `REPORT` as the baseline) on the new pair of slice 12 and on `quora_siamese`, on at least 6 tiers including cheap ones, with several worded versions of each question (at temperature 0 a repeat gives the same text), on the SEARCH path and not only on a pair that is almost whole. Score findings against an answer key with the impact column, never by regex alone, and score the "do the causes add up" verdict separately. Also test: the last answer inside the two-file prompt for follow-ups that need its exact words; the section order and the length limit; one call for the answer and a second for the arithmetic, or the verdict from Jev (M15 style); and whether a better approach than one long instruction exists. This may change the instructions, the prompts or the approach. D60 is a first choice, not a decision | 13 |
 
 **The cache pays for most of this.** `.cache/` holds 2.4GB: 26 corpora already
 embedded, 50 rerank result files, 18 top-N runs. M4 and M7 can reuse it instead
@@ -11154,8 +11199,8 @@ are estimates, not promises.
 | **2 (DONE 2026-10-14: lessons 1 to 4 and the closing review, 17.14)** | replace `ask()` with a graph that gives the same answer, and add chat memory (checkpointer + `thread_id`) | **heavy, 4** |
 | 3 | `summarize` for A and for B at the same time (two independent steps run together) | medium, 3 |
 | 4 | the planner: one call chooses the steps and writes the queries. **Preceded by a small lesson on function calling (D34)** | medium, 5, **DONE 2026-10-19** (17.19, 17.20) |
-| 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3** (lesson 1 DONE 2026-10-19, 17.22) |
-| 6 | follow-up questions: rewrite them into standalone ones | light, 1 |
+| 5 | run the plan: a search for each query at the same time, merge and remove duplicate chunks, the final `respond` node | **heavy, 3, DONE 2026-10-21** (17.22, 17.23) |
+| 6 | follow-up questions: rewrite them into standalone ones, and `respond` for 0, 1 and 2 files | medium, 2, **DONE 2026-10-22** (17.24) |
 | 7 | the loop: claims, check each one, search again at most 2 times | **heavy, 3** |
 | 8 | a step that can STOP the graph (the gate) | medium, 2 |
 | 9 | the nodes for problems in B alone: `find_missing` and `find_bugs` | medium, 2 |
@@ -11168,9 +11213,7 @@ are estimates, not promises.
 (2) a list that grows, with a reducer; (3) chat memory: the checkpointer and the
 `thread_id`; (4) cut `ask()` into steps that receive their functions from `api/`.
 
-**How a new session continues:** slice 2 is DONE (17.14, and 17.15 for what came after). Read 17.14 and 17.15 first, check git (branch,
-status, `git log -5`), and continue slice 3 (`summarize` for A and for B at the same time: fan-out and
-fan-in; medium, 2 lessons). **Lesson 1 is DONE (17.16). Lessons 2 and 3 are DONE (2026-10-17, 17.17); the next job is the D45 task, then slice 4.** **Two rules the user set (17.13) still hold: they type ALL product code
+**How a new session continues (updated 2026-10-22):** slices 0 to 6 are DONE. Read the Phase paragraph of Current Status and the last section of 17 (17.24), check git (branch, status, `git log -5`), and continue with slice 7 (claims, check, retry; D4, D39, D40). The prompt that the last session gave the user is the best start (Working Rules, "Review pass after every slice, and a hand-off prompt at the end of every session"). **Two rules the user set (17.13) still hold: they type ALL product code
 (only tests are copy-paste), and a step is given WHOLE in one message.** Lessons call no model, so
 the exit-ISP check is not needed until the first live test. The chat tables must exist in the
 database the app uses: run `python -m scripts.setup_checkpoints` once from the repository root
@@ -12045,6 +12088,212 @@ change: `test_plan_check` (12 queries to 6), `test_planner` (the old wording) an
 path (`retrieved_chunks` and its only reason to exist, `rerank_and_cut`), and decide what to do with
 `rerank_and_cut` and its tests.
 
+#### 17.23 Slice 5 is DONE: lessons 2 and 3, the pool, the move to `search_one` only, and the closing review — 2026-10-20 and 21
+
+**Status: DONE.** Slice 5 is closed. The user typed lessons 2 and 3 on `feat/plan-to-run`
+(commits `3a46eb3` to `839ca21`). On 2026-10-21 Claude removed the old search, ran the review
+pass of the new rule (Working Rules) and wrote these notes, at the user's request, as commits on
+the same branch: `b47987f` (the move to `search_one` only), `511b63f` (the saver fix, below), `9a3986d` (the review tests) and the docs commit after them. Nothing is on `main` and nothing was pushed.
+
+**Lesson 2 (2026-10-20): one search for each query, all at the same time.**
+
+- `agent/search_one.py` is the node that searches ONE query and writes the chunks into the state
+  key `found` (a list that grows, with the add rule).
+- `agent/fan_out.py`: `fan_out(state)` makes one `Send` for each query. The user's question is
+  searched on every side that has a file, first, and then the planner's queries come (D54). With
+  no side that has a file it raises `ValueError` ("nothing to search"); that cannot happen today
+  because `ask()` needs both ids (see the open items).
+- `agent/merge.py`: `merge_chunks` mixes the lists by rank (the best chunk of each query first)
+  and drops duplicates (the key is the artifact id and the chunk index). The merge node makes one
+  pile for each side, calls the injected `rank_side(question, pile)` ONCE for each side with the
+  user's original question (D53), asks `totals_of(sides)` how many parts each side has, and empties
+  `found` with `Overwrite([])`, so the next message does not inherit the chunks of this one.
+- `api/searching.py`: `retrieve_query(conn, sides, side=, text=)` is embed, vector search and
+  keyword fusion, and it never reranks. `rank_pile(question, pile)` reads the first
+  `RERANK_WINDOW` (20) chunks of the pile, asks the chain for the whole order, keeps `RERANK_TOP_N`
+  (10), and keeps `VECTOR_TOP_N` (15) from the whole pile when no tier answered. There is no skip
+  gate: the best scores of different queries cannot be compared.
+- D55, the pool of database connections: eight searches that run together need eight connections.
+  `store.make_pool()` builds a CLOSED pool of `POOL_SIZE` = 8, and the first search opens it. The
+  lifespan builds it and closes it. `ask(..., pool=)` hands it to `_ask_graph`, and `search_one`
+  takes one connection from it for each query. Measured with 8 searches of 7 quick round trips each:
+  one shared connection 12.9 s, a pool of 2 6.2 s, of 4 4.1 s, of 8 1.7 s. Not measured: the real
+  queries, the memory, and the connection limit of the Supabase session pooler.
+
+**Lesson 3 (2026-10-20 and 21): `respond`, and the summaries join the answer.**
+
+- `agent/respond.py` is the one final node (D31). It replaces the old `prompt` and `generate`
+  nodes: it reads `chunks`, `question`, `totals` and the two summaries, builds the prompt with the
+  injected `make_prompt`, and calls `generate`.
+- The summaries are written on every message, at the same time as the planner: `plan`,
+  `summarize_a` and `summarize_b` all start from `START`, and `measure` waits for all three, so
+  `respond` can read the summaries on the stuff path and on the search path. A summary that fails
+  on every tier becomes an empty text, and the report is written without the block, because a
+  summary is a guide and not the evidence.
+- `prompts/builder.py` gained `SUMMARIES_NOTE` and a summaries block that sits before the parts.
+  The report instruction asks in its section 12 (CORRECTIONS) for corrected code or a better
+  algorithm, in the order of section 8, with a stated confidence (D49). The size guard for the
+  instructions is 2,200 bytes (`COLLAPSE_BYTES`).
+- **A real defect found:** `store.make_pool` passed `connection_timeout` to libpq, whose name is
+  `connect_timeout`. Fixed.
+- `.github/workflows/smoke.yaml` now starts a `pgvector/pgvector:pg17` service container, sets
+  `DATABASE_URL` (no secret) and installs the extension, because the smoke test for the ask path
+  needs a database. `test_the_smoke_run_really_has_a_database` fails the build if that is lost.
+
+**The move to `search_one` only (2026-10-21, D57).**
+
+- The old one-shot `search` node is gone. `build_graph(*, measure, fits, stuff, search_one,
+  totals_of, rank_side, plan, make_prompt, generate, summarize=None, checkpointer=None)` REQUIRES
+  `search_one`, `totals_of`, `rank_side` and `plan`. There is no default, so no graph can be built
+  the old way and no half-wired graph exists. After `measure`, a conditional edge sends the run to
+  `stuff` when the pair fits and to the fan-out when it does not.
+- Deleted from `api/searching.py`: `retrieved_chunks` and `rerank_and_cut`. Older notes in these
+  files that name them mean `retrieve_query` and `rank_pile` now.
+- **The skip gate is now unused.** `retrieval/gate.py` (`should_rerank`, `margin`, `SKIP_MARGIN`)
+  has no caller in `labpilot/`; its own tests stay. Slice 13 decides: delete it, or give it a
+  caller. The test that forced the gate to say NO was deleted with the function it tested.
+- `scripts/bench_end_to_end.py` times `asking.rank_pile` now.
+
+**The closing review of slice 5 (2026-10-21).** Looked at from above, the new slice joined four
+things that no test crossed together. Four tests were added, and the old ones were moved.
+
+| new test | the join it protects |
+|---|---|
+| `tests/integration/test_ask.py::test_many_queries_make_one_pile_per_side_with_no_duplicates` | real rows, three plan queries, five searches: no chunk comes twice and each side keeps exactly `VECTOR_TOP_N` |
+| `...::test_a_report_is_still_written_when_the_planner_fails_on_every_tier` | the planner failing on every tier still gives a report, from the default plan (the question on each side) |
+| `...::test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects` | the real Postgres saver with `Send`, `Overwrite`, `Plan`, `Chunk` and `StoredArtifact` in the state; the stuffed path never met them |
+| `tests/unit/test_scripts.py` (34 tests) | every name a script takes from `labpilot` still exists, and the functions the benchmark times still exist. This would have caught the stale script of this very migration |
+| `tests/unit/agent/test_graph.py` (rewritten) | the full order of calls on both paths, and the four functions are required, with `search` gone (by signature) |
+| `tests/api/test_checkpoints.py` (+3) | the saver does not use pipeline mode, and its `executemany` sends one statement at a time (the defect below) |
+
+Moved: the tests of `rerank_and_cut` were deleted, because the six tests of `rank_pile` in
+`tests/api/test_rank_pile.py` hold the same rules (the two number spaces, the whole order asked
+for, the cut after the call, the degraded cut, the empty pile). `test_ask.py` (api) keeps only the
+query-embed tests, and `tests/api/test_retrieve_query.py` and `tests/api/test_fusion_is_on.py` call
+`retrieve_query`.
+
+**A real defect found by the review pass: the chat save failed on a real size.** The first full
+run had one red test, the new chat test on the searched path, with `SSL error: bad length`. It was
+not a flake. The saver (LangGraph's `PostgresSaver`) writes the checkpoint with psycopg's
+`executemany`, and psycopg runs `executemany` in PIPELINE MODE. libpq has a bug there
+([PostgreSQL bug report #18907](https://www.postgresql.org/message-id/18907-d41b9bcf6f29edda%40postgresql.org)):
+when a large message goes over SSL and the network takes it in several pieces, the next message is
+added to the output while the first write is still being retried, and OpenSSL stops with `SSL
+error: bad length` (also seen as `connection not in pipeline mode`). A chat on the search path
+saves about 150 KB (the prompt, the text of the chunks, the report). The stuffed path saves a few
+hundred bytes and never failed. How it was found: the connection was traced thread by thread
+(no other thread used it at that moment), three variants were compared (shared connection, a
+pool, searches one at a time: all failed at the same rate, 9 of 15), and a plain stress test of
+three threads on one connection gave no error in 360 queries. Only a large save in pipeline mode
+fails. **The fix, `api/checkpoints.py`:** `open_saver` returns `_SafeSaver`, a `PostgresSaver` with
+`supports_pipeline = False` (one transaction, same statements) whose cursor is wrapped by
+`_OneAtATime`, so that `executemany` runs one `execute` for each row. The price is a few more round
+trips of about 0.12 s on a report that takes minutes. **The honest limit:** the failure depends on
+the network (about half the runs of one afternoon, none of the next hour), so no integration
+test can hold the rule. A test that saves 400 KB eight times was written, passed with the OLD saver
+too, and was deleted (a test that cannot fail). The rule is held by two deterministic unit tests
+(the flag, and the one-at-a-time `executemany`). Repeated eight times after the fix, the searched
+path chat test passed eight times.
+
+**Deliberate breaks, all caught by the test meant to catch them:** the benchmark naming a removed
+function; a script importing a removed name; `plan` made optional again; the question no longer
+searched on each side (16 tests); `pick` ignoring `fits` (4 tests); the merge keeping duplicates;
+the planner node not catching `PlanError`; `found` no longer emptied; the plain saver back (the
+flag test); the pipeline flag back on (the flag test); the `executemany` wrapper doing nothing (two
+tests). Each break was made on the file itself with the original bytes kept aside, and the file was
+restored from those bytes.
+
+**Suite on 2026-10-21: 1503 passed, 120 skipped** (unit, api and integration, without `--run-smoke`), `ruff
+check` and `ruff format --check` clean.
+
+**Open items (none is fixed).**
+
+- `fan_out` raises `ValueError` when no side has a file. Today `ask()` and the API need both ids,
+  so it cannot happen. **Slice 6 must handle 0 and 1 file** (D56).
+- The saved chat still holds the whole prompt (up to about 78,000 characters) and the text of
+  every chunk. After each message only the newest copy stays, so the growth is per chat, but the
+  size of a chat with a real search path was NOT measured.
+- The window of 20 was measured on the pile of ONE query; with many queries it holds about the
+  top 2 of each. A larger window or a rank by how many queries found a chunk are the options (D53).
+  Slice 13.
+- M5, M16 and M17 (slice 13); D46 and D47 (slice 12 and later).
+- The skip gate has no caller (above).
+- **`store/writer.py` also uses `executemany`** (the ingest of an upload, in batches of 96 chunks
+  with their vectors, over a megabyte each), so it runs in pipeline mode too and could meet the
+  same libpq bug. It did not fail in the tests (small batches over the VPN), and the ingest of
+  81,000 chunks in slice 4 went into a LOCAL container, so it says nothing about SSL. NOT
+  measured: a real repository uploaded to Supabase through the app. Do that once (the repository
+  door, about 500 chunks). If an upload ever fails with `SSL error: bad length`, give the writer
+  the same one-at-a-time cursor.
+- Both the saver and the writer should be looked at again when psycopg-binary or libpq changes.
+
+#### 17.24 Slice 6 is DONE: follow-ups, `respond` for 0, 1 and 2 files, the door and the closing review — 2026-10-21 and 22
+
+**Status: DONE.** Slice 6 has TWO lessons, as D56 planned. The user typed the product code on branch `feat/follow-ups` (made from the tip of `feat/plan-to-run`). Lesson 1 is the follow-up rewrite. Lesson 2 was first built as "2" and "2b" and merged into one lesson at the user's request. It holds the prompts for 0, 1 and 2 files, the budget, the API and the page. **For a while Claude called the API and the page "lesson 3". That was Claude's mistake: the plan has no third lesson, and D56 puts the door inside lesson 2.** The user's question ("this slice only has 2 lessons") is what found that the door was still missing, and the door was then built before the review pass.
+
+**Lesson 1 (2026-10-21): a follow-up becomes a standalone question.**
+
+- `prompts/followups.py` holds the instruction `FOLLOW_UP` (two examples, "copy a specific question exactly", "never guess"), `FOLLOW_UP_VERSION = 1`, `FOLLOW_UP_MAX_TOKENS = 3,000`, `RECENT_QUESTIONS = 4`, `QUESTION_CHARS = 300`, `LAST_ANSWER_CHARS = 2,000` and `MAX_REWRITE_CHARS = 600`. `agent/rewrite.py` is the node. `api/followups.py` gives it `make_rewriter(client)` and `last_answer_text`.
+- It is the first reader of `history`. The graph starts `START -> rewrite -> {plan, summarize_a, summarize_b} -> measure`. With no history, or when the rewrite equals the question, the node returns `{}`. A rewrite that is blank, has more than one line, or is longer than `max(600, len(question))` is refused and the next tier writes it (D50). If every tier fails, the question is kept as it was.
+- **`last_answer` (D58).** The chat kept only the questions, so "do the second one" had nothing to point at. The state has a new key `last_answer` with the REPLACE rule (a new answer replaces the old one). `remember` writes the END of the answer, at most 2,000 characters, with a leading "…" when it was cut. No saved table, row or prune query changed: the saver stores the new key like any other.
+
+**Lesson 2 (2026-10-22): `respond` for 0, 1 and 2 files, one prompt function, the budget and the door.**
+
+- `prompts/answer.py` (new) holds three instructions and `instructions_for(files)`: `CHAT`, `ONE_FILE` and `TWO_FILES` (D60). `build_chat_prompt` is the prompt without parts.
+- `api/prompting.py` has ONE function, `build_answer_prompt(chunks, *, question, files, totals, summaries, last_answer)` (D59). `respond` counts the files and calls it with `files=` and `last_answer=`. `build_report_prompt` is gone. `REPORT` stays in the code only as the frozen baseline of the smoke tests.
+- An empty id means "no file". `measure_sides` skips it, the summary node returns nothing, and the planner already made a default plan for no files. A chat question therefore makes only the rewrite call (when there is history) and the answer call.
+- The last answer is in every prompt, after the parts and before the question, written by one function (`last_answer_block`).
+- The door (D62): `CompareRequest.a` and `.b` are optional, `ask()` puts a lone artifact in the slot of its own side, the reply lists only the sides that had a file, and the page asks with 0, 1 or 2 stored sides.
+- The budget and the outline (D61): `PROMPT_BUDGET` is 30,000, `fits_whole` prices the outline by files, and a "fits" verdict now keeps every part.
+
+**What was measured, and it is SMALL.** Exit `194.5.192.239`, AS57568 ARVANCLOUD, Frankfurt, Google 200 (earlier runs the same ISP). Pair: `quora_siamese` (100 parts). Findings are counted against the 19 of `EXPECTED.md` as findings / the 5 that carry the story, by a regex screen.
+
+| | REPORT (old) | R2 (answer first) | R3 / final `TWO_FILES` |
+|---|---|---|---|
+| short questions, right numbers in the first lines (Flash-Lite 3.5 and 3.1) | plain 1 of 2, clip 0 of 2 | 4 of 4 | **4 of 4** (answers 3-4 times shorter) |
+| default question, Cline GLM-5.3 | 16 / 5 | 16 / 5 | 15 / 5 |
+| default question, Gemini 3.6 Flash | 15 / 5 | 10 / 4 | 14 / 5 |
+| default question, Gemini 3.8 Flash, key 1 and key 2 | not run | 13 / 4 and 14 / 5 | 15 / 5 and 12 / 5 (final text) |
+| default question, Flash-Lite 3.5 | 6 / 3 | 7 / 3 | 7 / 2 (R3), 6 / 3 (final) |
+| default question, Flash-Lite 3.1 | 8 / 4 | 5 / 2 | 7 / 4 (final) |
+| "do the causes add up to the gap?" (the right answer is NO: sizes sum to about 6-8 points, the gap is 2.5) | right on 1 of 4 tiers | right on 1 of 8 | right on 2 of 3 (R3); both 3.8 runs right, Flash-Lite 3.1 wrong, 3.5 silent (final) |
+
+Also: the follow-up "Explain that more simply." with and without the last answer in the two-file prompt (Flash-Lite 3.5, Gemini 3.6) showed **no visible difference**; the model wrote a full comparison both times. The header sizes are REPORT 2,100 bytes and `TWO_FILES` 2,914.
+
+> **THESE NUMBERS ARE A SMALL SAMPLE, AND NO DECISION RESTS ON THEM YET.** One pair, at most 8 tiers, ONE run per cell (at temperature 0 a repeat gives the same text, so a repeat adds nothing), findings screened by regexes that were wrong more than once (a screen, not a score), the pair was almost whole (about 29,000 of the budget), and 5 calls were lost to Google 503. R3 beat the old report on short questions and on the "adds up" verdict and was a little behind it on coverage on two tiers. That is a direction, not a result. **Slice 13 must run more (M18): more pairs (the new pair of slice 12), more tiers, several worded versions of each question, the SEARCH path, and the three instructions together. It may find better instructions and prompts, or a better approach altogether** (for example one call for the answer and a second for the arithmetic, or the verdict from Jev). D60 is a first choice, not a decision.
+
+**The closing review of slice 6 (2026-10-22).** The standing question was: which real failure is still unprotected?
+
+Four real defects were found, and none of them was on a list.
+
+1. **A misspelled name, in four files.** The typed `last_answer_block` was `last_asnwer_block` everywhere, so the names did not match the tests and the page of the package imports. Renamed back; `ruff` re-sorted one import block that the rename had moved.
+2. **A call that crashed every 0-file question.** `build_answer_prompt` called `build_chat_prompt(chunks, question=question)`, which raises `TypeError` (two values for `question`). The tests written beforehand caught it the first time they ran.
+3. **A "fits" verdict that could still lose parts** (D61). Found by a probe, not by a test: 2 of 280 parts were lost with no error. The exact outline charge would have made it more common, so both were fixed together.
+4. **A lone artifact in the wrong slot** (D62). The graph reads slot `a` as side A. A subject sent alone in slot `a` was searched as a side A that did not exist, and the search failed on a missing key. It was reachable only once the door opened, so it was found while building the door.
+
+Tests added: `test_answer.py`, `test_last_answer.py`, `test_respond_files.py`, `test_answer_prompt.py`, `test_reading_files.py`, `test_fits_whole.py` (11, including a sweep of sizes that must keep every part with the largest summaries and last answer), `test_ask_slots.py` (8), the door tests in `test_compare.py` (5 new), 3 page-contract tests, 3 real-database tests over HTTP (no file, one file in either slot), 6 new ones in `test_ask.py` and 2 store tests for `files`. **Deliberate breaks: 22 on lesson 2 (all caught) and 13 on the door and the outline charge (12 caught).** The survivor was "the page lists both sides always": the page's rendering has no automated test, so it was checked by hand in a real browser against a stub server (0, 1 and 2 stored sides: the ids sent, the prefilled question, the button, the coverage tags). It stays an untested rendering, as the page is thrown away in Step 3.
+
+**Added the same day (2026-10-22), after the review pass: the page keeps the stored files across a refresh, and an empty id clears the old summary.** The user asked whether the files survive a refresh and whether the page must keep them. The files stay in the database (nothing deletes an artifact, 17.6). The PAGE forgot them: the ids lived in a JavaScript variable, so after a refresh both slots were empty while the chat id (saved in `localStorage`) went on with the old chat. The person had to upload again and wait for the whole ingest again, and the chat then held a summary of a file that the new message did not send.
+
+- `web/app.js` saves `stored` in `localStorage` under `labpilot.artifacts` every time an upload changes it, and restores the slots when the page loads (`restoreStored`). If the server answers `404 unknown_artifact` for a saved id, the page empties that slot, saves, and says "A file this page remembered is no longer stored, so its slot was emptied. Add it again."
+- `summarize_node` returns `{"summary_a": ""}` (or `summary_b`) for an empty id and not `{}`. Before, the summary of an earlier message stayed in the saved chat when a later message sent fewer files. It was found by running one chat through the graph with 0, 1, 2 and then 1 files.
+- Tests: `test_chat_files.py` (3: the chat grows from 0 to 2 files, the last answer follows, a left-out file leaves no summary), one real-database test (`test_a_chat_that_sends_fewer_files_drops_the_summary_of_the_missing_one`) and 3 page-contract tests (the key is saved, read back and restored; it is saved at each change; the error code is the one the server sends). **5 deliberate breaks, all caught.** The first run of the page breaks showed two survivors, because the contract test only looked for names; a test that pins the save after each change fixed that. The refresh and the 404 were also checked in a real browser against a stub server: a refresh restores the slot and the question is asked with its id, and a remembered id that the server does not know empties its slot and shows the message.
+- This is a STOPGAP. The proper version belongs to Step 3 (see "Notes for Step 3 from slice 6" in the UI section).
+
+**Suite on 2026-10-22: 1653 passed, 120 skipped.** Unit and api: 1496 passed, 5 skipped. Database (integration): 157 passed. `ruff check` and `ruff format --check` are clean. The weekly smoke run was NOT run (it spends quota); its premise was changed (the search path is forced, see D61) and is unproven until a real run.
+
+**Open items (none is fixed).**
+
+- **M18** (above) and the other slice 13 measurements: M4, M5, M6, M7, M8, M15, M16, M17.
+- `retrieval/gate.py` still has no caller (D57). `REPORT` has no caller in the product, only in the smoke baseline.
+- The history keeps the questions only. The rewritten question is not shown to the user (the reply and the page could carry it).
+- The flat `OUTLINE_BUDGET` of 4,000 per side still caps the long outline of a searched prompt. It is a guess, as it always was.
+- `_in_their_own_slots` reads the side from the id prefix (`A-`, `B-`). If the id format changes, it must change too.
+- The question prefilled for 0 files ("Ask a question, or add files to compare.") is sent as it is when the person does not edit it.
+- `store/writer.py` still uses `executemany` (17.23): try one big upload to Supabase once.
+- The smoke test `test_ask_answers.py` forces the search path by lowering one constant; a real run with `--run-smoke` has not been done since.
+- Branch: slice 6 is on `feat/follow-ups`, pushed. Slice 7 starts on a NEW branch from its tip (ask the user first).
+
 ### 18. SLICE 9 — a big repository as side A, decided 2026-10-07
 
 *(Renumbered on 2026-10-14: this is slice 12 now, see [section 21](#21-the-final-design-and-the-new-slice-list--agreed-2026-10-14). The heading is kept so that old links work.)*
@@ -12558,6 +12807,15 @@ merge step keeps one copy. Whether the planner chunks should also reach the chec
 | **D52** | **The map shows signatures and first sentences** (`StoredHeader.opening`, 300 characters, only for a chunk that starts its unit; `prompts/_hints.py`). The ladder is rich map, bare names, ranked, folded. Built in slice 4 → 17.20 |
 | **D53** | **The fan-out search does not rerank each query. The merge step reranks ONCE per side** (the user's call, 2026-10-20, after a search of what other systems do; the rule "six queries, ONE rerank, against the original question" was already in this file, and lesson 2 first broke it). Each query only searches (embed, search, keyword fusion). The merge step makes one pile for each side (the best chunk of each query first, then the second best, and so on; duplicates dropped), cuts the pile to `RERANK_WINDOW` (20), reranks it ONCE with the user's original question, and keeps `RERANK_TOP_N` (10), or `VECTOR_TOP_N` (15) when no tier answered. So the reranker is called at most 2 times for a question and not up to 12, and what reaches the prompt does not grow with the number of queries. Per side stays (slice 8: one mixed pile starved a side on 43 of 57 questions); one rerank over a mixed pile with a cut per side was NOT tested. There is no skip gate here: `SKIP_MARGIN` is off and the best scores of different queries cannot be compared. **The evidence is weak and from other systems:** the Dell paper (2026, 115 questions, one knowledge base) found that the extra recall of query fusion mostly disappears after reranking and cutting, and that reranking against a rewrite did far worse than against the original (read through a summary, not in full); a 2025 ACL student workshop paper merges up to 6 queries of 10 chunks, reranks once against the original question and keeps 10. **Open numbers, for slice 13:** the window of 20 was measured on the pile of ONE query, and with many queries it holds only about the top 2 of each; a larger window (up to 50) or a rank by how many queries found a chunk (RRF) are the two options. Code: `api/searching.py` (`retrieve_query` without rerank, `rank_pile`, `_searched`), `agent/merge.py` (`rank_side`), `agent/graph.py` |
 | **D54** | **Fewer queries, and the user's question is always one of them** (the user's call, 2026-10-20). (1) The planner is told "write 2 to 5 queries, and never more than 6; the question itself is searched too, so do not copy it". (2) `MAX_QUERIES` is 6 (it was 12) and the check rejects a longer plan, so the next tier writes a new one (D50). The gap between 5 and 6 is on purpose: a model does not count exactly, and a plan with one query too many is not worth another model call. (3) `fan_out` always searches the user's question on each side that has a file, first, and then the planner's queries; a planner query equal to the question is dropped. So one question makes at most 6 + 2 = 8 searches. This also fixes the worst case where all the planner's queries are for A and B would get nothing. `PLANNER_VERSION` is 3. **Evidence:** LangChain asks for 3 queries (a default nobody tuned); Anthropic's research system added effort rules after its agents made 50 subagents for a simple question; a 2025 paper uses at most 5 sub-queries plus the original. No study found proves a best number, so 2 to 5 and 6 are guesses for M5 (slice 13). **A side finding:** `build_map` did not count the join between the two sides in its budget (`SIDE_JOINER`), so the map could be one token over; fixed in the same change |
+| **D55** | **A pool of 8 database connections for the fan-out searches** (the user's call, 2026-10-20, "right in this slice, it is obvious it is faster"). Measured the same day with 8 searches of 7 quick round trips each, on one VPN exit: one shared connection 12.9 s, a pool of 2 6.2 s, a pool of 4 4.1 s, a pool of 8 1.7 s (one search alone: 2.0 s). Opening the pool costs 0.8 to 4.2 s, once. `store.make_pool()` builds it CLOSED (`open=False`), so booting the app or a test never reaches the database; the first search opens it (`open(wait=False)`); `check` tests a connection when it is handed out, because the session pooler drops idle ones. `POOL_SIZE` is 8 and `tests/unit/test_pool_size.py` ties it to `MAX_QUERIES + 2`. The lifespan builds the pool and closes it at stop; no `DATABASE_URL` means no pool and `ask()` falls back to the one shared connection. `tests/conftest.py` makes every test build NO pool, so a test can never search the real schema. **Not measured:** the real queries (only `select 1`), memory, and the connection limit of the Supabase session pooler |
+| **D56** | **`respond` must work for every number of files, and slice 6 builds that** (the user's call, 2026-10-21, after asking whether the `respond` of slice 5 was the complete one: it is the RAW version, for two artifacts only). D31 says `respond` ends every plan and the planner already knows 0, 1 and 2 files (slice 4), but no slice built the 0-file and 1-file paths, and `ask()` and the API still require both ids. Slice 6 now adds: (1) `respond` chooses its instruction from the files that exist: none = a plain instruction for chat and for writing code, with no evidence; one = `SCAN`, which also needs the fix part of D49; two = the report; (2) the API and the page accept 0 or 1 artifact id; (3) `respond` reads the chat history, as the follow-up node does (D21). What stays for later: the chain, the thinking level and the length chosen by the plan (slice 11), the results of the other nodes (slices 7 to 10), and the user's controls (Step 3). The `respond` of slice 5 also reads two summaries written on every message; D47 (stored summaries, read by the planner) waits for M5 in slice 13 |
+| **D57** | **One way to search, and four required functions** (the user's call, 2026-10-21: remove the old search and use only `search_one`). The old one-shot `search` node, `retrieved_chunks` and `rerank_and_cut` are deleted. `build_graph` requires `search_one`, `totals_of`, `rank_side` and `plan` with no defaults, and a test reads the signature, so a graph cannot be built the old way and no half-wired graph exists. The skip gate is not called by any product code any more (D53); `retrieval/gate.py` and its tests stay until slice 13 decides to delete it or give it a caller. Built: 17.23 |
+| **D58** | **The last answer goes into every prompt, and it is saved as ONE excerpt** (the user's question, 2026-10-21: "yes do it" and "select the second option" point at what the tool said, and the chat kept only the questions). State key `last_answer` with the REPLACE rule, written by `remember` as the END of the answer (at most 2,000 characters, a leading "…" when cut, so a second cut does not grow it). It is read by the rewrite (so "do the second one" becomes a standalone question) and by every answer prompt: after the parts and before the question, behind one label from one function (`last_answer_block`). **This amends D21**, which kept old reports out of the prompt: ONE excerpt of the LAST answer is allowed, old reports still are not, and the history still holds only the questions. Nothing in the database changed. **Measured: no clear gain yet for two files** (17.24): the rewrite already covers "do the second one", and a follow-up that needs the exact words showed no visible difference on two tiers. It stays because it costs about 700 tokens and 0 and 1 files need it |
+| **D59** | **ONE prompt function for 0, 1 and 2 files, and it is required** (the user's idea, 2026-10-22; it amends D56, which planned a second function). `build_answer_prompt(chunks, *, question, files, totals, summaries, last_answer)` in `api/prompting.py` is handed to `build_graph` as `make_prompt`. `respond` counts the files from the two ids and calls it with keywords. 0 files returns the chat prompt and selects nothing. 1 and 2 files take the same steps with `instructions_for(files)`. It has no default, so no graph can be built with the wrong prompt for 0 files (the shape D57 chose for `search_one`) |
+| **D60** | **Three instructions, chosen by the number of files** (`prompts/answer.py`). `CHAT` (0 files) answers plainly, writes code when asked, and asks for a missing file instead of guessing (8 of 8 runs on two tiers). `ONE_FILE` (1) writes ANSWER first, then PROBLEMS with the corrected code or a better algorithm, and leaves out a design choice the code states on purpose (a check that raises on purpose was reported 4 times in 12 answers without that sentence, 0 times in 11 with it). `TWO_FILES` (2; "R3" in the measurements) writes ANSWER first. For "why do the results differ" it says whether the numbers are comparable, gives the largest causes with their sizes, ADDS THE SIZES UP and says whether the sum fits the gap, and is complete in DIFFERENCES. Then COMPARABLE, PROBLEMS IN B and NEXT STEP. **All three are samples (17.24).** `TWO_FILES` is 2,914 bytes with its own size guard of 3,000. The 2,200 guard stays for the lean report templates, and `REPORT` is kept only as the frozen baseline of the smoke tests. M18 re-measures all three in slice 13 |
+| **D61** | **`PROMPT_BUDGET` is 30,000 (it was 26,000), the outline is priced by its shape, and a "fits" verdict keeps every part** (the budget is the user's decision, 2026-10-22; Claude had recommended 28,000). (1) The six Routeway Gemma finetunes (62,000 window) can no longer serve a report. They are the ONLY tiers a budget between 26,000 and 33,000 turns away (checked on all 75 tiers), and they could not finish a report anyway (22 tokens a second, a dropped request after about 121 seconds). (2) A cost of that number: the committed sample pair needs 28,557 tokens, so at 30,000 it is read whole. The smoke test lowers the "fits" limit for its own run to force the search path, `test_pipeline.py` has its own budget of 24,000, and `scripts/bench_end_to_end.py` stuffs the committed pair. (3) `fits_whole` no longer charges a flat 4,000 for the outline. When everything is sent the outline is a plain list, a heading and a row per file, so each artifact costs `(files + 1) x FILE_ROW_TOKENS`. `FILE_ROW_TOKENS` is 24 (measured: mean 17.6, p95 20, max 22 over 129 rows of this repository, 15.5 on the sample pair), 0 artifacts cost 0, and `StoredArtifact.files` comes from `count(distinct source)` in the same round trip. A flat 4,000 over-charged what fits and under-charged a repository of many tiny files. `PROMPT_EXTRAS_TOKENS` is 2,000 and reserves what the prompt carries that `fits_whole` cannot see (two summaries of at most 150 words and the last answer excerpt). (4) **A defect the exact charge would have widened:** a probe found a pair (140 parts a side, 230 characters each) that `fits_whole` accepted and whose stuffed prompt then lost 2 of 280 parts, silently, because the budgeted selection charged the long outline of a prompt that sends nothing. When `totals is None` (everything was read) `build_answer_prompt` now sends everything if the finished prompt fits, and falls back to the budgeted selection only if it does not |
+| **D62** | **The door takes no id, one id or two** (D56, finished on 2026-10-22). `CompareRequest.a` and `.b` are optional. A missing, null or blank id counts as none, and the router trims it. The reply's `chunks` lists only the sides that really had a file (a chat question gives `{}`). **A lone artifact must sit in the slot of its own side:** the graph reads slot `a` as side A, so a subject sent alone in slot `a` was searched as a side A that did not exist and failed on a missing key. `ask()` now moves a lone id to the slot its prefix names (`A-` or `B-`). With two ids, or none, nothing moves. An unknown id stays and answers 404. No new error type. The page (version 2) enables the button for 0, 1 or 2 stored sides, sends `null` for an empty slot, prefills the question by count ("Ask a question, or add files to compare." / "Summarize this and find likely bugs." / "Compare these and explain why the results diverge.") until the person types, and lists coverage only for the sides in the reply. The button says "Ask". The page was checked for 0, 1 and 2 sides in a real browser against a stub server. Its rendering has no automated test (one deliberate break survived, 17.24). **Added later the same day:** the page keeps the stored files in `localStorage` (`labpilot.artifacts`) and restores them after a refresh, and it empties a slot whose id the server answers with `404 unknown_artifact`; an empty id now clears the old summary of that side in the saved chat, so a message that sends fewer files than an earlier one carries no summary of the missing file |
+| **D63** | **Cleaning the question: two ideas of the user (2026-10-22). NOTHING is built, and a measurement decides.** (1) *Clean the FIRST question too.* The follow-up rewrite already returns the question unchanged when it is good, and the same rule can hold for a first question. The cheapest version: the PLANNER returns a cleaned question in the same call, so there is no extra call. It is asked FIRST in the output, so the queries can use it (a model writes in order). The safe design: the cleaned text is used for the SEARCH only, and `respond` answers the user's own words (the follow-up rewrite must replace the question, because "do the second one" cannot be answered alone; a first question does not have that problem). The raw question is searched too (D54). A separate call on a fast tier with quota (Flash-Lite or Gemma, about 1 to 2 seconds for a short job) would also work, but it sees less than the planner (no map). The check in code must refuse a cleaned question that is empty, has more than one line or is much longer (the rules of the follow-up rewrite, D50). Reasons for care: research F3 (rewriting a good question can hurt, -10.8 NDCG@5), our slice 6 sample is small, and a fallback tier writes a different cleaned question, so it is logged beside the report (D47, rule 6). With 0 files nothing is searched, so nothing needs cleaning. (2) *An "Optimize prompt" button* in the page (Step 3), see "Notes for Step 3". With the planner version there is no second rewrite to skip when the button was used, so the page needs no flag. **Measure first (M4 and M5, slice 13):** an arm "planner queries plus a cleaned question", and a set of good questions that must come back unchanged. Do not add the planner field (and bump `PLANNER_VERSION`) before M5 |
 
 #### 21.3 Where every planned node lives
 
@@ -12623,7 +12881,8 @@ of section 18 still says "SLICE 9" so that old links work; it is slice 12 now.
 10. Which model gives the `verify` verdict and the planner's list of steps: an LLM with function calling, or Jev (D48). Decide with M16 in slice 13 (the planner's steps) and M15 in slice 7 (`verify`).
 11. Whether the fixes inside `respond` are good enough, or `propose_fix` needs its own node (D49). Decide with M17 after slice 5.
 12. The query cap `MAX_QUERIES` (6 since 2026-10-20, it was 12; D54) and the allowed steps for each file count, both in `agent/plan_check.py`, are first guesses (slice 4, lesson 3). Set them from the plans measured in M5 and M16.
-13. Slice 4 is closed with the planner BUILT and not measured or wired. Slice 5 wires `plan` and `summarize` into `_ask_graph` together with `respond`. M5 and M16 are still owed and now belong to slice 13 (17.20, D53, D54), the file scores are not given to `build_map` yet, and D47 (stored summaries) is not built. Items 9 and 10 above therefore stay open: decide them with the first M5 and M16 runs.
+13. The planner and the summarizer are wired into `_ask_graph` since slice 5 (17.23). M5 and M16 are still owed and belong to slice 13 (17.20, D53, D54), the file scores are not given to `build_map` yet, and D47 (stored summaries) is not built. Items 9 and 10 above therefore stay open: decide them with the first M5 and M16 runs.
+14. Whether the planner returns a cleaned question that is used for the search only, and whether an Optimize button belongs in Step 3 (D63). Decide with the M5 arm (slice 13).
 
 #### 21.7 What this changed in older text
 
