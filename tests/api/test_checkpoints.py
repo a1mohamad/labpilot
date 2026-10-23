@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from labpilot.agent import Plan, Query
+from labpilot.agent import Claim, Plan, Query
 from labpilot.api.checkpoints import SERDE, _OneAtATime, open_saver
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
@@ -41,6 +41,8 @@ PLAN = Plan(
     queries=(Query("B", "CLIP_NORM"),),
 )
 
+CLAIM = Claim("the time step is 0.01 s", "[paper.md · 4 Setup · lines 10-19]")
+
 
 def round_trip(value):
     return SERDE.loads_typed(SERDE.dumps_typed(value))
@@ -48,7 +50,7 @@ def round_trip(value):
 
 @pytest.mark.parametrize(
     "value",
-    [CHUNK, RESULT, STORED, RECORD, PLAN],
+    [CLAIM, CHUNK, RESULT, STORED, RECORD, PLAN],
     ids=lambda value: type(value).__name__,
 )
 def test_every_class_in_the_state_comes_back_as_itself(value, caplog):
