@@ -1,9 +1,9 @@
 import logging
 
 import pytest
-from labpilot.agent.extract_claims import STEP, make_claims_node, wants_claims
 
 from labpilot.agent import Claim, ClaimsError, Plan, Query, allowed_steps, build_graph
+from labpilot.agent.extract_claims import STEP, make_claims_node, wants_claims
 from labpilot.ingest import Chunk
 
 CLAIMS = (Claim("the time step is 0.01 s", "[paper.md · 4 Setup · lines 10-19]"),)
