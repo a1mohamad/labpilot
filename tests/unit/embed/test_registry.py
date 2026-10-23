@@ -53,12 +53,13 @@ def test_no_two_embedders_are_the_same_model_on_the_same_key():
 
 
 @pytest.mark.parametrize("model", ["gemini-embedding-001", "gemini-embedding-2"])
-def test_every_google_embedder_has_a_second_account_behind_it(model):
-    """The second key is the only fallback that does not force a re-embed, so
-    losing it turns a Google outage into re-ingesting every corpus."""
+def test_every_google_embedder_has_every_account_behind_it(model):
+    """Another key is the only fallback that does not force a re-embed, so
+    losing them turns a Google outage into re-ingesting every corpus. Three
+    accounts since 2026-10-22."""
     keys = {e.api_key_env for e in MIGRATION if e.model == model}
 
-    assert keys == {"GOOGLE_API_KEY", "GOOGLE_API_KEY_2"}, keys
+    assert keys == {"GOOGLE_API_KEY", "GOOGLE_API_KEY_2", "GOOGLE_API_KEY_3"}, keys
 
 
 def test_the_measured_google_embedder_outranks_the_one_google_prefers():
