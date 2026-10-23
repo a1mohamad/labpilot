@@ -15,7 +15,7 @@ import pytest
 
 from labpilot.api import searching
 from labpilot.api.reranking import CHAIN, PROVIDERS, RANKING_CONFIG, _listwise, rank
-from labpilot.llm import GeminiProvider, LLMResult
+from labpilot.llm import GOOGLE_KEYS, GeminiProvider, LLMResult
 from labpilot.rerank import (
     JEV_NETLIFY_RERANK,
     JEV_RERANK,
@@ -53,40 +53,43 @@ def test_the_llm_tiers_lead_the_chain_in_the_order_rerank_measured():
     """
     llm = [tier for tier in CHAIN if isinstance(tier, LLMReranker)]
 
-    # EVERY tier appears TWICE from 2026-09-19 - once per Google account - so
-    # the order is over DISTINCT models, and the twin must sit next to its
+    # EVERY tier appears once per Google account (three since 2026-10-22), so
+    # the order is over DISTINCT models, and the twins must sit next to their
     # original rather than at the end. A spent pool is skipped for free, so the
-    # strongest thing left after flash-lite runs out is flash-lite on the other
+    # strongest thing left after flash-lite runs out is flash-lite on another
     # key, not a weaker model.
     distinct = list(dict.fromkeys(tier.model for tier in llm))
     assert distinct == list(LLM_RERANK_ORDER)
-    for first, second in zip(llm[::2], llm[1::2], strict=True):
-        assert first.model == second.model, "a twin must be ADJACENT to its original"
+    for start in range(0, len(llm), len(GOOGLE_KEYS)):
+        group = llm[start : start + len(GOOGLE_KEYS)]
+        assert len({tier.model for tier in group}) == 1, (
+            "the twins must be ADJACENT to their original"
+        )
 
     assert CHAIN[len(CHAIN) - len(RERANK_CHAIN) :] == RERANK_CHAIN
 
 
-def test_jev_sits_third_behind_both_flash_lite_keys():
+def test_jev_sits_fourth_behind_every_flash_lite_key():
     """A PAID tier must never come before a FREE allowance of a better one.
 
     Jev measured 0.770 on quora and 0.712 on geo, against flash-lite's 0.799
     and 0.681 - one corpus each, means 0.740 and 0.741. Indistinguishable, so
     the tie-break is budget, which is this project's own rule.
 
-    Position 2 is flash-lite ON THE SECOND GOOGLE ACCOUNT: the same model,
-    another free 500 a day. Slotting a billed tier between the two keys would
-    spend money while a free allowance sat unused, and would break the reason
-    _both_accounts keeps the twins adjacent.
+    Positions 2 and 3 are flash-lite ON THE OTHER GOOGLE ACCOUNTS: the same
+    model, another free 500 a day each. Slotting a billed tier between the keys
+    would spend money while a free allowance sat unused, and would break the
+    reason _every_account keeps the twins adjacent.
     """
-    assert CHAIN[2] is JEV_RERANK, (
-        "Jev must sit third - after BOTH flash-lite keys, ahead of everything "
-        f"else. The chain now starts {[t.name for t in CHAIN[:4]]}"
+    assert CHAIN[3] is JEV_RERANK, (
+        "Jev must sit fourth - after EVERY flash-lite key, ahead of everything "
+        f"else. The chain now starts {[t.name for t in CHAIN[:5]]}"
     )
-    assert CHAIN[0].model == CHAIN[1].model == "gemini-3.5-flash-lite"
+    assert {tier.model for tier in CHAIN[:3]} == {"gemini-3.5-flash-lite"}
 
 
 def test_jev_is_the_only_tier_that_does_not_depend_on_google():
-    """Eight of twelve tiers are Google, and a refused VPN exit has already
+    """Most tiers are Google, and a refused VPN exit has already
     taken every Google endpoint from this project for a week.
 
     When that happens the rest of the chain is Cohere's 1,000 a MONTH and a
@@ -94,7 +97,7 @@ def test_jev_is_the_only_tier_that_does_not_depend_on_google():
     capacity, so losing it from the chain is not merely losing a rank.
     """
     google = [tier for tier in CHAIN if isinstance(tier, LLMReranker)]
-    assert len(google) == 2 * len(LLM_RERANK_ORDER)
+    assert len(google) == len(GOOGLE_KEYS) * len(LLM_RERANK_ORDER)
     assert JEV_RERANK in CHAIN
     assert JEV_RERANK.api_key_env == "OPENROUTER_API_KEY"
 
@@ -102,7 +105,7 @@ def test_jev_is_the_only_tier_that_does_not_depend_on_google():
 def test_the_free_jev_route_sits_right_behind_the_paid_one():
     """The same model on a second allowance comes before a weaker model.
 
-    It is the twin rule `_both_accounts` applies to Google, for the same
+    It is the twin rule `_every_account` applies to Google, for the same
     reason: when OpenRouter stops carrying our unpaid balance, the strongest
     thing left is Jev itself on Netlify, not flash-lite 3.1. And it must NOT
     lean on OpenRouter in any way, or the fallback dies with the thing it is
@@ -215,8 +218,8 @@ def test_a_tuned_tier_keeps_the_name_and_model_of_the_one_it_came_from():
     assert dataclasses.replace(shipped, **RANKING_CONFIG).model == shipped.model
 
 
-def test_every_google_rerank_tier_has_its_second_account():
-    """Google bills per PROJECT per model, so a second key is a second allowance.
+def test_every_google_rerank_tier_has_every_account():
+    """Google bills per PROJECT per model, so another key is another allowance.
 
     The GENERATOR chain has used both keys since 2026-09-11. This one never
     did: all four LLM tiers sat on GOOGLE_API_KEY alone, so the rerank path had
@@ -235,10 +238,11 @@ def test_every_google_rerank_tier_has_its_second_account():
     assert llm, "the LLM rerank tiers must lead the chain"
 
     for tier in llm:
-        if "(key 2)" in tier.name:
+        if "(key " in tier.name:
             continue
-        twin = f"{tier.name} (key 2)"
-        assert any(other.name == twin for other in llm), (
-            f"{tier.name} has no second-account twin, so half of Google's "
-            "rerank budget is unreachable"
-        )
+        for number in range(2, len(GOOGLE_KEYS) + 1):
+            twin = f"{tier.name} (key {number})"
+            assert any(other.name == twin for other in llm), (
+                f"{tier.name} has no key-{number} twin, so part of Google's "
+                "rerank budget is unreachable"
+            )
