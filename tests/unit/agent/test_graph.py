@@ -71,6 +71,7 @@ def run(*, fits_value, fail_in=None):
 
     def make_prompt(chunks, question, totals, summaries, files, last_answer):
         calls.append(("make_prompt", chunks, question, totals))
+        fail("make_prompt")
         return "the prompt", chunks[:1]
 
     def generate(prompt):
@@ -177,7 +178,7 @@ def test_the_final_state_holds_everything_ask_returns():
     assert final["prompt"] == "the prompt"
 
 
-@pytest.mark.parametrize("stage", ["measure", "search_one", "generate"])
+@pytest.mark.parametrize("stage", ["measure", "search_one", "generate", "make_prompt"])
 def test_an_error_from_a_function_reaches_the_caller_unchanged(stage):
     with pytest.raises(Boom, match=stage):
         run(fits_value=False, fail_in=stage)
