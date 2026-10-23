@@ -11618,6 +11618,7 @@ Copy `.env.example` to `.env` and fill in real values.
 | **`CLINE_API_KEY`** | **Generator tier 1 — `z-ai/glm-5.3-flash`, FREE** | app.cline.bot → Settings → API Keys — no card. Free models consume **zero credits**, proven against a paid control. Only 2 of Cline's 6 free models answer the API; the quota is published nowhere and Cline sends **no rate-limit headers**. Added 2026-09-13 |
 | `GOOGLE_API_KEY` | Generators, embedder, and the top 4 rerank tiers | aistudio.google.com/api-keys — **not the original account**; that one is restricted (see [Platform Accounts](#google-ai-studio--the-account-restriction-of-2026-08-11)) |
 | **`GOOGLE_API_KEY_2`** | **A THIRD account — a second QUOTA, not a spare key** | Google bills per project per model, so this doubles EVERY Google budget: 20/day per Flash, 500 per Flash-Lite, 14,400 per Gemma, 1,000 embed requests. Added 2026-09-11 |
+| **`GOOGLE_API_KEY_3`** | **A THIRD Google account — a third QUOTA** | Same idea as key 2: its own allowance of every model, and its own minute room (key × model). Proven live 2026-10-22: it accepted a 14,800-token prompt on Gemma 4 31B at the same moment as the other keys. **Do not add a fourth**: several accounts behind one VPN exit is the pattern that got an account flagged on 2026-08-11. The GitHub secret must be created by hand. Added 2026-10-22 |
 | `MISTRAL_API_KEY` | Generator tiers 4, 5, 7, 9, **embedder primary** | console.mistral.ai — phone verification, no card |
 | `OPENROUTER_API_KEY` | Generator tiers 6 + 8 | openrouter.ai/keys |
 | `COHERE_API_KEY` | **Reranker tier 1**, embedder last resort | dashboard.cohere.com — trial key, no card |
@@ -16684,7 +16685,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 9 | **nodes for B alone** | `find_missing` (the claim table read by chunk) and `find_bugs` (a scan of B) | medium, 2 lessons |
 | 10 | **outcomes and comparability** | `extract_outcomes`; "are these two numbers comparable?" YES / NO / CANNOT TELL; "does it add up?" | medium, 2 lessons |
 | 11 | **routing** | a chain, a `max_tokens` and a thinking level for each node; the chain of `respond` for each plan; the quota-leak test | light, 1 lesson |
-| 12 | **the size gate and big repositories** | one `fits(side, budget)` check (D43); the top-N path for claims on a big A; the scan of a big B; claim ranking (D28); the good summary of a big artifact (D46); the new test pair. This was slice 9 | medium, 2 lessons, maybe more |
+| 12 | **the size gate and big repositories** | one `fits(side, budget)` check (D43); the top-N path for claims on a big A; the scan of a big B; claim ranking (D28); the good summary of a big artifact (D46); the new test pair. This was slice 9. **UPDATE 2026-10-22: the part size is ONE fixed 12K and the join is a round-robin cut (section 23, D68 and D69).** | medium, 2 lessons, maybe more |
 | 13 | **measure** | findings against `EXPECTED.md` on the search path (M6), the wall clock (M8), M4, M7 and the fix quality (M17) | none |
 
 **Slice 0 is first because it can change the plan.** If LangGraph is 200MB
@@ -18292,7 +18293,7 @@ where it appears. About one screen.
 
 **Other open items from this session:**
 
-- The big repository as side A (now slice 12) is recorded in section 18. Nothing is built.
+- The big repository as side A (now slice 12) is recorded in section 18, and its newest plan (parts of one fixed size, a round-robin join) is in section 23 (D68, D69). Nothing is built.
 - **EmbeddingGemma 2** (740M parameters, open weights): the Gemma releases page on
   Google lists it with the date 2026-10-06. It is NOT in our embedder list and is not
   scored. Our rule is: a new embedder joins `MIGRATION` only after we score it on the
@@ -19326,8 +19327,8 @@ A (source) -> extract_claims (one cheap call) -> a list of claims
 | **D24** | `extract_claims` is ONE cheap call over A. Its **instruction is fixed and versioned**, its **output has a fixed JSON shape** (`text` plus where it was seen), the **claims are saved beside the report** (a fallback tier writes different claims), and a **short fixed list is the backup** when the call fails |
 | **D25** | **The user's question goes inside the extract instruction**, for every A that fits one call. One line of text, no new design. The default question is general, so it filters almost nothing; a specific question narrows the list. Risk: a narrow question may hide a claim that explains the gap, so **M10** checks it |
 | **D26** | **Claims (slice 7) only handle an A that fits one call.** If it does not fit, the program says *"A is too big, point me at a folder or a file"*. It never cuts the input silently |
-| **D27** | **Slice 12 (was 9) builds the big-repository version, by the user's decision.** If A does not fit: (1) rank the files of A by closeness to the question (`file_scores()` exists), (2) take the closest files, (3) one cheap call per file, in PARALLEL, (4) join the lists and remove duplicates, (5) **rank the claims and keep the best N**. In graph words: "does it fit?" is a conditional edge and "one call per file" is the parallel part |
-| **D28** | **The claim ranking system is NOT designed yet.** The user wants a new ranking for claims. Candidates to measure: the closeness of each claim to the question (free, needs no call), a reranker tier on the claims, or asking the extract call to give each claim a score. Decide it in slice 12 with data |
+| **D27** | **Slice 12 (was 9) builds the big-repository version, by the user's decision.** If A does not fit: (1) rank the files of A by closeness to the question (`file_scores()` exists), (2) take the closest files, (3) one cheap call per file, in PARALLEL, (4) join the lists and remove duplicates, (5) **rank the claims and keep the best N**. In graph words: "does it fit?" is a conditional edge and "one call per file" is the parallel part. **UPDATE 2026-10-22 (section 23): the unit of one call is a PART of ONE fixed size, 12K tokens, for every model (D68, decided by a size test of 9 models), not one file; the parts are cut from the ranked files up to a total budget (first guess 90K), run at the same time, and joined by a round-robin cut (D69).** |
+| **D28** | **The claim ranking system is NOT designed yet.** The user wants a new ranking for claims. Candidates to measure: the closeness of each claim to the question (free, needs no call), a reranker tier on the claims, or asking the extract call to give each claim a score. Decide it in slice 12 with data. **UPDATE 2026-10-22 (section 23, D69): a first design exists: up to 5 claims for each part, never forced; a ROUND-ROBIN join (the best claim of each part, then the second best) cut at 20; an optional last call that sees all candidate claims, removes duplicates and ranks them; and a quote check that drops invented claims. Scores from separate parts are not comparable, so ranking happens after the join. The candidates above are still to be measured against it.** |
 | **D46** | **The summary of a big artifact must be good, and slice 12 builds it** (21.2). Slice 3 builds only the simple version: the first parts that fit 12,000 tokens |
 
 #### 18.3 What slice 12 (was 9) needs first
@@ -19990,6 +19991,119 @@ path through that code is NOT proven live yet, because the quota was gone.
   run fails on these two cases.
 - Their real use is slice 11: a planner or gate chain led by a fast tier (D47). Until then
   they sit near the tail as extra insurance for small jobs.
+
+---
+
+### 23. SLICE 7 — THE DESIGN WORK BEFORE LESSON 1 WAS TYPED: claims, a big A, parts, rooms, key 3 — 2026-10-22
+
+*Done in one long session with the user, before and while the user typed lesson 1 on `feat/claims-check`. Part of it is research, part is live measurement, part is code (key 3). The size test of 23.6 is a QUICK one on purpose: slice 12 owns the thorough one for big repositories and slice 13 owns the comprehensive one.*
+
+#### 23.1 What lesson 1 builds (built and tested in a temp copy FIRST; the user types it)
+
+`extract_claims`: ONE model call reads A whole and answers with a tool call (`list_claims`: a list of `{text, part}`). Files: `agent/claim.py` (`Claim(text, source)`), `agent/claims_schema.py` (tool name, `MAX_CLAIMS = 20`, `claims_schema`, `read_claims`), `agent/extract_claims.py` (`STEP`, `wants_claims`, `make_claims_node`), `ClaimsError` in `agent/errors.py`, the key `claims` in `State`, `build_graph(extract_claims=None)`, `prompts/claims.py` (the fixed instruction `CLAIMS`, `CLAIMS_VERSION = 1`, `CLAIMS_BUDGET = 28,000`, `CLAIMS_WANTED = 15`, `claims_fit`, `build_claims_prompt`), `api/claims.py` (`make_claims_extractor`), and `Claim` added to `SAVED_TYPES`. **It is NOT wired into `ask()` until lesson 2** (a model call for nothing otherwise).
+
+Checked in the temp copy: 1544 unit and api tests passed (50 new), 22 of 22 deliberate breaks caught, ruff clean. One REAL call (Frankfurt exit, Google probe 200) on `A_paper.md`: 15 claims in 20.1 s, every place right. **Finding: several claims merge facts** (one claim held "bidirectional", "2 layers" and "384 hidden units"), although the instruction says one fact per claim. One try on one tier, so the instruction was NOT changed; M10 and M11 (end of slice 7) revisit it.
+
+#### 23.2 Decisions
+
+| # | decision |
+|---|---|
+| **D64** | **The claims step runs AFTER the search (or after stuffing) and BEFORE `respond`, one after the other, not beside the search.** Retrieval is about 9 s of a ~500 s answer, so running side by side saves almost nothing, and joining optional branches in LangGraph is a known trap (a join waits for every parent). This is **the first time the graph reads `plan.steps`**: a conditional edge sends the run to `extract_claims` only when the plan lists it. Before this, `plan.steps` was checked, logged and stored and never used to decide what runs; only `plan.queries` was used. `summarize` still runs on every message. |
+| **D65** | **A failed extraction gives NO claims.** This amends D24, which said a short fixed list is the backup: a fixed list is machine-learning words only (the domain-lock finding of 2026-09-09). The node catches `ClaimsError`, logs a warning and the answer goes on from the planner's queries, because claims are a safety net (D39). An A that does not fit `CLAIMS_BUDGET` is the same: no claims, a log line. The sentence to the person ("A is too big, point me at a folder or a file", D26) is slice 12. |
+| **D66** | **The model writes a part NUMBER and the code looks up the place.** The prompt shows `[part 0]`, `[part 1]`, ...; the code keeps `sources = [chunk.header or chunk.source ...]` in the same order and sets `Claim.source = sources[part]`. A model copies a number far more reliably than a file name and a line range. `read_claims` refuses a number that is not a whole number, a `bool`, negative (Python would silently read the LAST part for `-1`) or out of range, a blank text, more than 20 claims. A wrong answer goes to the next tier (the planner's rule, D50). Each part is sent with its header, because the header gives the section name or the file and function; it is NOT needed for the lookup, and text only was NOT measured. |
+| **D67** | **`claims` stays in the saved chat on a later message whose plan has no claims step.** Nothing reads it yet, so it does no harm today. Lesson 2 adds `findings` and clears both in one place, with `Overwrite`, as `merge` does for `found`. |
+| **D68** | **A big A is read in PARTS of ONE fixed size, `P = 12K` tokens, for every model.** Decided by the size test of 23.6 with the rule written BEFORE the run: rule C (always parts, one fixed size). A small A is simply one part, so lesson 1 is the special case where A fits in one part. **Rejected:** (A) "all at once when the model can, else parts" (the whole 90K was never better than parts and was worse for 5 of 7 models), and (B) a size for each model (no model gained from a bigger size). **Why one fixed size also fits our chain:** the chain picks the model WHILE it runs, but the text must be cut BEFORE, so a size per model would need the model chosen first; a part of 12K fits every tier, so every tier stays eligible and every tier sees the same input. `CLAIMS_BUDGET` (28,000, one call) is lesson 1's first guess; in slice 12 the constant becomes the size of a part and `P` can be changed in ONE place (it is a first guess: M20 tries 6K and 8K). |
+| **D69** | **Slice 12's plan for a big repository as A.** (1) rank the files by the question and the planner's queries (`file_scores`, free); (2) take files until a total budget (first guess 90K tokens, measured later) and say what was read ("12 of 140 files"); (3) cut into parts of P; (4) one cheap call for each part, all at the same time; (5) ask each part for "up to 5 claims, the best first, and none if none" and NEVER force a claim (a forced claim is invented or trivial); (6) join by ROUND-ROBIN (the best claim of each part, then the second best, ...) and cut at 20, the rule `merge_chunks` already uses for chunks, so no part is starved and none dominates; (7) an optional last call sees ALL candidate claims (short texts, about 1,000 tokens), removes duplicates and trivia and ranks them by how much each could change the result. The parts run at the same time, so there is no "stop after 3 parts"; the cap of 20 is applied only after the join. Scores from separate parts are NOT comparable (each part is judged alone), so ranking is after the join. **Added after the size test:** each claim also carries an exact QUOTE from its part and the code drops a claim whose quote is not in that part (deterministic quoting, as for citations). The size test shows why: small and weak models INVENT names (23.6). This guard is an idea, built and tested nowhere yet. |
+| **D70** | **Rooms.** The free Google per-minute INPUT limit is counted for each (key, model) pair, a "room": about 16K tokens for each Gemma model. Measured 2026-10-22 on 3 keys and 2 Gemma models (23.4). One call can never be bigger than a room, a call that FAILS (a 500) still uses up its room, and the chain today does not spread parallel calls over rooms (on a per-minute 429 it waits and retries the SAME tier; the twin is used only when the pool is dead for the day). So slice 11 builds a spreader that sends each call to the room with space and counts every attempt, shaped like `embed/pacing.py`. **Flash-Lite first for the big or important calls; Gemma for many small calls and as the overflow.** |
+| **D71** | **A third Google account (key 3) is in the code** (23.7). Three accounts; do NOT add a fourth without a decision: several accounts behind one VPN exit is the pattern that got an account flagged on 2026-08-11. |
+| **D72** | **Models for the claims node, from the size test and for slice 11.** Flash-Lite 3.5 first (best recall at 12K, fastest, cleanest). Gemma 26B (not 31B) as the parallel overflow. DeepSeek V4.1 Flash and GLM-5.3 Flash as quality fallbacks (slow). The free Mistral models are fast and good on recall but invent names, so they need the quote check of D69. Ministral 3B is not usable. See 23.6. |
+
+#### 23.3 What others do (web research 2026-10-22; strength in brackets)
+
+**My first search used the wrong words and I wrote "no published method". That was wrong; the user said so and a second search found real work.**
+
+- **Dude (arXiv 2609.03416, a recent preprint; I read the HTML)** [author-reported numbers, not independent]. Paper against code. A claimer agent writes atomic claims from the paper in six topics; a verifier agent SEARCHES the repository with grep, glob and file reads and labels each claim `matched`, `partial`, `mismatch` or `unfound`; agents refine and re-check for at most 2 rounds (the paper says the results stop improving there; our D4 also says 2); a second extractor reads the CODE one topic at a time, guided by "anchor" examples of salient code, then two filters drop trivial claims. On 20 real papers with GPT-5.4: 80.4% recall and 93.7% precision against 58.7% and 91.5% for a single call, at a similar token cost (0.76M against 0.71M). It never reads the repository whole. This is almost our design (claims, a check for each claim, at most 2 retries, `find_missing`).
+- **Claimify (Microsoft, ACL 2025; I read the HTML)** [strong source, different data]: does not read a whole text in one call. It works sentence by sentence with a few sentences around each, in four steps (split, keep the checkable, clear up unclear words, split into standalone claims). Tested on answers written by a model, not on papers or code.
+- **PaperBench (OpenAI)** [good source]: the paper becomes a tree of requirements; each leaf is one pass-or-fail fact written by humans with the authors; a model judge checks each leaf against the code (F1 0.83 against human judges). Same shape as ours.
+- **AuditOwl (NeurIPS 2025 study) and ReproRepo (CMU 2026)** [from search summaries only]: agents are good at pointing at the area of a problem and weak at the exact cause (ReproRepo: 13% to 25% exact matches). This is why we say "not found in the parts I looked at", never "the code does not do it".
+- **Many facts from a long text** [only summaries read]: NeedleBench and Sequential-NIAH say a model finds one fact easily and gets worse when it must find many; the best of six models scored about 63% on Sequential-NIAH (8K to 128K). They do not test our task.
+- **Big repositories, bottom up** [medium]: summarize each unit alone, join into file summaries, then folder summaries (arXiv 2501.07857; summarizing a whole file at once missed about 11% of functions and 24% of variables with Llama-3.2). CodeWiki (ACL 2026): a dependency graph, clustered into modules, documented recursively; 86K to 1.4M lines of code; it writes documentation, not claims. RepoAgent and DocAgent do the same by dependency order. aider sends a ranked repo map of 1,024 tokens by default. Domain-model extraction ranks code elements and analyzes them in order, so it needs no full-system context.
+- **No published method for claims from a repository used as the REFERENCE was found.** The closest are Dude's code-side extraction (per topic, with anchors) and requirements recovery from code (Reversa, "From Code to Requirements"). D69 is built from these patterns; it does not copy a known method.
+- **Part of "the pros always cut" is history**: several systems were built for windows of 8K to 32K. The one recent result that supports cutting for a modern model (Dude with GPT-5.4) also uses search tools, so cutting is not the only difference. **No direct test of "cut or not" for claims with a modern long-context model was found.** That is why 23.6 was run.
+
+#### 23.4 Gemma and the minute limit, measured 2026-10-22
+
+Google's model card says 256K context for the 31B, and our API listing says 262,144 for both Gemma models: TRUE. **But the free key allows only about 16K input tokens a minute for each (key, model), and that is what stops us.** Gemma 4 26B A4B on the free key, each call alone in its minute:
+
+| prompt | result |
+|---|---|
+| 14,804 real tokens | accepted (200), 13 to 21 s |
+| about 20K | refused in 1.5 s, 429 `GenerateContentInputTokensPerModelPerMinute-FreeTier` |
+| about 28K | refused, same 429 |
+| 20K and 28K through Requesty (Gemma 31B) | refused, and the message says the refusal comes from the provider: Google's limit passed through, so Requesty gives no bigger window |
+
+The 20K and 28K sizes are estimated from the ratio of the 14,804 test (a refused call returns no count). Google's public rate-limit page does NOT list Gemma at all (it says to read AI Studio); a third-party table lists Gemma 3 at 15,000 and one developer reports a 429 at about 20K: they agree with us, weakly.
+
+**Rooms (five-call tests, same 14.8K prompt started within 3 s):** two calls on the same (key, model): the second is refused. Keys 1, 2 and 3 each accepted a prompt at the same moment on the 31B, and a different model on the same key was accepted. **A call that failed with a 500 still used up its room**: the next call to that room 3 s later was refused (seen 3 times). So 3 keys times 2 Gemma models are 6 rooms, about 96K tokens a minute if every call works, and Gemma answers 500 about half of the time. **Only TWO Gemma models exist on the free key (26B A4B and 31B).** A single 14.8K call took 13 to 181 s. The free key also showed Gemini 3.6 Flash answering a tiny call on all three keys.
+
+#### 23.5 Free Mistral models, checked live 2026-10-22 (the console page is not an entitlement)
+
+One tiny call to every text model. **ANSWER (200), and NONE of them was in our chain (Ministral 8B, Nemo and 14B were added on 2026-10-23, see 23.9):** `codestral-2508` (also `codestral-latest` and `mistral-code-latest`: the same limits, 256K, 125 requests a minute, 625K tokens a minute), `ministral-14b-2512` (262K, 30 a minute, 937.5K), `ministral-8b-2512` (262K, 188 a minute, 625K), `ministral-3b-2512` (131K, 750 a minute, 1.3M) and `open-mistral-nemo` (188 a minute, 625K). **Refused:** `mistral-medium-latest`, `mistral-small-2603`, `mistral-small-latest`, `magistral-*` and `devstral-2512` (429, limit 0), `mistral-large-*`, `mistral-large-4`, `glm-5-2`, **`zai-glm-5-3`** and `zai-glm-5-2` (403, "not available in your subscription tier"), `labs-leanstral-1-5-1` (403: a Labs model needs an admin to enable Labs models; it is a Lean-proof specialist, so it was not pursued). **Selected for measurement: codestral, ministral 14B, 8B, 3B and open-mistral-nemo** (done in 23.6).
+
+#### 23.6 THE SIZE TEST — one big call, or parts? (quick, 2026-10-22; `scripts/measure_claim_sizes.py`, results in `docs/step2/slice7/`)
+
+**Proxy:** 85 files of `labpilot/` (without `llm/registry.py`), about 90K estimated tokens, 434 chunks. The task "list every top-level `CAPITAL_NAME = value`" has a true list from the AST: **68 constants**. A hit needs the name AND the value. This measures attention over a long input, NOT the quality of real claims. One run for each cell, temperature 0, one corpus (Python, our own code). **The rule was written BEFORE the run** (in the script): C (always parts, fixed 12K) if for at least 60% of the models that can do the big call recall(12K) is within 0.05 of the best of {ALL, 28K}; B (a size per model) otherwise; A only if ALL beats 28K by more than 0.05; a gap under 0.05 is a tie.
+
+**How to read the numbers.** Each cell is `recall / precision, seconds`. Recall and precision are shares between 0 and 1, so .94 means 94%. **Recall** = true constants found ÷ all 68; a constant counts only when the name AND the value are right (.94 is 64 of 68, .88 is 60 of 68). **Precision** = true constants found ÷ all different items the model returned, so a low precision means it listed many names that are not module-level constants (some are real constants of a class or a function, some are invented; the split is in the list of invented names below). Higher is better for both. ALL is one call of ~90K, 28K is 4 parts, 12K is 8 parts.
+
+| model | ALL | 28K | 12K |
+|---|---|---|---|
+| Gemini 3.5 Flash-Lite | .88 / .88, 29 s | .94 / .81, 39 s | **.94 / .82, 24 s** |
+| DeepSeek V4.1 Flash (LiteRouter) | .93 / .78, 63 s | .93 / .73, 234 s | .93 / .70, 114 s |
+| GLM-5.3 Flash (Cline) | .93 / .80, 178 s | .93 / .75, 295 s | .93 / .57, 193 s |
+| Gemma 4 26B A4B (3 keys as rooms) | cannot (16K) | cannot | **.94 / .54, 198 s** |
+| Ministral 8B | .71 / .72, 28 s | .87 / .41, 20 s | .91 / .39, 22 s |
+| Mistral Nemo | .71 / .67, 31 s | .90 / .43, 37 s | .90 / .39, 22 s |
+| Codestral 2508 | .59 / .74, 229 s | .84 / .50, 24 s | .79 / .41, 17 s |
+| Ministral 14B | timeout (300 s) | .72 / .45, 1 of 4 parts failed | .84 / .48, 42 s |
+| Ministral 3B | .01 / 1.00, 23 s | .16 / 1.00, 149 s | .50 / .52, 149 s |
+| Gemma 4 31B (3 keys as rooms) | cannot | cannot | .50 / .68, **2 of 8 parts failed**, 864 s |
+| Gemini 3.6 Flash (key 3) | not measured: the test spent its 20 requests a day (429, then 503) | | |
+| DeepSeek V4 Flash (OrcaRouter) | not measured: 429 "free capacity is limited" on every call | | |
+
+**By the rule: C.** Of the 7 models with all three sizes, recall at 12K is within 0.05 of the best of {ALL, 28K} for 7 of 7 (codestral is exactly at the edge, 0.79 against 0.84). ALL never beat 28K by more than 0.05; it was worse for 5 of 7. So **ALWAYS PARTS, ONE FIXED SIZE of 12K (D68)**; no model gained from a bigger size.
+
+**What else it showed:**
+- **Strong models do not care about the size** (DeepSeek V4.1 and GLM-5.3: 0.93 at all three). Flash-Lite gains 0.06 from parts. Weak and small models gain 0.19 to 0.49 (ministral 3B: one item from the whole text, then 34 of 68 from 12K parts).
+- **Parts make small models INVENT.** Names returned that do not exist anywhere in the corpus ("invented", at ALL / 28K / 12K): Flash-Lite 0 / 0 / 0; ministral 8B 0 / 20 / 15; Nemo 0 / 19 / 12; codestral 0 / 16 / 4; ministral 14B - / 24 / 7; DeepSeek V4.1 10 / 10 / 11 and GLM-5.3 10 / 10 / 11 (these two may be names the model altered); Gemma 26B 6; Gemma 31B 7. The other extras are real constants from a class or a function that our truth list (module level only) does not hold. **An invented claim becomes a false finding, so D69's quote check matters most for the cheap models.**
+- **Gemma 26B reached 0.94 with parts**, as good as Flash-Lite, but took 198 s even with the room spreader; **Gemma 31B is flaky** (2 of 8 parts lost after retries, 864 s).
+- **Speed:** Flash-Lite 24 s; the free Mistral models 17 to 42 s; DeepSeek V4.1 and GLM-5.3 are slow (LiteRouter paces one call every 8 s, and Cline answered in 178 to 295 s).
+- **My mistakes in the run:** Gemini 3.6 Flash is a 20-requests-a-day model and the test sent 13 calls plus retries, so it failed on quota, not on quality (a direct probe confirmed the error is `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, limit 20, while the same model took a 24K-token prompt on key 1). Do not test a scarce model with a 13-call design.
+
+**Limits, stated plainly:** a proxy (constants, not claims); one run for each cell so no noise estimate (a gap under 0.05 is a tie); one corpus in one language; 68 true items, so one item is 0.015; precision is measured against module-level constants only; Gemma, Mistral and Cline were run on today's capacity. **It settles the SHAPE (parts of one size), not the quality of real claims.**
+
+#### 23.7 Key 3: what changed in the code (2026-10-22, at the user's explicit request)
+
+Proven first: key 3 answers a probe (200), differs from keys 1 and 2, and accepted a 14,800-token prompt on Gemma 31B at the same moment as key 2.
+- `llm/registry.py`: `GOOGLE_KEYS` has three names; `_third_account` and `_other_accounts`; each of the 8 Google models appears three times in `CHAIN` (**83 tiers**, was 75; **86** after the three Mistral tiers of 23.9).
+- `api/reranking.py`: `_both_accounts` became `_every_account` (the four LLM rerank models on three keys; **17 rerank tiers**); Jev now sits FOURTH, behind every Flash-Lite key, for the same reason as before (a paid tier never goes between free ones).
+- `embed/registry.py` and `embed/__init__.py`: `GEMINI_EMBED_001_KEY3` and `GEMINI_EMBED_2_KEY3` in `MIGRATION` (10 entries; one more 1,000 embed requests a day for each model, same vectors).
+- `.env.example` and `.github/workflows/smoke.yaml` carry `GOOGLE_API_KEY_3`. **The GitHub secret `GOOGLE_API_KEY_3` must be created by hand**, or the Monday smoke run fails on the new tiers.
+- Six old tests that counted two accounts were changed to three, and one NEW test pins that every Google model sits on every key, adjacent and in key order (`test_every_google_model_sits_on_every_account_in_key_order`). 7 deliberate breaks of the key 3 code (a missing twin, swapped twins, a wrong key, key 3 left out of the rerank chain, of `MIGRATION`, of `smoke.yaml` and of `.env.example`), all caught. 1560 unit and api tests passed in the temp copy.
+
+#### 23.9 The three small Mistral tiers are in `CHAIN` (2026-10-23, at the user's request)
+
+`Ministral 8B`, `Mistral Nemo` and `Ministral 14B` (`ministral-8b-2512`, `open-mistral-nemo`, `ministral-14b-2512`), in that order, right after the two Bazaarlink tiers and before the six Routeway Gemma finetunes: unscored, so below the measured Gemma 4 31B. `CHAIN` has **86 tiers** (positions 60, 61 and 62). They are not reasoning models, so no reasoning field. **Output cap 8,192**, so they never write a report (a local guard like Bazaarlink's, not a measured limit; a 32,000-token ask is refused locally with "exceeds the output limit 8192", checked live). One quota pool for each model (`MISTRAL_API_KEY:<model>`). Each answered a tiny live call (0.8 to 1.1 s). The three names are in `OUTPUT_TOO_SMALL` and in a new `MISTRAL_SMALL_WITHOUT_REASONING` list of the registry tests. The reasons for the choice and the size-test numbers are in the comment above `MINISTRAL_8B` in `registry.py`.
+
+**They are NOT a claims chain yet.** That needs the quote check (D69, built nowhere) and slice 11. Ministral 3B (recall .50) and Codestral (.79) were left out on purpose. The 14B is the weakest of the three and is there for a third Mistral option only. Only the LLM tests were run (211 passed); the full suite was skipped at the user's request.
+
+#### 23.8 Owed
+
+- **M19** claims on real prose: A read whole against A in parts on a real paper (the size test used code constants). **M20** a part size below 12K (6K, 8K), because the weak models improved the most as the part shrank. **M21** the free Mistral models on real claims, with the quote check. **M22** the size test again with a second corpus (another language) and with repeats, to estimate the noise. **M23** the Gemini 3.6 Flash and OrcaRouter DeepSeek cells, on a day when their quota is free.
+- Slice 11: the spreader (D70), a claims chain, and the free Mistral models as candidates for cheap chains (Ministral 8B, Nemo and 14B are in `CHAIN` since 2026-10-23, see 23.9; Codestral and Ministral 3B are not).
+- Slice 12: D68 and D69 with a new test pair that has a repository as A.
+- The lesson 1 instruction merges facts (23.1); M10 and M11.
+- Not done: `zai-glm-5-3` is refused on the free plan; `labs-leanstral` needs an admin switch in the Mistral console and is not useful here.
 
 ---
 
