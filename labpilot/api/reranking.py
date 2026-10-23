@@ -50,9 +50,9 @@ from labpilot.rerank import (
 #                    IDENTICAL 109-token answer.
 #   a JSON schema    gemma went 45.5s -> 14.4s, and the reply stopped being
 #                    prose wrapped around an answer.
-# The SECOND Google account. Google bills per project per model, so this is
-# a whole extra allowance of every model, not a spare key.
-SECOND_KEY = GOOGLE_KEYS[1]
+# Google bills per project per model, so every account after the first is a
+# whole extra allowance of every model, not a spare key. Three accounts since
+# 2026-10-22 (GOOGLE_KEYS).
 
 RANKING_CONFIG = {
     "thinking": None,
@@ -90,34 +90,38 @@ def _listwise(provider: GeminiProvider) -> LLMReranker:
     )
 
 
-def _both_accounts(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
-    """The tier, then THE SAME MODEL ON THE SECOND ACCOUNT.
+def _every_account(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
+    """The tier, then THE SAME MODEL ON EVERY OTHER ACCOUNT.
 
-    ADDED 2026-09-19, and it was a real hole. Google bills per PROJECT per
-    MODEL, so a second account is a second full allowance of every model - the
-    generator chain has used both keys since 2026-09-11 and this one never did.
-    All four LLM rerank tiers sat on GOOGLE_API_KEY alone, so the rerank path
-    had HALF the budget it could have.
+    ADDED 2026-09-19 for the second account, and it was a real hole. Google bills
+    per PROJECT per MODEL, so another account is another full allowance of every
+    model - the generator chain has used both keys since 2026-09-11 and this one
+    never did. All four LLM rerank tiers sat on GOOGLE_API_KEY alone, so the
+    rerank path had HALF the budget it could have.
 
     It was found by running into it: measuring RERANK_TOP_N, the chain refused
     with `GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit: 500` while
-    the identical model answered 200 on the other key.
+    the identical model answered 200 on the other key. The third account
+    (2026-10-22) is the same rule with one more twin.
 
     ADJACENT on purpose, exactly as in the generator chain. A spent pool is
     skipped for free, so the strongest thing still available after flash-lite
-    runs out is flash-lite on the other account - not a weaker model.
+    runs out is flash-lite on another account - not a weaker model.
     """
-    twin = dataclasses.replace(
-        provider,
-        name=f"{provider.name} (key 2)",
-        api_key_env=SECOND_KEY,
-        quota_pool=f"{SECOND_KEY}:{provider.model}",
+    twins = tuple(
+        dataclasses.replace(
+            provider,
+            name=f"{provider.name} (key {number})",
+            api_key_env=key,
+            quota_pool=f"{key}:{provider.model}",
+        )
+        for number, key in enumerate(GOOGLE_KEYS[1:], start=2)
     )
-    return (_listwise(provider), _listwise(twin))
+    return (_listwise(provider), *(_listwise(twin) for twin in twins))
 
 
 # The four LLM tiers BEAT every purpose-built cross-encoder measured, so they
-# lead - eight entries, because each one is built on BOTH Google accounts.
+# lead - twelve entries, because each one is built on all three Google accounts.
 # RERANK_CHAIN follows, and since 2026-09-19 every tier in it is measured ABOVE
 # vector alone: bge-reranker-base was deleted rather than reordered, on v1's F6
 # condition, so the chain no longer ends in something worse than not reranking.
@@ -133,7 +137,7 @@ def _both_accounts(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
 # Position 2 is flash-lite ON THE SECOND GOOGLE ACCOUNT: the same model, a
 # separate free allowance. Putting a PAID tier between two keys of one free
 # model would spend money before spending an allowance we already have, and
-# it would break the reason `_both_accounts` keeps the twins adjacent. So
+# it would break the reason `_every_account` keeps the twins adjacent. So
 # "the second option" and "the third tier" are the same place here: after
 # flash-lite, both keys, and ahead of everything else.
 #
@@ -167,10 +171,10 @@ def _both_accounts(provider: GeminiProvider) -> tuple[LLMReranker, ...]:
 LEAD_MODEL, *REMAINING_MODELS = LLM_RERANK_ORDER
 
 CHAIN: tuple[Reranker, ...] = (
-    *_both_accounts(PROVIDERS[LEAD_MODEL]),
+    *_every_account(PROVIDERS[LEAD_MODEL]),
     JEV_RERANK,
     JEV_NETLIFY_RERANK,
-    *(tier for model in REMAINING_MODELS for tier in _both_accounts(PROVIDERS[model])),
+    *(tier for model in REMAINING_MODELS for tier in _every_account(PROVIDERS[model])),
     *RERANK_CHAIN,
 )
 
