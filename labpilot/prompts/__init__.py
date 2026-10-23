@@ -14,6 +14,14 @@ from labpilot.prompts.builder import (
     build_prompt,
     reserve,
 )
+from labpilot.prompts.checks import (
+    CHECK,
+    CHECK_MAX_TOKENS,
+    CHECK_VERSION,
+    CHECKS_NOTE,
+    build_check_prompt,
+    render_checks,
+)
 from labpilot.prompts.citations import Citation, find_citations, resolve
 from labpilot.prompts.claims import (
     CLAIMS,
@@ -60,6 +68,10 @@ from labpilot.prompts.summary import (
 )
 
 __all__ = [
+    "CHECK",
+    "CHECK_MAX_TOKENS",
+    "CHECK_VERSION",
+    "CHECKS_NOTE",
     "CLAIMS",
     "CLAIMS_BUDGET",
     "CLAIMS_MAX_TOKENS",
@@ -92,8 +104,10 @@ __all__ = [
     "PLANNER_MAX_TOKENS",
     "PLANNER_VERSION",
     "STEP_MEANINGS",
+    "build_check_prompt",
     "build_claims_prompt",
     "claims_fit",
+    "render_checks",
     "build_planner_prompt",
     "map_budget",
     "build_context",

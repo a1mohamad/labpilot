@@ -8,7 +8,10 @@ from langgraph.graph.state import CompiledStateGraph
 from psycopg_pool import ConnectionPool
 
 from labpilot.agent import build_graph
+from labpilot.api.chains import for_claims
+from labpilot.api.checking import make_checker
 from labpilot.api.checkpoints import open_saver, prune
+from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison
 from labpilot.api.errors import (
     GenerationUnavailable,
@@ -159,6 +162,8 @@ def _ask_graph(
                 "every free tier failed", attempts=exc.attempts
             ) from exc
 
+    claims_client = for_claims(client)
+
     return build_graph(
         measure=partial(measure_sides, conn),
         fits=fits,
@@ -168,6 +173,8 @@ def _ask_graph(
         rank_side=rank_pile,
         plan=make_planner(conn, client),
         summarize=summarize,
+        extract_claims=make_claims_extractor(conn, claims_client),
+        check=make_checker(claims_client),
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,

@@ -8,7 +8,7 @@ import psycopg
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
-from labpilot.agent import Claim, Plan, Query
+from labpilot.agent import Claim, Finding, Plan, Query
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
 from labpilot.store import ArtifactRecord, StoredArtifact
@@ -20,6 +20,7 @@ SAVED_TYPES = [
     Plan,
     Query,
     Claim,
+    Finding,
     Attempt,
     LLMResult,
 ]

@@ -1,3 +1,10 @@
+from labpilot.agent.check_schema import (
+    CHECK_TOOL_NAME,
+    KINDS,
+    VERDICTS,
+    check_schema,
+    read_finding,
+)
 from labpilot.agent.claim import Claim
 from labpilot.agent.claims_schema import (
     CLAIMS_TOOL_NAME,
@@ -5,7 +12,8 @@ from labpilot.agent.claims_schema import (
     claims_schema,
     read_claims,
 )
-from labpilot.agent.errors import ClaimsError, PlanError
+from labpilot.agent.errors import CheckError, ClaimsError, PlanError
+from labpilot.agent.finding import UNCHECKED, Finding
 from labpilot.agent.graph import build_graph
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.plan_check import (
@@ -21,12 +29,20 @@ from labpilot.agent.state import State
 __all__ = [
     "MAX_QUERIES",
     "PLAN_TOOL_NAME",
+    "CHECK_TOOL_NAME",
     "CLAIMS_TOOL_NAME",
+    "KINDS",
     "MAX_CLAIMS",
+    "UNCHECKED",
+    "VERDICTS",
+    "check_schema",
     "claims_schema",
     "read_claims",
+    "read_finding",
     "Claim",
+    "CheckError",
     "ClaimsError",
+    "Finding",
     "allowed_steps",
     "build_graph",
     "default_plan",

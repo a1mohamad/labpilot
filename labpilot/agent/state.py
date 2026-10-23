@@ -2,6 +2,7 @@ import operator
 from typing import Annotated, Any, TypedDict
 
 from labpilot.agent.claim import Claim
+from labpilot.agent.finding import Finding
 from labpilot.agent.plan import Plan
 from labpilot.ingest import Chunk
 
@@ -17,6 +18,7 @@ class State(TypedDict):
     last_answer: str
     plan: Plan
     claims: tuple[Claim, ...]
+    findings: Annotated[list[Finding], operator.add]
     summary_a: str
     summary_b: str
     sides: Any

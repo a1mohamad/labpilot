@@ -26,11 +26,13 @@ logger = logging.getLogger(__name__)
 TOOL_DESCRIPTION = "List the checkable facts that the reference states."
 
 
-def _claims_problem(result: LLMResult, *, sources: list[str]) -> str | None:
+def _claims_problem(
+    result: LLMResult, *, sources: list[str], texts: list[str]
+) -> str | None:
     if result.arguments is None:
         return "no arguments"
     try:
-        read_claims(result.arguments, sources)
+        read_claims(result.arguments, sources, texts)
     except ClaimsError as exc:
         return str(exc)
     return None
@@ -64,7 +66,7 @@ def make_claims_extractor(
                 build_claims_prompt(parts, question),
                 max_tokens=CLAIMS_MAX_TOKENS,
                 tool=tool,
-                problem_with=partial(_claims_problem, sources=sources),
+                problem_with=partial(_claims_problem, sources=sources, texts=parts),
             )
         except AllFreeTiersExhausted as exc:
             raise ClaimsError(
@@ -73,7 +75,7 @@ def make_claims_extractor(
         if result.arguments is None:
             raise ClaimsError(f"{result.model} gave no arguments")
 
-        claims = read_claims(result.arguments, sources)
+        claims = read_claims(result.arguments, sources, parts)
         logger.info(
             "claims v%d made by %s (tier %s): %d claims",
             CLAIMS_VERSION,

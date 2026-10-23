@@ -12,6 +12,10 @@ def make_respond_node(
     def respond_node(state: State) -> dict[str, Any]:
         summaries = {"A": state.get("summary_a", ""), "B": state.get("summary_b", "")}
         files = len(present_sides(state.get("a", ""), state.get("b", "")))
+        # Handed over only when there are some, so a graph with no checks calls
+        # make_prompt exactly as it did before the checks existed.
+        findings = state.get("findings", ())
+        checked = {"findings": findings} if findings else {}
         prompt, selected = make_prompt(
             state["chunks"],
             question=state["question"],
@@ -19,6 +23,7 @@ def make_respond_node(
             summaries=summaries,
             files=files,
             last_answer=state.get("last_answer", ""),
+            **checked,
         )
         return {"prompt": prompt, "selected": selected, "result": generate(prompt)}
 

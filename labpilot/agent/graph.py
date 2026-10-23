@@ -6,12 +6,16 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
+from labpilot.agent.check_one import make_check_node
 from labpilot.agent.claim import Claim
 from labpilot.agent.extract_claims import make_claims_node, wants_claims
 from labpilot.agent.fan_out import fan_out
+from labpilot.agent.fan_out_claims import fan_out_claims
+from labpilot.agent.finding import Finding
 from labpilot.agent.merge import make_merge_node
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.planner import make_planner_node
+from labpilot.agent.remember import make_remember_node
 from labpilot.agent.respond import make_respond_node
 from labpilot.agent.rewrite import make_rewrite_node
 from labpilot.agent.search_one import make_one_search_node
@@ -33,6 +37,7 @@ def build_graph(
     rewrite: Callable[[str, list[str], str], str] | None = None,
     summarize: Callable[[str], str] | None = None,
     extract_claims: Callable[[str, str], tuple[Claim, ...]] | None = None,
+    check: Callable[[Claim, Chunks], Finding] | None = None,
     answer_text: Callable[[Any], str] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
@@ -43,12 +48,6 @@ def build_graph(
     def stuff_node(state: State) -> dict[str, Any]:
         chunks, totals = stuff(state["sides"], state["question"])
         return {"chunks": chunks, "totals": totals}
-
-    def remember_node(state: State) -> dict[str, Any]:
-        remembered: dict[str, Any] = {"history": [state["question"]]}
-        if answer_text is not None:
-            remembered["last_answer"] = answer_text(state["result"])
-        return remembered
 
     def pick(state: State) -> str | list[Send]:
         return "stuff" if state["fits"] else fan_out(state)
@@ -63,7 +62,7 @@ def build_graph(
     builder.add_node("search_one", make_one_search_node(search_one))
     builder.add_node("merge", make_merge_node(totals_of, rank_side))
     builder.add_node("respond", make_respond_node(make_prompt, generate))
-    builder.add_node("remember", remember_node)
+    builder.add_node("remember", make_remember_node(answer_text))
 
     # A follow-up is rewritten first, so the planner, the searches, the rerank
     # and the answer all read the standalone question.
@@ -95,7 +94,16 @@ def build_graph(
             builder.add_conditional_edges(
                 searched, after_search, ["extract_claims", "respond"]
             )
-        builder.add_edge("extract_claims", "respond")
+        if check is None:
+            builder.add_edge("extract_claims", "respond")
+        else:
+            # One check for each claim, all at the same time. With no claims
+            # the path function sends the run straight to respond.
+            builder.add_node("check_one", make_check_node(search_one, check))
+            builder.add_conditional_edges(
+                "extract_claims", fan_out_claims, ["check_one", "respond"]
+            )
+            builder.add_edge("check_one", "respond")
     builder.add_edge("respond", "remember")
     builder.add_edge("remember", END)
     return builder.compile(checkpointer=checkpointer)

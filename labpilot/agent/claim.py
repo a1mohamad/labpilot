@@ -5,3 +5,4 @@ from dataclasses import dataclass
 class Claim:
     text: str
     source: str
+    quote: str

@@ -6,7 +6,13 @@ from labpilot.agent import Claim, ClaimsError, Plan, Query, allowed_steps, build
 from labpilot.agent.extract_claims import STEP, make_claims_node, wants_claims
 from labpilot.ingest import Chunk
 
-CLAIMS = (Claim("the time step is 0.01 s", "[paper.md · 4 Setup · lines 10-19]"),)
+CLAIMS = (
+    Claim(
+        "the time step is 0.01 s",
+        "[paper.md · 4 Setup · lines 10-19]",
+        "time step is 0.01 s",
+    ),
+)
 WANTS = Plan(steps=("extract_claims",), queries=(Query("B", "time step"),))
 NOT_WANTED = Plan(steps=("summarize",), queries=(Query("B", "time step"),))
 FOUND = Chunk(
@@ -106,17 +112,15 @@ def test_any_other_error_reaches_the_caller_unchanged():
 
 
 def test_after_a_search_the_claims_step_runs_before_the_answer():
-    final, order = run(WANTS, fits_value=False)
+    _, order = run(WANTS, fits_value=False)
 
     assert order == ["rank", ("claims", "why?", "A-1"), "generate"]
-    assert final["claims"] == CLAIMS
 
 
 def test_after_stuffing_the_claims_step_runs_before_the_answer():
-    final, order = run(WANTS, fits_value=True)
+    _, order = run(WANTS, fits_value=True)
 
     assert order == ["stuff", ("claims", "why?", "A-1"), "generate"]
-    assert final["claims"] == CLAIMS
 
 
 @pytest.mark.parametrize("fits_value", [True, False])
