@@ -6,7 +6,7 @@ from labpilot.tokens import estimate_tokens
 # The wording below is FIXED. Change it only together with this number, and the
 # number is logged beside every list of claims, so a list can be tied to its
 # wording.
-CLAIMS_VERSION = 1
+CLAIMS_VERSION = 2
 
 # The reference is read WHOLE or not at all: a fact we cut off is a question we
 # never ask. Gemma (16,000 input tokens a minute) and Groq cannot take a prompt
@@ -33,7 +33,9 @@ the work reports. An opinion ("our method is better") is not a claim, and
 neither is background.
 
 The reference comes as numbered parts: [part 0], [part 1], and so on. For each
-claim, give the number of the part it comes from.
+claim, give the number of the part it comes from, and the quote: the exact words
++of that part that state the claim, copied letter for letter, at most 200
++characters. A claim whose quote is not in its part is thrown away.
 
 If the question names a topic, write the claims about that topic first. Do not
 leave out other claims because of the question.""",
