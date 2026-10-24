@@ -10,6 +10,7 @@ from labpilot.ingest import (
     Chunk,
 )
 from labpilot.prompts import (
+    CHECKS_NOTE,
     PROMPT_BUDGET,
     build_chat_prompt,
     build_prompt,
@@ -68,6 +69,63 @@ def code_findings_text(found: Sequence[CodeFinding]) -> str:
     return "\n".join([CODE_NOTE, *(_code_line(item) for item in found)])
 
 
+# The lines of what was already found get at most this share of the prompt's
+# budget. On 2026-10-25 48 check lines and 33 code lines, with the instruction
+# and the outline, came to more than a 12,000-token budget, and the answer was
+# refused with ArtifactsTooLargeToCompare. The lines that tell the most are kept.
+PRIOR_SHARE = 0.25
+# A match line in short form: the claim alone. The writer needs the mismatches
+# in full; a match only says what not to report.
+_MATCH_CHARS = 140
+_RANK = {"mismatch": 0, "differs": 1, "absent": 2, "unchecked": 3, "silent": 4}
+
+
+def prior_text(
+    findings: Sequence[Finding],
+    code_findings: Sequence[CodeFinding],
+    limit: int,
+) -> str:
+    """The checks and the code findings, the most telling lines first, within
+    `limit` tokens. What does not fit is counted in one line, never lost
+    silently."""
+    entries: list[tuple[int, str, str]] = []
+    for found in findings:
+        if found.verdict == "match":
+            line = f'[match] A says "{found.claim.text}"'[:_MATCH_CHARS]
+            entries.append((5, "check", line))
+        else:
+            entries.append((_RANK[found.verdict], "check", _check_line(found)))
+    for item in code_findings:
+        rank = _RANK["silent"] if item.a_says == A_SILENT else _RANK["differs"]
+        entries.append((rank, "code", _code_line(item)))
+
+    notes = estimate_tokens(CHECKS_NOTE) + estimate_tokens(CODE_NOTE)
+    kept: list[tuple[int, str, str]] = []
+    spent = notes
+    left_out = 0
+    for entry in sorted(entries, key=lambda entry: entry[0]):
+        cost = estimate_tokens(entry[2]) + 1
+        if spent + cost > limit:
+            left_out += 1
+            continue
+        kept.append(entry)
+        spent += cost
+
+    blocks = []
+    checks = [line for _, kind, line in kept if kind == "check"]
+    codes = [line for _, kind, line in kept if kind == "code"]
+    if checks:
+        blocks.append(render_checks(checks))
+    if codes:
+        blocks.append("\n".join([CODE_NOTE, *codes]))
+    if left_out:
+        blocks.append(
+            f"({left_out} more lines of findings were left out for room, the "
+            "least telling first.)"
+        )
+    return "\n\n".join(blocks)
+
+
 def _first(evidence: Sequence[Chunk], chunks: tuple[Chunk, ...]) -> tuple[Chunk, ...]:
     picked: dict[tuple[str, int], Chunk] = {}
     for chunk in (*evidence, *chunks):
@@ -93,11 +151,7 @@ def build_answer_prompt(
     instructions = instructions_for(files)
     # The checks ride in the block that already carries what an earlier pass
     # found, so `build_prompt` and `reserve` both count them.
-    prior = "\n\n".join(
-        block
-        for block in (checks_text(findings), code_findings_text(code_findings))
-        if block
-    )
+    prior = prior_text(findings, code_findings, int(PROMPT_BUDGET * PRIOR_SHARE))
 
     if totals is None:
         # Everything was read, so send everything whenever the whole prompt fits.

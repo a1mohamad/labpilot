@@ -238,7 +238,7 @@ def _ask_graph(
         plan=make_planner(conn, client),
         summarize=summarize,
         extract_claims=make_claims_extractor(conn, claims_client),
-        check=make_checker(claims_client, whole_files.facts_for),
+        check=make_checker(claims_client, whole_files.facts_for, whole_files.expand),
         search_claim=search_claim,
         new_query=make_query_writer(claims_client, whole_files.outline),
         find_missing=make_difference_finder(conn, claims_client, whole_files),

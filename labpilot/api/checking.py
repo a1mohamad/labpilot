@@ -38,8 +38,12 @@ def _check_problem(
 def make_checker(
     client: LLMClient,
     facts: Callable[[Sequence[Chunk]], str] | None = None,
+    expand: Callable[[Sequence[Chunk]], tuple[Chunk, ...]] | None = None,
 ) -> Callable[[Claim, tuple[Chunk, ...]], Finding]:
     def check(claim: Claim, chunks: tuple[Chunk, ...]) -> Finding:
+        # Go to definition: the parts that SET what the found parts only use.
+        if expand is not None:
+            chunks = expand(chunks)
         # The same rule as the claims: the model names a part by its NUMBER and
         # the code looks up the place.
         texts = [f"{chunk.header}\n{chunk.text}" for chunk in chunks]

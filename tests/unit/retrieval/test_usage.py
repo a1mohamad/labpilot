@@ -71,3 +71,24 @@ def test_parts_with_no_def_label_give_nothing():
     parts = [part("[notes.md · 3 Method · lines 1-9]", "We train for 5 epochs.")]
 
     assert unused_definitions(parts) == {}
+
+
+def test_where_each_constant_is_set_is_found():
+    from labpilot.retrieval import constant_definitions
+
+    parts = [
+        (0, "class TrainConfig:\n    CLIP_NORM = 1.5\n    LR: float = 3e-4"),
+        (1, "    clip(self.config.CLIP_NORM)\nif CLIP_NORM == 2:"),
+        (2, "    CLIP_NORM = 1.5  # an overlapping copy"),
+        (3, "    WARMUP == 0  # a comparison, not a setting"),
+    ]
+
+    assert constant_definitions(parts) == {"CLIP_NORM": 0, "LR": 0}
+
+
+def test_the_constants_a_text_names_are_listed_once_in_order():
+    from labpilot.retrieval import constants_named
+
+    text = "clip(self.config.CLIP_NORM)\nx = cfg.LR * cfg.CLIP_NORM\nif ok:"
+
+    assert constants_named(text) == ["CLIP_NORM", "LR"]

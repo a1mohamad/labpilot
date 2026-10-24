@@ -36,3 +36,26 @@ def unused_definitions(parts: Sequence[tuple[str, str]]) -> dict[str, str]:
         if not named:
             unused[name] = header
     return unused
+
+
+# A setting written as a constant: "CLIP_NORM = 1.5", "    LR: float = 3e-4".
+_CONSTANT_SET = re.compile(r"^\s*([A-Z][A-Z0-9_]+)\s*(?::[^=\n]*)?=(?!=)", re.M)
+_CONSTANT_NAMED = re.compile(r"\b([A-Z][A-Z0-9_]+)\b")
+
+
+def constant_definitions(parts: Sequence[tuple[str, str]]) -> dict[str, str]:
+    """Where each constant of a file is SET: name -> the key of its part.
+
+    `parts` are (key, text) pairs. The first part that sets a name wins, so
+    an overlapping copy of the same line in the next part changes nothing.
+    """
+    found: dict[str, str] = {}
+    for key, text in parts:
+        for name in _CONSTANT_SET.findall(text):
+            found.setdefault(name, key)
+    return found
+
+
+def constants_named(text: str) -> list[str]:
+    """The constants a text names, in order, each once."""
+    return list(dict.fromkeys(_CONSTANT_NAMED.findall(text)))

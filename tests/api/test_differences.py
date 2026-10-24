@@ -267,3 +267,82 @@ def test_the_reference_is_read_whole_only_when_small(monkeypatch):
     assert whole({"A": small}, "A") == ("all of", {"A": small})
     assert whole({"A": big}, "A") is None
     assert whole({"B": small}, "B") is None
+
+
+def many_findings():
+    from labpilot.agent import Claim, Finding
+
+    claim = Claim("a long claim about the setting " * 3, "[paper.md]", "q")
+    checks = [Finding(claim, "match", "", "[s]", "quote", "same") for _ in range(60)]
+    checks.append(Finding(claim, "mismatch", "choice", "[s]", "dt = 0.05", "bigger"))
+    codes = [
+        CodeFinding("B does a thing that A never says " * 2, "[t]", "x", A_SILENT)
+        for _ in range(60)
+    ]
+    codes.append(CodeFinding("B masks stopwords", "[t]", "stop_mask", "nothing else"))
+    return checks, codes
+
+
+def test_many_findings_never_crowd_the_evidence_out_of_the_prompt():
+    # 2026-10-25: 48 check lines and 33 code lines made the fixed text bigger
+    # than a 12,000-token budget, and the answer was refused.
+    from labpilot.api import prompting
+
+    checks, codes = many_findings()
+    part = Chunk(
+        text="x = 1",
+        source="t.py",
+        start_line=1,
+        end_line=1,
+        side="B",
+        artifact_id="B-1",
+        chunk_index=0,
+    )
+    old = prompting.PROMPT_BUDGET
+    prompting.PROMPT_BUDGET = 12_000
+    try:
+        prompt, picked = build_answer_prompt(
+            (part,),
+            question="why?",
+            files=2,
+            totals={"B": 9},
+            findings=checks,
+            code_findings=codes,
+        )
+    finally:
+        prompting.PROMPT_BUDGET = old
+
+    assert picked == (part,)
+    assert "more lines of findings were left out for room" in prompt
+
+
+def test_the_most_telling_findings_are_kept_first():
+    from labpilot.api.prompting import prior_text
+
+    checks, codes = many_findings()
+
+    text = prior_text(checks, codes, 600)
+
+    assert "[mismatch - choice]" in text
+    assert "[B differs] B masks stopwords" in text
+    assert "\n[match]" not in text
+    assert "left out for room" in text
+
+
+def test_a_match_is_written_short():
+    from labpilot.agent import Claim, Finding
+    from labpilot.api.prompting import prior_text
+
+    match = Finding(
+        Claim("the batch is 128", "[p]", "q"),
+        "match",
+        "",
+        "[s]",
+        "BATCH = 128",
+        "the same",
+    )
+
+    text = prior_text([match], [], 10_000)
+
+    assert '[match] A says "the batch is 128"' in text
+    assert "BATCH = 128" not in text

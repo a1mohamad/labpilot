@@ -55,9 +55,10 @@ def test_the_checker_and_the_writer_get_the_whole_file_facts(monkeypatch):
 
     asking._ask_graph("conn", "client")
 
-    (facts,) = seen["checker_facts"]
+    facts, expand = seen["checker_facts"]
     ((outline,),) = writers
     assert facts.__name__ == "facts_for"
+    assert expand.__name__ == "expand"
     assert outline.__name__ == "outline"
 
 

@@ -103,3 +103,119 @@ def test_the_outline_is_built_from_the_headers_once(monkeypatch):
     assert facts.outline("B-1") == "the map"
     assert facts.outline("B-1") == "the map"
     assert reads == ["B-1"]
+
+
+CONFIG = "[train.py · class TrainConfig · lines 1-9]"
+LOOP = "[train.py · class Trainer · def step · lines 50-60]"
+
+
+def loop_chunk():
+    return Chunk(
+        text="clip(params, self.config.CLIP_NORM)",
+        source="train.py",
+        start_line=50,
+        end_line=60,
+        side="B",
+        artifact_id="B-1",
+        chunk_index=7,
+        header=LOOP,
+    )
+
+
+def test_expand_adds_the_part_that_sets_a_constant_the_parts_only_use(monkeypatch):
+    stored_parts = (
+        stored(0, CONFIG, "class TrainConfig:\n    CLIP_NORM = 1.5"),
+        stored(7, LOOP, "clip(params, self.config.CLIP_NORM)"),
+    )
+    monkeypatch.setattr(file_facts, "read_chunks", lambda conn, a: stored_parts)
+
+    got = FileFacts("conn").expand((loop_chunk(),))
+
+    assert [c.chunk_index for c in got] == [7, 0]
+    assert got[1].header == CONFIG and got[1].side == "B"
+
+
+def test_expand_adds_nothing_when_the_parts_already_set_it(monkeypatch):
+    here = Chunk(
+        text="CLIP_NORM = 1.5\nclip(p, CLIP_NORM)",
+        source="train.py",
+        start_line=1,
+        end_line=2,
+        side="B",
+        artifact_id="B-1",
+        chunk_index=3,
+        header="[train.py · lines 1-2]",
+    )
+    monkeypatch.setattr(
+        file_facts,
+        "read_chunks",
+        lambda conn, a: (
+            stored(0, CONFIG, "CLIP_NORM = 9"),
+            stored(3, "[train.py · lines 1-2]", here.text),
+        ),
+    )
+
+    assert FileFacts("conn").expand((here,)) == (here,)
+
+
+def test_expand_adds_at_most_a_few_parts(monkeypatch):
+    names = [f"NAME_{n}" for n in range(6)]
+    stored_parts = tuple(
+        stored(n, f"[cfg · {n}]", f"{name} = {n}") for n, name in enumerate(names)
+    ) + (stored(99, LOOP, " ".join(f"cfg.{name}" for name in names)),)
+    monkeypatch.setattr(file_facts, "read_chunks", lambda conn, a: stored_parts)
+    used = Chunk(
+        text=stored_parts[-1].text,
+        source="train.py",
+        start_line=1,
+        end_line=2,
+        side="B",
+        artifact_id="B-1",
+        chunk_index=99,
+        header=LOOP,
+    )
+
+    got = FileFacts("conn").expand((used,))
+
+    assert len(got) == 1 + file_facts.MAX_DEFINITIONS
+
+
+def test_the_checker_reads_the_expanded_parts(monkeypatch):
+    from labpilot.agent import Claim
+    from labpilot.api.checking import make_checker
+    from labpilot.llm import LLMResult
+
+    prompts = []
+
+    class Client:
+        def generate(self, prompt, *, max_tokens, tool=None, problem_with=None):
+            prompts.append(prompt)
+            return LLMResult(
+                text="{}",
+                model="m",
+                tier=1,
+                arguments={
+                    "verdict": "mismatch",
+                    "kind": "choice",
+                    "part": 1,
+                    "quote": "CLIP_NORM = 1.5",
+                    "note": "1.5 not 1.0",
+                },
+            )
+
+    extra = Chunk(
+        text="CLIP_NORM = 1.5",
+        source="train.py",
+        start_line=1,
+        end_line=1,
+        side="B",
+        artifact_id="B-1",
+        chunk_index=0,
+        header=CONFIG,
+    )
+    check = make_checker(Client(), None, lambda chunks: (*chunks, extra))
+
+    finding = check(Claim("clip at 1.0", "[p]", "clip"), (loop_chunk(),))
+
+    assert "CLIP_NORM = 1.5" in prompts[0]
+    assert finding.verdict == "mismatch" and finding.evidence is extra
