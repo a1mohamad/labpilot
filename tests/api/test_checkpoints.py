@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from labpilot.agent import Claim, Plan, Query
+from labpilot.agent import Claim, Finding, Plan, Query
 from labpilot.api.checkpoints import SERDE, _OneAtATime, open_saver
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
@@ -41,7 +41,14 @@ PLAN = Plan(
     queries=(Query("B", "CLIP_NORM"),),
 )
 
-CLAIM = Claim("the time step is 0.01 s", "[paper.md · 4 Setup · lines 10-19]")
+CLAIM = Claim(
+    "the time step is 0.01 s",
+    "[paper.md · 4 Setup · lines 10-19]",
+    "time step is 0.01 s",
+)
+FINDING = Finding(
+    CLAIM, "mismatch", "choice", "[solver.py · lines 1-3]", "dt = 0.05", "bigger step"
+)
 
 
 def round_trip(value):
@@ -50,7 +57,7 @@ def round_trip(value):
 
 @pytest.mark.parametrize(
     "value",
-    [CLAIM, CHUNK, RESULT, STORED, RECORD, PLAN],
+    [CLAIM, FINDING, CHUNK, RESULT, STORED, RECORD, PLAN],
     ids=lambda value: type(value).__name__,
 )
 def test_every_class_in_the_state_comes_back_as_itself(value, caplog):
@@ -65,6 +72,13 @@ def test_a_class_nested_inside_another_comes_back_as_itself_too():
     back = round_trip(RESULT)
 
     assert isinstance(back.attempts[0], Attempt)
+
+
+def test_a_finding_comes_back_with_its_claim_as_a_claim():
+    back = round_trip(FINDING)
+
+    assert type(back.claim) is Claim
+    assert back == FINDING
 
 
 def test_the_saver_uses_our_list_of_classes():
