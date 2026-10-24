@@ -16,6 +16,9 @@ def make_respond_node(
         # make_prompt exactly as it did before the checks existed.
         findings = state.get("findings", ())
         checked = {"findings": findings} if findings else {}
+        code_findings = state.get("code_findings", ())
+        if code_findings:
+            checked["code_findings"] = code_findings
         prompt, selected = make_prompt(
             state["chunks"],
             question=state["question"],

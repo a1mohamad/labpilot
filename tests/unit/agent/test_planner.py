@@ -6,7 +6,7 @@ from labpilot.agent import Plan, PlanError, Query, build_graph
 from labpilot.agent.planner import make_planner_node
 
 PLAN = Plan(
-    steps=("extract_claims", "find_bugs"),
+    steps=("extract_claims", "find_missing"),
     queries=(Query("A", "gradient clipping value"), Query("B", "CLIP_NORM")),
 )
 

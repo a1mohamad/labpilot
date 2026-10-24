@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from labpilot.agent import Finding
+from labpilot.agent import A_SILENT, CodeFinding, Finding
 from labpilot.api.errors import (
     ArtifactsTooLargeToCompare,
 )
@@ -44,6 +44,30 @@ def checks_text(findings: Sequence[Finding]) -> str:
     return render_checks([_check_line(found) for found in ordered])
 
 
+CODE_NOTE = (
+    "B was also read part by part beside the whole of A, to find what B does "
+    "that A does otherwise or never says. [B differs] means A states something "
+    "else; [A silent] means A does not mention it. Each line is one reading of "
+    "the code: check it against the parts before you rely on it."
+)
+
+
+def _code_line(found: CodeFinding) -> str:
+    tag = "A silent" if found.a_says == A_SILENT else "B differs"
+    line = f'[{tag}] {found.text} B ({found.source}): "{found.quote}".'
+    if found.a_says != A_SILENT:
+        line += f' A says: "{found.a_says}".'
+    if len(line) > CHECK_LINE_CHARS:
+        line = line[: CHECK_LINE_CHARS - 1] + "…"
+    return line
+
+
+def code_findings_text(found: Sequence[CodeFinding]) -> str:
+    if not found:
+        return ""
+    return "\n".join([CODE_NOTE, *(_code_line(item) for item in found)])
+
+
 def build_answer_prompt(
     chunks: tuple[Chunk, ...],
     *,
@@ -53,6 +77,7 @@ def build_answer_prompt(
     summaries: Mapping[str, str] | None = None,
     last_answer: str = "",
     findings: Sequence[Finding] = (),
+    code_findings: Sequence[CodeFinding] = (),
 ) -> tuple[str, tuple[Chunk, ...]]:
     if files == 0:
         return build_chat_prompt(question, last_answer), ()
@@ -60,7 +85,11 @@ def build_answer_prompt(
     instructions = instructions_for(files)
     # The checks ride in the block that already carries what an earlier pass
     # found, so `build_prompt` and `reserve` both count them.
-    prior = checks_text(findings)
+    prior = "\n\n".join(
+        block
+        for block in (checks_text(findings), code_findings_text(code_findings))
+        if block
+    )
 
     if totals is None:
         # Everything was read, so send everything whenever the whole prompt fits.

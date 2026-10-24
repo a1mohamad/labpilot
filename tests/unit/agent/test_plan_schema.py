@@ -12,7 +12,7 @@ from labpilot.agent import (
 from labpilot.agent.plan_check import problem_with
 
 GOOD = {
-    "steps": ["extract_claims", "find_bugs"],
+    "steps": ["extract_claims", "find_missing"],
     "queries": [
         {"side": "A", "text": "gradient clipping value 1.0"},
         {"side": "B", "text": "clip_grad_norm_ CLIP_NORM"},
@@ -47,7 +47,7 @@ def test_arguments_become_a_plan_with_real_queries():
     plan = read_plan(GOOD)
 
     assert plan == Plan(
-        steps=("extract_claims", "find_bugs"),
+        steps=("extract_claims", "find_missing"),
         queries=(
             Query("A", "gradient clipping value 1.0"),
             Query("B", "clip_grad_norm_ CLIP_NORM"),
@@ -68,10 +68,10 @@ def test_a_field_we_did_not_ask_for_is_ignored():
     "arguments",
     [
         {},
-        {"steps": ["find_bugs"]},
+        {"steps": ["find_missing"]},
         {"queries": []},
-        {"steps": "find_bugs", "queries": []},
-        {"steps": ["find_bugs", 3], "queries": []},
+        {"steps": "find_missing", "queries": []},
+        {"steps": ["find_missing", 3], "queries": []},
         {"steps": [], "queries": "B: CLIP_NORM"},
         {"steps": [], "queries": ["CLIP_NORM"]},
         {"steps": [], "queries": [{"text": "CLIP_NORM"}]},

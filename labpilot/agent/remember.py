@@ -19,6 +19,8 @@ def make_remember_node(
             remembered["claims"] = ()
         if state.get("findings"):
             remembered["findings"] = Overwrite([])
+        if state.get("code_findings"):
+            remembered["code_findings"] = Overwrite([])
         return remembered
 
     return remember_node

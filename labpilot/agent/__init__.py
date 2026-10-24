@@ -15,7 +15,14 @@ from labpilot.agent.claims_schema import (
     join_claims,
     read_claims,
 )
-from labpilot.agent.errors import CheckError, ClaimsError, PlanError
+from labpilot.agent.code_finding import A_SILENT, CodeFinding
+from labpilot.agent.code_schema import (
+    DIFFERENCES_TOOL_NAME,
+    MAX_ITEMS_PER_ANSWER,
+    differences_schema,
+    read_code_findings,
+)
+from labpilot.agent.errors import CheckError, ClaimsError, DifferencesError, PlanError
 from labpilot.agent.finding import UNCHECKED, Finding
 from labpilot.agent.graph import build_graph
 from labpilot.agent.plan import Plan, Query
@@ -30,6 +37,13 @@ from labpilot.agent.plan_schema import PLAN_TOOL_NAME, plan_schema, read_plan
 from labpilot.agent.state import State
 
 __all__ = [
+    "A_SILENT",
+    "DIFFERENCES_TOOL_NAME",
+    "MAX_ITEMS_PER_ANSWER",
+    "CodeFinding",
+    "DifferencesError",
+    "differences_schema",
+    "read_code_findings",
     "MAX_QUERIES",
     "PLAN_TOOL_NAME",
     "CHECK_TOOL_NAME",

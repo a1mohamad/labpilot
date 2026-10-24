@@ -22,7 +22,7 @@ from labpilot.tokens import estimate_tokens
 
 QUESTION = "Why does my model clip gradients at 1.5 when the paper says 1.0?"
 GOOD = {
-    "steps": ["extract_claims", "find_bugs"],
+    "steps": ["extract_claims", "find_missing"],
     "queries": [
         {"side": "A", "text": "gradient clipping value 1.0"},
         {"side": "B", "text": "clip_grad_norm_ CLIP_NORM"},
@@ -79,7 +79,7 @@ def test_the_arguments_of_the_model_become_the_plan(monkeypatch):
     plan = make(monkeypatch, FakeClient(GOOD))(QUESTION, "A-1", "B-1")
 
     assert plan == Plan(
-        steps=("extract_claims", "find_bugs"),
+        steps=("extract_claims", "find_missing"),
         queries=(
             Query("A", "gradient clipping value 1.0"),
             Query("B", "clip_grad_norm_ CLIP_NORM"),
@@ -111,7 +111,7 @@ def test_the_model_gets_the_tool_the_files_allow(monkeypatch):
 
 
 def test_one_file_means_a_smaller_tool(monkeypatch):
-    client = FakeClient({"steps": ["find_bugs"], "queries": []})
+    client = FakeClient({"steps": ["find_missing"], "queries": []})
 
     make(monkeypatch, client)(QUESTION, "", "B-1")
 
@@ -184,7 +184,7 @@ def test_the_map_is_cut_so_the_whole_call_fits_the_tightest_tier(
 
 @pytest.mark.parametrize(
     "arguments",
-    [None, {}, {"steps": "find_bugs", "queries": []}],
+    [None, {}, {"steps": "find_missing", "queries": []}],
     ids=["no arguments", "empty", "wrong shape"],
 )
 def test_an_answer_that_is_not_a_plan_is_a_plan_error(monkeypatch, arguments):
@@ -227,7 +227,7 @@ class FakeProvider:
 
 WRONG = [
     pytest.param(None, id="no arguments"),
-    pytest.param({"steps": "find_bugs", "queries": []}, id="wrong shape"),
+    pytest.param({"steps": "find_missing", "queries": []}, id="wrong shape"),
     pytest.param({"steps": ["fly_to_the_moon"], "queries": []}, id="unknown step"),
     pytest.param(
         {"steps": [], "queries": [{"side": "C", "text": "x"}]}, id="side with no file"
@@ -251,7 +251,7 @@ def test_the_chain_is_told_to_reject_a_plan_the_files_do_not_allow(
 
 
 def test_a_step_one_file_does_not_allow_is_rejected(monkeypatch):
-    client = FakeClient({"steps": ["find_bugs"], "queries": []})
+    client = FakeClient({"steps": ["find_missing"], "queries": []})
     make(monkeypatch, client)(QUESTION, "", "B-1")
 
     reject = client.hooks[0]
@@ -268,7 +268,7 @@ def test_a_wrong_plan_gets_a_chance_on_the_next_tier(monkeypatch, arguments):
     plan = planner(QUESTION, "A-1", "B-1")
 
     assert plan.source == "planner"
-    assert plan.steps == ("extract_claims", "find_bugs")
+    assert plan.steps == ("extract_claims", "find_missing")
     assert (len(first.calls), len(second.calls)) == (1, 1)
 
 
@@ -325,7 +325,7 @@ def test_a_good_plan_goes_through_the_graph(monkeypatch):
     final = run_graph(make(monkeypatch, FakeClient(GOOD)))
 
     assert final["plan"].source == "planner"
-    assert final["plan"].steps == ("extract_claims", "find_bugs")
+    assert final["plan"].steps == ("extract_claims", "find_missing")
     assert final["result"] == "the result"
 
 

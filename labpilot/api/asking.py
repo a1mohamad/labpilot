@@ -13,6 +13,7 @@ from labpilot.api.checking import make_checker
 from labpilot.api.checkpoints import open_saver, prune
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison
+from labpilot.api.differences import make_difference_finder
 from labpilot.api.errors import (
     ArtifactChanged,
     EmbeddingUnavailable,
@@ -231,6 +232,7 @@ def _ask_graph(
         check=make_checker(claims_client, whole_files.facts_for),
         search_claim=search_claim,
         new_query=make_query_writer(claims_client, whole_files.outline),
+        find_missing=make_difference_finder(conn, claims_client, whole_files),
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,

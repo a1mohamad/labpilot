@@ -37,7 +37,7 @@ RESULT = LLMResult(
 )
 STORED = StoredArtifact(artifact=RECORD, chunks=1, files=1, characters=9)
 PLAN = Plan(
-    steps=("find_bugs",),
+    steps=("find_missing",),
     queries=(Query("B", "CLIP_NORM"),),
 )
 

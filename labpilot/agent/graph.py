@@ -8,9 +8,11 @@ from langgraph.types import Send
 
 from labpilot.agent.check_one import NewQuery, make_check_node
 from labpilot.agent.claim import Claim
+from labpilot.agent.code_finding import CodeFinding
 from labpilot.agent.extract_claims import make_claims_node, wants_claims
 from labpilot.agent.fan_out import fan_out
 from labpilot.agent.fan_out_claims import fan_out_claims
+from labpilot.agent.find_missing import make_find_missing_node, wants_missing
 from labpilot.agent.finding import Finding
 from labpilot.agent.merge import make_merge_node
 from labpilot.agent.plan import Plan, Query
@@ -40,6 +42,7 @@ def build_graph(
     check: Callable[[Claim, Chunks], Finding] | None = None,
     search_claim: Callable[[Any, Query], Chunks] | None = None,
     new_query: NewQuery | None = None,
+    find_missing: Callable[[str, str], tuple[CodeFinding, ...]] | None = None,
     answer_text: Callable[[Any], str] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
@@ -54,8 +57,22 @@ def build_graph(
     def pick(state: State) -> str | list[Send]:
         return "stuff" if state["fits"] else fan_out(state)
 
-    def after_search(state: State) -> str:
-        return "extract_claims" if wants_claims(state) else "respond"
+    def checks_and_scan(state: State) -> str | list[Send]:
+        # One fan-out step: a check for each claim and the scan of B run at the
+        # same time, and respond runs once, after all of them.
+        sends: list[Send] = []
+        if extract_claims is not None and check is not None:
+            claims = fan_out_claims(state)
+            if claims != "respond":
+                sends.extend(claims)
+        if find_missing is not None and wants_missing(state):
+            sends.append(Send("find_missing", {"a": state["a"], "b": state["b"]}))
+        return sends or "respond"
+
+    def after_search(state: State) -> str | list[Send]:
+        if extract_claims is not None and wants_claims(state):
+            return "extract_claims"
+        return checks_and_scan(state)
 
     builder = StateGraph(State)
     builder.add_node("plan", make_planner_node(plan))
@@ -86,29 +103,30 @@ def build_graph(
     builder.add_edge(first_steps, "measure")
     builder.add_conditional_edges("measure", pick)
     builder.add_edge("search_one", "merge")
-    if extract_claims is None:
-        builder.add_edge("stuff", "respond")
-        builder.add_edge("merge", "respond")
-    else:
-        # The plan decides: the claims step runs only when the planner listed it.
+    # The plan decides which of these run: the claims (and a check for each),
+    # and the scan of B for what A does otherwise or never says.
+    fanned = ["respond"]
+    if extract_claims is not None:
         builder.add_node("extract_claims", make_claims_node(extract_claims))
-        for searched in ("stuff", "merge"):
-            builder.add_conditional_edges(
-                searched, after_search, ["extract_claims", "respond"]
-            )
-        if check is None:
-            builder.add_edge("extract_claims", "respond")
-        else:
-            # One check for each claim, all at the same time. With no claims
-            # the path function sends the run straight to respond.
+        fanned.append("extract_claims")
+        if check is not None:
             builder.add_node(
                 "check_one",
                 make_check_node(search_claim or search_one, check, new_query),
             )
-            builder.add_conditional_edges(
-                "extract_claims", fan_out_claims, ["check_one", "respond"]
-            )
             builder.add_edge("check_one", "respond")
+    if find_missing is not None:
+        builder.add_node("find_missing", make_find_missing_node(find_missing))
+        builder.add_edge("find_missing", "respond")
+    after_claims = [
+        name for name in ("check_one", "find_missing") if name in builder.nodes
+    ]
+    for searched in ("stuff", "merge"):
+        builder.add_conditional_edges(searched, after_search, fanned + after_claims)
+    if extract_claims is not None:
+        builder.add_conditional_edges(
+            "extract_claims", checks_and_scan, ["respond", *after_claims]
+        )
     builder.add_edge("respond", "remember")
     builder.add_edge("remember", END)
     return builder.compile(checkpointer=checkpointer)

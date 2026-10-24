@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from labpilot.prompts._groups import groups_of
 from labpilot.prompts.instructions import Instructions
 from labpilot.tokens import estimate_tokens
 
@@ -55,29 +56,8 @@ def claims_fit(parts: Sequence[str]) -> bool:
 
 
 def claims_groups(parts: Sequence[str]) -> list[list[int]]:
-    """The parts, in order, cut into groups of about CLAIMS_GROUP_TOKENS.
-
-    The number of groups is the total divided by the target, rounded, and every
-    group gets about the same share, so 4,300 tokens become two groups of about
-    2,150 and not one of 2,000 and one of 300. A part is never cut.
-    """
-    sizes = [estimate_tokens(part) for part in parts]
-    total = sum(sizes)
-    count = min(len(parts), max(1, round(total / CLAIMS_GROUP_TOKENS)))
-    share = total / count if count else 0
-
-    groups: list[list[int]] = []
-    current: list[int] = []
-    used = 0
-    for index, size in enumerate(sizes):
-        current.append(index)
-        used += size
-        if len(groups) < count - 1 and used >= share * (len(groups) + 1):
-            groups.append(current)
-            current = []
-    if current:
-        groups.append(current)
-    return groups
+    """The parts of the reference, in groups of about CLAIMS_GROUP_TOKENS."""
+    return groups_of(parts, CLAIMS_GROUP_TOKENS)
 
 
 def build_claims_prompt(parts: Sequence[str]) -> str:

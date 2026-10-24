@@ -1,3 +1,4 @@
+from labpilot.prompts._groups import groups_of
 from labpilot.prompts._hints import OPENING_CHARS
 from labpilot.prompts.answer import (
     CHAT,
@@ -35,6 +36,15 @@ from labpilot.prompts.claims import (
 )
 from labpilot.prompts.context import FILE_ROW_TOKENS, OUTLINE_BUDGET, build_context
 from labpilot.prompts.corpus_map import PLANNER_BUDGET, MapPart, build_map
+from labpilot.prompts.differences import (
+    A_WHOLE_TOKENS,
+    DIFFERENCES,
+    DIFFERENCES_GROUP_TOKENS,
+    DIFFERENCES_MAX_TOKENS,
+    DIFFERENCES_VERSION,
+    SCAN_TOKENS,
+    build_differences_prompt,
+)
 from labpilot.prompts.followups import (
     FOLLOW_UP,
     FOLLOW_UP_MAX_TOKENS,
@@ -77,6 +87,14 @@ from labpilot.prompts.summary import (
 )
 
 __all__ = [
+    "A_WHOLE_TOKENS",
+    "DIFFERENCES",
+    "DIFFERENCES_GROUP_TOKENS",
+    "DIFFERENCES_MAX_TOKENS",
+    "DIFFERENCES_VERSION",
+    "SCAN_TOKENS",
+    "build_differences_prompt",
+    "groups_of",
     "CHECK",
     "CHECK_MAX_TOKENS",
     "CHECK_VERSION",
