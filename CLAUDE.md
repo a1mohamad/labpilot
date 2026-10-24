@@ -693,7 +693,7 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 CLOSED.** Step 1 was nine slices (1, 1b, 2, 3, 4, 5, 6, 7 and 8), all done, and slice 8 ran
 three times (v1, v2, v3). Step 2 is planned as FOURTEEN slices (0 to 13, rewritten on 2026-10-14, see section 21; a fifteenth, slice 14 "Jev for decisions", was added on 2026-10-23, see D73 in 23.2): **slices 0 (does
 LangGraph fit), 1 (the latency ranking) and 2 (the skeleton and chat memory) are done, and slice 3
-(`summarize` for A and B at the same time) is DONE: lessons 1 to 3 on 2026-10-15 to 17 (17.16, 17.17) and the D45 task, a check of the whole app and the split of `api/services.py`, on 2026-10-18 (17.18). Slice 4, the planner, is DONE: lesson 1 (function calling) on 2026-10-18 (17.19), lessons 2 to 5 and the map with signatures and first sentences on 2026-10-18/19 (17.20), and a closing review of slices 3 and 4 on 2026-10-19 (17.21). Slice 5, run the plan, is DONE: lesson 1 (`Send`, a fan-out whose size is decided while the program runs) on 2026-10-19 (17.22), lessons 2 and 3 (one search for each query, the merge, the pool, `respond` and the summaries) on 2026-10-20 and 21, the move to `search_one` only (D57) and its closing review on 2026-10-21 (17.23). The planner and the summarizer are wired into `ask()` now; M5 and M16 are owed (slice 13). Slice 6, follow-ups and `respond` for 0, 1 and 2 files, is DONE: lesson 1 (the follow-up rewrite and the last answer) on 2026-10-21, lesson 2 (one prompt function, three instructions, the budget of 30,000, the exact outline charge, the API and the page) on 2026-10-22, and its closing review (17.24). The instructions measured in slice 6 are a SMALL sample and M18 re-measures them in slice 13. Slice 7 (claims, check, retry) is IN PROGRESS: lesson 1 (`extract_claims`, with a quote for every claim) was built and tested in a temp copy on 2026-10-22 and typed by the user; the design work, the research and the size test of that day are in section 23. Lesson 2 (one check for each claim, the findings in the report) is DONE on 2026-10-24 (24.1, 1834 tests green). Lesson 3 (the bounded retry loop, D4) is DONE on 2026-10-24: a plain `for` loop inside the check node, typed by the user, all tests green (24.2). A talk about evaluation loops produced D74 to D76 (24.3, 24.4).** The user writes the graph code lesson by lesson, so
+(`summarize` for A and B at the same time) is DONE: lessons 1 to 3 on 2026-10-15 to 17 (17.16, 17.17) and the D45 task, a check of the whole app and the split of `api/services.py`, on 2026-10-18 (17.18). Slice 4, the planner, is DONE: lesson 1 (function calling) on 2026-10-18 (17.19), lessons 2 to 5 and the map with signatures and first sentences on 2026-10-18/19 (17.20), and a closing review of slices 3 and 4 on 2026-10-19 (17.21). Slice 5, run the plan, is DONE: lesson 1 (`Send`, a fan-out whose size is decided while the program runs) on 2026-10-19 (17.22), lessons 2 and 3 (one search for each query, the merge, the pool, `respond` and the summaries) on 2026-10-20 and 21, the move to `search_one` only (D57) and its closing review on 2026-10-21 (17.23). The planner and the summarizer are wired into `ask()` now; M5 and M16 are owed (slice 13). Slice 6, follow-ups and `respond` for 0, 1 and 2 files, is DONE: lesson 1 (the follow-up rewrite and the last answer) on 2026-10-21, lesson 2 (one prompt function, three instructions, the budget of 30,000, the exact outline charge, the API and the page) on 2026-10-22, and its closing review (17.24). The instructions measured in slice 6 are a SMALL sample and M18 re-measures them in slice 13. Slice 7 (claims, check, retry) is IN PROGRESS: lesson 1 (`extract_claims`, with a quote for every claim) was built and tested in a temp copy on 2026-10-22 and typed by the user; the design work, the research and the size test of that day are in section 23. Lesson 2 (one check for each claim, the findings in the report) is DONE on 2026-10-24 (24.1, 1834 tests green). Lesson 3 (the bounded retry loop, D4) is DONE on 2026-10-24: a plain `for` loop inside the check node, typed by the user, all tests green (24.2). A talk about evaluation loops produced D74 to D76 (24.3, 24.4). The measurements of the end of slice 7 and its closing review ran on 2026-10-24 (section 25): reading A in groups of about 2,000 tokens beats one call (9.3 against 2.8 to 3.2 of 12 facts), no rerank for each claim, Jev is a promising checker but not proven, the end-to-end baseline on the search path is weak (judged 5, surfaced 2, absent 12 of 19, and 7 of the 10 countable misses never reached the report writer), and the review found a real defect (one failed claim search loses the whole answer) whose tested patch is NOT in the repository yet.** The user writes the graph code lesson by lesson, so
 `labpilot/agent/` holds the real graph (`build_graph`: plan and two summaries together, measure, stuff or
 one search for each query then merge, respond, remember). `ask()` runs it, and with a `thread_id` the chat is saved in Postgres. Read
 [Where Step 2 stands](#where-step-2-stands--updated-2026-10-21) below and
@@ -702,7 +702,7 @@ OVERTURNS older text in two places: no findings score has ever been measured on 
 path (C3), and the planner cannot use `build_context` (C5; the planner's map is now built,
 section 12).
 
-**1834 passed, 137 skipped — measured 2026-10-24 by the user, full suite without `--run-smoke`, BEFORE lesson 3 (ruff was not run for this number). After lesson 3 the user reported the full suite green and did not write the count down; Claude measured unit and api alone on 2026-10-24: 1705 passed, 5 skipped, and `ruff check` and `ruff format --check` clean** (run `pytest` for the current
+**1834 passed, 137 skipped — measured 2026-10-24 by the user, full suite without `--run-smoke`, BEFORE lesson 3 (ruff was not run for this number). After lesson 3 the user reported the full suite green and did not write the count down; Claude measured unit and api alone on 2026-10-24: 1705 passed, 5 skipped, and `ruff check` and `ruff format --check` clean** **Closing review of slice 7, 2026-10-24, in a scratch copy of the committed tree: unit and api 1706 passed and 5 skipped before any change; the whole suite (unit, api and database tests, no `--run-smoke`) gave 1,884 passed, 138 skipped and 1 failed in 20 minutes (2,023 tests collected). The one failure was a database connection that Supabase closed in the middle of a search, in `test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects` (a test that also failed once before, on 2026-10-21, with another network error); it passed 3 of 3 on a re-run, and it does not touch claims or any changed code. No skip is about the database; the skips are the smoke tests and three others with a stated reason.** (run `pytest` for the current
 count; a number written here goes stale on the next commit). The RAG system ingests a
 file, a `.zip` or a git URL; stores it in pgvector; and answers a question by
 stuffing when the pair fits and by search + fusion + gate + rerank when it does
@@ -946,7 +946,7 @@ generation-time problem below — it cannot generate.
 | 4 | the planner: the outline is used, one call returns the steps and the queries | **DONE 2026-10-19** (built and tested; NOT wired into `ask()` until slice 5) — lesson 1 (function calling) 2026-10-18 (17.19); lessons 2 to 5 and the map with signatures and first sentences 2026-10-18/19 (17.20); a closing review of slices 3 and 4 on 2026-10-19 that found a typo breaking every call (17.21). M5 and M16 are owed (moved to slice 13 on 2026-10-20; M16 moved on to slice 14 on 2026-10-23) |
 | 5 | run the plan: one search per query at the same time, the merge step (duplicates removed), the final `respond` node | **DONE 2026-10-21** — lesson 1 2026-10-19 (the toy file `examples/langgraph/graph_with_send.py`, 17.22); lessons 2 and 3 2026-10-20/21 (`search_one`, `fan_out`, `merge`, `respond`, the pool of D55, the summaries in the report); the old one-shot search was removed on 2026-10-21 (D57) and a closing review of the slice was done (17.23) |
 | 6 | follow-ups, and `respond` for 0, 1 and 2 files: rewrite a follow-up into a standalone question; `respond` picks its instruction by how many files exist and the API accepts 0 or 1 id (D56) | **DONE 2026-10-22** — lesson 1 (the rewrite and `last_answer`) 2026-10-21; lesson 2 (one prompt function, `CHAT` / `ONE_FILE` / `TWO_FILES`, the budget of 30,000, the exact outline charge, the API and the page take 0 or 1 id) 2026-10-22; closing review → 17.24 |
-| 7 | claims, one check per claim, the bounded re-search loop | **IN PROGRESS 2026-10-22** — lesson 1 (`extract_claims`) built in a temp copy and typed by the user; lesson 2 (the check of each claim, the findings in the report) DONE 2026-10-24; lesson 3 (the retry loop) DONE 2026-10-24. Owed to close the slice: M10, M11, M21, M24, M15, the D74 baseline and the closing review. Decisions D64 to D72 and, from 2026-10-23, D73 (the Jev pilot M15 and M24 end the slice), the research and the size test are in [section 23](#23-slice-7--the-design-work-before-lesson-1-was-typed-claims-a-big-a-parts-rooms-key-3--2026-10-22); lessons 2 and 3, the evaluation loops and D74 to D76 are in section 24 |
+| 7 | claims, one check per claim, the bounded re-search loop | **CLOSING 2026-10-24** — lesson 1 (`extract_claims`) built in a temp copy and typed by the user; lesson 2 (the check of each claim, the findings in the report) and lesson 3 (the retry loop) DONE 2026-10-24. The measurements (M10, M11, M21, M24, M15, the D74 baseline) and the closing review ran on 2026-10-24: [section 25](#25-slice-7--the-measurements-and-the-closing-review-m10-m11-m21-m24-m15-d74--2026-10-24). Owed to close the slice: the user types the patches of 25.10, decides R1 to R24 (the complete list is in 25.11), and the cause-finding step (R13) is designed next. Decisions D64 to D72 and, from 2026-10-23, D73 (the Jev pilot M15 and M24 end the slice), the research and the size test are in [section 23](#23-slice-7--the-design-work-before-lesson-1-was-typed-claims-a-big-a-parts-rooms-key-3--2026-10-22); lessons 2 and 3, the evaluation loops and D74 to D76 are in section 24 |
 | 8 | the gate: halt when A and B do not correspond | not started |
 | 9 | nodes for B alone: `find_missing` and `find_bugs` | not started; the precision pass for `find_bugs` (D75, test M26) belongs here |
 | 10 | outcomes and comparability: `extract_outcomes`, "are these numbers comparable?" | not started |
@@ -1025,7 +1025,7 @@ generation-time problem below — it cannot generate.
 - **2026-10-21** — the old one-shot search was removed (D57), the review pass of the new rule was done (4 groups of tests, 8 deliberate breaks), the docs got the two new rules, and the full suite was run → 17.23. (Slice 6 came next.)
 - **2026-10-21 to 22** — slice 6 DONE: the follow-up rewrite and `last_answer` (D58), one prompt function and three instructions (D59, D60), the budget of 30,000 with an exact outline charge and a "fits" verdict that keeps every part (D61), and the API and page that take 0, 1 or 2 ids (D62). The closing review found 4 real defects (a misspelled name, a call that crashed every 0-file question, a lost-parts case, a lone artifact in the wrong slot). **The instructions measured here are a SMALL sample (M18).** → 17.24.
 - **2026-10-22** — slice 7 started. Lesson 1 (`extract_claims`) was built and tested in a temp copy first (1544 tests, 22 of 22 deliberate breaks caught, one real call gave 15 claims) and the user types it on `feat/claims-check` (D64 to D67). The same day: Gemma's real limit is the per-minute input quota of each (key, model) room, not the 256K window (measured); a second web search found real systems for paper against code (Dude and others) and corrected my first answer; the 5 free Mistral text models that answer were listed; a quick SIZE TEST of 9 models decided **parts of one fixed size, 12K** (D68); and a third Google key was added to the code (D71, at the user's request). Everything → section 23. **Next: finish lesson 1, then lessons 2 and 3.**
-- **2026-10-23 to 24** — slice 7 lesson 2 DONE: the quote on every claim, the check of each claim through `Send`, the findings in the report (`api/checking.py`, `api/chains.py`, `prompts/checks.py`), typed by the user on `feat/check-claims` with 1834 tests green. Quote tests with Flash-Lite found one real defect (true quotes dropped over `$` and `**`). Lesson 3, the retry loop, was built in a scratch copy as a plain `for` loop inside the node and not as a graph cycle (38 new tests, 24 of 24 breaks caught in the scratch copy), and the user typed it (commit `bd46262`). A talk about evaluation loops, after the user asked GPT for advice, gave D74 (a small end-to-end baseline at the end of slice 7), D75 (a precision pass for `find_bugs`) and D76 (workers stay bounded functions) → section 24. **Next: M10, M11, M21, M24, M15, the D74 baseline and the closing review of slice 7.**
+- **2026-10-23 to 24** — slice 7 lesson 2 DONE: the quote on every claim, the check of each claim through `Send`, the findings in the report (`api/checking.py`, `api/chains.py`, `prompts/checks.py`), typed by the user on `feat/check-claims` with 1834 tests green. Quote tests with Flash-Lite found one real defect (true quotes dropped over `$` and `**`). Lesson 3, the retry loop, was built in a scratch copy as a plain `for` loop inside the node and not as a graph cycle (38 new tests, 24 of 24 breaks caught in the scratch copy), and the user typed it (commit `bd46262`). A talk about evaluation loops, after the user asked GPT for advice, gave D74 (a small end-to-end baseline at the end of slice 7), D75 (a precision pass for `find_bugs`) and D76 (workers stay bounded functions) → section 24.
 
 **The blocking problem of the whole step is GENERATION TIME** (the red block at the top of this section).
 Read it before designing a node.
@@ -1065,6 +1065,8 @@ Read it before designing a node.
 - **Check the exit ISP before any call that spends a model** — the rule and the two commands are in
   [the network precondition](#network-precondition--check-the-exit-isp-before-any-llm-work).
 
+- **2026-10-24 (night)** — slice 7: all measurements ran (M10, M11, M21, M24, M15, the D74 baseline) and the closing review was done, with nothing written into the repository while a `merge_per_file.py` run needed a clean tree. The big result is that A must be read in groups of about 2,000 tokens (R1); the baseline on the search path is weak and the user asked whether the system finds the real causes (25.9). The review found a real defect (one failed claim search loses the whole answer), two stray `+` characters in the claims instruction, and no weekly live test for the three new calls; 11 tests and three patches were handed over in `artifacts/slice7-review/` → section 25. **Next: type the patches, decide R1 to R24 (the complete list is in 25.11), design the cause-finding step (R13), and also try the stuffed approach (the user's plan for the next session).**
+
 ### Git state and branches
 
 As of 2026-10-19 slice 4 is on `feat/planner` (pushed) and on `main` (pushed), at the user's explicit request: ONE commit
@@ -1080,6 +1082,8 @@ branches — never resume there:** `feat/reranking` (it holds an OLDER `test_llm
 (byte-identical to `main`). This project re-commits work onto `main` piece by piece instead of merging, so hashes differ
 while the content is the same. The branches of finished slices (`feat/parallel-nodes`, `refactor/split-services`,
 `feat/planner`) are kept. **Slice 5 is on `feat/plan-to-run`** (made by the user from `main` at `0ac80d4`). It holds the toy file of lesson 1 (`00cb059`), lessons 2 and 3 as the user's commits `3a46eb3` to `839ca21`, and the move to `search_one` only, the closing review and these docs as commits made by Claude on 2026-10-21 at the user's request (commit to this branch only, nothing on `main`). Whether the branch is pushed was not checked. Claude suggested a NEW branch from `main` and not `feat/planner`, because `feat/planner` is 47 commits behind `main` (they split at `08a355d`) and holds slice 4 as 6 older commits. **Slice 6 is on `feat/follow-ups`** (made by the user from the tip of `feat/plan-to-run`: the user's commits `4661ea0` and `2a1d812`, a fix and tests by Claude `dbdff35` and `2bef413`, and the closing review, the door and these docs by Claude on 2026-10-22 at the user's request, pushed to `origin/feat/follow-ups`). **Slice 7, lesson 1, was typed on `feat/claims-check`** (made by the user from `main` on 2026-10-22) and re-committed on `main` one file per commit, together with the key 3 change (registry, rerank chain, embedders, `.env.example`, `smoke.yaml`, six tests), `scripts/measure_claim_sizes.py`, `docs/step2/slice7/` and the docs of section 23 (the last of them `b22a40f`). **Lessons 2 and 3 are on `feat/check-claims`** (made by the user from `main`; lesson 2, its tests and the notes of D73 are ONE commit, `4c90193`; lesson 3 and section 24 are ONE commit, `bd46262`). On 2026-10-24 `main` was an ancestor of this branch and the branch was 2 commits ahead, so it can go to `main` one file per commit with `merge_per_file.py` (43 files in the dry run). That script was not in the repository then: keep a copy outside it, because it wants a clean working tree. The user commits; DETAILS.md goes before CLAUDE.md.
+
+**2026-10-24:** slice 7 is on `main` (moved one file per commit with `merge_per_file.py`, `origin/main` equal) and on `feat/check-claims` (`d0463dd`); `git diff main feat/check-claims` is empty. The work of section 25 is in the working tree of `feat/check-claims` as documentation only; the tests and patches of 25.10 are in `artifacts/slice7-review/` and are not committed.
 
 ### Older status notes
 
@@ -9897,11 +9901,11 @@ Sources: aider's repo-map post and docs (aider.chat) · Repository Map Pattern
 | M6 | **a findings score on the SEARCH path** — never once measured, see C3. This is the baseline Step 2 must beat | 13 |
 | M7 | an exact-match tool vs vector alone (D8) | 13 |
 | M8 | **per-node output tokens and latency** — every time estimate in this section rests on an assumed 40s per node | 13 |
-| M15 | **`verify`: an LLM with function calling against Jev** (added 2026-10-18, the user's call, D48). The same claims and the same evidence chunks go to both. Score the verdicts (match / mismatch / absent) against the known answers, and record the speed of the checks, the cost and how often each one fails. Run the LLM arm on at least two tiers, because the chain falls back. Run the Jev arm twice: all claims in one call, and one claim per call, because Jev's answer depends on the other questions in the same call. Jev gives only the verdict; the quote comes from the best chunk found by code. Name the corpus beside every number: `quora_siamese` is the only pair with known verdicts. **Since 2026-10-23 this is the PILOT of D73: it runs at the end of slice 7, and its result decides whether slice 14 goes on as planned** | 7 |
+| M15 | **`verify`: an LLM with function calling against Jev** (added 2026-10-18, the user's call, D48). The same claims and the same evidence chunks go to both. Score the verdicts (match / mismatch / absent) against the known answers, and record the speed of the checks, the cost and how often each one fails. Run the LLM arm on at least two tiers, because the chain falls back. Run the Jev arm twice: all claims in one call, and one claim per call, because Jev's answer depends on the other questions in the same call. Jev gives only the verdict; the quote comes from the best chunk found by code. Name the corpus beside every number: `quora_siamese` is the only pair with known verdicts. **Since 2026-10-23 this is the PILOT of D73: it runs at the end of slice 7, and its result decides whether slice 14 goes on as planned** **MEASURED 2026-10-24, section 25.5.** | 7 |
 | M16 | **the planner's list of steps: one LLM call against Jev** (added 2026-10-18, the user's call, D48). Arm A: ONE LLM call returns the steps and the queries (function calling). Arm B: Jev answers one yes/no question per allowed step, then an LLM writes the queries, one after the other. Arm C: the same as B, but the two calls run at the same time (both need only the question and the map). Score the steps against about 30 questions, each with the correct plan (the set planned in 19.5, point 5), with the LLM on at least two tiers. Score the queries as M5 does (how many known divergence locations they reach). Record the planner's time and cost. The user's worry is that the LLM steps may be fast but less exact; arm C tests the other worry, that Jev is slower The same questions test the allowed steps for each file count (`STEPS_BY_FILES` in `agent/plan_check.py`, a first proposal): count how often a correct plan needs a step that the list does not allow. **Moved to slice 14 on 2026-10-23 (D73).** | 14 (was 13, was 4) |
 | M17 | **fix quality** (added 2026-10-18, D49). For the known findings of `quora_siamese` (and of the new pair from slice 12), is the fix that the report proposes right? Score each proposed fix as right, partly right, wrong or not given, and count the fixes that would break the code. Run it for the one-artifact report and for the two-artifact report, on at least two tiers. Compare `respond` writing the fix in the same call against a separate `propose_fix` call after the findings, and record the extra time and the extra calls. `EXPECTED.md` needs a "right fix" column first. As with every answer key, it may be used to score the fixes and never to write the prompt | 13 |
 | M18 | **the instructions and prompts of slice 6, on more data** (added 2026-10-22). Everything measured in slice 6 is a SMALL sample: one pair, at most 8 tiers, one run per cell, regex screens, 5 calls lost to Google 503. Re-measure `CHAT`, `ONE_FILE` and `TWO_FILES` (and `REPORT` as the baseline) on the new pair of slice 12 and on `quora_siamese`, on at least 6 tiers including cheap ones, with several worded versions of each question (at temperature 0 a repeat gives the same text), on the SEARCH path and not only on a pair that is almost whole. Score findings against an answer key with the impact column, never by regex alone, and score the "do the causes add up" verdict separately. Also test: the last answer inside the two-file prompt for follow-ups that need its exact words; the section order and the length limit; one call for the answer and a second for the arithmetic, or the verdict from Jev (M15 style); and whether a better approach than one long instruction exists. This may change the instructions, the prompts or the approach. D60 is a first choice, not a decision | 13 |
-| M24 | **rerank for each claim, or not** (added 2026-10-23, the user's call). Lesson 2 of slice 7 sends the first 6 parts of the plain fused search for each claim, with NO rerank. At the end of slice 7 (after lesson 3, with M10, M11 and M21) run one small test on `quora_siamese`: for each known claim, how often is the right part of B inside the 6 that are sent, without a rerank and with a Flash-Lite rerank of the fused list; and note what the retry loop of lesson 3 fixes alone. It needs only search and rerank, about 20 requests, and no check calls. Add the rerank (one injected function, `rank_pile(claim.text, pile)`) only if the number goes up clearly. Cost to weigh: about 31 Flash-Lite requests for a question against about 16 | 7 |
+| M24 | **rerank for each claim, or not** (added 2026-10-23, the user's call). Lesson 2 of slice 7 sends the first 6 parts of the plain fused search for each claim, with NO rerank. At the end of slice 7 (after lesson 3, with M10, M11 and M21) run one small test on `quora_siamese`: for each known claim, how often is the right part of B inside the 6 that are sent, without a rerank and with a Flash-Lite rerank of the fused list; and note what the retry loop of lesson 3 fixes alone. It needs only search and rerank, about 20 requests, and no check calls. Add the rerank (one injected function, `rank_pile(claim.text, pile)`) only if the number goes up clearly. Cost to weigh: about 31 Flash-Lite requests for a question against about 16 **MEASURED 2026-10-24, section 25.4: no rerank.** | 7 |
 | M25 | **Jev on the jobs of slice 14** (added 2026-10-23, D73). For each job one schema, then the LLM version against the Jev version on questions with known answers (the gate, comparable, does it add up, `find_missing`, the labels, the follow-up check; the planner's steps are M16). The same rules as M15: two LLM tiers, Jev with one question for each call and with all of them in one call, and the speed, the cost and the failure rate beside every score, with the corpus named beside every number | 14 |
 
 **The cache pays for most of this.** `.cache/` holds 2.4GB: 26 corpora already
@@ -12361,8 +12365,8 @@ guess, so the pair is built BEFORE the design, as slice 8's third corpus was.
 
 | # | measure | slice |
 |---|---|---|
-| M10 | the question inside the extract instruction against no question: does the model still find the same differences on `quora_siamese`? | 7 |
-| M11 | does the same instruction work when A is code (Python, Go) and not a paper? Nothing here is tested yet | 7 |
+| M10 | the question inside the extract instruction against no question: does the model still find the same differences on `quora_siamese`? **MEASURED 2026-10-24, sections 25.2 and 25.3.** | 7 |
+| M11 | does the same instruction work when A is code (Python, Go) and not a paper? Nothing here is tested yet **MEASURED 2026-10-24, section 25.3.** | 7 |
 | M12 | the number N (claims kept), the number of files taken and the size-gate numbers (D43), on the new pair | 12 |
 | M13 | the claim ranking candidates of D28 against each other | 12 |
 | M14 | the summary designs of D46 against each other on the new pair: does the summary tell what the repository does, and how many calls and seconds does it cost | 12 |
@@ -12974,7 +12978,7 @@ llm/openai_compatible.py   NEW field `extra_headers`. The credentials are writte
                            so an extra header can never replace them
 llm/registry.py            BAZAARLINK_URL, _bazaarlink(), two tiers, tiers 51 and 52 of
                            75, right after the measured Gemma 4 31B routes
-.env.example, smoke.yaml   BAZAARLINK_API_KEY (the GitHub secret is NOT created yet)
+.env.example, smoke.yaml   BAZAARLINK_API_KEY (the GitHub secret was created later, the user said so on 2026-10-24)
 tests                      4 new unit tests (3 for the header, 1 pinning it on every
                            tier), GATEWAYS, OUTPUT_TOO_SMALL and the reasoning excuse
                            updated, a catalogue case and a 7 s gap in the smoke tests
@@ -13007,8 +13011,8 @@ path through that code is NOT proven live yet, because the quota was gone.
 - Artificial Analysis scores for both. The 0731 snapshot may be the model scored as DeepSeek
   V4 Flash (34), because LiteRouter's `deepseek-v4-flash-0731:free` was renamed
   `deepseek-v4-flash:free`; that is an inference from names, not a measurement.
-- **The GitHub secret `BAZAARLINK_API_KEY` must be created by hand**, or the Monday smoke
-  run fails on these two cases.
+- **The GitHub secret `BAZAARLINK_API_KEY` had to be created by hand, and the user did
+  it (said on 2026-10-24).** Without it the Monday smoke run fails on these two cases.
 - Their real use is slice 11: a planner or gate chain led by a fast tier (D47). Until then
   they sit near the tail as extra insurance for small jobs.
 
@@ -13032,7 +13036,7 @@ Checked in the temp copy: 1544 unit and api tests passed (50 new), 22 of 22 deli
 | **D65** | **A failed extraction gives NO claims.** This amends D24, which said a short fixed list is the backup: a fixed list is machine-learning words only (the domain-lock finding of 2026-09-09). The node catches `ClaimsError`, logs a warning and the answer goes on from the planner's queries, because claims are a safety net (D39). An A that does not fit `CLAIMS_BUDGET` is the same: no claims, a log line. The sentence to the person ("A is too big, point me at a folder or a file", D26) is slice 12. |
 | **D66** | **The model writes a part NUMBER and the code looks up the place.** The prompt shows `[part 0]`, `[part 1]`, ...; the code keeps `sources = [chunk.header or chunk.source ...]` in the same order and sets `Claim.source = sources[part]`. A model copies a number far more reliably than a file name and a line range. `read_claims` refuses a number that is not a whole number, a `bool`, negative (Python would silently read the LAST part for `-1`) or out of range, a blank text, more than 20 claims. A wrong answer goes to the next tier (the planner's rule, D50). Each part is sent with its header, because the header gives the section name or the file and function; it is NOT needed for the lookup, and text only was NOT measured. |
 | **D67** | **`claims` stays in the saved chat on a later message whose plan has no claims step.** Nothing reads it yet, so it does no harm today. Lesson 2 adds `findings` and clears both in one place, with `Overwrite`, as `merge` does for `found`. |
-| **D68** | **A big A is read in PARTS of ONE fixed size, `P = 12K` tokens, for every model.** Decided by the size test of 23.6 with the rule written BEFORE the run: rule C (always parts, one fixed size). A small A is simply one part, so lesson 1 is the special case where A fits in one part. **Rejected:** (A) "all at once when the model can, else parts" (the whole 90K was never better than parts and was worse for 5 of 7 models), and (B) a size for each model (no model gained from a bigger size). **Why one fixed size also fits our chain:** the chain picks the model WHILE it runs, but the text must be cut BEFORE, so a size per model would need the model chosen first; a part of 12K fits every tier, so every tier stays eligible and every tier sees the same input. `CLAIMS_BUDGET` (28,000, one call) is lesson 1's first guess; in slice 12 the constant becomes the size of a part and `P` can be changed in ONE place (it is a first guess: M20 tries 6K and 8K). |
+| **D68** | **A big A is read in PARTS of ONE fixed size, `P = 12K` tokens, for every model.** Decided by the size test of 23.6 with the rule written BEFORE the run: rule C (always parts, one fixed size). A small A is simply one part, so lesson 1 is the special case where A fits in one part. **Rejected:** (A) "all at once when the model can, else parts" (the whole 90K was never better than parts and was worse for 5 of 7 models), and (B) a size for each model (no model gained from a bigger size). **Why one fixed size also fits our chain:** the chain picks the model WHILE it runs, but the text must be cut BEFORE, so a size per model would need the model chosen first; a part of 12K fits every tier, so every tier stays eligible and every tier sees the same input. `CLAIMS_BUDGET` (28,000, one call) is lesson 1's first guess; in slice 12 the constant becomes the size of a part and `P` can be changed in ONE place (it is a first guess: M20 tries 6K and 8K). **UPDATE 2026-10-24 (sections 25.2 and 25.3): the 12K is WRONG for real claims. It came from a proxy (68 constants). Reading A in groups of about 2,000 tokens reached 9.3 of 12 mismatch facts against 2.8 to 3.2 for one call, for 8 of 8 models. Use about 2K for claims (R1).** |
 | **D69** | **Slice 12's plan for a big repository as A.** (1) rank the files by the question and the planner's queries (`file_scores`, free); (2) take files until a total budget (first guess 90K tokens, measured later) and say what was read ("12 of 140 files"); (3) cut into parts of P; (4) one cheap call for each part, all at the same time; (5) ask each part for "up to 5 claims, the best first, and none if none" and NEVER force a claim (a forced claim is invented or trivial); (6) join by ROUND-ROBIN (the best claim of each part, then the second best, ...) and cut at 20, the rule `merge_chunks` already uses for chunks, so no part is starved and none dominates; (7) an optional last call sees ALL candidate claims (short texts, about 1,000 tokens), removes duplicates and trivia and ranks them by how much each could change the result. The parts run at the same time, so there is no "stop after 3 parts"; the cap of 20 is applied only after the join. Scores from separate parts are NOT comparable (each part is judged alone), so ranking is after the join. **Added after the size test:** each claim also carries an exact QUOTE from its part and the code drops a claim whose quote is not in that part (deterministic quoting, as for citations). The size test shows why: small and weak models INVENT names (23.6). This guard is an idea, built and tested nowhere yet. |
 | **D70** | **Rooms.** The free Google per-minute INPUT limit is counted for each (key, model) pair, a "room": about 16K tokens for each Gemma model. Measured 2026-10-22 on 3 keys and 2 Gemma models (23.4). One call can never be bigger than a room, a call that FAILS (a 500) still uses up its room, and the chain today does not spread parallel calls over rooms (on a per-minute 429 it waits and retries the SAME tier; the twin is used only when the pool is dead for the day). So slice 11 builds a spreader that sends each call to the room with space and counts every attempt, shaped like `embed/pacing.py`. **Flash-Lite first for the big or important calls; Gemma for many small calls and as the overflow.** **Added 2026-10-23: the spreader also needs, for each provider, a "most requests at once" and a gap between calls.** The chain knows neither today: 8 parts sent to LiteRouter together would be refused ("Too many concurrent requests"), and section 10.4 already named concurrency as a limit nobody models. Parts are sent at the same time for EVERY model (D68); the spreader only decides WHERE each part goes. |
 | **D71** | **A third Google account (key 3) is in the code** (23.7). Three accounts; do NOT add a fourth without a decision: several accounts behind one VPN exit is the pattern that got an account flagged on 2026-08-11. |
@@ -13111,7 +13115,7 @@ Proven first: key 3 answers a probe (200), differs from keys 1 and 2, and accept
 - `llm/registry.py`: `GOOGLE_KEYS` has three names; `_third_account` and `_other_accounts`; each of the 8 Google models appears three times in `CHAIN` (**83 tiers**, was 75; **86** after the three Mistral tiers of 23.9).
 - `api/reranking.py`: `_both_accounts` became `_every_account` (the four LLM rerank models on three keys; **17 rerank tiers**); Jev now sits FOURTH, behind every Flash-Lite key, for the same reason as before (a paid tier never goes between free ones).
 - `embed/registry.py` and `embed/__init__.py`: `GEMINI_EMBED_001_KEY3` and `GEMINI_EMBED_2_KEY3` in `MIGRATION` (10 entries; one more 1,000 embed requests a day for each model, same vectors).
-- `.env.example` and `.github/workflows/smoke.yaml` carry `GOOGLE_API_KEY_3`. **The GitHub secret `GOOGLE_API_KEY_3` must be created by hand**, or the Monday smoke run fails on the new tiers.
+- `.env.example` and `.github/workflows/smoke.yaml` carry `GOOGLE_API_KEY_3`. **The GitHub secret `GOOGLE_API_KEY_3` had to be created by hand, and the user did it (said on 2026-10-24).** Without it the Monday smoke run fails on the new tiers.
 - Six old tests that counted two accounts were changed to three, and one NEW test pins that every Google model sits on every key, adjacent and in key order (`test_every_google_model_sits_on_every_account_in_key_order`). 7 deliberate breaks of the key 3 code (a missing twin, swapped twins, a wrong key, key 3 left out of the rerank chain, of `MIGRATION`, of `smoke.yaml` and of `.env.example`), all caught. 1560 unit and api tests passed in the temp copy.
 
 #### 23.9 The three small Mistral tiers are in `CHAIN` (2026-10-23, at the user's request)
@@ -13126,7 +13130,7 @@ Proven first: key 3 answers a probe (200), differs from keys 1 and 2, and accept
 - Slice 11: the spreader (D70), a claims chain, and the free Mistral models as candidates for cheap chains (Ministral 8B, Nemo and 14B are in `CHAIN` since 2026-10-23, see 23.9; Codestral and Ministral 3B are not).
 - Slice 12: D68 and D69 with a new test pair that has a repository as A.
 - The lesson 1 instruction merges facts (23.1); M10 and M11.
-- Slice 7 ends with: M10 and M11, M21, **M24** (rerank for each claim, section 6) the Jev pilot **M15** (D73) and the small end-to-end baseline of D74 (section 24), then the closing review and the docs update.
+- Slice 7 ends with: M10 and M11, M21, **M24** (rerank for each claim, section 6) the Jev pilot **M15** (D73) and the small end-to-end baseline of D74 (section 24), then the closing review and the docs update. **DONE 2026-10-24: all of these ran, see section 25.**
 - Slice 11 also: the "most requests at once" and the gap between calls for each provider, in the spreader (D70), and a fair speed test of the models.
 - Slice 14: Jev on the other jobs of D73 (M25).
 - Not done: `zai-glm-5-3` is refused on the free plan; `labs-leanstral` needs an admin switch in the Mistral console and is not useful here.
@@ -13219,6 +13223,259 @@ The user was told by GPT that an evaluation loop is essential, that every agent 
 #### 24.5 What slice 7 still owes
 
 Lesson 3 is DONE (typed, green, committed as `bd46262`). Still owed: M10 and M11 (claims on real prose and on code, with wording E and the cap), M21 (the quote rule on real claims), M24 (rerank for each claim, and what the retry fixes alone), the Jev pilot M15 (D73), the small baseline of D74, the closing review of slice 7 ("The closing review of slice 7"), and the docs update.
+
+**UPDATE 2026-10-24 (night): everything in that list ran, and the results are in section 25.** What is still owed to close the slice: the user types the patches of 25.10 (R15 and R5, the stray `+`), and decides R1 to R24 (the complete list is in 25.11); the cause-finding step (R13) is designed next. **The user's plan for the next session (2026-10-24): make claims and retrieval much better (R1 to R4, R13), and ALSO try the stuffed approach, that is the current app on the full pair read whole, the control that 25.8 lists as not measured. This reverses the user's earlier "no stuffed run" of the same night.**
+
+### 25. SLICE 7 — THE MEASUREMENTS AND THE CLOSING REVIEW (M10, M11, M21, M24, M15, D74) — 2026-10-24
+
+*Done in one session after lesson 3, with the user's order "run all the measurements, be very precise". Nothing was written into the repository while it ran (a `merge_per_file.py` run needs a clean tree); all scripts and result files were in the session scratchpad and were copied afterwards, without the file that held the database password, to `artifacts/slice7-review/harness/` and `artifacts/slice7-review/results/` (git-ignored, so NOT in git; the hand-made answer key of 32 claims is `harness/gold.py`, and how to run it all again is in `artifacts/slice7-review/README.txt`). Exit AS58212 dataforest, Frankfurt, Google 200. The throwaway schema `labpilot_m7_5c6b53` was dropped at the end. The repository was not changed by the measurements.*
+
+#### 25.1 Method, and its limits (read before quoting any number)
+
+- **One paper, one answer key.** The key is `A_paper.md` against `B_train.py`: 32 hand-made claims (20 where B matches, 12 where it does not), each with the verdict and the deciding lines of B. It was made by one person for one pair: a fixture may REJECT, never CONFIRM.
+- **M10 and M21 coverage is a REGEX SCREEN** (a claim "reaches" a fact if its text holds the fact's words). It is a screen, not a score. M24 and M15 compare real verdicts with the hand-made verdicts, which is a score.
+- **Replicates:** Gemini does not repeat itself at temperature 0, so each cell has 2 to 8 runs. A difference of one claim in 32 is noise.
+- **The checker's quote guard changes some runs.** The last four M24 rerank runs were pinned to one model (Flash-Lite 3.1); on that model the guard refused two true quotes every time and left those claims `unchecked`. This lowers the two rerank arms by about 1.5 claims.
+
+#### 25.2 M10 — what changes the list of claims (Flash-Lite 3.5, 6 to 8 runs for each cell)
+
+Facts of the key that the claims reach (12 mismatch facts, 20 match facts):
+
+| way of asking | claims | mismatch /12 | match /20 |
+|---|---|---|---|
+| shipped call, one call over the whole A (stray `+` lines removed) | 12.2 | 3.2 | 6.5 |
+| same, with a NARROW question ("clip") | 5.5 | 2.2 | 5.8 |
+| same, no question | 10.6 | 2.1 | 11.9 |
+| wording E (also rules and steps), cap 15 / cap 20 / no cap | 13.5 / 14.9 / 18.2 | 3.4 / 3.1 / 2.5 | 10.2 / 12.6 / 10.8 |
+| wording G (settings and steps only, one value for each claim) | 13.2 | 4.0 | 12.9 |
+| walk every part, no question, cap 40 (best single call) | 24.5 | 5.7 | 17.0 |
+| **A cut in groups, one call for each group, same wording:** whole A (18 parts, ~4K tokens) in ONE call | 19.5 | **2.8** | 15.8 |
+| 2 calls of 9 parts (~2K tokens each) | 43.7 | **9.3** | 19.0 |
+| 3 calls of 6 parts | 55.0 | 9.0 | 19.7 |
+| 6 calls of 3 parts | 70.0 | 9.3 | 19.7 |
+| 18 calls of 1 part | 86.3 | 10.0 | 20.0 |
+
+**The finding:** one call over the whole of A reaches about a quarter of the facts, whatever the wording, the cap or the question. The same wording in two calls of about 2,000 tokens reaches three quarters. The cliff lies between 2K and 4K tokens (nothing between was tried). The cap is NOT the problem (cap 15, 20 and none are within noise); attention over a long input is. A narrow question really does shrink the list (12.2 to 5.5 claims), which is the risk D25 named. **D68's 12K part size came from a proxy (68 constants) and is WRONG for real claims: use about 2K.**
+
+#### 25.3 M21 and M11 — other models, and other kinds of A
+
+M21, 2 runs for each cell, shipped call against two calls of 9 parts. Mismatch facts reached /12, and the share of claims the quote guard dropped:
+
+| model | shipped | dropped | grouped | dropped |
+|---|---|---|---|---|
+| Flash-Lite 3.5 | 5.0 | 0% | 9.0 | 0% |
+| Flash-Lite 3.1 | 4.0 | 27% | 9.0 | 0% |
+| Gemma 4 26B | 5.0 | 7% | 11.0 | 0% |
+| Ministral 8B | 2.5 | 29% | 10.0 | 10% |
+| Mistral Nemo | 3.5 | 36% | 9.5 | 10% |
+| Ministral 14B | 3.5 | 10% | 4.5 (30 claims) | 7% |
+| GLM-5.3 Flash (Cline) | 5.5 | 3% | 10.5 | 0% |
+| DeepSeek V4.1 Flash (LiteRouter) | 6.5 | 0% | 9.0 (1 run) | 0% |
+
+Groups win for every model, including the free Mistral models. Small models lose 29% to 36% of their claims to the shipped quote rule in one call (true quotes with formulas and escapes; the dropped claims were read, none was invented).
+
+M11 (GLM-5.3 Flash, 2 runs): a real paper (Adam, PDF, 8 calls of ~2K) 91 to 133 claims against 15 from one call, default settings reached 6 of 6 against 5 of 6; a Python file used as A (`B_train.py`, 9 calls) 255 to 292 claims against 15; a Go library (`gg`, 7 calls) 184 to 207 claims against 15, mostly paraphrases of docstrings. **Claims per 1,000 tokens: about 7 for prose and about 14 for code**, so a big A needs ranking (slice 12, D69).
+
+#### 25.4 M24 — rerank for each claim, and what the retry loop fixes alone
+
+Check node of the shipped code over the 32 claims (all searched in B). Mean over the runs:
+
+| arm | runs | right /32 | mismatch /12 | match /20 | absent | unchecked | extra calls for 32 claims |
+|---|---|---|---|---|---|---|---|
+| plain (shipped lesson 2) | 3 | 23.7 (23-24) | 5.0 | 18.7 | 6.7 | 0.3 | none |
+| plain + retry (shipped lesson 3) | 4 | 27.2 (26-28) | 7.8 | 19.5 | 2.8 | 0 | +9 searches, +9 checks, +9 query writers |
+| rerank | 4 | 25.8 (24-27) | 7.2 | 18.5 | 3.8 | 1.5 | +32 reranks |
+| rerank + retry | 4 | 28.8 (28-31) | 10.2 | 18.5 | 0.8 | 1.5 | +37 reranks, +5 searches and checks, +5 writers |
+
+Evidence hit@6 (does one of the 6 parts hold a deciding line): plain 28/32, rerank 31/32. The retry loop alone brings the verdicts (27.2) close to what PERFECT evidence gives an LLM (28 of 32 with Flash-Lite 3.5, M15 oracle). **Decision: no rerank for each claim.** It adds about 2 right verdicts for 32 extra Flash-Lite calls, and on top of the retry about 1.6 for 37 calls. The retry is kept.
+
+What the retry writes: a few words in the code's names, often taken from the checker's note (`CLIP_NORM max_grad_norm`, `label_smoothing 0.1`). Two kinds of poor query were seen: it guesses names that are not in B (`train_split dev_split test_split`), and once it put the value into the query (`CLIP_NORM = 1.0`). Calls are about +28% for the retry.
+
+#### 25.5 M15 — who gives the verdict: an LLM or Jev (the pilot of D73)
+
+Same 32 claims, same evidence for every arm. "Shipped" is the first 6 parts of the plain search; "oracle" holds the deciding parts first (it isolates the verdict from the search). One run each. FALSE-MATCH is the dangerous error (B differs and the arm says it matches).
+
+| arm | shipped evidence | oracle evidence | time for 32 claims | false match |
+|---|---|---|---|---|
+| Jev, one claim for each call | 27/32 | 29/32 | 8.5 to 10 s | G30 (shipped); G25, G30 (oracle) |
+| Jev, 8 claims for each call | 29/32 | 29/32 | 3.2 to 3.5 s | G25, G30 |
+| Flash-Lite 3.5, tool call | 23/32 | 28/32 | 93 to 99 s | G30 |
+| Flash-Lite 3.1, tool call | 23/32 (1 failed) | 27/32 (2 failed) | 77 to 152 s | G30 |
+| Gemma 4 26B, tool call | 15/32 (13 failed) | 17/32 (11 failed) | 106 to 114 s | G28, G30 |
+
+- Jev cost about $0.003 for the 32 claims, and its mean confidence was 0.81 to 0.86. **Confidence is not a safe filter:** Jev was 0.95 sure of a wrong "match" (G25) and of a wrong "mismatch" (G16).
+- **The neighbour effect is real:** with the shipped evidence the verdict of 4 claims changed between "one claim for each call" and "eight for each call" (G16, G22, G23, G25). With the oracle evidence none changed. So send a claim alone.
+- Gemma 26B fails on the per-minute input room (about 16K for each key and model) when 4 checks run together: it is not a checker.
+- Jev gives a verdict and no quote and no part number, so code must pick the part that goes into the `Finding`.
+- **`G30` ("a function is defined and never called") is a false MATCH in every arm of every kind.** The checker sees the definition and answers match. This is the class the report most needs.
+- Verdict for the pilot: on this one pair Jev is at least as good as the LLM tiers, 10 to 30 times faster, and nearly free. It is NOT proven (one pair, one run for each cell, 1 or 2 claims of difference). Slice 14 stays in the plan.
+
+#### 25.6 D74 — the end-to-end baseline on the SEARCH path (one run, scored by reading)
+
+`ask()` as shipped, the sample pair, the default question, the search path forced as the weekly smoke test does (a budget of 20,000; at the real 30,000 this pair is read whole, so this is a harsh test and not what a user of this pair would see). Tier 1 (GLM-5.3 Flash) planned and wrote the report: 184.9 s, `STOP`, 9,699 characters, 47 of 48 citations resolve. The planner listed `extract_claims`, `find_missing`, `find_bugs` and `extract_outcomes` (only the first exists). **Claims: 10, written by Flash-Lite 3.5 in one call: 6 were results or ablation rows, 3 were architecture, 1 was a setting (weight decay).** The checks flagged weight decay (0.01 against 1e-3, correct), and flagged a result row as a "mistake" because B has `NUM_HEADS = 4` (noise).
+
+Score against the 19 findings of `EXPECTED.md` (impact classes below):
+
+| class | judged | surfaced | absent |
+|---|---|---|---|
+| carries the story (5) | #6 class weight, #9 threshold, #10b train/val gap | #11 stopwords (named as a possible cause with its 4.1 price, not confirmed) | **#1 pooling projected features: listed as a MATCH** |
+| secondary (12) | #8 no test split, #13 cosine feature | #7 warmup (named, "not shown") | #2, #3 (listed as present on both sides), #4, #5, #10, #12, #14, #17, #18 |
+| moves nothing (2) | - | - | #15, #16 (correctly ignored) |
+
+Judged 5, surfaced 2, absent 12 (10 of them countable). **Weighted judged score 13 of 39** (story 3, secondary 2, nothing 0). The single-call runs of 2026-08-17 found "13 of 19" with all the code in one prompt and a looser count; that is a different unit and a different test, NOT a like-for-like comparison, and the current app has never been measured on the full pair. **Four faults in the text, not only gaps:** (1) the "matched" list says attention pools "hidden states not projections" (the flagship divergence, #1); (2) it says label smoothing is "present on both sides" and never compares 0.1 with 0.05; (3) it says A "keeps embeddings frozen", but A unfreezes them at epoch 3, so its first and largest cause is partly a misreading; (4) the weight decay mismatch that the checks handed over is not in the report. One run, one tier: a number to beat, not a verdict on the design.
+
+**What reached the report writer (read from the saved prompt afterwards, no quota).** It saw 10 of the 82 parts of B and 10 of the 18 parts of A. Of the 10 countable misses, the code of **7 never reached the writer** (#1, #2, #5, #10, #12, #14, #18) and 3 did and were missed (#3 label smoothing and #17 `requires_grad`, both in the parts it saw, and #4 weight decay, which the check block handed over and the writer dropped). The check block held 10 claims: 2 result rows "mismatch - mistake" (noise), 1 weight decay "mismatch - choice", 4 "absent" (3 result rows and the stopword ablation), 3 architecture "match". **The biggest cause, stopword masking (#11, -4.1 F1), WAS asked about** (the claim "Masking stopwords out of the attention results in an F1 score of 0.810") **and ended "absent" after 3 searches in B** where `_build_stop_mask` exists: the first search used the claim's own words, and the two retry queries were `stopwords attention f1` and then `f1 score change`, which drifted away from the mask. The other causes were never asked about, because the claims were results and architecture, and the causes that A never states (#11 to #14, #17, #18) belong to `find_missing` and `find_bugs`, which are not built (slice 9). The planner wrote 5 queries; their text is not in the log, only their number.
+
+Impact classes used for the score (a proposal for the impact column of `EXPECTED.md`, prices in F1 come only from `EXPECTED.md`; where it gives no price the cell says so):
+
+| # | finding (short) | class | weight | price in F1 |
+|---|---|---|---|---|
+| 11 | stopwords masked out of attention | story | 3 | -4.1 |
+| 6 | positive-class weight defined, never called | story | 3 | -1.9 |
+| 1 | pools projected features, not hidden states | story | 3 | -1.4 |
+| 9 | threshold tuned on the split it is reported on | story | 3 | about +1.5 (optical) |
+| 10b | train 0.9439 against val 0.8226 (gap 12.1, the paper says 2.1) | story | 3 | no price |
+| 7, 8, 2, 3, 4, 5, 10, 12, 13, 14, 17, 18 | the secondary findings | secondary | 2 | #7 -0.8; #8 part of the +1.5 of #9; the others no price |
+| 15, 16 | rows dropped when empty; three dead layer-norm modules | nothing | 0 | 0.0007% of rows; 0.01% of parameters |
+
+Best weighted score 39 (5 x 3 + 12 x 2). Reporting a "nothing" finding is not an error and earns 0. A "right fix" column (M17) is a separate job.
+
+#### 25.7 Recommendations (what to change, in order of value)
+
+| # | change | where | evidence |
+|---|---|---|---|
+| R1 | **Cut A into groups of about 2,000 tokens and call `list_claims` once for each group, all together.** Never cut inside a part | `prompts/claims.py`, `api/claims.py`, `agent/extract_claims.py` | 25.2, 25.3: 9.3 against 2.8 to 3.2 of 12 facts, for 8 of 8 models |
+| R2 | Do not ask for "at most 15", and do not reject a whole answer for more than 20 claims. Join the groups round-robin, drop claims whose quote fails, and keep at most a number you can check (first guess 40) | `CLAIMS_WANTED`, `MAX_CLAIMS`, `read_claims` | the cap is not the lever; a cap of 20 would throw away a good 44-claim answer |
+| R3 | Take the user's question OUT of the claims instruction | `build_claims_prompt` | 12.2 to 5.5 claims with a narrow question |
+| R4 | Tell the writer to skip reported results (table rows). They go to `extract_outcomes` (slice 10) | `CLAIMS` instruction | D74: 6 of 10 claims were results or ablation rows, and their checks were noise or "absent" |
+| R5 | Remove the two stray `+` characters at lines 37 and 38 of `prompts/claims.py`; bump `CLAIMS_VERSION` to 3 with R1 to R4 | `prompts/claims.py` | they are in the text the model reads; the new test `test_no_instruction_has_a_line_that_starts_with_a_stray_plus` fails until they are gone |
+| R6 | Quote guard: keep exact matching, but when the verdict and the part number are valid and only the quote is not found, keep the verdict and mark the quote unverified, instead of rejecting the answer three times and ending `unchecked`. The extra normalisation tried in the scratchpad (`quote2.py`) recovered most true quotes with no false accept on damaged-quote controls | `agent/check_schema.py`, `agent/_quote.py` | 2 claims `unchecked` in every pinned run; 27% to 36% of claims dropped for small models in one call |
+| R7 | **Keep `MAX_RETRIES = 2` and `EVIDENCE_PARTS = 6`. Do NOT add a rerank for each claim.** Tell the query writer never to put a value in the query | `check_one.py`, `prompts/requery.py` | 25.4 |
+| R8 | The check instruction: a function or constant that is only DEFINED does not do what the claim says; look for a call or a use. Not measured. Test it on `G30` and on a few new cases before keeping it | `prompts/checks.py` | 25.5: a false match in every arm |
+| R9 | The report instruction: every `[mismatch]` of the "already found" block must appear in DIFFERENCES, and a "matched" line needs a quote from B | `prompts/answer.py` (`TWO_FILES`) | D74: weight decay lost; two false matches |
+| R10 | Product defects, no measurement needed: the question embed has no wait on a 429 (Mistral `backend_out_of_capacity` seen on 2026-10-24); `search_one` has no retry when the pooled connection dies (`SSL SYSCALL EOF` seen); one retried claim can take 185 s when a tier is slow | `api/searching.py`, `agent/search_one.py` | seen in the harness |
+| R11 | Slice 14 stays: Jev for the verdict, one claim for each call, `choice` with three labels, code picks the quote part. Keep the LLM check as the backup | `agent/check_one.py` (the injected `check`) | 25.5 |
+| R12 | Slice 12 needs ranking: claims grow with the size (7 or 14 for each 1,000 tokens). Slice 13 must re-run D74 with R1 to R5 in place | - | 25.3 |
+
+**What stays as it is:** `MAX_RETRIES` 2, `EVIDENCE_PARTS` 6, the plain search for the check, the exact-match guard as a base, the injected `check` and `new_query` functions.
+
+#### 25.8 Not measured
+
+Other papers and other languages for R1 (one paper, one model for the size sweep); sizes between 2K and 4K; the effect of R2 to R5 together; Jev with a second pair, repeats, or inside the real graph; Jev with a code-picked quote; a check that reads call sites (R8); the report with R1 to R5 in place; the current app on the FULL pair (read whole), which is the missing control for D74; the weekly smoke run.
+
+#### 25.9 The user's question after D74: does the system find the real causes?
+
+Asked on 2026-10-24: *"our current RAG system has a real issue in finding the real root causes, because it cannot hand them to the report model, do you agree?"* The answer, from the saved D74 run and the other measurements:
+
+- **Right on the symptom.** The causes that carry the story did not all reach the report: of the 5, three were judged, #11 only surfaced and #1 was written down as a match. 7 of the 10 countable misses were never in the writer's prompt, and the biggest cause was asked about, searched 3 times and ended "absent" (25.6).
+- **Not the search itself.** When a search gets a good query it finds the part: hit@6 is 28/32 plain and 31/32 with rerank (25.4), and recall@50 was about 0.99 over 20 corpora (Step 1). The break is upstream: what we ask, and what is not built yet.
+- **Four causes of the gap** (one run, so their weights are unknown):
+  1. The claims are the wrong kind: result rows cannot be found in code, and they used the retries (R1, R4).
+  2. Claims come from A only. The causes that A never states (#11 to #14, #17, #18) belong to `find_missing` and `find_bugs` (slice 9, not built). `EXPECTED.md` says of #11 that it "needs two chunks from two classes".
+  3. A sentence about results does not look like code: "masking stopwords gives F1 0.810" shares no words with `_build_stop_mask`. The retry writer guesses names from the checker's note, and when the note only says "not found" it has nothing to guess from and drifts (`f1 score change`).
+  4. Nothing asks in advance what usually causes a gap like this. The design already has the idea (Retrieval Design, "The knowledge split"): the model first lists the usual causes (class weighting, masking, threshold leakage, seeds, warmup) and each one becomes a search in B's own words. Today only the planner's 5 queries do this job, and their text is not in the log.
+- **R13 (a candidate, NOT decided): a cause-finding step.** A node that, from the question, the numbers in A and B and the outline of B, lists the likely causes and searches B for each one in B's vocabulary. It is not a slice in the plan. The user wants it designed together as the next job, after this review. It needs R1, R4 and slice 9 as well.
+- **R14: write the planner's queries into the log** (the plan is in the saved chat, but the log keeps only their number).
+
+#### 25.10 The closing review of slice 7 (2026-10-24)
+
+The standing question: which real failure is still unprotected? It was done in a scratch copy of the committed tree (`git archive HEAD`); the repository was not changed by the review. At that moment `main` and `feat/check-claims` held the identical tree (`git diff main feat/check-claims` empty): the user had finished moving the branch to `main` one file per commit with `merge_per_file.py`.
+
+**Read:** the graph wiring, `check_one`, `extract_claims`, `fan_out_claims`, `remember`, both schemas, `api/asking`, `checking`, `claims`, `requery`, `chains`, `searching`, the connection pool, the prompts, and the 30 tests of slice 7. **Baseline before any change:** unit and api 1706 passed, 5 skipped (70 s).
+
+| # | finding | proof | state |
+|---|---|---|---|
+| D-1 | **A search that fails for ONE claim (the embedder is down, a database connection dies, the pool times out) loses the WHOLE answer.** `check_node` catches only `CheckError`, and the search the claims use is the question's own `search_one`, which raises `EmbeddingUnavailable`, `ArtifactChanged` or a raw `psycopg` error. The claims are a safety net (D39), and `claims_node` already lets the answer go on when the claims step fails. Seen live in the harness on 2026-10-24 (a dropped pooled connection, `SSL SYSCALL EOF`; a Mistral 429 on a question embed) | 3 new database tests FAILED on the unmodified code (embedder down, database drop, pool timeout); the guard test (the question's own search must still stop the answer) passed | a fix was built and tested in the scratch copy; handed over as a patch; NOT in the repo |
+| D-2 | Two stray `+` characters at the start of two lines of the `CLAIMS` instruction (lines 37 and 38 of `prompts/claims.py`), in the text the model reads | the new test `test_no_instruction_has_a_line_that_starts_with_a_stray_plus` fails on the repo text and passes once they are removed | patch handed over |
+| D-3 | No weekly live test of the three calls slice 7 added (claims through a tool, the check through a tool, the new query). A tier that stops honouring tools would show up as a report with no findings and no error, because a failed claims step is only logged (D65) | the new smoke test `test_claims_a_check_and_a_new_query_work_on_stored_files` PASSED once live (2 minutes, Flash-Lite first) | file handed over |
+| smell | `search_one` holds a pooled connection while the question is embedded (`_searched` embeds first); the pool has 8 connections and no timeout setting (psycopg_pool default: 30 s); up to 20 claims with 3 searches each can be in flight. A slow embedder can starve the pool. With D-1 fixed this ends as `unchecked` claims, not a crash | read from the code, NOT measured | R16 |
+
+**Checked and fine:** no dead names in the 16 files of slice 7; no script names a removed function; the layer, error-boundary, public-API and docs-heading tests pass; the saved chat keeps no claims and no findings (an existing database test); the retry loop is bounded (existing tests); `ruff check .` and `ruff format --check .` (the two commands CI runs) are clean on all 372 files of the scratch copy, with the fix and the new tests in place.
+
+**The fix, as tested.** `build_graph` takes an optional `search_claim` (it defaults to `search_one`, so nothing else changes). `_ask_graph` gives it a small wrapper that turns `EmbeddingUnavailable`, `ArtifactChanged` and `psycopg.Error` (`PoolTimeout` is one) into `CheckError`, which the existing `check_node` already turns into an `unchecked` finding. The question's own search is untouched and still raises. Not chosen: a broad `except Exception` inside the node, because it would hide our own bugs (break M3 below catches that).
+
+**New tests: 11, in 5 files.** `tests/integration/test_claims_over_the_store.py` +4 (the three faults and the guard), `tests/api/test_ask_claims.py` +4 (three faults and a bug that must not be hidden), `tests/unit/agent/test_check_one.py` +1, `tests/unit/prompts/test_instructions.py` +1, `tests/smoke/test_claims_answers.py` (new, 1).
+
+**Breaks, one line each, in the scratch copy (every file restored from a kept copy, every anchor asserted):**
+
+| break | what fired |
+|---|---|
+| M1 database errors no longer caught | the api `database` case, and the integration `database-drop` and `pool` cases |
+| M2 the wrapper does nothing | three api cases and three integration cases |
+| M3 the wrapper catches every exception | `test_a_bug_in_the_search_is_not_turned_into_an_unchecked_claim`, alone |
+| M4 the graph is not given the claim search | the api cases and the integration cases |
+| M5 the graph ignores the claim search | `test_the_checks_search_with_the_function_made_for_them_when_one_is_given` and the integration cases |
+| M6 the question's own search is also turned into a check error | the api `embedder-down` case and `test_a_search_that_fails_for_the_question_itself_still_stops_the_answer` |
+| M7 a `+` put in front of a line of `CHECK` (after the two real ones were removed) | the stray-plus test, alone; with the two real ones removed it passes |
+
+**Two mistakes of mine while writing them, both caught by running the tools the project already has.** A test name 89 characters long (`ruff check`, limit 88), and appended code that `ruff format` re-laid out. Nothing else needed repair.
+
+**Whole suite in the scratch copy with the fix, the repaired text and all new tests:** the whole suite (unit, api and database tests, no `--run-smoke`) gave 1,884 passed, 138 skipped and 1 failed in 20 minutes (2,023 tests collected). The one failure was a database connection that Supabase closed in the middle of a search, in `test_a_chat_on_the_searched_path_is_saved_and_comes_back_as_real_objects` (a test that also failed once before, on 2026-10-21, with another network error); it passed 3 of 3 on a re-run, and it does not touch claims or any changed code. No skip is about the database; the skips are the smoke tests and three others with a stated reason.
+
+**Handed over, NOT in the repository** (the user types the product code and pastes the tests): `artifacts/slice7-review/` (git-ignored) holds the five test files whole, three patches to read (`graph.diff`, `asking.diff`, `claims.diff`), `README.txt`, the impact column proposal, and the measurement harness with its raw results (`harness/`, `results/`). Check `git log` and `git status` to see whether they have been applied yet.
+
+**Added to the table of 25.7:**
+
+| # | change | where | evidence |
+|---|---|---|---|
+| R13 | A cause-finding step (25.9). NOT decided; to be designed with the user | new node, planner | 25.6, 25.9 |
+| R14 | Write the planner's queries into the log | `api/planning.py` | 25.9 |
+| R15 | **A failed search for one claim must leave it `unchecked`, not stop the answer** (D-1), with the three patches above | `agent/graph.py`, `api/asking.py` | 25.10 |
+| R16 | Release the pooled connection before the question is embedded, or give the pool a timeout and `max_concurrency`; NOT measured | `api/asking.py` (`search_one`), `store/connection.py` | 25.10 |
+
+#### 25.11 The complete list of changes, with corrections (written after an audit of the same night; where it differs from 25.7 or 25.10, THIS section wins)
+
+The user asked whether every idea and correction was in the docs. It was not: two items of 25.7 needed correcting, and eight were only said in the conversation. Everything is below. The session that works on it follows the order of "The order" and does not change two things at once.
+
+**A. Corrections to 25.7 (read these before typing R1)**
+
+- **R1 was measured as ONE exact arm; port exactly it, then change one thing at a time.** The arm is: wording G (`HEADER_G` in `harness/extract.py`) without its last paragraph about the question; the closing line "List every claim this part states, or none if it states none."; no question; the parts cut into groups of about 2,000 tokens and never inside a part; one `list_claims` call for each group, all at the same time; NO total cap. R3 and R4 are inside this arm, so their effects cannot be separated from it. What was separated: wording G in ONE call over the whole of A gave 4.0 of 12 with the question and 2.8 without it, against 3.2 for the shipped wording, and 9.3 for two calls of 9 parts with the same wording: the groups are the lever, the wording is small.
+- **R1 does NOT reach the findings that carry the story most.** Of the 12 mismatch facts of the key, the groups reach the nine value and step facts (clip norm, label smoothing, weight decay, unfreeze epoch, warmup, the three splits, the threshold, the seeds, the positive-class weight) and NOT these three (counted over the 16 grouped runs of Flash-Lite 3.5 in `results/m10c.jsonl`, 846 claims):
+  - **Pooling of projected features (#1, G31): 0 of 16 runs by the screen of the key.** Read by hand, the claim that matters ("the projection W must not be applied to the vectors that are summed") appears in 2 claims of the 846, and "the projection W exists only to compute the scores" in 1. The generic claim "a multi-head additive attention layer pools the recurrent hidden states" appears in about 11 claims, and it leads to a false MATCH (D74 listed #1 as matched).
+  - **The stopword mask (#11, G32):** reached 3 of 3 runs at 1 part for each call, 2 of 3 at 9 parts, 1 of 3 at 3 parts and 0 of 3 at 6 parts. The group size matters for it.
+  - **The overfit gap (#10b, G33): 0 in every run.** Wording G throws away result sentences by design. This one needs `extract_outcomes` and the "does it add up" check (slice 10), not claims.
+  - The quote guard is NOT the cause: it dropped 3 of 846 grouped claims.
+  - So R1 lifts the value mismatches (#2 to #9) and the next steps must go after #1, #11 and #10b by other means: groups together with wording E (rules, and "what is left out") were never tried; group sizes between 2K and 4K were never tried; and see R13, R24, slice 9 and slice 10.
+- **R2: the cap of 40 was never run.** The measured arm had no cap (44 claims at 9 parts for each call, 86 at 1 part). The real limit is cost: every claim is one search and one check, plus the retries (about 28% more calls). 44 claims is about 70 model calls for one question (44 checks, about 12 more checks and 12 query writes for the retries, 2 extraction calls), against 500 a day for each of 3 keys on Flash-Lite 3.5 and the same on 3.1. Choose the cap from the measured cost, then run it. Do not reject a whole answer for too many claims.
+- **R4: wording G removes result sentences, and that has a price.** The ablation sentence "masking stopwords out of the attention gives F1 0.810, a change of -4.1" was the only claim about the biggest cause in the D74 run (the single call skipped the method sentence). Wording G drops it. Decide knowingly: keep wording G and get the mask from the method sentence (3 of 3 at 1 part for each call), or keep result sentences that NAME a component and let the writer state the component without the number.
+
+**B. The complete list.** R1 to R16 are as in 25.7 and 25.10 with the corrections above. Added:
+
+| # | change | where | evidence | how to check it |
+|---|---|---|---|---|
+| R17 | The query writer sees the outline of B (the same `build_map` the planner uses) and must keep the topic words of the claim. Today it guesses names that are not in B and drifts (`stopwords attention f1`, then `f1 score change`, while `_build_stop_mask` exists). Also tell it never to put a value in the query (R7) | `prompts/requery.py` (`REQUERY`, `build_requery_prompt`), `api/requery.py` (`make_query_writer`), `agent/check_one.py` (`NewQuery`) | 25.4, 25.6. This is also the "jargon bridge" that D14 named and no node covers | `harness/run_m24_arms.py`, plain + retry arm: right /32 (27.2 now), and the share of retry queries whose names exist in B (grep them against `B_train.py`) |
+| R18 | The planner may list steps that no node runs (`find_bugs`, `find_missing`, `extract_outcomes`). Either list only the built steps, or say in the planner prompt which are not built yet. Add a test that every allowed step has a node in the graph | `agent/plan_check.py` (`STEPS_BY_FILES`), `prompts/planner.py` (`STEP_MEANINGS`) | 25.6: the D74 planner listed three steps nobody runs | the new test; read the plan of one run |
+| R19 | The report instruction: every statement about A or about B needs a quote from that file (R9 only covers the matched lines of B). In D74 the report said A "keeps embeddings frozen" while A unfreezes at epoch 3, so its first cause was partly a misreading | `prompts/answer.py` (`TWO_FILES`) | 25.6 fault 3 | D74 re-run read by hand; citations that resolve |
+| R20 | **The parts that the claim checks found must reach the report writer.** Today a `Finding` carries one quote and a header, and the writer sees only the 10 parts of the plain pile. The design (21.1 step 9, D42) says the chunks of the claim searches are merged into the pile with duplicates removed and the budget kept. This was never built | `agent/respond.py` or a merge step after `check_one`, `agent/finding.py`, `api/prompting.py` (`checks_text`) | 25.6: 7 of 10 countable misses never reached the writer | D74 re-run: how many of the absent findings now have their code in the prompt; a test that the deciding part of a finding is in the prompt once |
+| R21 | When the pair fits and is read whole, the claim checks could read the stuffed parts and skip the embedder and the database search (fewer failure points, nothing wasted). An idea to test, not a decision | `agent/graph.py` (`after_search`, `fan_out_claims`), `agent/check_one.py` | the checks search B even when all of B is already in the prompt | grid arm E2 and E5 below |
+| R22 | Put the impact column into `data/samples/quora_siamese/EXPECTED.md` (the proposal is in 25.6 and in `artifacts/slice7-review/impact_column_proposal.md`). **Read `scripts/score_answers.py` and `scripts/score_topn.py` first: they read this file and must not break** | `data/samples/quora_siamese/EXPECTED.md` | the score of 25.6 needs it to be repeatable | run both scripts before and after |
+| R23 | How many parts the writer sees on the search path. `RERANK_TOP_N = 10`, `VECTOR_TOP_N = 15` and `RERANK_WINDOW = 20` per side were set on retrieval measurements, never on report quality; in D74 the writer saw 10 of 82 parts of B. The "how many to send" question of Step 1 is still open | `api/searching.py` | 25.6 | grid arm: 10 against 20 against 40 per side, search path forced |
+| R24 | The group size and the wording of R1 are open: 1, 3 and 9 parts for each call; groups plus wording E; sizes between 2K and 4K. The harness takes the size: `python run_m10c.py MODEL REPS GROUP`. Count the cost in calls and seconds for each size, and read G31, G32 and G33 each time | `harness/run_m10c.py`, `harness/extract.py` | the three story facts of the key | the same score with the key (`harness/gold.py`), read by hand |
+
+Also open and unchanged: R10 (the question embed has no wait on a 429; `search_one` has no retry when the pooled connection dies), R13 (the cause-finding step, to design together), R14 (log the planner's queries), R16 (the pool), R11 (slice 14 keeps Jev), R12 (slice 12 needs ranking). Optional measurements left from 23.8: M19 (claims on real prose, partly answered by M11), M22 (a second corpus), M23 (the Gemini 3.6 and OrcaRouter cells).
+
+**C. The experiment grid for the stuffed approach (the user's plan for the next session).** Each cell is a `harness/run_d74.py` run, scored by reading with the impact column; run each cell twice if quota allows, because the model does not repeat itself. Cost of one run: about 3 to 5 minutes and about 20 to 40 model calls, one of them the report on tier 1.
+
+| cell | path | claims | code state |
+|---|---|---|---|
+| E0 | search forced (budget 20,000) | on | today (done once: judged 5, surfaced 2, absent 12); repeat once for the noise |
+| E1 | stuffed (the default budget of 30,000: the pair is read whole) | on | today, with the patches of 25.10 |
+| E2 | stuffed | OFF (plan without `extract_claims`) | what the claim path adds when the model sees all the code |
+| E3 | search forced | on | after R1 to R6 |
+| E4 | search forced | on | E3 plus R17, R19, R20 and R9 |
+| E5 | stuffed | on | after R1 to R6, R9, R19 (and R21 if it is built) |
+
+**D. The order** (each step ends with tests green, a break of each new invariant, `ruff check .` and `ruff format --check .`, and the docs updated in both files):
+
+0. Close slice 7: type the patches of 25.10 (R15, and R5 for the stray `+`), paste the tests, commit the docs (DETAILS.md first).
+1. Baselines first: E0 (repeat), E1, E2. Read, score, write the table. This is the stuffed approach and it decides how much the claim path is worth when the model sees everything.
+2. Claims (R1 to R5, R24). Measure the group size and the wording with the harness BEFORE building. Building R1 is a fourth lesson of slice 7: ask the user first.
+3. Checks: R6 (the quote guard keeps a valid verdict), R8 (defined is not used), R7 and R17 (the query writer), R10 (embed wait, connection retry), R16 (the pool). Check with `run_m24_arms.py` and the hard rows G25, G30, G31, G32.
+4. Report: R9 and R19 (instruction), R20 (the parts of the findings reach the writer), R23 (how many parts), R14 (log the planner's queries).
+5. Causes: design R13 together (talk first, no code). It must reach #11, #12, #14, #17 and #18, which no claim from A can; relate it to slice 9 (`find_missing`, `find_bugs`) and slice 10 (`extract_outcomes`, for #10b). Decide R18 and R21 here.
+6. Re-run E3, E4, E5. R22 (the impact column) before the first scored run. Closing review, docs, continue-prompt.
+
+**E. What the next session must not do.** Do not change two things between two measured runs. Do not trust the regex screen of `gold.py` alone (read the claims, as in 25.11 A). Do not decide anything from one pair and one run: this fixture may reject, it never confirms. Do not build R1 before the user agrees to a fourth lesson.
 
 ---
 
