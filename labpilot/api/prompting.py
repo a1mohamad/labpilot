@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from labpilot.agent import A_SILENT, CodeFinding, Finding
+from labpilot.api.differences import NEVER_CALLED
 from labpilot.api.errors import (
     ArtifactsTooLargeToCompare,
 )
@@ -100,6 +101,11 @@ def prior_text(
             entries.append((_RANK[found.verdict], "check", _check_line(found)))
     for item in code_findings:
         rank = _RANK["silent"] if item.a_says == A_SILENT else _RANK["differs"]
+        # A fact read from the whole file is certain, so it is kept with the
+        # differences (2026-10-24, F5b: "pos_class_weight is never called" was
+        # the first line cut for room, because A never mentions it).
+        if NEVER_CALLED in item.text:
+            rank = _RANK["differs"]
         entries.append((rank, "code", _code_line(item)))
 
     notes = estimate_tokens(CHECKS_NOTE) + estimate_tokens(CODE_NOTE)

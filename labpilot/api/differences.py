@@ -32,6 +32,10 @@ from labpilot.tokens import estimate_tokens
 
 logger = logging.getLogger(__name__)
 
+# The words of a code finding that comes from the whole file, not from a model:
+# certain, short, and kept before the model's lines when room is short.
+NEVER_CALLED = "is defined in B and never called"
+
 TOOL_DESCRIPTION = "List what B does differently from A or that A does not say."
 
 # The groups are asked at the same time, at most this many at once.
@@ -141,7 +145,7 @@ def make_difference_finder(
         by_header = {chunk.header: chunk for chunk in chunks}
         unused = [
             CodeFinding(
-                f"`{name}` is defined in B and never called or named anywhere "
+                f"`{name}` {NEVER_CALLED} or named anywhere "
                 "else in B (a framework may still call it by name)",
                 header,
                 _def_line(by_header[header].text, name)

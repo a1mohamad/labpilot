@@ -463,3 +463,26 @@ def test_when_the_parts_fill_the_budget_no_part_is_cut_for_a_finding_line():
 
     assert picked == chunks
     assert "[mismatch - choice]" not in prompt
+
+
+def test_a_never_called_fact_is_kept_before_the_lines_a_model_wrote():
+    # 2026-10-24, F5b: the fact was the first line cut for room, because A
+    # never mentions the function, so it ranked with the "A silent" lines.
+    from labpilot.api.differences import NEVER_CALLED
+    from labpilot.api.prompting import prior_text
+
+    silent = [
+        CodeFinding(f"B logs metric number {n} to MLflow", "[t]", "log", A_SILENT)
+        for n in range(30)
+    ]
+    fact = CodeFinding(
+        f"`pos_class_weight` {NEVER_CALLED} or named anywhere else in B",
+        "[t]",
+        "def pos_class_weight(self, device):",
+        A_SILENT,
+    )
+
+    text = prior_text([], [*silent, fact], 260)
+
+    assert "`pos_class_weight` is defined in B and never called" in text
+    assert "left out for room" in text
