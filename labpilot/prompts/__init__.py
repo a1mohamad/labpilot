@@ -14,6 +14,14 @@ from labpilot.prompts.builder import (
     build_prompt,
     reserve,
 )
+from labpilot.prompts.checks import (
+    CHECK,
+    CHECK_MAX_TOKENS,
+    CHECK_VERSION,
+    CHECKS_NOTE,
+    build_check_prompt,
+    render_checks,
+)
 from labpilot.prompts.citations import Citation, find_citations, resolve
 from labpilot.prompts.claims import (
     CLAIMS,
@@ -52,6 +60,14 @@ from labpilot.prompts.planner import (
     build_planner_prompt,
     map_budget,
 )
+from labpilot.prompts.requery import (
+    MAX_QUERY_CHARS,
+    REQUERY,
+    REQUERY_MAX_TOKENS,
+    REQUERY_VERSION,
+    build_requery_prompt,
+    requery_problem,
+)
 from labpilot.prompts.summary import (
     SUMMARY,
     SUMMARY_BUDGET,
@@ -60,6 +76,10 @@ from labpilot.prompts.summary import (
 )
 
 __all__ = [
+    "CHECK",
+    "CHECK_MAX_TOKENS",
+    "CHECK_VERSION",
+    "CHECKS_NOTE",
     "CLAIMS",
     "CLAIMS_BUDGET",
     "CLAIMS_MAX_TOKENS",
@@ -72,6 +92,10 @@ __all__ = [
     "FILE_ROW_TOKENS",
     "FOLLOW_UP_VERSION",
     "FULL",
+    "MAX_QUERY_CHARS",
+    "REQUERY",
+    "REQUERY_MAX_TOKENS",
+    "REQUERY_VERSION",
     "OUTLINE_BUDGET",
     "OPENING_CHARS",
     "PLANNER_BUDGET",
@@ -92,9 +116,13 @@ __all__ = [
     "PLANNER_MAX_TOKENS",
     "PLANNER_VERSION",
     "STEP_MEANINGS",
+    "build_check_prompt",
     "build_claims_prompt",
     "claims_fit",
+    "render_checks",
     "build_planner_prompt",
+    "build_requery_prompt",
+    "requery_problem",
     "map_budget",
     "build_context",
     "build_follow_up_prompt",
