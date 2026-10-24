@@ -4,6 +4,7 @@ from labpilot.agent import (
     CHECK_TOOL_NAME,
     KINDS,
     UNCHECKED,
+    UNVERIFIED,
     VERDICTS,
     CheckError,
     Claim,
@@ -11,6 +12,7 @@ from labpilot.agent import (
     check_schema,
     read_finding,
 )
+from labpilot.ingest import Chunk
 
 CLAIM = Claim("the time step is 0.01 s", "[paper.md · 4 Setup]", "time step is 0.01 s")
 SOURCES = ["[solver.py · lines 1-5]", "[solver.py · lines 6-9]"]
@@ -104,14 +106,9 @@ def test_the_note_and_the_quote_lose_the_spaces_around_them():
         verdict(part=True),
         verdict(part=-1),
         verdict(part=2),
-        without(verdict(), "quote"),
-        verdict(quote=3),
-        verdict(quote=""),
-        verdict(quote="dt = 0.5"),
         without(verdict(), "kind"),
         verdict(kind="bug"),
         verdict(verdict="match", part=5),
-        verdict(verdict="match", quote="it was never said"),
     ],
 )
 def test_an_answer_that_is_not_a_good_verdict_is_refused(arguments):
@@ -120,11 +117,57 @@ def test_an_answer_that_is_not_a_good_verdict_is_refused(arguments):
 
 
 def test_the_quote_is_looked_up_in_the_part_the_model_named_and_in_no_other():
-    # "mesh = 200" is really in part 0, and the model named part 1.
-    with pytest.raises(CheckError, match="part 1"):
-        read_finding(verdict(quote="mesh = 200"), CLAIM, SOURCES, TEXTS)
+    # "mesh = 200" is really in part 0, and the model named part 1: the quote is
+    # not taken from another part, so it counts as not found.
+    found = read_finding(verdict(quote="mesh = 200"), CLAIM, SOURCES, TEXTS)
+
+    assert (found.source, found.quote) == (SOURCES[1], "")
+    assert found.note.startswith(UNVERIFIED)
 
 
 def test_parts_and_sources_that_do_not_match_are_a_bug_of_the_caller():
     with pytest.raises(ValueError):
         read_finding(verdict(), CLAIM, SOURCES, TEXTS[:1])
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        without(verdict(), "quote"),
+        verdict(quote=3),
+        verdict(quote=""),
+        verdict(quote="dt = 0.5"),
+        verdict(verdict="match", quote="it was never said"),
+    ],
+)
+def test_a_verdict_whose_quote_is_not_in_its_part_is_kept_and_marked(arguments):
+    # R6: refusing it lost true verdicts (they ended "unchecked").
+    found = read_finding(arguments, CLAIM, SOURCES, TEXTS)
+
+    assert found.verdict == arguments["verdict"]
+    assert found.source == SOURCES[1]
+    assert found.quote == ""
+    assert found.note.startswith(UNVERIFIED)
+
+
+def test_the_deciding_part_is_kept_on_the_finding_when_the_parts_are_given():
+    chunks = [
+        Chunk(
+            text=t,
+            source="solver.py",
+            start_line=n,
+            end_line=n,
+            side="B",
+            artifact_id="B-1",
+            chunk_index=100 + n,
+        )
+        for n, t in enumerate(TEXTS)
+    ]
+
+    found = read_finding(verdict(), CLAIM, SOURCES, TEXTS, chunks)
+
+    assert found.evidence is chunks[1]
+
+
+def test_without_the_parts_a_finding_has_no_evidence():
+    assert read_finding(verdict(), CLAIM, SOURCES, TEXTS).evidence is None

@@ -63,7 +63,7 @@ def make_checker(
         if result.arguments is None:
             raise CheckError(f"{result.model} gave no arguments")
 
-        finding = read_finding(result.arguments, claim, sources, texts)
+        finding = read_finding(result.arguments, claim, sources, texts, chunks)
         logger.info(
             "check v%d by %s (tier %s): %s",
             CHECK_VERSION,

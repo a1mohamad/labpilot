@@ -91,7 +91,8 @@ def test_a_wrong_answer_is_sent_back_so_the_next_tier_writes_a_new_one():
 
     assert problem_with(result(GOOD)) is None
     assert problem_with(result(None)) == "no arguments"
-    assert "quote" in problem_with(result({**GOOD, "quote": "dt = 0.5"}))
+    # A quote that is not in its part no longer sends the answer on (R6).
+    assert problem_with(result({**GOOD, "quote": "dt = 0.5"})) is None
     assert "verdict" in problem_with(result({**GOOD, "verdict": "maybe"}))
 
 

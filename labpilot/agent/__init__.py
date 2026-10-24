@@ -1,6 +1,7 @@
 from labpilot.agent.check_schema import (
     CHECK_TOOL_NAME,
     KINDS,
+    UNVERIFIED,
     VERDICTS,
     check_schema,
     read_finding,
@@ -41,6 +42,7 @@ __all__ = [
     "RESULT",
     "join_claims",
     "UNCHECKED",
+    "UNVERIFIED",
     "VERDICTS",
     "check_schema",
     "claims_schema",
