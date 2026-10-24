@@ -106,3 +106,15 @@ def test_the_instruction_says_a_definition_alone_is_not_a_use():
     header = " ".join(CHECK.header.split())
 
     assert "only defined and never used or called" in header
+
+
+def test_a_never_called_fact_is_called_a_mismatch_not_absent():
+    # 2026-10-24, the wired check arm: the checker saw "pos_class_weight is
+    # never called" and still answered "absent", twice. The paper weights the
+    # class and B does not, so the right verdict is a mismatch.
+    from labpilot.prompts.checks import CHECK
+
+    header = " ".join(CHECK.header.split())
+    assert (
+        "never called or named anywhere else in the file, that is a mismatch" in header
+    )

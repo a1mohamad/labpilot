@@ -4,7 +4,7 @@ from labpilot.prompts.instructions import Instructions
 
 # The wording below is FIXED. Change it only together with this number, which is
 # logged beside every check.
-CHECK_VERSION = 2
+CHECK_VERSION = 3
 
 # One verdict and one short sentence, but a tier that thinks spends tokens first,
 # so this is only a backstop.
@@ -26,7 +26,9 @@ absent    none of the parts says either way.
 Read only the parts you are given. "absent" means "not found in these parts",
 never "the other file does not do it".
 Something that is only defined and never used or called (a helper, a value, a
-setting) does not do what the claim says: look for where it is used.
+setting) does not do what the claim says: look for where it is used. When a
+fact below says it is never called or named anywhere else in the file, that is
+a mismatch (kind: mistake): give the part that defines it.
 For a match or a mismatch, give the number of the part that decides it, and the
 quote: the exact words of that part, copied letter for letter, at most 200
 characters. Then one short sentence that says why.""",
