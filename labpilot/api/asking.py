@@ -24,7 +24,7 @@ from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
 from labpilot.api.requery import make_query_writer
-from labpilot.api.searching import rank_pile, retrieve_query
+from labpilot.api.searching import embed_query, rank_pile, retrieve_query
 from labpilot.api.summaries import make_summarizer
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
@@ -157,10 +157,29 @@ def _ask_graph(
     def search_one(sides, query):
         if pool is None:
             return retrieve_query(conn, sides, side=query.side, text=query.text)
+        # Embed BEFORE a connection is taken from the pool, so the pool is not
+        # held while the embedder answers (R16).
+        vector = embed_query(sides, side=query.side, text=query.text)
         if pool.closed:
             pool.open(wait=False)
-        with pool.connection() as pooled:
-            return retrieve_query(pooled, sides, side=query.side, text=query.text)
+        for attempt in range(2):
+            try:
+                with pool.connection() as pooled:
+                    return retrieve_query(
+                        pooled,
+                        sides,
+                        side=query.side,
+                        text=query.text,
+                        vector=vector,
+                    )
+            except psycopg.OperationalError:
+                # A pooled connection the server closed in the middle of the
+                # search (seen on 2026-10-24: "SSL SYSCALL EOF"). The pool
+                # drops it, and the search is tried once on another (R10).
+                if attempt:
+                    raise
+                logger.warning("a pooled connection died, searching again")
+        raise AssertionError("unreachable")
 
     def search_claim(sides, query):
         # The check of a claim is a safety net (D39). When its search fails, the

@@ -106,3 +106,52 @@ def test_an_embedder_that_fails_is_OUR_outage_not_the_users_mistake(monkeypatch)
 
     with pytest.raises(EmbeddingUnavailable, match="codestral is down"):
         searching._embed_question("a question", model="codestral-embed")
+
+
+class Busy(FakeEmbedder):
+    def __init__(self, model, failures, status):
+        super().__init__(model)
+        self.failures = failures
+        self.status = status
+        self.tries = 0
+
+    def embed(self, texts, *, task="document"):
+        self.tries += 1
+        if self.tries <= self.failures:
+            raise EmbeddingError("busy", status=self.status)
+        return super().embed(texts, task=task)
+
+
+def test_a_busy_embedder_is_waited_for_and_asked_again(monkeypatch):
+    # R10: a 429 on a query embed lost the whole answer on 2026-10-24.
+    waits = []
+    monkeypatch.setattr(searching.time, "sleep", waits.append)
+    busy = Busy("codestral-embed", failures=2, status=429)
+    only(monkeypatch, busy)
+
+    searching._embed_question("a question", model="codestral-embed")
+
+    assert busy.tries == 3
+    assert waits == list(searching.EMBED_WAITS)
+
+
+def test_an_embedder_still_busy_after_the_waits_is_an_outage(monkeypatch):
+    monkeypatch.setattr(searching.time, "sleep", lambda s: None)
+    busy = Busy("codestral-embed", failures=9, status=503)
+    only(monkeypatch, busy)
+
+    with pytest.raises(EmbeddingUnavailable):
+        searching._embed_question("a question", model="codestral-embed")
+
+    assert busy.tries == len(searching.EMBED_WAITS) + 1
+
+
+def test_a_refusal_that_waiting_cannot_fix_is_not_waited_for(monkeypatch):
+    monkeypatch.setattr(searching.time, "sleep", lambda s: pytest.fail("no wait"))
+    busy = Busy("codestral-embed", failures=9, status=401)
+    only(monkeypatch, busy)
+
+    with pytest.raises(EmbeddingUnavailable):
+        searching._embed_question("a question", model="codestral-embed")
+
+    assert busy.tries == 1
