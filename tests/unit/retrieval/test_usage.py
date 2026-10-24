@@ -92,3 +92,35 @@ def test_the_constants_a_text_names_are_listed_once_in_order():
     text = "clip(self.config.CLIP_NORM)\nx = cfg.LR * cfg.CLIP_NORM\nif ok:"
 
     assert constants_named(text) == ["CLIP_NORM", "LR"]
+
+
+def test_a_method_inside_a_class_part_is_found_though_the_header_names_only_the_class():
+    # 2026-10-24: QuoraDataset is ONE part, so pos_class_weight was never seen.
+    parts = [
+        (
+            "[t.py · class Data · lines 1-6]",
+            "class Data:\n    def pos_weight(self, device):\n        return 1.7\n",
+        ),
+        ("[t.py · def main · lines 8-10]", "def main():\n    return Data()\nmain()\n"),
+    ]
+
+    assert unused_definitions(parts) == {
+        "pos_weight": "[t.py · class Data · lines 1-6]"
+    }
+
+
+def test_a_method_a_framework_calls_by_itself_is_never_reported():
+    # PyTorch calls forward() through model(x); pytest calls test_ functions.
+    parts = [
+        (
+            "[m.py · class Net · def forward · lines 1-2]",
+            "    def forward(self, x):\n        return x\n",
+        ),
+        (
+            "[m.py · def test_net · lines 4-5]",
+            "def test_net():\n    assert Net()(1) == 1\n",
+        ),
+        ("[m.py · def on_epoch_end · lines 7-8]", "def on_epoch_end():\n    pass\n"),
+    ]
+
+    assert unused_definitions(parts) == {}

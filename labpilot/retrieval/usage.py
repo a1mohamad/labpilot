@@ -3,6 +3,33 @@ from collections.abc import Sequence
 
 # A header names its unit: "[train.py · class Trainer · def fit · lines 1-9]".
 _DEFINED = re.compile(r"(?:^|·)\s*def ([A-Za-z_]\w*)")
+# A part can also hold whole methods its header does not name (a small class
+# is one part): "    def pos_class_weight(self, device):". 2026-10-24: this one
+# was missed, because only the headers were read.
+_DEF_LINE = re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(", re.M)
+# Names a framework calls by itself, so "never named" says nothing about them:
+# PyTorch calls forward() through model(x), unittest calls setUp. Names that
+# start with test_ or on_ (pytest tests, framework callbacks) are left out too.
+FRAMEWORK_HOOKS = frozenset(
+    {
+        "forward",
+        "backward",
+        "extra_repr",
+        "training_step",
+        "validation_step",
+        "test_step",
+        "predict_step",
+        "configure_optimizers",
+        "setUp",
+        "tearDown",
+        "setUpClass",
+        "tearDownClass",
+    }
+)
+
+
+def _called_by_a_framework(name: str) -> bool:
+    return name in FRAMEWORK_HOOKS or name.startswith(("test_", "on_"))
 
 
 def unused_definitions(parts: Sequence[tuple[str, str]]) -> dict[str, str]:
@@ -19,10 +46,13 @@ def unused_definitions(parts: Sequence[tuple[str, str]]) -> dict[str, str]:
     method by its name (a hook), so the reader of this fact decides.
     """
     defined: dict[str, str] = {}
-    for header, _ in parts:
-        for name in _DEFINED.findall(header):
-            if not (name.startswith("__") and name.endswith("__")):
-                defined.setdefault(name, header)
+    for header, text in parts:
+        for name in (*_DEFINED.findall(header), *_DEF_LINE.findall(text)):
+            if name.startswith("__") and name.endswith("__"):
+                continue
+            if _called_by_a_framework(name):
+                continue
+            defined.setdefault(name, header)
 
     unused: dict[str, str] = {}
     for name, header in defined.items():
