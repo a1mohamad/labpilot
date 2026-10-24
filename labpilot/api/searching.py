@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 
 import psycopg
+import requests
 
 from labpilot.api.errors import (
     ArtifactChanged,
@@ -275,12 +276,23 @@ RETRY_EMBED_STATUSES = frozenset({429, 500, 502, 503})
 MAX_EMBED_WAIT = 10.0
 
 
+def _worth_a_wait(exc: EmbeddingError) -> bool:
+    # A request that never got an answer (a read timeout, a dropped
+    # connection) has no status. Seen on 2026-10-24 through the VPN: a 10 s
+    # read timeout on one query embed lost the whole answer.
+    if exc.status in RETRY_EMBED_STATUSES:
+        return True
+    return exc.status is None and isinstance(
+        exc.__cause__, requests.exceptions.RequestException
+    )
+
+
 def _embed_with_waits(embedder, question: str) -> tuple[float, ...]:
     for wait in (*EMBED_WAITS, None):
         try:
             return embedder.embed([question], task="query").vectors[0]
         except EmbeddingError as exc:
-            if wait is None or exc.status not in RETRY_EMBED_STATUSES:
+            if wait is None or not _worth_a_wait(exc):
                 raise EmbeddingUnavailable(f"{embedder.name}: {exc}") from exc
             pause = min(exc.retry_after or wait, MAX_EMBED_WAIT)
             logger.warning(

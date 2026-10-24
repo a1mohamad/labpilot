@@ -30,7 +30,9 @@ class FileFacts:
     A check and a new query see a few parts of the other file. Two things only
     the whole file can show: its outline (the names it really uses, R17) and
     the functions it defines and never names again (R8). Many checks run at the
-    same time, so the reads are guarded and kept.
+    same time, so the reads are guarded and kept. A read that fails only takes
+    the help away: a dead connection must not stop a check, and the check must
+    not stop the answer (seen on 2026-10-24, a connection that Supabase closed).
     """
 
     def __init__(self, conn: psycopg.Connection) -> None:
@@ -48,7 +50,7 @@ class FileFacts:
                         self._conn, artifact_id, opening_chars=OPENING_CHARS
                     )
                     text = build_map({"B": headers}, budget=OUTLINE_TOKENS)
-                except StoreError:
+                except (StoreError, psycopg.Error):
                     logger.warning("no outline of %s", artifact_id, exc_info=True)
                     text = ""
                 self._outlines[artifact_id] = text
@@ -59,7 +61,7 @@ class FileFacts:
         if artifact_id not in self._stored:
             try:
                 self._stored[artifact_id] = read_chunks(self._conn, artifact_id)
-            except StoreError:
+            except (StoreError, psycopg.Error):
                 logger.warning("could not read %s whole", artifact_id, exc_info=True)
                 self._stored[artifact_id] = ()
         return self._stored[artifact_id]

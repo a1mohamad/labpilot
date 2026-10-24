@@ -219,3 +219,18 @@ def test_the_checker_reads_the_expanded_parts(monkeypatch):
 
     assert "CLIP_NORM = 1.5" in prompts[0]
     assert finding.verdict == "mismatch" and finding.evidence is extra
+
+
+def test_a_dead_connection_gives_no_help_and_no_crash(monkeypatch):
+    import psycopg
+
+    def dead(conn, artifact_id):
+        raise psycopg.OperationalError("SSL SYSCALL error: connection abort")
+
+    monkeypatch.setattr(file_facts, "read_chunks", dead)
+    monkeypatch.setattr(file_facts, "read_headers", lambda *a, **k: dead(*a))
+    facts = FileFacts("conn")
+
+    assert facts.facts_for([chunk(DEF)]) == ""
+    assert facts.expand([chunk(DEF)]) == (chunk(DEF),)
+    assert facts.outline("B-1") == ""
