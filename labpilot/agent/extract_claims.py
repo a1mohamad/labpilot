@@ -15,11 +15,11 @@ def wants_claims(state: State) -> bool:
 
 
 def make_claims_node(
-    extract: Callable[[str, str], tuple[Claim, ...]],
+    extract: Callable[[str], tuple[Claim, ...]],
 ) -> Callable[[State], dict[str, tuple[Claim, ...]]]:
     def claims_node(state: State) -> dict[str, tuple[Claim, ...]]:
         try:
-            claims = extract(state["question"], state["a"])
+            claims = extract(state["a"])
         except ClaimsError as exc:
             logger.warning("no claims, the answer goes on without them: %s", exc)
             claims = ()

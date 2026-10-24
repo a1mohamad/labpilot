@@ -235,7 +235,7 @@ def graph(search, check, writer):
         plan=lambda question, a, b: WANTS,
         make_prompt=make_prompt,
         generate=lambda prompt: "the result",
-        extract_claims=lambda question, a: (claim(1), claim(2)),
+        extract_claims=lambda a: (claim(1), claim(2)),
         check=check,
         new_query=writer,
     )

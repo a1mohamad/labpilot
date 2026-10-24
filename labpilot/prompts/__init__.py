@@ -26,11 +26,12 @@ from labpilot.prompts.citations import Citation, find_citations, resolve
 from labpilot.prompts.claims import (
     CLAIMS,
     CLAIMS_BUDGET,
+    CLAIMS_GROUP_TOKENS,
     CLAIMS_MAX_TOKENS,
     CLAIMS_VERSION,
-    CLAIMS_WANTED,
     build_claims_prompt,
     claims_fit,
+    claims_groups,
 )
 from labpilot.prompts.context import FILE_ROW_TOKENS, OUTLINE_BUDGET, build_context
 from labpilot.prompts.corpus_map import PLANNER_BUDGET, MapPart, build_map
@@ -83,8 +84,8 @@ __all__ = [
     "CLAIMS",
     "CLAIMS_BUDGET",
     "CLAIMS_MAX_TOKENS",
+    "CLAIMS_GROUP_TOKENS",
     "CLAIMS_VERSION",
-    "CLAIMS_WANTED",
     "COMPARE",
     "CORE",
     "FOLLOW_UP",
@@ -119,6 +120,7 @@ __all__ = [
     "build_check_prompt",
     "build_claims_prompt",
     "claims_fit",
+    "claims_groups",
     "render_checks",
     "build_planner_prompt",
     "build_requery_prompt",

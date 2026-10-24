@@ -5,11 +5,13 @@ from labpilot.agent.check_schema import (
     check_schema,
     read_finding,
 )
-from labpilot.agent.claim import Claim
+from labpilot.agent.claim import CLAIM_KINDS, METHOD, RESULT, Claim
 from labpilot.agent.claims_schema import (
     CLAIMS_TOOL_NAME,
     MAX_CLAIMS,
+    MAX_CLAIMS_PER_ANSWER,
     claims_schema,
+    join_claims,
     read_claims,
 )
 from labpilot.agent.errors import CheckError, ClaimsError, PlanError
@@ -33,6 +35,11 @@ __all__ = [
     "CLAIMS_TOOL_NAME",
     "KINDS",
     "MAX_CLAIMS",
+    "MAX_CLAIMS_PER_ANSWER",
+    "CLAIM_KINDS",
+    "METHOD",
+    "RESULT",
+    "join_claims",
     "UNCHECKED",
     "VERDICTS",
     "check_schema",

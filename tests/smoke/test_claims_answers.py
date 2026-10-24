@@ -51,7 +51,7 @@ def test_claims_a_check_and_a_new_query_work_on_stored_files(db):
     )
     client = for_claims(LLMClient())
 
-    claims = make_claims_extractor(db, client)(QUESTION, paper.artifact.id)
+    claims = make_claims_extractor(db, client)(paper.artifact.id)
 
     assert claims, "a claims step that gives nothing is a failed tier, not an answer"
     assert all(claim.text and claim.source and claim.quote for claim in claims)

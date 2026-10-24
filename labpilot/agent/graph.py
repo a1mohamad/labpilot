@@ -36,7 +36,7 @@ def build_graph(
     generate: Callable[[str], Any],
     rewrite: Callable[[str, list[str], str], str] | None = None,
     summarize: Callable[[str], str] | None = None,
-    extract_claims: Callable[[str, str], tuple[Claim, ...]] | None = None,
+    extract_claims: Callable[[str], tuple[Claim, ...]] | None = None,
     check: Callable[[Claim, Chunks], Finding] | None = None,
     search_claim: Callable[[Any, Query], Chunks] | None = None,
     new_query: NewQuery | None = None,

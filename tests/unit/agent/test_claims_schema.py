@@ -5,9 +5,13 @@ import pytest
 from labpilot.agent import (
     CLAIMS_TOOL_NAME,
     MAX_CLAIMS,
+    MAX_CLAIMS_PER_ANSWER,
+    METHOD,
+    RESULT,
     Claim,
     ClaimsError,
     claims_schema,
+    join_claims,
     read_claims,
 )
 
@@ -79,17 +83,72 @@ def test_an_answer_that_is_not_a_list_of_good_claims_is_refused(arguments):
 
 
 def test_a_runaway_list_is_refused():
-    runaway = {"claims": [claim(f"fact {n}", 0, "mesh") for n in range(21)]}
-    assert MAX_CLAIMS < 21
+    runaway = {"claims": [claim(f"fact {n}", 0, "mesh") for n in range(81)]}
+    assert MAX_CLAIMS_PER_ANSWER < 81
 
     with pytest.raises(ClaimsError, match="limit"):
         read_claims(runaway, SOURCES, TEXTS)
 
 
 def test_a_list_as_long_as_the_limit_is_accepted():
-    arguments = {"claims": [claim(f"fact {n}", 0, "mesh") for n in range(MAX_CLAIMS)]}
+    many = range(MAX_CLAIMS_PER_ANSWER)
+    arguments = {"claims": [claim(f"fact {n}", 0, "mesh") for n in many]}
 
-    assert len(read_claims(arguments, SOURCES, TEXTS)) == MAX_CLAIMS
+    assert len(read_claims(arguments, SOURCES, TEXTS)) == MAX_CLAIMS_PER_ANSWER
+
+
+def test_the_schema_offers_the_two_kinds_and_does_not_require_one():
+    item = claims_schema()["properties"]["claims"]["items"]
+
+    assert item["properties"]["kind"]["enum"] == [METHOD, RESULT]
+    assert "kind" not in item["required"]
+
+
+@pytest.mark.parametrize(
+    ("given", "kind"),
+    [("result", RESULT), ("method", METHOD), (None, METHOD), ("a value", METHOD)],
+)
+def test_a_claim_is_a_method_claim_unless_the_model_says_result(given, kind):
+    item = claim("the mesh has 200 cells", 0, "mesh has 200 cells")
+    if given is not None:
+        item["kind"] = given
+
+    assert read_claims({"claims": [item]}, SOURCES, TEXTS)[0].kind == kind
+
+
+def made(text, kind=METHOD):
+    return Claim(text, "[paper.md]", text, kind)
+
+
+def test_the_groups_are_joined_in_turn_so_no_group_is_starved():
+    first = (made("a1"), made("a2"), made("a3"))
+    second = (made("b1"),)
+
+    joined = join_claims([first, second])
+
+    assert [c.text for c in joined] == ["a1", "b1", "a2", "a3"]
+
+
+def test_a_claim_said_twice_is_kept_once():
+    joined = join_claims(
+        [(made("The mesh  has 200 cells"),), (made("the mesh has 200 cells"),)]
+    )
+
+    assert [c.text for c in joined] == ["The mesh  has 200 cells"]
+
+
+def test_only_method_claims_count_toward_the_limit():
+    methods = tuple(made(f"m{n}") for n in range(MAX_CLAIMS + 5))
+    results = tuple(made(f"r{n}", RESULT) for n in range(3))
+
+    joined = join_claims([methods, results])
+
+    assert sum(c.kind == METHOD for c in joined) == MAX_CLAIMS
+    assert sum(c.kind == RESULT for c in joined) == 3
+
+
+def test_no_groups_join_to_nothing():
+    assert join_claims([]) == ()
 
 
 def test_parts_and_sources_that_do_not_match_are_a_bug_of_the_caller():

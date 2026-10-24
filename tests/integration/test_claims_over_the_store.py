@@ -136,7 +136,7 @@ def test_the_number_the_model_writes_becomes_the_stored_header_of_that_part(db):
         db, LLMClient(chain=(provider("one", 1, pool="P1"),))
     )
 
-    [found] = extract(QUESTION, a)
+    [found] = extract(a)
 
     assert found.source == STEP
     assert found.quote == "The time step is 0.01 s"
@@ -155,7 +155,7 @@ def test_the_parts_are_numbered_in_chunk_order_whatever_order_they_were_stored_i
         db, LLMClient(chain=(provider("one", 1, pool="P1"),))
     )
 
-    [found] = extract(QUESTION, a)
+    [found] = extract(a)
 
     assert found.source == STEP
 
@@ -165,9 +165,7 @@ def test_the_request_carries_the_claims_tool_with_a_quote_for_every_claim(db):
     a, _ = store(db)
     responses.post(url("one"), json=called({"claims": [claim(1)]}))
 
-    make_claims_extractor(db, LLMClient(chain=(provider("one", 1, pool="P1"),)))(
-        QUESTION, a
-    )
+    make_claims_extractor(db, LLMClient(chain=(provider("one", 1, pool="P1"),)))(a)
 
     tools = json.loads(responses.calls[0].request.body)["tools"]
     declaration = tools[0]["functionDeclarations"][0]
@@ -185,7 +183,7 @@ def test_a_part_number_that_does_not_exist_is_tried_again_on_the_next_tier(db):
         chain=(provider("one", 1, pool="P1"), provider("two", 2, pool="P2"))
     )
 
-    [found] = make_claims_extractor(db, client)(QUESTION, a)
+    [found] = make_claims_extractor(db, client)(a)
 
     assert found.source == STEP
     assert [call.request.url for call in responses.calls] == [url("one"), url("two")]
@@ -202,7 +200,7 @@ def test_a_quote_that_is_not_in_the_stored_part_is_tried_again_on_the_next_tier(
         chain=(provider("one", 1, pool="P1"), provider("two", 2, pool="P2"))
     )
 
-    [found] = make_claims_extractor(db, client)(QUESTION, a)
+    [found] = make_claims_extractor(db, client)(a)
 
     assert found.quote == "The time step is 0.01 s"
     assert len(responses.calls) == 2
@@ -218,7 +216,7 @@ def test_when_every_tier_makes_up_its_quotes_there_are_no_claims(db):
     )
 
     with pytest.raises(ClaimsError):
-        extract(QUESTION, a)
+        extract(a)
 
 
 class ClaimsClient:

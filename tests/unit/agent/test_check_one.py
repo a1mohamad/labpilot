@@ -5,6 +5,7 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from labpilot.agent import (
+    RESULT,
     CheckError,
     Claim,
     Finding,
@@ -124,6 +125,15 @@ def test_no_claims_means_straight_to_respond():
     assert fan_out_claims({"sides": SIDES}) == "respond"
 
 
+def test_a_result_claim_is_never_checked():
+    result = Claim("the score is 0.85", "[paper.md · part 9]", "score is 0.85", RESULT)
+
+    sends = fan_out_claims({"claims": (claim(1), result), "sides": SIDES})
+
+    assert [send.arg["claim"] for send in sends] == [claim(1)]
+    assert fan_out_claims({"claims": (result,), "sides": SIDES}) == "respond"
+
+
 def test_each_claim_gets_its_own_send_with_only_side_b():
     sends = fan_out_claims({"claims": (claim(1), claim(2)), "sides": SIDES})
 
@@ -158,7 +168,7 @@ def run(
         plan=lambda question, a, b: plan,
         make_prompt=make_prompt,
         generate=lambda prompt: "the result",
-        extract_claims=lambda question, a: claims,
+        extract_claims=lambda a: claims,
         check=check,
         checkpointer=saver,
     )
@@ -230,7 +240,7 @@ def test_without_a_check_function_there_is_no_check_step_and_the_run_goes_on():
         plan=lambda question, a, b: WANTS,
         make_prompt=lambda chunks, **_: ("the prompt", chunks),
         generate=lambda prompt: "the result",
-        extract_claims=lambda question, a: (claim(1),),
+        extract_claims=lambda a: (claim(1),),
     )
 
     final = graph.invoke({"question": "why?", "a": "A-1", "b": "B-1"})
@@ -284,7 +294,7 @@ def test_the_checks_search_with_the_function_made_for_them_when_one_is_given():
         plan=lambda question, a, b: WANTS,
         make_prompt=lambda chunks, **_: ("the prompt", chunks),
         generate=lambda prompt: "the result",
-        extract_claims=lambda question, a: (claim(1),),
+        extract_claims=lambda a: (claim(1),),
         check=lambda c, chunks: finding_for(c),
     )
 
