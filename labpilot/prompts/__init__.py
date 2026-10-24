@@ -60,6 +60,14 @@ from labpilot.prompts.planner import (
     build_planner_prompt,
     map_budget,
 )
+from labpilot.prompts.requery import (
+    MAX_QUERY_CHARS,
+    REQUERY,
+    REQUERY_MAX_TOKENS,
+    REQUERY_VERSION,
+    build_requery_prompt,
+    requery_problem,
+)
 from labpilot.prompts.summary import (
     SUMMARY,
     SUMMARY_BUDGET,
@@ -84,6 +92,10 @@ __all__ = [
     "FILE_ROW_TOKENS",
     "FOLLOW_UP_VERSION",
     "FULL",
+    "MAX_QUERY_CHARS",
+    "REQUERY",
+    "REQUERY_MAX_TOKENS",
+    "REQUERY_VERSION",
     "OUTLINE_BUDGET",
     "OPENING_CHARS",
     "PLANNER_BUDGET",
@@ -109,6 +121,8 @@ __all__ = [
     "claims_fit",
     "render_checks",
     "build_planner_prompt",
+    "build_requery_prompt",
+    "requery_problem",
     "map_budget",
     "build_context",
     "build_follow_up_prompt",

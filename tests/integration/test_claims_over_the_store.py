@@ -25,7 +25,7 @@ from labpilot.api import asking, searching
 from labpilot.api.checkpoints import open_saver
 from labpilot.api.claims import make_claims_extractor
 from labpilot.llm import AllFreeTiersExhausted, GeminiProvider, LLMClient, LLMResult
-from labpilot.prompts import CHECKS_NOTE, SUMMARY_MAX_TOKENS
+from labpilot.prompts import CHECKS_NOTE, REQUERY, SUMMARY_MAX_TOKENS
 from labpilot.store import ArtifactRecord, ChunkRecord, write_artifact
 
 pytestmark = pytest.mark.database
@@ -358,3 +358,57 @@ def test_the_saved_chat_keeps_no_claims_and_no_findings_after_the_message(
     assert not values.get("claims")
     assert not values.get("findings")
     assert values["history"] == [QUESTION]
+
+
+class RetryClient(ClaimsClient):
+    """The first check of the time step finds nothing, so the search is tried again.
+
+    After that it answers as the plain client does, so the claim is checked a
+    second time against whatever the new query found.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.requeries = []
+
+    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
+        if tool is None and prompt.endswith(REQUERY.closing):
+            self.requeries.append(prompt)
+            return LLMResult(text="dt step", model="fake", tier=1)
+        first_step_check = (
+            tool is not None
+            and tool.name == "give_verdict"
+            and "time step" in prompt.split("THE PARTS", 1)[0]
+            and not self.requeries
+        )
+        if first_step_check:
+            self.check_prompts.append(prompt)
+            return self.result(
+                {"verdict": "absent", "note": "the parts do not show the step"}
+            )
+        return super().generate(
+            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
+        )
+
+
+def test_an_absent_claim_is_searched_again_with_the_query_the_model_wrote(
+    db, monkeypatch
+):
+    embedded = []
+    monkeypatch.setattr(
+        searching,
+        "_embed_question",
+        lambda text, **_: embedded.append(text) or V,
+    )
+    client = RetryClient()
+
+    ask(db, client)
+
+    assert len(client.requeries) == 1
+    assert "the time step is 0.01 s" in client.requeries[0]
+    assert "the parts do not show the step" in client.requeries[0]
+    assert embedded.count("the time step is 0.01 s") == 1
+    assert embedded.count("dt step") == 1
+    answer = client.answers[0]
+    assert f'[mismatch - choice] A says "the time step is 0.01 s" ({STEP})' in answer
+    assert "\n[absent]" not in answer

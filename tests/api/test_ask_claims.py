@@ -3,6 +3,9 @@ from labpilot.llm import CHAIN, GEMINI_3_5_FLASH_LITE, LLMClient
 
 
 def capture(monkeypatch):
+    monkeypatch.setattr(
+        asking, "make_query_writer", lambda client: ("new_query", client)
+    )
     seen = {}
 
     def fake_build_graph(**kwargs):
@@ -41,6 +44,20 @@ def test_both_get_the_same_client_and_it_starts_with_flash_lite(monkeypatch):
     assert seen["check"][1] is claims_client
     assert claims_client.chain[0].model == GEMINI_3_5_FLASH_LITE.model
     assert len(claims_client.chain) == len(CHAIN)
+
+
+def test_the_graph_gets_a_writer_of_new_queries_that_shares_the_same_client(
+    monkeypatch,
+):
+    seen = capture(monkeypatch)
+    client = LLMClient()
+
+    asking._ask_graph("conn", client)
+
+    claims_client = seen["extract_claims"][1]
+    assert seen["new_query"][0] == "new_query"
+    assert seen["new_query"][1] is claims_client
+    assert claims_client is not client
 
 
 def test_the_planner_and_the_client_the_caller_gave_keep_their_own_chain(monkeypatch):

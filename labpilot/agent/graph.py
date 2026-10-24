@@ -6,7 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
-from labpilot.agent.check_one import make_check_node
+from labpilot.agent.check_one import NewQuery, make_check_node
 from labpilot.agent.claim import Claim
 from labpilot.agent.extract_claims import make_claims_node, wants_claims
 from labpilot.agent.fan_out import fan_out
@@ -38,6 +38,7 @@ def build_graph(
     summarize: Callable[[str], str] | None = None,
     extract_claims: Callable[[str, str], tuple[Claim, ...]] | None = None,
     check: Callable[[Claim, Chunks], Finding] | None = None,
+    new_query: NewQuery | None = None,
     answer_text: Callable[[Any], str] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
@@ -99,7 +100,7 @@ def build_graph(
         else:
             # One check for each claim, all at the same time. With no claims
             # the path function sends the run straight to respond.
-            builder.add_node("check_one", make_check_node(search_one, check))
+            builder.add_node("check_one", make_check_node(search_one, check, new_query))
             builder.add_conditional_edges(
                 "extract_claims", fan_out_claims, ["check_one", "respond"]
             )

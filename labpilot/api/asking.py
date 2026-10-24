@@ -21,6 +21,7 @@ from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
+from labpilot.api.requery import make_query_writer
 from labpilot.api.searching import rank_pile, retrieve_query
 from labpilot.api.summaries import make_summarizer
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
@@ -175,6 +176,7 @@ def _ask_graph(
         summarize=summarize,
         extract_claims=make_claims_extractor(conn, claims_client),
         check=make_checker(claims_client),
+        new_query=make_query_writer(claims_client),
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,
