@@ -39,6 +39,29 @@ deliberate — see *Stuff, do not retrieve* in CLAUDE.md.
 
 ---
 
+## Impact - how a report is scored (added 2026-10-25, R22)
+
+Not every finding moves the result. A report is scored in three states for each
+finding - **judged** (named as a difference with B's evidence), **surfaced**
+(named as possible, not confirmed), **absent** (missing, or stated wrongly) - and
+each finding carries a weight. The prices in F1 come from the paper's own §7
+ablation table, where it has one.
+
+| # | finding (short) | class | weight | price in F1 |
+|---|---|---|---|---|
+| 11 | stopwords masked out of the attention | story | 3 | −4.1 |
+| 6 | positive-class weight defined, never called | story | 3 | −1.9 |
+| 1 | pools projected features, not hidden states | story | 3 | −1.4 |
+| 9 | threshold tuned on the split it is reported on | story | 3 | about +1.5 (optical) |
+| 10b | train 0.9439 against val 0.8226 (the paper says a 2.1 gap) | story | 3 | no price |
+| 2, 3, 4, 5, 7, 8, 10, 12, 13, 14, 17, 18 | the secondary findings | secondary | 2 | #7 −0.8; #8 part of the +1.5 of #9; the others no price |
+| 15, 16 | rows dropped when empty; three dead layer-norm modules | nothing | 0 | 0.0007% of rows; 0.01% of parameters |
+
+Best weighted score: **39** (5 × 3 + 12 × 2). Reporting a "nothing" finding is not
+an error and earns 0. Score by READING the report; a regex screen is only a
+screen. A wrong statement about a finding (for example "B matches A" for #1)
+counts as absent and is listed as a fault.
+
 ## The divergences
 
 ### Type 1 — stated and wrong (row reading, `verify`)
