@@ -299,6 +299,9 @@ def ask(db, client, **kwargs):
 @pytest.fixture(autouse=True)
 def embedded(monkeypatch):
     monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: V)
+    # The claims run on the search path only (R21): when everything is read the
+    # answer sees both files whole. This small pair would fit, so it is searched.
+    monkeypatch.setattr(asking, "fits_whole", lambda *a, **k: False)
 
 
 def test_every_claim_is_checked_in_the_stored_other_file_and_the_answer_reads_it(db):
@@ -314,9 +317,9 @@ def test_every_claim_is_checked_in_the_stored_other_file_and_the_answer_reads_it
         f'[mismatch - choice] A says "the time step is 0.01 s" ({STEP}). '
         f'B ({SOLVER_STEP}): "dt = 0.05". B uses a bigger step'
     ) in answer
-    assert (
-        f'[match] A says "the mesh has 200 cells" ({MESH}). B ({SOLVER_MESH})' in answer
-    )
+    # A match is written short since 6782bb9: the claim alone, so the room goes
+    # to the mismatches.
+    assert '[match] A says "the mesh has 200 cells"' in answer
 
 
 def test_the_mismatch_is_listed_before_the_match_in_the_answer(db):
@@ -428,12 +431,15 @@ FAULTS = [
 def test_a_search_that_fails_for_a_claim_leaves_it_unchecked_and_the_answer_goes_on(
     db, monkeypatch, fault
 ):
-    def broken(*_args, **_kwargs):
-        raise fault
+    claims = {"the time step is 0.01 s", "the mesh has 200 cells"}
 
-    # The pair fits, so nothing is searched except the claims.
+    def broken(text, **_kwargs):
+        # Only the claims' own searches fail; the question is searched as usual.
+        if text in claims:
+            raise fault
+        return V
+
     monkeypatch.setattr(searching, "_embed_question", broken)
-    monkeypatch.setattr(searching, "search", broken)
     client = ClaimsClient()
 
     comparison = ask(db, client)

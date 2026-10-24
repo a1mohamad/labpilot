@@ -24,6 +24,7 @@ from labpilot.llm import AllFreeTiersExhausted, LLMResult
 from labpilot.prompts import FOLLOW_UP_MAX_TOKENS, SUMMARY_MAX_TOKENS
 from labpilot.prompts.builder import SUMMARIES_NOTE
 from labpilot.store import (
+    SEARCH_LIMIT,
     ArtifactRecord,
     ChunkRecord,
     ModelMismatch,
@@ -366,9 +367,12 @@ def test_many_queries_make_one_pile_per_side_with_no_duplicates(db, monkeypatch)
 
     keys = [(chunk.artifact_id, chunk.chunk_index) for chunk in comparison.chunks]
     assert len(keys) == len(set(keys)), "a chunk found by two queries came twice"
+    # Since R23 the rest of the pile follows the top, so the selector can fill the
+    # budget. The queries all find the same rows here, so each side holds ONE
+    # search's worth: the pile does not grow with the number of queries.
     assert Counter(chunk.side for chunk in comparison.chunks) == {
-        "A": searching.VECTOR_TOP_N,
-        "B": searching.VECTOR_TOP_N,
+        "A": SEARCH_LIMIT,
+        "B": SEARCH_LIMIT,
     }
     # the question on each side, then the three queries of the plan
     assert sorted(searched) == ["A-fixture"] * 2 + ["B-fixture"] * 3
@@ -637,7 +641,8 @@ def test_a_big_single_file_is_searched_and_ranked_for_its_one_side(db, monkeypat
     comparison = asking.ask(db, "", b, question="why is it slow?", client=FakeClient())
 
     assert {chunk.side for chunk in comparison.chunks} == {"B"}
-    assert len(comparison.chunks) == searching.VECTOR_TOP_N
+    # One search of 50, and since R23 the whole pile is handed on.
+    assert len(comparison.chunks) == SEARCH_LIMIT
     assert comparison.totals == {"B": 60}
     assert embedded.count("why is it slow?") == 1
 

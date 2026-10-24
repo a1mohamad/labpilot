@@ -224,7 +224,8 @@ def test_the_request_carries_the_tool_the_stored_pair_allows(db):
 @responses.activate
 def test_one_stored_file_gives_a_smaller_tool_and_a_map_of_one_side(db):
     _, b = store(db)
-    responses.post(url("one"), json=called({"steps": ["find_missing"], "queries": []}))
+    # One file: only summarize is allowed (R18).
+    responses.post(url("one"), json=called({"steps": ["summarize"], "queries": []}))
 
     planning.make_planner(db, LLMClient(chain=(provider("one", 1, pool="P1"),)))(
         QUESTION, "", b
