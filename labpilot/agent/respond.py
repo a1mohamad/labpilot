@@ -28,6 +28,21 @@ def deciding_parts(
     return tuple(picked.values())
 
 
+def with_parts(chunks: Chunks, extra: Sequence[Chunk]) -> Chunks:
+    """`chunks`, then each part of `extra` they do not hold yet, at the END.
+
+    The ids of a prompt are numbered on this list, and the page resolves the
+    citations against the same list. A deciding part put in FRONT would shift
+    every id, so `B-8` would point at another part (found 2026-10-24: only 8
+    of 19 citations resolved).
+    """
+    if not extra:
+        return chunks
+    held = {(chunk.artifact_id, chunk.chunk_index) for chunk in chunks}
+    added = [c for c in extra if (c.artifact_id, c.chunk_index) not in held]
+    return (*chunks, *added) if added else chunks
+
+
 def make_respond_node(
     make_prompt: Callable[..., tuple[str, Chunks]],
     generate: Callable[[str], Any],
@@ -47,8 +62,9 @@ def make_respond_node(
         evidence = deciding_parts(findings, code_findings)
         if evidence:
             checked["evidence"] = evidence
+        chunks = with_parts(state["chunks"], evidence)
         prompt, selected = make_prompt(
-            state["chunks"],
+            chunks,
             question=state["question"],
             totals=state["totals"],
             summaries=summaries,
@@ -56,6 +72,9 @@ def make_respond_node(
             last_answer=state.get("last_answer", ""),
             **checked,
         )
-        return {"prompt": prompt, "selected": selected, "result": generate(prompt)}
+        out = {"prompt": prompt, "selected": selected, "result": generate(prompt)}
+        if chunks is not state["chunks"]:
+            out["chunks"] = chunks
+        return out
 
     return respond_node

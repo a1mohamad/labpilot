@@ -127,6 +127,7 @@ def prior_text(
 
 
 def _first(evidence: Sequence[Chunk], chunks: tuple[Chunk, ...]) -> tuple[Chunk, ...]:
+    # The order for the cut for room only. The ids stay on `chunks`.
     picked: dict[tuple[str, int], Chunk] = {}
     for chunk in (*evidence, *chunks):
         picked.setdefault((chunk.artifact_id, chunk.chunk_index), chunk)
@@ -173,9 +174,18 @@ def build_answer_prompt(
 
     # On the search path the parts behind the findings go FIRST on their side,
     # so the cut for room drops a search hit before the code a finding is
-    # about (R20). The selector keeps the order it is given.
+    # about (R20). The selector keeps the order it is given. The IDS stay on
+    # `chunks` with any missing deciding part at the end (`respond` saves that
+    # same list), or the page would resolve every citation against a list
+    # numbered differently.
+    order = chunks
     if evidence:
-        chunks = _first(evidence, chunks)
+        order = _first(evidence, chunks)
+        held = {(chunk.artifact_id, chunk.chunk_index) for chunk in chunks}
+        chunks = (
+            *chunks,
+            *(c for c in order if (c.artifact_id, c.chunk_index) not in held),
+        )
 
     overhead = reserve(
         chunks,
@@ -186,7 +196,7 @@ def build_answer_prompt(
         last_answer=last_answer,
     )
     room = PROMPT_BUDGET - overhead
-    selected = select(chunks, budget=room) if room > 0 else ()
+    selected = select(order, budget=room) if room > 0 else ()
     prompt = build_prompt(
         chunks,
         selected,

@@ -346,3 +346,50 @@ def test_a_match_is_written_short():
 
     assert '[match] A says "the batch is 128"' in text
     assert "BATCH = 128" not in text
+
+
+def test_every_id_the_prompt_shows_names_the_same_part_in_the_saved_list():
+    # 2026-10-24: the deciding parts were put in FRONT before the ids were
+    # numbered, while the page resolved the ids on the old list, so only 8 of
+    # 19 citations resolved.
+    import re
+
+    from labpilot.agent import Claim, Finding
+    from labpilot.agent.respond import make_respond_node
+    from labpilot.prompts import resolve
+
+    def part(index):
+        return Chunk(
+            text=f"value_{index} = {index}\n" + "z " * 1200,
+            source="train.py",
+            start_line=index,
+            end_line=index,
+            side="B",
+            artifact_id="B-1",
+            chunk_index=index,
+        )
+
+    searched = tuple(part(n) for n in range(40))
+    claim = Claim("x", "[paper.md]", "x")
+    findings = [
+        Finding(claim, "mismatch", "choice", "[s]", "q", "n", part(77)),
+        Finding(claim, "mismatch", "choice", "[s]", "q", "n", part(30)),
+    ]
+    node = make_respond_node(build_answer_prompt, lambda prompt: prompt)
+
+    out = node(
+        {
+            "chunks": searched,
+            "question": "why?",
+            "totals": {"B": 100},
+            "a": "",
+            "b": "B-1",
+            "findings": findings,
+        }
+    )
+
+    shown = re.findall(r"^(B-\d+)  .*\n(value_\d+ = \d+)$", out["prompt"], re.M)
+    assert "value_77 = 77" in {text for _, text in shown}
+    assert len(shown) == len(out["selected"])
+    for name, text in shown:
+        assert resolve(name, text, out["chunks"]), name
