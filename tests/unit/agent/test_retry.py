@@ -63,8 +63,9 @@ class Writer:
         self.queries = list(queries)
         self.calls = []
 
-    def __call__(self, claim, tried, note):
+    def __call__(self, claim, tried, note, sides=None):
         self.calls.append((claim, tried, note))
+        self.sides = sides
         return self.queries.pop(0) if self.queries else "another query"
 
 
@@ -103,6 +104,8 @@ def test_the_writer_gets_the_claim_the_queries_so_far_and_what_the_check_said():
     run(node(search, check, writer))
 
     assert writer.calls == [(claim(), ("fact 1",), "the parts are about the output")]
+    # The side that is searched, so the writer can show its outline (R17).
+    assert writer.sides == SIDES
 
 
 def test_a_claim_that_is_never_found_is_searched_three_times_and_stays_absent():
@@ -172,7 +175,7 @@ def test_when_the_second_check_fails_the_first_absent_stays():
 def test_when_no_new_query_can_be_written_the_claim_stays_absent():
     search = Searches({"fact 1": (chunk(0),)})
 
-    def writer(claim, tried, note):
+    def writer(claim, tried, note, sides=None):
         return None
 
     [finding] = run(node(search, Checks({0: "absent"}), writer))
@@ -201,7 +204,7 @@ def test_with_no_writer_there_is_one_search_and_nothing_else():
 
 
 def test_any_other_error_from_the_writer_reaches_the_caller_unchanged():
-    def writer(claim, tried, note):
+    def writer(claim, tried, note, sides=None):
         raise Boom("a bug")
 
     with pytest.raises(Boom):

@@ -99,3 +99,30 @@ def test_an_answer_over_200_characters_is_a_problem_and_200_is_not():
 )
 def test_an_answer_that_repeats_an_earlier_query_is_a_problem(answer):
     assert requery_problem(["x y", "the step is 0.01 s"], answer) is not None
+
+
+@pytest.mark.parametrize(
+    "answer", ["clip norm 1.0", "split 0.9 test", "lr 3e-4", "dim 100"]
+)
+def test_a_query_that_holds_a_value_is_refused(answer):
+    assert "value" in requery_problem(["first"], answer)
+
+
+@pytest.mark.parametrize(
+    "answer", ["f1 threshold", "conv2d stride", "CLIP_NORM clip_grad_norm_"]
+)
+def test_a_name_that_holds_a_digit_is_not_a_value(answer):
+    assert requery_problem(["first"], answer) is None
+
+
+def test_the_outline_of_the_other_file_is_shown_when_given():
+    prompt = build_requery_prompt("a claim", ["first"], "", "B_train.py\n  def fit")
+
+    assert "THE OUTLINE OF THE OTHER FILE\nB_train.py" in prompt
+    assert prompt.endswith(REQUERY.closing)
+
+
+def test_without_an_outline_there_is_no_outline_block():
+    block = "THE OUTLINE OF THE OTHER FILE" + chr(10)
+
+    assert block not in build_requery_prompt("a claim", ["first"])

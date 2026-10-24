@@ -37,6 +37,7 @@ def _check_problem(
 
 def make_checker(
     client: LLMClient,
+    facts: Callable[[Sequence[Chunk]], str] | None = None,
 ) -> Callable[[Claim, tuple[Chunk, ...]], Finding]:
     def check(claim: Claim, chunks: tuple[Chunk, ...]) -> Finding:
         # The same rule as the claims: the model names a part by its NUMBER and
@@ -51,7 +52,12 @@ def make_checker(
 
         try:
             result = client.generate(
-                build_check_prompt(claim.text, claim.source, texts),
+                build_check_prompt(
+                    claim.text,
+                    claim.source,
+                    texts,
+                    facts(chunks) if facts is not None else "",
+                ),
                 max_tokens=CHECK_MAX_TOKENS,
                 tool=tool,
                 problem_with=partial(

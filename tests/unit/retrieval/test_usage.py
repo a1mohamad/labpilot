@@ -1,0 +1,73 @@
+from labpilot.retrieval import unused_definitions
+
+
+def part(header, text):
+    return (header, text)
+
+
+def test_a_function_defined_and_never_named_again_is_found():
+    parts = [
+        part(
+            "[train.py · class Data · def pos_weight · lines 1-4]",
+            "    def pos_weight(self):\n        return 1.7",
+        ),
+        part("[train.py · def main · lines 10-12]", "def main():\n    loss = Loss()"),
+    ]
+
+    found = unused_definitions(parts)
+
+    assert found == {
+        "pos_weight": "[train.py · class Data · def pos_weight · lines 1-4]",
+        "main": "[train.py · def main · lines 10-12]",
+    }
+
+
+def test_a_call_anywhere_in_the_file_counts_as_a_use():
+    parts = [
+        part("[a.py · def helper · lines 1-2]", "def helper():\n    return 1"),
+        part("[a.py · def main · lines 3-5]", "def main():\n    x = helper()"),
+    ]
+
+    assert "helper" not in unused_definitions(parts)
+
+
+def test_a_reference_without_a_call_also_counts():
+    parts = [
+        part("[a.py · def hook · lines 1-2]", "def hook(x):\n    return x"),
+        part("[a.py · lines 3-3]", "HOOKS = [hook]"),
+    ]
+
+    assert "hook" not in unused_definitions(parts)
+
+
+def test_a_name_that_only_contains_the_word_is_not_a_use():
+    parts = [
+        part("[a.py · def scale · lines 1-2]", "def scale(x):\n    return x"),
+        part("[a.py · lines 3-3]", "rescale = 2\nscale_factor = 3"),
+    ]
+
+    assert "scale" in unused_definitions(parts)
+
+
+def test_the_def_line_repeated_in_an_overlapping_part_is_not_a_use():
+    head = "[a.py · def lonely · part 1/2 · lines 1-9]"
+    parts = [
+        part(head, "def lonely():\n    pass"),
+        part(
+            "[a.py · def lonely · part 2/2 · lines 5-9]", "def lonely():\n    return 2"
+        ),
+    ]
+
+    assert unused_definitions(parts) == {"lonely": head}
+
+
+def test_dunder_methods_are_left_out_because_the_language_calls_them():
+    parts = [part("[a.py · class C · def __len__ · lines 1-2]", "def __len__(self):")]
+
+    assert unused_definitions(parts) == {}
+
+
+def test_parts_with_no_def_label_give_nothing():
+    parts = [part("[notes.md · 3 Method · lines 1-9]", "We train for 5 epochs.")]
+
+    assert unused_definitions(parts) == {}

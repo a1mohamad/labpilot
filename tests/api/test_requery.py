@@ -70,3 +70,26 @@ def test_a_caller_bug_is_not_swallowed():
 
     with pytest.raises(ValueError):
         make_query_writer(FakeClient())(blank, ("first words",), "")
+
+
+def test_the_outline_of_the_searched_file_reaches_the_writer():
+    client = FakeClient()
+    asked = []
+
+    def outline(artifact_id):
+        asked.append(artifact_id)
+        return "B_train.py\n  def _build_stop_mask"
+
+    sides = {"B": SimpleNamespace(artifact=SimpleNamespace(id="B-7"))}
+    make_query_writer(client, outline)(CLAIM, ("first",), "", sides)
+
+    assert asked == ["B-7"]
+    assert "THE OUTLINE OF THE OTHER FILE\nB_train.py" in client.calls[0][0]
+
+
+def test_with_no_stored_side_there_is_no_outline():
+    client = FakeClient()
+
+    make_query_writer(client, lambda a: "never")(CLAIM, ("first",), "", {"B": "x"})
+
+    assert "THE OUTLINE OF THE OTHER FILE\n" not in client.calls[0][0]

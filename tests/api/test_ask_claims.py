@@ -9,7 +9,7 @@ from labpilot.llm import CHAIN, GEMINI_3_5_FLASH_LITE, LLMClient
 
 def capture(monkeypatch):
     monkeypatch.setattr(
-        asking, "make_query_writer", lambda client: ("new_query", client)
+        asking, "make_query_writer", lambda client, *rest: ("new_query", client)
     )
     seen = {}
 
@@ -24,7 +24,12 @@ def capture(monkeypatch):
     monkeypatch.setattr(
         asking, "make_claims_extractor", lambda conn, client: ("extract", client)
     )
-    monkeypatch.setattr(asking, "make_checker", lambda client: ("check", client))
+
+    def fake_checker(client, *rest):
+        seen["checker_facts"] = rest
+        return ("check", client)
+
+    monkeypatch.setattr(asking, "make_checker", fake_checker)
     return seen
 
 
@@ -37,6 +42,23 @@ def test_the_graph_gets_the_function_that_makes_claims_and_the_one_that_checks(
 
     assert seen["extract_claims"] == ("extract", "client")
     assert seen["check"] == ("check", "client")
+
+
+def test_the_checker_and_the_writer_get_the_whole_file_facts(monkeypatch):
+    seen = capture(monkeypatch)
+    writers = []
+    monkeypatch.setattr(
+        asking,
+        "make_query_writer",
+        lambda client, *rest: writers.append(rest) or ("new_query", client),
+    )
+
+    asking._ask_graph("conn", "client")
+
+    (facts,) = seen["checker_facts"]
+    ((outline,),) = writers
+    assert facts.__name__ == "facts_for"
+    assert outline.__name__ == "outline"
 
 
 def test_both_get_the_same_client_and_it_starts_with_flash_lite(monkeypatch):

@@ -80,3 +80,29 @@ def test_the_checks_come_with_a_note_that_says_what_absent_means():
 
 def test_no_checks_make_no_block_at_all():
     assert render_checks([]) == ""
+
+
+def test_facts_from_the_whole_file_come_after_the_parts_and_before_the_closing():
+    prompt = build_check_prompt(
+        "the positive class is weighted",
+        "[paper.md]",
+        ["part zero"],
+        "`pos_weight` (defined in [x]) is never called or named anywhere else.",
+    )
+
+    assert "FACTS FROM THE WHOLE OTHER FILE\n`pos_weight`" in prompt
+    assert (
+        prompt.index("[part 0]")
+        < prompt.index("FACTS FROM")
+        < prompt.index(CHECK.closing)
+    )
+
+
+def test_without_facts_there_is_no_facts_block():
+    assert "FACTS FROM" not in build_check_prompt("a claim", "[p]", ["part"])
+
+
+def test_the_instruction_says_a_definition_alone_is_not_a_use():
+    header = " ".join(CHECK.header.split())
+
+    assert "only defined and never used or called" in header

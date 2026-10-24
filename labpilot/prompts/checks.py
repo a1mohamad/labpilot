@@ -4,7 +4,7 @@ from labpilot.prompts.instructions import Instructions
 
 # The wording below is FIXED. Change it only together with this number, which is
 # logged beside every check.
-CHECK_VERSION = 1
+CHECK_VERSION = 2
 
 # One verdict and one short sentence, but a tier that thinks spends tokens first,
 # so this is only a backstop.
@@ -25,6 +25,8 @@ absent    none of the parts says either way.
 
 Read only the parts you are given. "absent" means "not found in these parts",
 never "the other file does not do it".
+Something that is only defined and never used or called (a helper, a value, a
+setting) does not do what the claim says: look for where it is used.
 For a match or a mismatch, give the number of the part that decides it, and the
 quote: the exact words of that part, copied letter for letter, at most 200
 characters. Then one short sentence that says why.""",
@@ -39,22 +41,26 @@ CHECKS_NOTE = (
 )
 
 
-def build_check_prompt(claim: str, place: str, parts: Sequence[str]) -> str:
+def build_check_prompt(
+    claim: str, place: str, parts: Sequence[str], facts: str = ""
+) -> str:
     if not claim.strip():
         raise ValueError("a check needs a claim")
     if not parts:
         raise ValueError("a check needs at least one part")
 
     numbered = [f"[part {number}]\n{part}" for number, part in enumerate(parts)]
-    return "\n\n".join(
-        [
-            CHECK.header,
-            f"THE CLAIM (from {place})\n{claim}",
-            "THE PARTS OF THE OTHER FILE",
-            *numbered,
-            CHECK.closing,
-        ]
-    )
+    blocks = [
+        CHECK.header,
+        f"THE CLAIM (from {place})\n{claim}",
+        "THE PARTS OF THE OTHER FILE",
+        *numbered,
+    ]
+    # Facts read from the WHOLE other file, which no single part can show (R8).
+    if facts.strip():
+        blocks.append(f"FACTS FROM THE WHOLE OTHER FILE\n{facts.strip()}")
+    blocks.append(CHECK.closing)
+    return "\n\n".join(blocks)
 
 
 def render_checks(lines: Sequence[str]) -> str:

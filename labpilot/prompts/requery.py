@@ -1,3 +1,4 @@
+import re
 from collections.abc import Sequence
 
 from labpilot._text import truncate
@@ -5,7 +6,7 @@ from labpilot.prompts.instructions import Instructions
 
 # The wording below is FIXED. Change it only together with this number, which is
 # logged beside every new query.
-REQUERY_VERSION = 1
+REQUERY_VERSION = 2
 
 # One short line, but a tier that thinks spends tokens first, so this is only a
 # backstop.
@@ -27,6 +28,10 @@ Write ONE new search query for the other file.
 - The other file may say the same thing in other words. Think of the names it
   could use for this value, setting or step: the names in its code and in its
   comments, and the short words around them.
+- When THE OUTLINE OF THE OTHER FILE is given, use the names in it: a name
+  that is really in the file finds it, a name you guess may not.
+- Keep the topic of the claim. Never put a value (a number) in the query: the
+  value is what is being checked, and the other file may use another one.
 - Use a few key words, not a sentence.
 - Do not repeat an earlier query, and do not only change the order of its words.
 - Write the query on one line and nothing else: no quotes, no explanation.
@@ -39,8 +44,14 @@ Answer: n_cells num_cells nx grid size""",
     closing="Write the new query now.",
 )
 
+# A number standing alone ("1.0", "0.9", "3e-4", "100"), not a name that holds
+# a digit ("f1", "conv2d").
+_VALUE = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?:e-?\d+)?(?![\w.])", re.IGNORECASE)
 
-def build_requery_prompt(claim: str, tried: Sequence[str], note: str = "") -> str:
+
+def build_requery_prompt(
+    claim: str, tried: Sequence[str], note: str = "", outline: str = ""
+) -> str:
     if not claim.strip():
         raise ValueError("a new query needs a claim")
     if not tried:
@@ -57,6 +68,8 @@ def build_requery_prompt(claim: str, tried: Sequence[str], note: str = "") -> st
     ]
     if note.strip():
         blocks.append(f"WHAT THE CHECK SAID\n{truncate(note, NOTE_CHARS)}")
+    if outline.strip():
+        blocks.append(f"THE OUTLINE OF THE OTHER FILE\n{outline.strip()}")
     blocks.append(REQUERY.closing)
 
     return "\n\n".join(blocks)
@@ -76,4 +89,6 @@ def requery_problem(tried: Sequence[str], answer: str) -> str | None:
         return f"the answer is {len(text)} characters long"
     if _plain(text) in {_plain(query) for query in tried}:
         return "the answer repeats an earlier query"
+    if _VALUE.search(text):
+        return "the answer holds a value: search for the name, never the value"
     return None

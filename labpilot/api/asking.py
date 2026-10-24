@@ -19,6 +19,7 @@ from labpilot.api.errors import (
     GenerationUnavailable,
     InvalidQuestion,
 )
+from labpilot.api.file_facts import FileFacts
 from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
@@ -215,6 +216,7 @@ def _ask_graph(
             ) from exc
 
     claims_client = for_claims(client)
+    whole_files = FileFacts(conn)
 
     return build_graph(
         measure=partial(measure_sides, conn),
@@ -226,9 +228,9 @@ def _ask_graph(
         plan=make_planner(conn, client),
         summarize=summarize,
         extract_claims=make_claims_extractor(conn, claims_client),
-        check=make_checker(claims_client),
+        check=make_checker(claims_client, whole_files.facts_for),
         search_claim=search_claim,
-        new_query=make_query_writer(claims_client),
+        new_query=make_query_writer(claims_client, whole_files.outline),
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,
