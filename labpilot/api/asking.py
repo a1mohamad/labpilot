@@ -30,6 +30,7 @@ from labpilot.api.searching import embed_query, rank_pile, retrieve_query
 from labpilot.api.summaries import make_summarizer
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
+    A_WHOLE_TOKENS,
     REPORT_MAX_TOKENS,
 )
 
@@ -192,6 +193,14 @@ def _ask_graph(
         except (EmbeddingUnavailable, ArtifactChanged, psycopg.Error) as exc:
             raise CheckError(f"the search for a claim failed: {exc}") from exc
 
+    def whole_side(sides, side):
+        # The reference is read whole when it is as small as the step that puts
+        # it beside B allows (A_WHOLE_TOKENS); B never is, on this path.
+        found = sides[side]
+        if side != "A" or found.characters / 3 > A_WHOLE_TOKENS:
+            return None
+        return stuffed_chunks(conn, {side: found})
+
     def totals_of(sides):
         return {side: found.chunks for side, found in sides.items()}
 
@@ -233,6 +242,7 @@ def _ask_graph(
         search_claim=search_claim,
         new_query=make_query_writer(claims_client, whole_files.outline),
         find_missing=make_difference_finder(conn, claims_client, whole_files),
+        whole_side=whole_side,
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,

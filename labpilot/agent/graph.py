@@ -43,6 +43,7 @@ def build_graph(
     search_claim: Callable[[Any, Query], Chunks] | None = None,
     new_query: NewQuery | None = None,
     find_missing: Callable[[str, str], tuple[CodeFinding, ...]] | None = None,
+    whole_side: Callable[[Any, str], Chunks | None] | None = None,
     answer_text: Callable[[Any], str] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
@@ -79,7 +80,7 @@ def build_graph(
     builder.add_node("measure", measure_node)
     builder.add_node("stuff", stuff_node)
     builder.add_node("search_one", make_one_search_node(search_one))
-    builder.add_node("merge", make_merge_node(totals_of, rank_side))
+    builder.add_node("merge", make_merge_node(totals_of, rank_side, whole_side))
     builder.add_node("respond", make_respond_node(make_prompt, generate))
     builder.add_node("remember", make_remember_node(answer_text))
 

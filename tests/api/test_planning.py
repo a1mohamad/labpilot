@@ -347,3 +347,14 @@ def test_a_planner_that_is_down_never_stops_the_answer(monkeypatch):
     assert final["plan"].source == "default"
     assert final["plan"].queries == (Query("A", QUESTION), Query("B", QUESTION))
     assert final["result"] == "the result"
+
+
+def test_the_log_names_the_queries_of_the_plan(monkeypatch, caplog):
+    # R14: the 2026-10-24 baseline logged only how many queries there were.
+    import logging
+
+    client = FakeClient(GOOD)
+    with caplog.at_level(logging.INFO):
+        make(monkeypatch, client)(QUESTION, "A-1", "B-1")
+
+    assert "queries=[" in caplog.text

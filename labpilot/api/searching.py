@@ -166,9 +166,17 @@ def rank_pile(
     window = pile[:RERANK_WINDOW]
     ranking = rank(question, [chunk.text for chunk in window], top_n=None)
     if ranking.model == SKIP:
-        return pile[:VECTOR_TOP_N]
+        head = pile[:VECTOR_TOP_N]
+    else:
+        head = tuple(window[position] for position in ranking.order[:RERANK_TOP_N])
 
-    return tuple(window[position] for position in ranking.order[:RERANK_TOP_N])
+    # R23: the best come first and the rest of the pile FOLLOWS, in the order the
+    # merge made, so the selector fills the prompt's budget. Cutting here at 10
+    # sent the writer about 9,000 tokens of a 30,000 budget on 2026-10-24.
+    shown = {(chunk.artifact_id, chunk.chunk_index) for chunk in head}
+    return head + tuple(
+        chunk for chunk in pile if (chunk.artifact_id, chunk.chunk_index) not in shown
+    )
 
 
 def _searched(

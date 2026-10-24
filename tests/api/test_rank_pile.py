@@ -56,13 +56,21 @@ def test_positions_are_mapped_back_to_the_chunks_not_to_their_ids():
     assert [c.chunk_index for c in kept] == [102, 100, 101]
 
 
-def test_the_cut_after_reranking_is_rerank_top_n():
+def test_the_reranked_best_come_first_and_the_rest_of_the_pile_follows():
+    # R23: the selector, not this function, decides how many fit the prompt.
     assert searching.RERANK_WINDOW > searching.RERANK_TOP_N
-    rank, _ = reranker(lambda n: tuple(range(n)))
+    big = pile(40)
+    rank, _ = reranker(lambda n: tuple(reversed(range(n))))
 
-    kept = searching.rank_pile("why?", pile(40), rank=rank)
+    kept = searching.rank_pile("why?", big, rank=rank)
 
-    assert len(kept) == searching.RERANK_TOP_N
+    best = big[: searching.RERANK_WINDOW][::-1][: searching.RERANK_TOP_N]
+    assert kept[: searching.RERANK_TOP_N] == best
+    assert sorted(kept, key=lambda c: c.chunk_index) == sorted(
+        big, key=lambda c: c.chunk_index
+    )
+    rest = [c for c in big if c not in best]
+    assert list(kept[searching.RERANK_TOP_N :]) == rest
 
 
 def test_when_no_tier_answered_the_first_vector_top_n_of_the_pile_are_kept():
@@ -71,7 +79,8 @@ def test_when_no_tier_answered_the_first_vector_top_n_of_the_pile_are_kept():
 
     kept = searching.rank_pile("why?", big, rank=rank)
 
-    assert kept == big[: searching.VECTOR_TOP_N]
+    assert kept[: searching.VECTOR_TOP_N] == big[: searching.VECTOR_TOP_N]
+    assert kept == big
 
 
 def test_an_empty_pile_costs_no_call():

@@ -68,6 +68,13 @@ def code_findings_text(found: Sequence[CodeFinding]) -> str:
     return "\n".join([CODE_NOTE, *(_code_line(item) for item in found)])
 
 
+def _first(evidence: Sequence[Chunk], chunks: tuple[Chunk, ...]) -> tuple[Chunk, ...]:
+    picked: dict[tuple[str, int], Chunk] = {}
+    for chunk in (*evidence, *chunks):
+        picked.setdefault((chunk.artifact_id, chunk.chunk_index), chunk)
+    return tuple(picked.values())
+
+
 def build_answer_prompt(
     chunks: tuple[Chunk, ...],
     *,
@@ -78,6 +85,7 @@ def build_answer_prompt(
     last_answer: str = "",
     findings: Sequence[Finding] = (),
     code_findings: Sequence[CodeFinding] = (),
+    evidence: Sequence[Chunk] = (),
 ) -> tuple[str, tuple[Chunk, ...]]:
     if files == 0:
         return build_chat_prompt(question, last_answer), ()
@@ -108,6 +116,12 @@ def build_answer_prompt(
         )
         if estimate_tokens(prompt) <= PROMPT_BUDGET:
             return prompt, chunks
+
+    # On the search path the parts behind the findings go FIRST on their side,
+    # so the cut for room drops a search hit before the code a finding is
+    # about (R20). The selector keeps the order it is given.
+    if evidence:
+        chunks = _first(evidence, chunks)
 
     overhead = reserve(
         chunks,

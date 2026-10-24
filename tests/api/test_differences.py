@@ -197,3 +197,73 @@ def test_ask_hands_the_graph_the_scan_of_b(monkeypatch):
     asking._ask_graph("conn", "client")
 
     assert seen["find_missing"] == ("find", "conn")
+
+
+def test_on_the_search_path_the_deciding_parts_go_first_and_survive_the_cut():
+    def part(index):
+        return Chunk(
+            text="z " * 1200,
+            source="train.py",
+            start_line=index,
+            end_line=index,
+            side="B",
+            artifact_id="B-1",
+            chunk_index=index,
+        )
+
+    searched = tuple(part(n) for n in range(40))
+    deciding = part(77)
+
+    _, picked = build_answer_prompt(
+        searched, question="why?", files=2, totals={"B": 100}, evidence=(deciding,)
+    )
+
+    assert picked[0] == deciding
+    assert len(picked) < 41
+
+
+def test_when_everything_was_read_the_evidence_changes_nothing():
+    small = (
+        Chunk(
+            text="a",
+            source="t.py",
+            start_line=1,
+            end_line=1,
+            side="B",
+            artifact_id="B-1",
+            chunk_index=0,
+        ),
+    )
+    extra = Chunk(
+        text="b",
+        source="t.py",
+        start_line=2,
+        end_line=2,
+        side="B",
+        artifact_id="B-1",
+        chunk_index=5,
+    )
+
+    _, picked = build_answer_prompt(
+        small, question="why?", files=2, totals=None, evidence=(extra,)
+    )
+
+    assert picked == small
+
+
+def test_the_reference_is_read_whole_only_when_small(monkeypatch):
+    from types import SimpleNamespace
+
+    from labpilot.prompts import A_WHOLE_TOKENS
+
+    seen = {}
+    monkeypatch.setattr(asking, "build_graph", lambda **kw: seen.update(kw))
+    monkeypatch.setattr(asking, "stuffed_chunks", lambda conn, sides: ("all of", sides))
+    asking._ask_graph("conn", "client")
+    whole = seen["whole_side"]
+    small = SimpleNamespace(characters=3 * A_WHOLE_TOKENS)
+    big = SimpleNamespace(characters=3 * A_WHOLE_TOKENS + 3)
+
+    assert whole({"A": small}, "A") == ("all of", {"A": small})
+    assert whole({"A": big}, "A") is None
+    assert whole({"B": small}, "B") is None
