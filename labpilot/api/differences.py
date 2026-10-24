@@ -27,7 +27,7 @@ from labpilot.prompts import (
     build_differences_prompt,
     groups_of,
 )
-from labpilot.store import UnknownArtifact, read_chunks
+from labpilot.store import StoreError, UnknownArtifact, read_chunks
 from labpilot.tokens import estimate_tokens
 
 logger = logging.getLogger(__name__)
@@ -100,6 +100,10 @@ def make_difference_finder(
             b_stored = read_chunks(conn, b_id)
         except UnknownArtifact as exc:
             raise UnknownArtifactId(str(exc)) from exc
+        except (StoreError, psycopg.Error) as exc:
+            # A dropped connection must not stop the answer: the scan is a
+            # safety net (seen on 2026-10-24, "server closed the connection").
+            raise DifferencesError(f"could not read the files: {exc}") from exc
 
         a_parts = [f"{part.header}\n{part.text}" for part in a_stored]
         if sum(estimate_tokens(part) for part in a_parts) > A_WHOLE_TOKENS:

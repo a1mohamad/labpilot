@@ -74,6 +74,9 @@ def code_findings_text(found: Sequence[CodeFinding]) -> str:
 # and the outline, came to more than a 12,000-token budget, and the answer was
 # refused with ArtifactsTooLargeToCompare. The lines that tell the most are kept.
 PRIOR_SHARE = 0.25
+# What the block around the finding lines adds to the prompt (its title and
+# the blank lines), kept free when the lines are fitted into the room left.
+PRIOR_LABEL_TOKENS = 200
 # A match line in short form: the claim alone. The writer needs the mismatches
 # in full; a match only says what not to report.
 _MATCH_CHARS = 140
@@ -160,12 +163,28 @@ def build_answer_prompt(
         # were sent - the long list with a row for every part - and then drop
         # real parts that `fits_whole` had just promised would fit. With every
         # part included the outline is only a short list of files.
+        #
+        # THE PARTS COME FIRST: the lines of what was found get only the room
+        # the parts leave. On 2026-10-24 the findings of a stuffed run (F5) cut
+        # B from 82 parts to 65; the code is the evidence, a finding line is a
+        # hint about it.
+        bare = build_prompt(
+            chunks,
+            chunks,
+            question=question,
+            instructions=instructions,
+            summaries=summaries,
+            last_answer=last_answer,
+        )
+        room = PROMPT_BUDGET - estimate_tokens(bare) - PRIOR_LABEL_TOKENS
+        limit = min(int(PROMPT_BUDGET * PRIOR_SHARE), room)
+        fitted = prior_text(findings, code_findings, limit) if limit > 0 else ""
         prompt = build_prompt(
             chunks,
             chunks,
             question=question,
             instructions=instructions,
-            prior=prior,
+            prior=fitted,
             summaries=summaries,
             last_answer=last_answer,
         )

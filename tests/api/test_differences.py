@@ -393,3 +393,73 @@ def test_every_id_the_prompt_shows_names_the_same_part_in_the_saved_list():
     assert len(shown) == len(out["selected"])
     for name, text in shown:
         assert resolve(name, text, out["chunks"]), name
+
+
+def test_a_dropped_connection_stops_the_scan_and_not_the_answer(monkeypatch):
+    import psycopg
+
+    def dead(conn, artifact_id):
+        raise psycopg.OperationalError("server closed the connection unexpectedly")
+
+    monkeypatch.setattr(differences, "read_chunks", dead)
+    find = make_difference_finder("conn", FakeClient(mask_answer), Facts())
+
+    with pytest.raises(DifferencesError, match="could not read the files"):
+        find("A-1", "B-1")
+
+
+def stuffed_pair(parts=60):
+    return tuple(
+        Chunk(
+            text=f"line_{n} = {n}\n" + "q " * 600,
+            source="t.py",
+            start_line=n,
+            end_line=n,
+            side="B",
+            artifact_id="B-1",
+            chunk_index=n,
+        )
+        for n in range(parts)
+    )
+
+
+def test_when_everything_was_read_the_parts_come_before_the_finding_lines():
+    # 2026-10-24: the findings of a stuffed run cut B from 82 parts to 65.
+    checks, codes = many_findings()
+    chunks = stuffed_pair(40)
+
+    prompt, picked = build_answer_prompt(
+        chunks,
+        question="why?",
+        files=2,
+        totals=None,
+        findings=checks,
+        code_findings=codes,
+    )
+
+    assert picked == chunks
+    assert "[mismatch - choice]" in prompt
+
+
+def test_when_the_parts_fill_the_budget_no_part_is_cut_for_a_finding_line():
+    from labpilot.api import prompting
+
+    checks, codes = many_findings()
+    chunks = stuffed_pair(60)
+    bare, _ = build_answer_prompt(chunks, question="why?", files=2, totals=None)
+    old = prompting.PROMPT_BUDGET
+    prompting.PROMPT_BUDGET = prompting.estimate_tokens(bare) + 50
+    try:
+        prompt, picked = build_answer_prompt(
+            chunks,
+            question="why?",
+            files=2,
+            totals=None,
+            findings=checks,
+            code_findings=codes,
+        )
+    finally:
+        prompting.PROMPT_BUDGET = old
+
+    assert picked == chunks
+    assert "[mismatch - choice]" not in prompt

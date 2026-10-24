@@ -94,7 +94,7 @@ def test_with_no_file_there_is_nothing_to_check_and_the_findings_are_ignored():
     assert selected == ()
 
 
-def test_twenty_findings_never_push_the_prompt_over_the_budget():
+def test_twenty_findings_never_push_the_prompt_over_the_budget_or_a_part_out():
     bare = 0
     while True:
         chunks = tuple(chunk(index) for index in range(bare + 1))
@@ -112,6 +112,10 @@ def test_twenty_findings_never_push_the_prompt_over_the_budget():
         chunks, question="why?", files=2, findings=many
     )
 
+    # Everything was read, so the PARTS come first (2026-10-24: the findings
+    # of a stuffed run cut B from 82 parts to 65). The lines get the room left,
+    # and the ones that do not fit are counted, never lost silently.
     assert estimate_tokens(prompt) <= PROMPT_BUDGET
-    assert len(selected) < len(chunks)
-    assert prompt.count("[mismatch - choice]") == 20
+    assert selected == chunks
+    assert 0 < prompt.count("[mismatch - choice]") < 20
+    assert "left out for room" in prompt
