@@ -16680,7 +16680,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 4 | **the planner** | the outline is used; ONE call returns the steps and the queries as a shape; the plan is checked in code; a default plan when it fails; the zero-file plan `[respond]` | medium, 5 lessons, **DONE 2026-10-19** (revised 2026-10-18, see 17.19 and 17.20): the small one on function calling (D34, DONE), the planner node, the check in code, tool calls in the LLM layer, the real planner function |
 | 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31) and carries the fix part (D49); "stuff when it fits" stays | **heavy**, 3 lessons; lesson 1 DONE 2026-10-19 (17.22) |
 | 6 | **follow-ups and `respond` for every case** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6). **Added 2026-10-21 (D56):** `respond` chooses its instruction by how many files exist (none: plain chat and code, one: `SCAN`, two: the report), and `ask()`, the API and the page accept 0 or 1 artifact id | medium, 2 lessons, **DONE 2026-10-22** (17.24) |
-| 7 | **claims, check, retry** | `extract_claims`; each claim searches B with its own text; one check per claim at the same time; the bounded retry loop (D4); the findings list; a small A merges with the planner (D40) | **heavy**, 3 lessons (1 and 2 DONE; 3 in section 24.2) |
+| 7 | **claims, check, retry** | `extract_claims`; each claim searches B with its own text; one check per claim at the same time; the bounded retry loop (D4); the findings list; a small A merges with the planner (D40) | **heavy**, 3 lessons (all three DONE; lesson 3 in section 24.2) |
 | 8 | **the gate** | halt when A and B do not correspond, on a threshold calibrated per embedder; the answer is then the two summaries from slice 3 | medium, 2 lessons |
 | 9 | **nodes for B alone** | `find_missing` (the claim table read by chunk) and `find_bugs` (a scan of B), then the precision pass for `find_bugs` (D75, test M26) | medium, 2 lessons |
 | 10 | **outcomes and comparability** | `extract_outcomes`; "are these two numbers comparable?" YES / NO / CANNOT TELL; "does it add up?" | medium, 2 lessons |
@@ -20121,7 +20121,7 @@ Proven first: key 3 answers a probe (200), differs from keys 1 and 2, and accept
 
 ### 24. SLICE 7, LESSONS 2 AND 3, EVALUATION LOOPS AND THREE NEW DECISIONS — 2026-10-24
 
-*Lesson 2 was typed by the user and its tests are green. Lesson 3 was built and tested in a scratch copy first, and the user types it. After the user asked GPT for advice, a talk about evaluation loops and sub-agents produced three decisions (D74 to D76). The user asked for them, and for lesson 2, to be written down.*
+*Lesson 2 was typed by the user and its tests are green. Lesson 3 was built and tested in a scratch copy first, then typed by the user, and its tests are green. After the user asked GPT for advice, a talk about evaluation loops and sub-agents produced three decisions (D74 to D76). The user asked for them, and for lesson 2, to be written down.*
 
 #### 24.1 Lesson 2 is DONE: the check of each claim (typed on `feat/check-claims`, committed as `4c90193`)
 
@@ -20163,7 +20163,9 @@ Proven first: key 3 answers a probe (200), differs from keys 1 and 2, and accept
 - `kinds` and `parts` for `kind` and `part`, `make_checker(conn, client)` for `make_checker(claims_client)`, `finding` for `findings`, an import of `labpilot.agent.finding` from `api/` instead of the front door, and a `]` in the wrong place in `Callable[[A, B], C]`.
 - Failures that share one message are one bug: 22 collection errors were one wrong name.
 
-#### 24.2 Lesson 3: the bounded retry loop (D4). Built and tested in a scratch copy; the user types it
+#### 24.2 Lesson 3: the bounded retry loop (D4). DONE 2026-10-24: built and tested in a scratch copy first, then typed by the user
+
+**Status: DONE 2026-10-24.** The user typed it on `feat/check-claims` and the tests passed. It is committed together with section 24 as `bd46262` (13 files: `agent/check_one.py`, `agent/graph.py`, `api/asking.py`, `api/requery.py`, `prompts/requery.py`, `prompts/__init__.py`, five test files and the two docs). Checked by Claude after the commit: unit and api tests 1705 passed, 5 skipped; `ruff check` and `ruff format --check` clean on 370 files. The user's count for the full suite with the database tests was not written down, so the last full count on record is 1834, from before lesson 3. The deliberate breaks of the next paragraphs were run in the scratch copy only, not again on the typed files.
 
 **Design, decided on 2026-10-24.**
 
@@ -20204,7 +20206,7 @@ The user was told by GPT that an evaluation loop is essential, that every agent 
 
 #### 24.5 What slice 7 still owes
 
-Lesson 3 typed, green and committed. Then M10 and M11 (claims on real prose and on code, with wording E and the cap), M21 (the quote rule on real claims), M24 (rerank for each claim, and what the retry fixes alone), the Jev pilot M15 (D73), the small baseline of D74, the closing review of slice 7 ("The closing review of slice 7"), and the docs update.
+Lesson 3 is DONE (typed, green, committed as `bd46262`). Still owed: M10 and M11 (claims on real prose and on code, with wording E and the cap), M21 (the quote rule on real claims), M24 (rerank for each claim, and what the retry fixes alone), the Jev pilot M15 (D73), the small baseline of D74, the closing review of slice 7 ("The closing review of slice 7"), and the docs update.
 
 ---
 
