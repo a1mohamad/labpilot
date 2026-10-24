@@ -495,6 +495,37 @@ def test_a_chat_remembers_every_question_and_comes_back_as_real_objects(
     assert "langgraph" not in caplog.text
 
 
+def test_a_chat_is_saved_and_pruned_through_a_real_pool(db, chat_tables, schema_url):
+    """The save at the end of a message goes through the pool (2026-10-25).
+
+    The request's own connection can be closed by the server during a report
+    of many minutes, so the save and the prune take a checked connection from
+    the pool. Two messages leave ONE copy, so the prune ran through it too.
+    """
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    pool = make_pool(schema_url)
+    try:
+        for question in ("first?", "second?"):
+            asking.ask(
+                db,
+                a,
+                b,
+                question=question,
+                client=FakeClient(),
+                thread_id="chat-pool",
+                pool=pool,
+            )
+        opened = not pool.closed
+    finally:
+        pool.close()
+
+    saved = open_saver(db).get_tuple({"configurable": {"thread_id": "chat-pool"}})
+    assert opened
+    assert saved.checkpoint["channel_values"]["history"] == ["first?", "second?"]
+    assert rows(db, "checkpoints", "chat-pool") == 1
+
+
 def test_a_follow_up_is_rewritten_and_the_chat_saves_the_standalone_question(
     db, chat_tables
 ):

@@ -71,7 +71,7 @@ def ask(
     else:
         config = {"configurable": {"thread_id": thread_id}}
         final = graph.invoke(start, config, durability="exit")
-        _forget_old_copies(conn, thread_id)
+        _forget_old_copies(_saving_place(conn, pool), thread_id)
     return Comparison(
         result=final["result"],
         chunks=final["chunks"],
@@ -105,7 +105,28 @@ def _in_their_own_slots(a_id: str, b_id: str) -> tuple[str, str]:
     return a_id, b_id
 
 
-def _forget_old_copies(conn: psycopg.Connection, thread_id: str) -> None:
+def _saving_place(
+    conn: psycopg.Connection, pool: ConnectionPool | None
+) -> psycopg.Connection | ConnectionPool:
+    """Where the chat is saved and pruned: the pool when there is one.
+
+    The save runs at the END of a message, after a report that can take many
+    minutes. The connection of the request sat idle all that time, and on
+    2026-10-25 such a connection was closed by the server after a 7.5-minute
+    report ("server closed the connection unexpectedly"), so the answer would
+    have been lost at the save. A pool checks a connection before it hands it
+    out.
+    """
+    if pool is None:
+        return conn
+    if pool.closed:
+        pool.open(wait=False)
+    return pool
+
+
+def _forget_old_copies(
+    conn: psycopg.Connection | ConnectionPool, thread_id: str
+) -> None:
     try:
         prune(conn, thread_id)
     except psycopg.Error:
@@ -193,5 +214,5 @@ def _ask_graph(
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,
         generate=generate,
-        checkpointer=open_saver(conn) if thread_id else None,
+        checkpointer=open_saver(_saving_place(conn, pool)) if thread_id else None,
     )
