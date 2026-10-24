@@ -454,3 +454,55 @@ def test_a_search_that_fails_for_the_question_itself_still_stops_the_answer(
 
     with pytest.raises(EmbeddingUnavailable):
         ask(db, ClaimsClient())
+
+
+class ScanClient(ClaimsClient):
+    """Plans the claims AND the scan of B, and answers the scan from the prompt."""
+
+    def __init__(self):
+        super().__init__()
+        self.scan_prompts = []
+
+    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
+        name = tool.name if tool else None
+        if name == "make_plan":
+            return self.result(
+                {"steps": ["extract_claims", "find_missing"], "queries": []}
+            )
+        if name == "list_differences":
+            self.scan_prompts.append(prompt)
+            part = self.part_with(prompt.split("PARTS OF FILE B", 1)[1], "dt = 0.05")
+            return self.result(
+                {
+                    "items": [
+                        {
+                            "text": "B uses a time step of 0.05",
+                            "part": part,
+                            "quote": "dt = 0.05",
+                            "a_says": "The time step is 0.01 s.",
+                        }
+                    ]
+                }
+            )
+        return super().generate(
+            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
+        )
+
+
+def test_the_scan_reads_the_stored_b_beside_all_of_a_and_the_answer_reads_it(
+    db, chat_tables
+):
+    client = ScanClient()
+    config = {"configurable": {"thread_id": "chat-scan"}}
+
+    ask(db, client, thread_id="chat-scan")
+
+    (scan,) = client.scan_prompts
+    assert "The mesh has 200 cells." in scan and "The time step is 0.01 s." in scan
+    answer = client.answers[0]
+    assert (
+        f'[B differs] B uses a time step of 0.05 B ({SOLVER_STEP}): "dt = 0.05". '
+        'A says: "The time step is 0.01 s."'
+    ) in answer
+    values = open_saver(db).get_tuple(config).checkpoint["channel_values"]
+    assert not values.get("code_findings")
