@@ -147,7 +147,7 @@ def run(
     check,
     *,
     plan=WANTS,
-    fits_value=True,
+    fits_value=False,
     saver=None,
     thread="chat-1",
     seen=None,
@@ -181,8 +181,8 @@ def by_text(findings):
     return sorted(findings, key=lambda finding: finding.claim.text)
 
 
-@pytest.mark.parametrize("fits_value", [True, False])
-def test_every_claim_is_checked_and_the_answer_gets_all_the_findings(fits_value):
+def test_every_claim_is_checked_and_the_answer_gets_all_the_findings():
+    fits_value = False  # the checks run on the search path only (R21)
     claims = (claim(1), claim(2), claim(3))
 
     _, seen = run(claims, lambda c, chunks: finding_for(c), fits_value=fits_value)
@@ -232,7 +232,7 @@ def test_a_plan_without_the_step_never_checks():
 def test_without_a_check_function_there_is_no_check_step_and_the_run_goes_on():
     graph = build_graph(
         measure=lambda a, b: SIDES,
-        fits=lambda sides, question: True,
+        fits=lambda sides, question: False,
         stuff=lambda sides, question: ((chunk(0),), None),
         search_one=lambda sides, query: (chunk(1),),
         totals_of=lambda sides: {"A": 1},
@@ -285,9 +285,13 @@ def test_the_checks_search_with_the_function_made_for_them_when_one_is_given():
 
     graph = build_graph(
         measure=lambda a, b: SIDES,
-        fits=lambda sides, question: True,
+        fits=lambda sides, question: False,
         stuff=lambda sides, question: ((chunk(0),), None),
-        search_one=lambda sides, query: pytest.fail("a claim must not use this one"),
+        search_one=lambda sides, query: (
+            pytest.fail("a claim must not use this one")
+            if query.text == "fact 1"
+            else (chunk(0),)
+        ),
         search_claim=search_claim,
         totals_of=lambda sides: {"A": 1},
         rank_side=lambda question, pile: pile,

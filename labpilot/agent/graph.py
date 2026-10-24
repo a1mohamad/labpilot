@@ -71,6 +71,12 @@ def build_graph(
         return sends or "respond"
 
     def after_search(state: State) -> str | list[Send]:
+        # R21: when everything was read, the answer sees all of both files, and
+        # the claims and the scan only cost time. Measured on 2026-10-24: the
+        # stuffed answer alone scored 30 of 39 in 35 s; with claims and scan
+        # 26 and 28, in 181 and 244 s.
+        if state["totals"] is None:
+            return "respond"
         if extract_claims is not None and wants_claims(state):
             return "extract_claims"
         return checks_and_scan(state)

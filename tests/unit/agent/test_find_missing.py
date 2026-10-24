@@ -149,7 +149,7 @@ def test_a_failed_scan_gives_no_findings_and_logs_why(caplog):
     assert "no tier" in caplog.text
 
 
-def run(plan, *, claims=(), find=None, check=None, fits_value=True, saver=None):
+def run(plan, *, claims=(), find=None, check=None, fits_value=False, saver=None):
     seen = []
 
     def make_prompt(chunks, **kwargs):
@@ -176,8 +176,8 @@ def run(plan, *, claims=(), find=None, check=None, fits_value=True, saver=None):
     return final, seen
 
 
-@pytest.mark.parametrize("fits_value", [True, False])
-def test_the_checks_and_the_scan_run_together_and_respond_runs_once(fits_value):
+def test_the_checks_and_the_scan_run_together_and_respond_runs_once():
+    fits_value = False  # the checks and the scan run on the search path only
     barrier = threading.Barrier(2, timeout=5)
 
     def check(c, chunks):
@@ -254,3 +254,16 @@ def test_every_step_the_planner_may_list_is_run_by_a_node():
     for steps in STEPS_BY_FILES.values():
         for step in steps:
             assert run_by.get(step, {step}) <= nodes, step
+
+
+def test_when_everything_was_read_neither_the_checks_nor_the_scan_run():
+    def check(c, chunks):
+        raise AssertionError("no check on the stuffed path")
+
+    def find(a, b):
+        raise AssertionError("no scan on the stuffed path")
+
+    _, seen = run(BOTH, claims=(claim(1),), find=find, check=check, fits_value=True)
+
+    assert len(seen) == 1
+    assert "findings" not in seen[0] and "code_findings" not in seen[0]

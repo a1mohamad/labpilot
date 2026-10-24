@@ -117,10 +117,13 @@ def test_after_a_search_the_claims_step_runs_before_the_answer():
     assert order == ["rank", ("claims", "A-1"), "generate"]
 
 
-def test_after_stuffing_the_claims_step_runs_before_the_answer():
+def test_after_stuffing_the_claims_step_is_skipped_and_the_answer_comes_at_once():
+    # R21: when everything was read the answer sees both files whole; the
+    # claims only cost time (2026-10-24: 30 of 39 in 35 s without them, 26
+    # and 28 in 181 and 244 s with them and the scan).
     _, order = run(WANTS, fits_value=True)
 
-    assert order == ["stuff", ("claims", "A-1"), "generate"]
+    assert order == ["stuff", "generate"]
 
 
 @pytest.mark.parametrize("fits_value", [True, False])

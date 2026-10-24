@@ -230,7 +230,7 @@ def graph(search, check, writer):
 
     built = build_graph(
         measure=lambda a, b: SIDES,
-        fits=lambda sides, question: True,
+        fits=lambda sides, question: False,
         stuff=lambda sides, question: ((chunk(9),), None),
         search_one=search,
         totals_of=lambda sides: {"A": 1, "B": 1},
