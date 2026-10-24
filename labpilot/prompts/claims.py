@@ -34,8 +34,8 @@ neither is background.
 
 The reference comes as numbered parts: [part 0], [part 1], and so on. For each
 claim, give the number of the part it comes from, and the quote: the exact words
-+of that part that state the claim, copied letter for letter, at most 200
-+characters. A claim whose quote is not in its part is thrown away.
+of that part that state the claim, copied letter for letter, at most 200
+characters. A claim whose quote is not in its part is thrown away.
 
 If the question names a topic, write the claims about that topic first. Do not
 leave out other claims because of the question.""",

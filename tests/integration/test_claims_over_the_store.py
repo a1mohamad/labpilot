@@ -17,13 +17,16 @@ from __future__ import annotations
 import json
 import re
 
+import psycopg
 import pytest
 import responses
+from psycopg_pool import PoolTimeout
 
 from labpilot.agent import ClaimsError
-from labpilot.api import asking, searching
+from labpilot.api import asking, reading, searching
 from labpilot.api.checkpoints import open_saver
 from labpilot.api.claims import make_claims_extractor
+from labpilot.api.errors import EmbeddingUnavailable
 from labpilot.llm import AllFreeTiersExhausted, GeminiProvider, LLMClient, LLMResult
 from labpilot.prompts import CHECKS_NOTE, REQUERY, SUMMARY_MAX_TOKENS
 from labpilot.store import ArtifactRecord, ChunkRecord, write_artifact
@@ -412,3 +415,44 @@ def test_an_absent_claim_is_searched_again_with_the_query_the_model_wrote(
     answer = client.answers[0]
     assert f'[mismatch - choice] A says "the time step is 0.01 s" ({STEP})' in answer
     assert "\n[absent]" not in answer
+
+
+FAULTS = [
+    pytest.param(EmbeddingUnavailable("the embedder is down"), id="embedder-down"),
+    pytest.param(
+        psycopg.OperationalError("SSL SYSCALL error: EOF detected"), id="database-drop"
+    ),
+    pytest.param(PoolTimeout("couldn't get a connection after 30.00 sec"), id="pool"),
+]
+
+
+@pytest.mark.parametrize("fault", FAULTS)
+def test_a_search_that_fails_for_a_claim_leaves_it_unchecked_and_the_answer_goes_on(
+    db, monkeypatch, fault
+):
+    def broken(*_args, **_kwargs):
+        raise fault
+
+    # The pair fits, so nothing is searched except the claims.
+    monkeypatch.setattr(searching, "_embed_question", broken)
+    monkeypatch.setattr(searching, "search", broken)
+    client = ClaimsClient()
+
+    comparison = ask(db, client)
+
+    assert comparison.result.text == "an answer"
+    assert client.answers[0].count("\n[unchecked]") == 2
+
+
+def test_a_search_that_fails_for_the_question_itself_still_stops_the_answer(
+    db, monkeypatch
+):
+    def down(*_args, **_kwargs):
+        raise EmbeddingUnavailable("the embedder is down")
+
+    # Too small to stuff, so the planner's search path runs and it is not optional.
+    monkeypatch.setattr(reading, "PROMPT_BUDGET", 1)
+    monkeypatch.setattr(searching, "_embed_question", down)
+
+    with pytest.raises(EmbeddingUnavailable):
+        ask(db, ClaimsClient())

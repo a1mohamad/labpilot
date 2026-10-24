@@ -264,3 +264,30 @@ def test_the_findings_of_one_message_do_not_pile_up_in_the_next_one():
 
     assert len(first[0]["findings"]) == 2
     assert [finding.claim for finding in second[0]["findings"]] == [claim(3)]
+
+
+def test_the_checks_search_with_the_function_made_for_them_when_one_is_given():
+    searched = []
+
+    def search_claim(sides, query):
+        searched.append(query)
+        return (chunk(1),)
+
+    graph = build_graph(
+        measure=lambda a, b: SIDES,
+        fits=lambda sides, question: True,
+        stuff=lambda sides, question: ((chunk(0),), None),
+        search_one=lambda sides, query: pytest.fail("a claim must not use this one"),
+        search_claim=search_claim,
+        totals_of=lambda sides: {"A": 1},
+        rank_side=lambda question, pile: pile,
+        plan=lambda question, a, b: WANTS,
+        make_prompt=lambda chunks, **_: ("the prompt", chunks),
+        generate=lambda prompt: "the result",
+        extract_claims=lambda question, a: (claim(1),),
+        check=lambda c, chunks: finding_for(c),
+    )
+
+    graph.invoke({"question": "why?", "a": "A-1", "b": "B-1"})
+
+    assert searched == [Query("B", "fact 1")]

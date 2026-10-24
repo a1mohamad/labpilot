@@ -7,13 +7,15 @@ import psycopg
 from langgraph.graph.state import CompiledStateGraph
 from psycopg_pool import ConnectionPool
 
-from labpilot.agent import build_graph
+from labpilot.agent import CheckError, build_graph
 from labpilot.api.chains import for_claims
 from labpilot.api.checking import make_checker
 from labpilot.api.checkpoints import open_saver, prune
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison
 from labpilot.api.errors import (
+    ArtifactChanged,
+    EmbeddingUnavailable,
     GenerationUnavailable,
     InvalidQuestion,
 )
@@ -139,6 +141,15 @@ def _ask_graph(
         with pool.connection() as pooled:
             return retrieve_query(pooled, sides, side=query.side, text=query.text)
 
+    def search_claim(sides, query):
+        # The check of a claim is a safety net (D39). When its search fails, the
+        # claim is left unchecked and the answer goes on. The question's own
+        # search keeps raising, because without it there is no answer.
+        try:
+            return search_one(sides, query)
+        except (EmbeddingUnavailable, ArtifactChanged, psycopg.Error) as exc:
+            raise CheckError(f"the search for a claim failed: {exc}") from exc
+
     def totals_of(sides):
         return {side: found.chunks for side, found in sides.items()}
 
@@ -176,6 +187,7 @@ def _ask_graph(
         summarize=summarize,
         extract_claims=make_claims_extractor(conn, claims_client),
         check=make_checker(claims_client),
+        search_claim=search_claim,
         new_query=make_query_writer(claims_client),
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
