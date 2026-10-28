@@ -39,7 +39,7 @@ BEYOND_THE_OPENING = "WORD_BEYOND_THE_OPENING"
 IN_A_LATER_PART = "WORD_IN_A_LATER_PART"
 
 GOOD = {
-    "steps": ["extract_claims", "find_bugs"],
+    "steps": ["extract_claims", "find_missing"],
     "queries": [
         {"side": "A", "text": "AdamW learning rate 3e-4"},
         {"side": "B", "text": "clip_grad_norm_ CLIP_NORM"},
@@ -175,7 +175,7 @@ def test_stored_rows_reach_the_provider_as_a_map_and_the_answer_becomes_a_plan(d
     plan = planner(QUESTION, a, b)
 
     assert plan == Plan(
-        steps=("extract_claims", "find_bugs"),
+        steps=("extract_claims", "find_missing"),
         queries=(
             Query("A", "AdamW learning rate 3e-4"),
             Query("B", "clip_grad_norm_ CLIP_NORM"),
@@ -224,7 +224,8 @@ def test_the_request_carries_the_tool_the_stored_pair_allows(db):
 @responses.activate
 def test_one_stored_file_gives_a_smaller_tool_and_a_map_of_one_side(db):
     _, b = store(db)
-    responses.post(url("one"), json=called({"steps": ["find_bugs"], "queries": []}))
+    # One file: only summarize is allowed (R18).
+    responses.post(url("one"), json=called({"steps": ["summarize"], "queries": []}))
 
     planning.make_planner(db, LLMClient(chain=(provider("one", 1, pool="P1"),)))(
         QUESTION, "", b
@@ -252,7 +253,7 @@ def test_a_wrong_plan_from_the_first_tier_is_tried_again_on_the_second(db):
 
     plan = planner(QUESTION, a, b)
 
-    assert plan.steps == ("extract_claims", "find_bugs")
+    assert plan.steps == ("extract_claims", "find_missing")
     assert [call.request.url for call in responses.calls] == [url("one"), url("two")]
     assert (
         request(responses.calls[0])["contents"]
@@ -273,7 +274,7 @@ def test_a_tier_that_answers_in_a_code_fence_instead_of_a_call_still_gives_the_p
         QUESTION, a, b
     )
 
-    assert plan.steps == ("extract_claims", "find_bugs")
+    assert plan.steps == ("extract_claims", "find_missing")
     assert plan.source == "planner"
 
 
@@ -310,7 +311,7 @@ def test_the_plan_is_saved_in_the_real_chat_memory_and_comes_back_as_a_plan(
     saved = open_saver(db).get_tuple(config).checkpoint["channel_values"]["plan"]
     assert isinstance(saved, Plan)
     assert [type(query) for query in saved.queries] == [Query, Query]
-    assert list(saved.steps) == ["extract_claims", "find_bugs"]
+    assert list(saved.steps) == ["extract_claims", "find_missing"]
     assert saved.source == "planner"
 
 
@@ -319,7 +320,10 @@ def test_the_second_message_of_a_chat_is_planned_again_and_replaces_the_plan(
     db, chat_tables
 ):
     a, b = store(db)
-    second = {"steps": ["find_bugs"], "queries": [{"side": "B", "text": "zero_grad"}]}
+    second = {
+        "steps": ["find_missing"],
+        "queries": [{"side": "B", "text": "zero_grad"}],
+    }
     responses.post(url("one"), json=called(GOOD))
     responses.post(url("one"), json=called(second))
     planner = planning.make_planner(
@@ -332,7 +336,7 @@ def test_the_second_message_of_a_chat_is_planned_again_and_replaces_the_plan(
     compiled.invoke({"question": "second?", "a": a, "b": b}, config, durability="exit")
 
     values = open_saver(db).get_tuple(config).checkpoint["channel_values"]
-    assert list(values["plan"].steps) == ["find_bugs"]
+    assert list(values["plan"].steps) == ["find_missing"]
     assert values["history"] == ["first?", "second?"]
     assert len(responses.calls) == 2
 
