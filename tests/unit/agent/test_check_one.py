@@ -5,6 +5,7 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from labpilot.agent import (
+    RESULT,
     CheckError,
     Claim,
     Finding,
@@ -124,6 +125,15 @@ def test_no_claims_means_straight_to_respond():
     assert fan_out_claims({"sides": SIDES}) == "respond"
 
 
+def test_a_result_claim_is_never_checked():
+    result = Claim("the score is 0.85", "[paper.md · part 9]", "score is 0.85", RESULT)
+
+    sends = fan_out_claims({"claims": (claim(1), result), "sides": SIDES})
+
+    assert [send.arg["claim"] for send in sends] == [claim(1)]
+    assert fan_out_claims({"claims": (result,), "sides": SIDES}) == "respond"
+
+
 def test_each_claim_gets_its_own_send_with_only_side_b():
     sends = fan_out_claims({"claims": (claim(1), claim(2)), "sides": SIDES})
 
@@ -137,7 +147,7 @@ def run(
     check,
     *,
     plan=WANTS,
-    fits_value=True,
+    fits_value=False,
     saver=None,
     thread="chat-1",
     seen=None,
@@ -158,7 +168,7 @@ def run(
         plan=lambda question, a, b: plan,
         make_prompt=make_prompt,
         generate=lambda prompt: "the result",
-        extract_claims=lambda question, a: claims,
+        extract_claims=lambda a: claims,
         check=check,
         checkpointer=saver,
     )
@@ -171,8 +181,8 @@ def by_text(findings):
     return sorted(findings, key=lambda finding: finding.claim.text)
 
 
-@pytest.mark.parametrize("fits_value", [True, False])
-def test_every_claim_is_checked_and_the_answer_gets_all_the_findings(fits_value):
+def test_every_claim_is_checked_and_the_answer_gets_all_the_findings():
+    fits_value = False  # the checks run on the search path only (R21)
     claims = (claim(1), claim(2), claim(3))
 
     _, seen = run(claims, lambda c, chunks: finding_for(c), fits_value=fits_value)
@@ -222,7 +232,7 @@ def test_a_plan_without_the_step_never_checks():
 def test_without_a_check_function_there_is_no_check_step_and_the_run_goes_on():
     graph = build_graph(
         measure=lambda a, b: SIDES,
-        fits=lambda sides, question: True,
+        fits=lambda sides, question: False,
         stuff=lambda sides, question: ((chunk(0),), None),
         search_one=lambda sides, query: (chunk(1),),
         totals_of=lambda sides: {"A": 1},
@@ -230,7 +240,7 @@ def test_without_a_check_function_there_is_no_check_step_and_the_run_goes_on():
         plan=lambda question, a, b: WANTS,
         make_prompt=lambda chunks, **_: ("the prompt", chunks),
         generate=lambda prompt: "the result",
-        extract_claims=lambda question, a: (claim(1),),
+        extract_claims=lambda a: (claim(1),),
     )
 
     final = graph.invoke({"question": "why?", "a": "A-1", "b": "B-1"})
@@ -264,3 +274,34 @@ def test_the_findings_of_one_message_do_not_pile_up_in_the_next_one():
 
     assert len(first[0]["findings"]) == 2
     assert [finding.claim for finding in second[0]["findings"]] == [claim(3)]
+
+
+def test_the_checks_search_with_the_function_made_for_them_when_one_is_given():
+    searched = []
+
+    def search_claim(sides, query):
+        searched.append(query)
+        return (chunk(1),)
+
+    graph = build_graph(
+        measure=lambda a, b: SIDES,
+        fits=lambda sides, question: False,
+        stuff=lambda sides, question: ((chunk(0),), None),
+        search_one=lambda sides, query: (
+            pytest.fail("a claim must not use this one")
+            if query.text == "fact 1"
+            else (chunk(0),)
+        ),
+        search_claim=search_claim,
+        totals_of=lambda sides: {"A": 1},
+        rank_side=lambda question, pile: pile,
+        plan=lambda question, a, b: WANTS,
+        make_prompt=lambda chunks, **_: ("the prompt", chunks),
+        generate=lambda prompt: "the result",
+        extract_claims=lambda a: (claim(1),),
+        check=lambda c, chunks: finding_for(c),
+    )
+
+    graph.invoke({"question": "why?", "a": "A-1", "b": "B-1"})
+
+    assert searched == [Query("B", "fact 1")]
