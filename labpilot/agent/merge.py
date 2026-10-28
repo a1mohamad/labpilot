@@ -24,11 +24,20 @@ def merge_chunks(found: Sequence[Chunks]) -> Chunks:
 
 
 def make_merge_node(
-    totals_of: Callable[[Any], Totals], rank_side: Callable[[str, Chunks], Chunks]
+    totals_of: Callable[[Any], Totals],
+    rank_side: Callable[[str, Chunks], Chunks],
+    whole_side: Callable[[Any, str], Chunks | None] | None = None,
 ) -> Callable[[State], dict[str, Any]]:
     def merge_node(state: State) -> dict[str, Any]:
         chunks: list[Chunk] = []
         for side in sorted({found[0].side for found in state["found"] if found}):
+            # A side small enough to read whole is read whole: the reference is
+            # usually a paper of a few thousand tokens, and a search over it
+            # left out the very sections the answer needed (section 25.6).
+            whole = whole_side(state["sides"], side) if whole_side else None
+            if whole:
+                chunks.extend(whole)
+                continue
             lists = [
                 found for found in state["found"] if found and found[0].side == side
             ]
