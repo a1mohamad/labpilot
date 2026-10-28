@@ -7,25 +7,30 @@ import psycopg
 from langgraph.graph.state import CompiledStateGraph
 from psycopg_pool import ConnectionPool
 
-from labpilot.agent import build_graph
+from labpilot.agent import CheckError, build_graph
 from labpilot.api.chains import for_claims
 from labpilot.api.checking import make_checker
 from labpilot.api.checkpoints import open_saver, prune
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison
+from labpilot.api.differences import make_difference_finder
 from labpilot.api.errors import (
+    ArtifactChanged,
+    EmbeddingUnavailable,
     GenerationUnavailable,
     InvalidQuestion,
 )
+from labpilot.api.file_facts import FileFacts
 from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
 from labpilot.api.requery import make_query_writer
-from labpilot.api.searching import rank_pile, retrieve_query
+from labpilot.api.searching import embed_query, rank_pile, retrieve_query
 from labpilot.api.summaries import make_summarizer
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
+    A_WHOLE_TOKENS,
     REPORT_MAX_TOKENS,
 )
 
@@ -69,7 +74,7 @@ def ask(
     else:
         config = {"configurable": {"thread_id": thread_id}}
         final = graph.invoke(start, config, durability="exit")
-        _forget_old_copies(conn, thread_id)
+        _forget_old_copies(_saving_place(conn, pool), thread_id)
     return Comparison(
         result=final["result"],
         chunks=final["chunks"],
@@ -103,7 +108,28 @@ def _in_their_own_slots(a_id: str, b_id: str) -> tuple[str, str]:
     return a_id, b_id
 
 
-def _forget_old_copies(conn: psycopg.Connection, thread_id: str) -> None:
+def _saving_place(
+    conn: psycopg.Connection, pool: ConnectionPool | None
+) -> psycopg.Connection | ConnectionPool:
+    """Where the chat is saved and pruned: the pool when there is one.
+
+    The save runs at the END of a message, after a report that can take many
+    minutes. The connection of the request sat idle all that time, and on
+    2026-10-25 such a connection was closed by the server after a 7.5-minute
+    report ("server closed the connection unexpectedly"), so the answer would
+    have been lost at the save. A pool checks a connection before it hands it
+    out.
+    """
+    if pool is None:
+        return conn
+    if pool.closed:
+        pool.open(wait=False)
+    return pool
+
+
+def _forget_old_copies(
+    conn: psycopg.Connection | ConnectionPool, thread_id: str
+) -> None:
     try:
         prune(conn, thread_id)
     except psycopg.Error:
@@ -134,10 +160,46 @@ def _ask_graph(
     def search_one(sides, query):
         if pool is None:
             return retrieve_query(conn, sides, side=query.side, text=query.text)
+        # Embed BEFORE a connection is taken from the pool, so the pool is not
+        # held while the embedder answers (R16).
+        vector = embed_query(sides, side=query.side, text=query.text)
         if pool.closed:
             pool.open(wait=False)
-        with pool.connection() as pooled:
-            return retrieve_query(pooled, sides, side=query.side, text=query.text)
+        for attempt in range(2):
+            try:
+                with pool.connection() as pooled:
+                    return retrieve_query(
+                        pooled,
+                        sides,
+                        side=query.side,
+                        text=query.text,
+                        vector=vector,
+                    )
+            except psycopg.OperationalError:
+                # A pooled connection the server closed in the middle of the
+                # search (seen on 2026-10-24: "SSL SYSCALL EOF"). The pool
+                # drops it, and the search is tried once on another (R10).
+                if attempt:
+                    raise
+                logger.warning("a pooled connection died, searching again")
+        raise AssertionError("unreachable")
+
+    def search_claim(sides, query):
+        # The check of a claim is a safety net (D39). When its search fails, the
+        # claim is left unchecked and the answer goes on. The question's own
+        # search keeps raising, because without it there is no answer.
+        try:
+            return search_one(sides, query)
+        except (EmbeddingUnavailable, ArtifactChanged, psycopg.Error) as exc:
+            raise CheckError(f"the search for a claim failed: {exc}") from exc
+
+    def whole_side(sides, side):
+        # The reference is read whole when it is as small as the step that puts
+        # it beside B allows (A_WHOLE_TOKENS); B never is, on this path.
+        found = sides[side]
+        if side != "A" or found.characters / 3 > A_WHOLE_TOKENS:
+            return None
+        return stuffed_chunks(conn, {side: found})
 
     def totals_of(sides):
         return {side: found.chunks for side, found in sides.items()}
@@ -164,6 +226,7 @@ def _ask_graph(
             ) from exc
 
     claims_client = for_claims(client)
+    whole_files = FileFacts(conn)
 
     return build_graph(
         measure=partial(measure_sides, conn),
@@ -175,11 +238,14 @@ def _ask_graph(
         plan=make_planner(conn, client),
         summarize=summarize,
         extract_claims=make_claims_extractor(conn, claims_client),
-        check=make_checker(claims_client),
-        new_query=make_query_writer(claims_client),
+        check=make_checker(claims_client, whole_files.facts_for, whole_files.expand),
+        search_claim=search_claim,
+        new_query=make_query_writer(claims_client, whole_files.outline),
+        find_missing=make_difference_finder(conn, claims_client, whole_files),
+        whole_side=whole_side,
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,
         generate=generate,
-        checkpointer=open_saver(conn) if thread_id else None,
+        checkpointer=open_saver(_saving_place(conn, pool)) if thread_id else None,
     )
