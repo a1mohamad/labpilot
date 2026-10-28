@@ -7,8 +7,9 @@ from typing import Any
 import psycopg
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from psycopg_pool import ConnectionPool
 
-from labpilot.agent import Claim, Finding, Plan, Query
+from labpilot.agent import Claim, CodeFinding, Finding, Plan, Query
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
 from labpilot.store import ArtifactRecord, StoredArtifact
@@ -21,6 +22,7 @@ SAVED_TYPES = [
     Query,
     Claim,
     Finding,
+    CodeFinding,
     Attempt,
     LLMResult,
 ]
@@ -104,7 +106,7 @@ class _SafeSaver(PostgresSaver):
     trips of about 0.12 s each, on a report that takes minutes.
     """
 
-    def __init__(self, conn: psycopg.Connection) -> None:
+    def __init__(self, conn: psycopg.Connection | ConnectionPool) -> None:
         super().__init__(conn, serde=SERDE)
         self.supports_pipeline = False
 
@@ -114,9 +116,13 @@ class _SafeSaver(PostgresSaver):
             yield _OneAtATime(cursor)
 
 
-def open_saver(conn: psycopg.Connection) -> PostgresSaver:
+def open_saver(conn: psycopg.Connection | ConnectionPool) -> PostgresSaver:
     return _SafeSaver(conn)
 
 
-def prune(conn: psycopg.Connection, thread_id: str) -> None:
-    conn.execute(PRUNE, {"thread": thread_id})
+def prune(place: psycopg.Connection | ConnectionPool, thread_id: str) -> None:
+    if isinstance(place, ConnectionPool):
+        with place.connection() as conn:
+            conn.execute(PRUNE, {"thread": thread_id})
+        return
+    place.execute(PRUNE, {"thread": thread_id})
