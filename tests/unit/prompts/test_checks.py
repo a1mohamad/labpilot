@@ -80,3 +80,41 @@ def test_the_checks_come_with_a_note_that_says_what_absent_means():
 
 def test_no_checks_make_no_block_at_all():
     assert render_checks([]) == ""
+
+
+def test_facts_from_the_whole_file_come_after_the_parts_and_before_the_closing():
+    prompt = build_check_prompt(
+        "the positive class is weighted",
+        "[paper.md]",
+        ["part zero"],
+        "`pos_weight` (defined in [x]) is never called or named anywhere else.",
+    )
+
+    assert "FACTS FROM THE WHOLE OTHER FILE\n`pos_weight`" in prompt
+    assert (
+        prompt.index("[part 0]")
+        < prompt.index("FACTS FROM")
+        < prompt.index(CHECK.closing)
+    )
+
+
+def test_without_facts_there_is_no_facts_block():
+    assert "FACTS FROM" not in build_check_prompt("a claim", "[p]", ["part"])
+
+
+def test_the_instruction_says_a_definition_alone_is_not_a_use():
+    header = " ".join(CHECK.header.split())
+
+    assert "only defined and never used or called" in header
+
+
+def test_a_never_called_fact_is_called_a_mismatch_not_absent():
+    # 2026-10-24, the wired check arm: the checker saw "pos_class_weight is
+    # never called" and still answered "absent", twice. The paper weights the
+    # class and B does not, so the right verdict is a mismatch.
+    from labpilot.prompts.checks import CHECK
+
+    header = " ".join(CHECK.header.split())
+    assert (
+        "never called or named anywhere else in the file, that is a mismatch" in header
+    )
