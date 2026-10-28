@@ -89,9 +89,11 @@ def test_a_blank_chat_question_is_refused():
 # The two-file instruction. Measured on the real pair (2026-10-22): answer first,
 # add up the sizes of the causes, and be complete when asked why.
 
-# The text is 2,914 bytes with its closing line. The older lean report is
-# 2,100. This stops it growing without anyone deciding to.
-TWO_FILES_BYTES = 3_000
+# The text was 2,914 bytes with its closing line, and 3,110 since 2026-10-25,
+# when it was told to carry every finding already made and to quote both sides
+# of a match (R9, R19). The older lean report is 2,100. This stops it growing
+# without anyone deciding to.
+TWO_FILES_BYTES = 3_200
 
 
 def test_the_two_file_instruction_answers_first_and_ends_with_the_next_step():
@@ -144,3 +146,17 @@ def test_the_two_file_instruction_names_no_language_and_no_field():
     text = f"{TWO_FILES.header} {TWO_FILES.closing}".lower()
 
     assert [word for word in banned if word in text] == []
+
+
+def test_every_finding_already_made_must_be_carried_or_dismissed():
+    # R9: in the 2026-10-24 baseline the weight-decay mismatch handed over by
+    # the checks was missing from the report.
+    header = squeezed(TWO_FILES.header)
+
+    assert "[mismatch], [B differs] or [A silent] line" in header
+    assert "why it is not a cause" in header
+
+
+def test_a_match_needs_a_quote_from_each_side():
+    # R19: the 2026-10-24 baseline listed the flagship divergence as a match.
+    assert "Say A and B match only with a quote from each" in squeezed(TWO_FILES.header)
