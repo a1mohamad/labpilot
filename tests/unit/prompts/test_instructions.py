@@ -1,6 +1,8 @@
 import re
 
+from labpilot import prompts
 from labpilot.prompts import COMPARE, CORE, FULL, PRIOR_HEADING, REPORT, SCAN
+from labpilot.prompts.instructions import Instructions
 
 EVERY = (FULL, CORE, REPORT, SCAN, COMPARE)
 LEAN = (REPORT, SCAN, COMPARE)
@@ -127,3 +129,25 @@ def test_the_reports_ask_for_a_fix_for_every_problem_and_for_how_sure_it_is():
         assert "the corrected code or a better algorithm" in whole, instructions.name
         assert "say how sure you are" in whole, instructions.name
         assert "in §8 order" in whole, instructions.name
+
+
+def test_no_instruction_has_a_line_that_starts_with_a_stray_plus():
+    # A "+" glued to the first word of a line is a diff marker that was typed
+    # into the text, and the model reads it. Found in CLAIMS on 2026-10-24.
+    stray = []
+    for name, value in vars(prompts).items():
+        if name.startswith("_"):
+            continue
+        if isinstance(value, Instructions):
+            text = f"{value.header}\n{value.closing}"
+        elif isinstance(value, str):
+            text = value
+        else:
+            continue
+        stray += [
+            f"{name}: {line[:40]}"
+            for line in text.splitlines()
+            if re.match(r"\+\S", line)
+        ]
+
+    assert stray == []
