@@ -77,7 +77,10 @@ question asks why the results differ, or for a comparison of the two, be
 complete: go through every part of B, then every statement of A, and list every
 difference you can support, including what B does that A never mentions and what
 A states that B does not do. If the question is narrower, list only the
-differences that bear on it. Write NONE if there are none.
+differences that bear on it. Every [mismatch], [B differs] or [A silent] line
+already found that can change the result belongs here, or in one line saying
+why it is not a cause. Say A and B match only with a quote from each. Write NONE
+if there are none.
 
 PROBLEMS IN B - problems the code has on its own, with or without A: the input
 that breaks it, the corrected code or a better algorithm, and how sure you are.
