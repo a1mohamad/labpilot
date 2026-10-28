@@ -91,7 +91,8 @@ def test_a_wrong_answer_is_sent_back_so_the_next_tier_writes_a_new_one():
 
     assert problem_with(result(GOOD)) is None
     assert problem_with(result(None)) == "no arguments"
-    assert "quote" in problem_with(result({**GOOD, "quote": "dt = 0.5"}))
+    # A quote that is not in its part no longer sends the answer on (R6).
+    assert problem_with(result({**GOOD, "quote": "dt = 0.5"})) is None
     assert "verdict" in problem_with(result({**GOOD, "verdict": "maybe"}))
 
 
@@ -105,3 +106,24 @@ def test_when_every_tier_fails_the_check_error_says_so():
 def test_an_answer_with_no_arguments_is_a_check_error():
     with pytest.raises(CheckError, match="no arguments"):
         make_checker(FakeClient(None))(CLAIM, PARTS)
+
+
+def test_facts_about_the_whole_file_reach_the_check_prompt():
+    client = FakeClient(GOOD)
+    seen = []
+
+    def facts(chunks):
+        seen.append(chunks)
+        return "`pos_weight` is never called or named anywhere else in this file."
+
+    make_checker(client, facts)(CLAIM, PARTS)
+
+    prompt = client.calls[0][0]
+    assert "FACTS FROM THE WHOLE OTHER FILE\n`pos_weight`" in prompt
+    assert seen == [PARTS]
+
+
+def test_the_finding_keeps_the_part_that_decided_it():
+    finding = make_checker(FakeClient(GOOD))(CLAIM, PARTS)
+
+    assert finding.evidence is PARTS[GOOD["part"]]
