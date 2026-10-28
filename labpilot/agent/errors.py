@@ -8,3 +8,7 @@ class CheckError(Exception):
 
 class PlanError(Exception):
     pass
+
+
+class DifferencesError(Exception):
+    pass
