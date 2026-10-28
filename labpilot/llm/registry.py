@@ -34,7 +34,15 @@ CLOUDFLARE_URL = (
 # rather than raising it, which is what stops the budget being exhausted. The
 # OpenRouter spelling is the right one because Cline routes through OpenRouter
 # - its own usage ledger records aiInferenceProviderName "openrouter".
-CLINE_REASONING: dict[str, object] = {"reasoning": {"effort": "high"}}
+#
+# "high" -> "medium" on 2026-10-25. The cap measured above was on a SHORT
+# prompt. On the stuffed report (about 20,000 tokens in), "high" thought
+# 29,182 tokens, took 547 s and was cut at 32,000; a second try ran 511 s and
+# came back empty (HTTP 500). The same prompt at "medium": 2,490 reasoning
+# tokens, 78 s, finished; at "low": 2,084, 74 s, finished. Both scored like the
+# cut "high" report when read (section 26). Five short prompts at "medium":
+# 5 of 5 answered, 2-5 s.
+CLINE_REASONING: dict[str, object] = {"reasoning": {"effort": "medium"}}
 
 MISTRAL_REASONING: dict[str, object] = {"reasoning_effort": "high", "top_p": 1}
 OPENROUTER_REASONING: dict[str, object] = {"reasoning": {"effort": "high"}}
