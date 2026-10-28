@@ -166,3 +166,11 @@ def test_an_error_inside_the_data_envelope_is_reported_with_its_status(provider)
 
     assert raised.value.status == 503
     assert "Service temporarily overloaded" in str(raised.value)
+
+
+def test_tier_1_thinks_at_medium_effort():
+    # "high" ran away on a 20,000-token report prompt (547 s and cut, then
+    # 511 s and empty), "medium" finished in 78 s (2026-10-25).
+    from labpilot.llm.registry import CLINE_REASONING
+
+    assert CLINE_REASONING == {"reasoning": {"effort": "medium"}}
