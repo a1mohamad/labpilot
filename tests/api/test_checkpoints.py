@@ -37,7 +37,7 @@ RESULT = LLMResult(
 )
 STORED = StoredArtifact(artifact=RECORD, chunks=1, files=1, characters=9)
 PLAN = Plan(
-    steps=("find_bugs",),
+    steps=("find_missing",),
     queries=(Query("B", "CLIP_NORM"),),
 )
 
@@ -132,3 +132,25 @@ def test_everything_else_goes_straight_to_the_real_cursor():
 
     assert cursor.fetchone() == "row"
     assert list(cursor) == ["a", "b"]
+
+
+def test_prune_through_a_pool_takes_a_connection_from_it():
+    from psycopg_pool import ConnectionPool
+
+    from labpilot.api.checkpoints import PRUNE, prune
+
+    ran = []
+
+    class Conn:
+        def execute(self, query, params):
+            ran.append((query, params))
+
+    class Pool(ConnectionPool):
+        def connection(self, timeout=None):
+            from contextlib import nullcontext
+
+            return nullcontext(Conn())
+
+    prune(Pool("", open=False), "chat-7")
+
+    assert ran == [(PRUNE, {"thread": "chat-7"})]
