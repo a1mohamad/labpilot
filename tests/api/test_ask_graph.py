@@ -113,3 +113,62 @@ def test_a_blank_question_is_refused_before_the_graph_is_built(monkeypatch, ques
 
     with pytest.raises(InvalidQuestion):
         asking.ask(None, "A-1", "B-1", question=question, client=None)
+
+
+class FakePool:
+    def __init__(self, closed=False):
+        self.closed = closed
+        self.opened = False
+
+    def open(self, wait=True):
+        self.opened = True
+        self.closed = False
+
+
+def test_with_a_pool_the_old_copies_are_deleted_through_the_pool(monkeypatch):
+    use(monkeypatch, FakeGraph())
+    places = []
+    monkeypatch.setattr(asking, "prune", lambda place, thread_id: places.append(place))
+    pool = FakePool(closed=True)
+
+    asking.ask(
+        "the request connection",
+        "A-1",
+        "B-1",
+        question="why?",
+        client=None,
+        thread_id="chat-7",
+        pool=pool,
+    )
+
+    assert places == [pool]
+    assert pool.opened
+
+
+def test_without_a_pool_the_request_connection_is_used(monkeypatch):
+    use(monkeypatch, FakeGraph())
+    places = []
+    monkeypatch.setattr(asking, "prune", lambda place, thread_id: places.append(place))
+
+    asking.ask(
+        "the request connection",
+        "A-1",
+        "B-1",
+        question="why?",
+        client=None,
+        thread_id="chat-7",
+    )
+
+    assert places == ["the request connection"]
+
+
+def test_the_chat_is_saved_through_the_pool_and_not_the_idle_connection(monkeypatch):
+    # The save runs after a report of many minutes; the request's connection was
+    # seen closed by then (2026-10-25). A pool checks its connection first.
+    saved_on = []
+    monkeypatch.setattr(asking, "open_saver", lambda place: saved_on.append(place))
+    pool = FakePool()
+
+    asking._ask_graph("the request connection", "client", "chat-7", pool)
+
+    assert saved_on == [pool]
