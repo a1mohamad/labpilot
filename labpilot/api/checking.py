@@ -37,8 +37,13 @@ def _check_problem(
 
 def make_checker(
     client: LLMClient,
+    facts: Callable[[Sequence[Chunk]], str] | None = None,
+    expand: Callable[[Sequence[Chunk]], tuple[Chunk, ...]] | None = None,
 ) -> Callable[[Claim, tuple[Chunk, ...]], Finding]:
     def check(claim: Claim, chunks: tuple[Chunk, ...]) -> Finding:
+        # Go to definition: the parts that SET what the found parts only use.
+        if expand is not None:
+            chunks = expand(chunks)
         # The same rule as the claims: the model names a part by its NUMBER and
         # the code looks up the place.
         texts = [f"{chunk.header}\n{chunk.text}" for chunk in chunks]
@@ -51,7 +56,12 @@ def make_checker(
 
         try:
             result = client.generate(
-                build_check_prompt(claim.text, claim.source, texts),
+                build_check_prompt(
+                    claim.text,
+                    claim.source,
+                    texts,
+                    facts(chunks) if facts is not None else "",
+                ),
                 max_tokens=CHECK_MAX_TOKENS,
                 tool=tool,
                 problem_with=partial(
@@ -63,7 +73,7 @@ def make_checker(
         if result.arguments is None:
             raise CheckError(f"{result.model} gave no arguments")
 
-        finding = read_finding(result.arguments, claim, sources, texts)
+        finding = read_finding(result.arguments, claim, sources, texts, chunks)
         logger.info(
             "check v%d by %s (tier %s): %s",
             CHECK_VERSION,
