@@ -189,3 +189,12 @@ def test_when_no_quote_is_in_its_part_the_whole_answer_is_refused():
 
     with pytest.raises(ClaimsError, match="quote"):
         read_claims(arguments, SOURCES, TEXTS)
+
+
+def test_the_cap_of_method_claims_is_forty_eight_whatever_the_constant_says():
+    methods = tuple(made(f"m{n}") for n in range(60))
+
+    joined = join_claims([methods])
+
+    assert MAX_CLAIMS == 48
+    assert len(joined) == 48

@@ -118,3 +118,9 @@ def test_a_never_called_fact_is_called_a_mismatch_not_absent():
     assert (
         "never called or named anywhere else in the file, that is a mismatch" in header
     )
+
+
+def test_the_instruction_says_how_to_judge_a_claim_that_something_is_not_done():
+    text = " ".join(CHECK.header.split())
+
+    assert "NOT done" in text and "never match" in text

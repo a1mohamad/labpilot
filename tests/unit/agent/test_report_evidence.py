@@ -1,6 +1,6 @@
 from labpilot.agent import A_SILENT, Claim, CodeFinding, Finding
 from labpilot.agent.merge import make_merge_node
-from labpilot.agent.respond import deciding_parts, make_respond_node
+from labpilot.agent.respond import deciding_parts, make_respond_node, with_parts
 from labpilot.ingest import Chunk
 
 
@@ -105,3 +105,34 @@ def test_without_a_whole_side_function_every_side_is_ranked():
     out = node({"question": "q", "sides": {}, "found": [(chunk(1, "A"),)]})
 
     assert out["chunks"] == (chunk(1, "A"),)
+
+
+def test_a_missing_deciding_part_goes_at_the_end_and_no_id_moves():
+    held = (chunk(0), chunk(1), chunk(2))
+
+    joined = with_parts(held, (chunk(9), chunk(1)))
+
+    assert [c.chunk_index for c in joined] == [0, 1, 2, 9]
+
+
+def test_respond_numbers_the_prompt_and_saves_the_chunks_on_one_list():
+    seen = []
+
+    def make_prompt(chunks, **kwargs):
+        seen.append(chunks)
+        return "p", chunks
+
+    node = make_respond_node(make_prompt, lambda prompt: "r")
+    out = node(
+        {
+            "chunks": (chunk(5), chunk(6)),
+            "question": "why?",
+            "totals": {"B": 9},
+            "a": "A-1",
+            "b": "B-1",
+            "findings": [finding("mismatch", chunk(2))],
+        }
+    )
+
+    assert [c.chunk_index for c in seen[0]] == [5, 6, 2]
+    assert out["chunks"] == seen[0]

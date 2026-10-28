@@ -803,3 +803,22 @@ def test_a_question_with_no_chat_saves_nothing(db, chat_tables):
     with db.cursor() as cur:
         cur.execute("select count(*) from checkpoints")
         assert cur.fetchone()[0] == before
+
+
+def test_a_small_a_is_read_whole_while_a_big_b_is_searched(db, monkeypatch):
+    """A of 60 small parts is more than one search returns (SEARCH_LIMIT is 50)
+    and far under A_WHOLE_TOKENS, and B alone is too big to stuff. So the pair is
+    searched, A must still arrive whole, and B must not."""
+    a = stored(db, "A", parts=60, words=20)
+    b = stored(db, "B", parts=60, words=300)
+    embedded_texts(monkeypatch)
+    client = FakeClient()
+
+    comparison = asking.ask(db, a, b, question="why do results differ?", client=client)
+
+    a_parts = sorted(c.chunk_index for c in comparison.chunks if c.side == "A")
+    b_parts = [c for c in comparison.chunks if c.side == "B"]
+    assert a_parts == list(range(60))
+    assert 0 < len(b_parts) <= SEARCH_LIMIT
+    assert comparison.totals == {"A": 60, "B": 60}
+    assert "[A.py - part 59]" in client.prompts[0]
