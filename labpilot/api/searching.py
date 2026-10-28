@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 
 import psycopg
+import requests
 
 from labpilot.api.errors import (
     ArtifactChanged,
@@ -111,16 +113,26 @@ def retrieve_query(
     *,
     side: Side,
     text: str,
+    vector: tuple[float, ...] | None = None,
 ) -> tuple[Chunk, ...]:
     """Search ONE side for ONE query: embed, search, fuse. It never reranks.
 
     The graph runs this once for every query, all at the same time. The rerank
     happens later and once per side, in `rank_pile`, against the user's
-    question (D53).
+    question (D53). A caller that holds a pooled connection embeds FIRST
+    (`embed_query`) and hands the vector over, so the connection is not held
+    while the embedder answers (R16).
     """
     artifact = sides[side].artifact
-    hits = _searched(conn, sides, side=side, text=text)
+    hits = _searched(conn, sides, side=side, text=text, vector=vector)
     return tuple(as_chunk(hit, side, artifact.id) for hit in hits)
+
+
+def embed_query(
+    sides: dict[Side, StoredArtifact], *, side: Side, text: str
+) -> tuple[float, ...]:
+    """The query vector for one side, in that artifact's own embedding space."""
+    return _embed_question(text, model=sides[side].artifact.embedding_model)
 
 
 def rank_pile(
@@ -155,9 +167,17 @@ def rank_pile(
     window = pile[:RERANK_WINDOW]
     ranking = rank(question, [chunk.text for chunk in window], top_n=None)
     if ranking.model == SKIP:
-        return pile[:VECTOR_TOP_N]
+        head = pile[:VECTOR_TOP_N]
+    else:
+        head = tuple(window[position] for position in ranking.order[:RERANK_TOP_N])
 
-    return tuple(window[position] for position in ranking.order[:RERANK_TOP_N])
+    # R23: the best come first and the rest of the pile FOLLOWS, in the order the
+    # merge made, so the selector fills the prompt's budget. Cutting here at 10
+    # sent the writer about 9,000 tokens of a 30,000 budget on 2026-10-24.
+    shown = {(chunk.artifact_id, chunk.chunk_index) for chunk in head}
+    return head + tuple(
+        chunk for chunk in pile if (chunk.artifact_id, chunk.chunk_index) not in shown
+    )
 
 
 def _searched(
@@ -166,9 +186,11 @@ def _searched(
     *,
     side: Side,
     text: str,
+    vector: tuple[float, ...] | None = None,
 ) -> tuple[SearchHit, ...]:
     artifact = sides[side].artifact
-    vector = _embed_question(text, model=artifact.embedding_model)
+    if vector is None:
+        vector = _embed_question(text, model=artifact.embedding_model)
     # measure() and search() are two round trips, and write_artifact
     # deletes then re-inserts - so a re-ingest with a different embedder
     # between them moves the model under a request already in flight.
@@ -246,6 +268,43 @@ def _fused(
     return tuple(by_index[index] for index in order[:SEARCH_LIMIT])
 
 
+# A query embed is ONE short text, so a refusal for a busy minute is worth a
+# short wait (R10). Seen on 2026-10-24: Mistral answered 429
+# "backend_out_of_capacity" to a query embed, and the whole answer was lost.
+EMBED_WAITS = (2.0, 5.0)
+RETRY_EMBED_STATUSES = frozenset({429, 500, 502, 503})
+MAX_EMBED_WAIT = 10.0
+
+
+def _worth_a_wait(exc: EmbeddingError) -> bool:
+    # A request that never got an answer (a read timeout, a dropped
+    # connection) has no status. Seen on 2026-10-24 through the VPN: a 10 s
+    # read timeout on one query embed lost the whole answer.
+    if exc.status in RETRY_EMBED_STATUSES:
+        return True
+    return exc.status is None and isinstance(
+        exc.__cause__, requests.exceptions.RequestException
+    )
+
+
+def _embed_with_waits(embedder, question: str) -> tuple[float, ...]:
+    for wait in (*EMBED_WAITS, None):
+        try:
+            return embedder.embed([question], task="query").vectors[0]
+        except EmbeddingError as exc:
+            if wait is None or not _worth_a_wait(exc):
+                raise EmbeddingUnavailable(f"{embedder.name}: {exc}") from exc
+            pause = min(exc.retry_after or wait, MAX_EMBED_WAIT)
+            logger.warning(
+                "%s refused a query embed (%s), waiting %.0fs",
+                embedder.name,
+                exc.status,
+                pause,
+            )
+            time.sleep(pause)
+    raise AssertionError("unreachable")
+
+
 def _embed_question(question: str, *, model: str) -> tuple[float, ...]:
     """One query embed PER ARTIFACT'S OWN MODEL, with task="query".
 
@@ -261,10 +320,7 @@ def _embed_question(question: str, *, model: str) -> tuple[float, ...]:
     """
     for embedder in MIGRATION:
         if embedder.model == model:
-            try:
-                return embedder.embed([question], task="query").vectors[0]
-            except EmbeddingError as exc:
-                raise EmbeddingUnavailable(f"{embedder.name}: {exc}") from exc
+            return _embed_with_waits(embedder, question)
 
     raise EmbeddingUnavailable(
         f"this corpus was embedded with {model!r}, which is no longer in "
