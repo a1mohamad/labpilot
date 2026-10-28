@@ -100,12 +100,12 @@ def make_planner(
 
         made = read_plan(result.arguments)
         logger.info(
-            "plan v%d made by %s (tier %d): steps=%s, %d queries",
+            "plan v%d made by %s (tier %d): steps=%s, queries=%s",
             PLANNER_VERSION,
             result.model,
             result.tier,
             list(made.steps),
-            len(made.queries),
+            [f"{query.side}: {query.text}" for query in made.queries],
         )
         return made
 
