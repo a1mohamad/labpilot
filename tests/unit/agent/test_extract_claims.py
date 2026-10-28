@@ -37,8 +37,8 @@ def run(plan, *, fits_value, extract="default", order=None):
     order = [] if order is None else order
     if extract == "default":
 
-        def extract(question, a):
-            order.append(("claims", question, a))
+        def extract(a):
+            order.append(("claims", a))
             return CLAIMS
 
     def stuff(sides, question):
@@ -79,21 +79,21 @@ def test_the_claims_are_wanted_only_when_the_plan_lists_the_step():
     assert wants_claims({"plan": NOT_WANTED}) is False
 
 
-def test_the_node_reads_the_question_and_the_reference_and_returns_the_claims():
+def test_the_node_reads_the_reference_and_returns_the_claims():
     seen = []
 
-    def extract(question, a):
-        seen.append((question, a))
+    def extract(a):
+        seen.append(a)
         return CLAIMS
 
     result = make_claims_node(extract)({"question": "why?", "a": "A-1"})
 
     assert result == {"claims": CLAIMS}
-    assert seen == [("why?", "A-1")]
+    assert seen == ["A-1"]
 
 
 def test_when_no_claims_can_be_made_the_node_gives_none_and_logs_why(caplog):
-    def extract(question, a):
+    def extract(a):
         raise ClaimsError("the reference is too big")
 
     with caplog.at_level(logging.WARNING):
@@ -104,7 +104,7 @@ def test_when_no_claims_can_be_made_the_node_gives_none_and_logs_why(caplog):
 
 
 def test_any_other_error_reaches_the_caller_unchanged():
-    def extract(question, a):
+    def extract(a):
         raise Boom("a bug")
 
     with pytest.raises(Boom):
@@ -114,13 +114,16 @@ def test_any_other_error_reaches_the_caller_unchanged():
 def test_after_a_search_the_claims_step_runs_before_the_answer():
     _, order = run(WANTS, fits_value=False)
 
-    assert order == ["rank", ("claims", "why?", "A-1"), "generate"]
+    assert order == ["rank", ("claims", "A-1"), "generate"]
 
 
-def test_after_stuffing_the_claims_step_runs_before_the_answer():
+def test_after_stuffing_the_claims_step_is_skipped_and_the_answer_comes_at_once():
+    # R21: when everything was read the answer sees both files whole; the
+    # claims only cost time (2026-10-24: 30 of 39 in 35 s without them, 26
+    # and 28 in 181 and 244 s with them and the scan).
     _, order = run(WANTS, fits_value=True)
 
-    assert order == ["stuff", ("claims", "why?", "A-1"), "generate"]
+    assert order == ["stuff", "generate"]
 
 
 @pytest.mark.parametrize("fits_value", [True, False])
@@ -152,7 +155,7 @@ def test_without_a_function_the_graph_has_no_claims_step_even_if_the_plan_lists_
 
 
 def test_a_failed_extraction_does_not_stop_the_answer():
-    def extract(question, a):
+    def extract(a):
         raise ClaimsError("no tier answered")
 
     final, order = run(WANTS, fits_value=False, extract=extract)
