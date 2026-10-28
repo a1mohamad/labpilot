@@ -9,7 +9,7 @@ QUESTION = "why is the clip value 1.5?"
 BOTH = ("A", "B")
 
 GOOD = Plan(
-    steps=("extract_claims", "find_bugs"),
+    steps=("extract_claims", "find_missing"),
     queries=(Query("A", "gradient clipping value"), Query("B", "CLIP_NORM")),
 )
 
