@@ -4,7 +4,7 @@ from labpilot.prompts.instructions import Instructions
 
 # The wording below is FIXED. Change it only together with this number, which is
 # logged beside every check.
-CHECK_VERSION = 3
+CHECK_VERSION = 4
 
 # One verdict and one short sentence, but a tier that thinks spends tokens first,
 # so this is only a backstop.
@@ -29,6 +29,9 @@ Something that is only defined and never used or called (a helper, a value, a
 setting) does not do what the claim says: look for where it is used. When a
 fact below says it is never called or named anywhere else in the file, that is
 a mismatch (kind: mistake): give the part that defines it.
+A claim can also say that something is NOT done, or is left out. Then a match
+means a part shows that it is switched off or left out: give that part. If no
+part shows it, the verdict is absent, never match.
 For a match or a mismatch, give the number of the part that decides it, and the
 quote: the exact words of that part, copied letter for letter, at most 200
 characters. Then one short sentence that says why.""",
