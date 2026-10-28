@@ -17,13 +17,16 @@ from __future__ import annotations
 import json
 import re
 
+import psycopg
 import pytest
 import responses
+from psycopg_pool import PoolTimeout
 
 from labpilot.agent import ClaimsError
-from labpilot.api import asking, searching
+from labpilot.api import asking, reading, searching
 from labpilot.api.checkpoints import open_saver
 from labpilot.api.claims import make_claims_extractor
+from labpilot.api.errors import EmbeddingUnavailable
 from labpilot.llm import AllFreeTiersExhausted, GeminiProvider, LLMClient, LLMResult
 from labpilot.prompts import CHECKS_NOTE, REQUERY, SUMMARY_MAX_TOKENS
 from labpilot.store import ArtifactRecord, ChunkRecord, write_artifact
@@ -133,7 +136,7 @@ def test_the_number_the_model_writes_becomes_the_stored_header_of_that_part(db):
         db, LLMClient(chain=(provider("one", 1, pool="P1"),))
     )
 
-    [found] = extract(QUESTION, a)
+    [found] = extract(a)
 
     assert found.source == STEP
     assert found.quote == "The time step is 0.01 s"
@@ -152,7 +155,7 @@ def test_the_parts_are_numbered_in_chunk_order_whatever_order_they_were_stored_i
         db, LLMClient(chain=(provider("one", 1, pool="P1"),))
     )
 
-    [found] = extract(QUESTION, a)
+    [found] = extract(a)
 
     assert found.source == STEP
 
@@ -162,9 +165,7 @@ def test_the_request_carries_the_claims_tool_with_a_quote_for_every_claim(db):
     a, _ = store(db)
     responses.post(url("one"), json=called({"claims": [claim(1)]}))
 
-    make_claims_extractor(db, LLMClient(chain=(provider("one", 1, pool="P1"),)))(
-        QUESTION, a
-    )
+    make_claims_extractor(db, LLMClient(chain=(provider("one", 1, pool="P1"),)))(a)
 
     tools = json.loads(responses.calls[0].request.body)["tools"]
     declaration = tools[0]["functionDeclarations"][0]
@@ -182,7 +183,7 @@ def test_a_part_number_that_does_not_exist_is_tried_again_on_the_next_tier(db):
         chain=(provider("one", 1, pool="P1"), provider("two", 2, pool="P2"))
     )
 
-    [found] = make_claims_extractor(db, client)(QUESTION, a)
+    [found] = make_claims_extractor(db, client)(a)
 
     assert found.source == STEP
     assert [call.request.url for call in responses.calls] == [url("one"), url("two")]
@@ -199,7 +200,7 @@ def test_a_quote_that_is_not_in_the_stored_part_is_tried_again_on_the_next_tier(
         chain=(provider("one", 1, pool="P1"), provider("two", 2, pool="P2"))
     )
 
-    [found] = make_claims_extractor(db, client)(QUESTION, a)
+    [found] = make_claims_extractor(db, client)(a)
 
     assert found.quote == "The time step is 0.01 s"
     assert len(responses.calls) == 2
@@ -215,7 +216,7 @@ def test_when_every_tier_makes_up_its_quotes_there_are_no_claims(db):
     )
 
     with pytest.raises(ClaimsError):
-        extract(QUESTION, a)
+        extract(a)
 
 
 class ClaimsClient:
@@ -298,6 +299,9 @@ def ask(db, client, **kwargs):
 @pytest.fixture(autouse=True)
 def embedded(monkeypatch):
     monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: V)
+    # The claims run on the search path only (R21): when everything is read the
+    # answer sees both files whole. This small pair would fit, so it is searched.
+    monkeypatch.setattr(asking, "fits_whole", lambda *a, **k: False)
 
 
 def test_every_claim_is_checked_in_the_stored_other_file_and_the_answer_reads_it(db):
@@ -313,9 +317,9 @@ def test_every_claim_is_checked_in_the_stored_other_file_and_the_answer_reads_it
         f'[mismatch - choice] A says "the time step is 0.01 s" ({STEP}). '
         f'B ({SOLVER_STEP}): "dt = 0.05". B uses a bigger step'
     ) in answer
-    assert (
-        f'[match] A says "the mesh has 200 cells" ({MESH}). B ({SOLVER_MESH})' in answer
-    )
+    # A match is written short since 6782bb9: the claim alone, so the room goes
+    # to the mismatches.
+    assert '[match] A says "the mesh has 200 cells"' in answer
 
 
 def test_the_mismatch_is_listed_before_the_match_in_the_answer(db):
@@ -412,3 +416,99 @@ def test_an_absent_claim_is_searched_again_with_the_query_the_model_wrote(
     answer = client.answers[0]
     assert f'[mismatch - choice] A says "the time step is 0.01 s" ({STEP})' in answer
     assert "\n[absent]" not in answer
+
+
+FAULTS = [
+    pytest.param(EmbeddingUnavailable("the embedder is down"), id="embedder-down"),
+    pytest.param(
+        psycopg.OperationalError("SSL SYSCALL error: EOF detected"), id="database-drop"
+    ),
+    pytest.param(PoolTimeout("couldn't get a connection after 30.00 sec"), id="pool"),
+]
+
+
+@pytest.mark.parametrize("fault", FAULTS)
+def test_a_search_that_fails_for_a_claim_leaves_it_unchecked_and_the_answer_goes_on(
+    db, monkeypatch, fault
+):
+    claims = {"the time step is 0.01 s", "the mesh has 200 cells"}
+
+    def broken(text, **_kwargs):
+        # Only the claims' own searches fail; the question is searched as usual.
+        if text in claims:
+            raise fault
+        return V
+
+    monkeypatch.setattr(searching, "_embed_question", broken)
+    client = ClaimsClient()
+
+    comparison = ask(db, client)
+
+    assert comparison.result.text == "an answer"
+    assert client.answers[0].count("\n[unchecked]") == 2
+
+
+def test_a_search_that_fails_for_the_question_itself_still_stops_the_answer(
+    db, monkeypatch
+):
+    def down(*_args, **_kwargs):
+        raise EmbeddingUnavailable("the embedder is down")
+
+    # Too small to stuff, so the planner's search path runs and it is not optional.
+    monkeypatch.setattr(reading, "PROMPT_BUDGET", 1)
+    monkeypatch.setattr(searching, "_embed_question", down)
+
+    with pytest.raises(EmbeddingUnavailable):
+        ask(db, ClaimsClient())
+
+
+class ScanClient(ClaimsClient):
+    """Plans the claims AND the scan of B, and answers the scan from the prompt."""
+
+    def __init__(self):
+        super().__init__()
+        self.scan_prompts = []
+
+    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
+        name = tool.name if tool else None
+        if name == "make_plan":
+            return self.result(
+                {"steps": ["extract_claims", "find_missing"], "queries": []}
+            )
+        if name == "list_differences":
+            self.scan_prompts.append(prompt)
+            part = self.part_with(prompt.split("PARTS OF FILE B", 1)[1], "dt = 0.05")
+            return self.result(
+                {
+                    "items": [
+                        {
+                            "text": "B uses a time step of 0.05",
+                            "part": part,
+                            "quote": "dt = 0.05",
+                            "a_says": "The time step is 0.01 s.",
+                        }
+                    ]
+                }
+            )
+        return super().generate(
+            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
+        )
+
+
+def test_the_scan_reads_the_stored_b_beside_all_of_a_and_the_answer_reads_it(
+    db, chat_tables
+):
+    client = ScanClient()
+    config = {"configurable": {"thread_id": "chat-scan"}}
+
+    ask(db, client, thread_id="chat-scan")
+
+    (scan,) = client.scan_prompts
+    assert "The mesh has 200 cells." in scan and "The time step is 0.01 s." in scan
+    answer = client.answers[0]
+    assert (
+        f'[B differs] B uses a time step of 0.05 B ({SOLVER_STEP}): "dt = 0.05". '
+        'A says: "The time step is 0.01 s."'
+    ) in answer
+    values = open_saver(db).get_tuple(config).checkpoint["channel_values"]
+    assert not values.get("code_findings")
