@@ -13,6 +13,11 @@ from labpilot.retrieval.selector import (
     SIDES,
     select,
 )
+from labpilot.retrieval.usage import (
+    constant_definitions,
+    constants_named,
+    unused_definitions,
+)
 
 __all__ = [
     "INPUT_BUDGET",
@@ -26,6 +31,9 @@ __all__ = [
     "margin",
     "score_fusion",
     "select",
+    "constant_definitions",
+    "constants_named",
     "should_rerank",
+    "unused_definitions",
     "weighted_rrf",
 ]
