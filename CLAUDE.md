@@ -13646,6 +13646,31 @@ This is the same open item as "the scan, the rerank window and a cap on the part
 5. `_def_line` tests `f"def {name}" in line`, a substring test, so `fit` also matches `def fit_one`; the first line wins. The quote of these findings is not passed through `has_quote`; it is read from the part's own text, except when the part was not scanned (the 40,000-token limit): then the quote is only the name and the evidence is empty.
 6. `by_header` is keyed by the header text; two parts with the same header would overwrite each other (headers carry the line range, so this is unlikely, and it was not checked).
 
+#### 26.11 THE CLOSING REVIEW OF SLICE 7 (written 2026-10-28)
+
+*The Working Rules ask for one review after the last lesson of a slice. For slice 7 the work was done in two passes and recorded in two places. This section joins them and says what is still open. It adds no new measurement.*
+
+**The standing question: which real failure is still unprotected?**
+
+| pass | where it is recorded | what it found and did |
+|---|---|---|
+| 1. The review in a scratch copy of the committed tree (2026-10-24) | 25.10 | D-1: one failed claim search lost the whole answer (3 database tests failed on the old code). D-2: two stray `+` characters in the claims instruction. D-3: no weekly live test of the three new calls. 11 tests were added; 7 deliberate breaks, each caught by its own test |
+| 2. The late-night build (2026-10-24) | 26.6 | 11 defects fixed, each with a test and a deliberate break caught by its own test (for example: citations that did not resolve when there were findings, the never-called reader that missed methods and reported a framework hook, the chat saved on an idle connection) |
+| 3. The checks that join the new parts | 26.3, 26.4, 26.8 | The check node as it is wired in `ask()` was measured (30 of 32, 11 and 12 of 12 mismatches, no false match). The line from the store to the writer was measured (`run_r23.py`, coverage of 39). A live smoke test of the claims, the check and the new query passed (74 s). The writer stored and read back 826 rows over SSL twice with no error |
+| 4. The whole suite | 26.8 | 2007 passed, 138 skipped, 1 failed: a database connection that Supabase closed in the middle of a request, which passed 2 of 2 alone. Unit and api alone: 1834 passed, 5 skipped. `ruff check .` and `ruff format --check .` clean. The unit suite includes the architecture, packaging, docs and script-name tests |
+| 5. The decisions written down | 27 | The 22 changes, each with its reason, its numbers, its place in the code and what is still open |
+
+**What is NOT closed, and where it goes:**
+- **G20** (a claim that something is NOT done stays `unchecked`, 26.3): a one-sentence fix in the check instruction that needs two measured runs. It is not a defect that loses an answer, so it does not block slice 8. It also belongs to the generalization work of slice 13 (27.1).
+- **The `find_missing` scan is a demo version** (D77, 26.10): slice 9.
+- **Every number and decision rests on one pair** (27.1): slice 13.
+- **The group size of the claims** (M27), the three linked size limits (27.1) and the re-run of `run_r23.py` on a big B: slices 12 and 13.
+- **Jev** is measured once (25.5) and its code and measurements are kept for slice 14 (D73).
+- **The weekly smoke run** was not run for the whole chain after these changes. The three GitHub secrets for the new tiers and keys exist (the user said so on 2026-10-24).
+- **Lessons 2 and 3 and most of 26 were written by Claude at the user's request** (an exception to "the user types all product code"). The user may read that code in the same way as the earlier lessons.
+
+**Verdict.** No known failure that loses an answer is left unprotected. Slice 7 can go to `main`, and slice 8 can start from `main` on a new branch (ask the user first).
+
 ### 27. SLICE 7 — THE 22 DECISIONS OF THE LATE NIGHT OF 2026-10-24, WITH THEIR REASONS (written 2026-10-28)
 
 *This section is a reference. It lists the 22 changes that section 26 built (17 commits of `labpilot/` from `c365e9d` to HEAD), one decision each: what the program does now, why, where it is in the code, and what is still open. Every number is copied from sections 25 and 26, where the measurements are. It was written after the user asked Claude to explain all the code line by line in the chat (2026-10-28), and the explanations were NOT copied here: read the code and the functions named below. Later slices should change a decision HERE (add a line "changed in slice N") and not in a new place. Nothing in the repository changed when this section was written.*
