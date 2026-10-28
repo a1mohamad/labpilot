@@ -19,9 +19,9 @@ EVIDENCE_PARTS = 6
 # times. It is the only loop in the graph, so this number is its hard stop.
 MAX_RETRIES = 2
 
-# (claim, the queries tried so far, what the last check said) -> a new query.
-# None means that no new query could be written.
-NewQuery = Callable[[Claim, tuple[str, ...], str], str | None]
+# (claim, the queries tried so far, what the last check said, the side that is
+# searched) -> a new query. None means that no new query could be written.
+NewQuery = Callable[[Claim, tuple[str, ...], str, Any], str | None]
 
 
 class CheckTask(TypedDict):
@@ -61,7 +61,7 @@ def make_check_node(
             retries_left = MAX_RETRIES - attempt
             if finding.verdict != "absent" or new_query is None or retries_left == 0:
                 break
-            query = new_query(claim, tuple(tried), finding.note)
+            query = new_query(claim, tuple(tried), finding.note, task["sides"])
             if query is None:
                 break
             tried.append(query)
