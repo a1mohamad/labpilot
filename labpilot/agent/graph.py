@@ -9,11 +9,14 @@ from langgraph.types import Send
 from labpilot.agent.check_one import NewQuery, make_check_node
 from labpilot.agent.claim import Claim
 from labpilot.agent.code_finding import CodeFinding
+from labpilot.agent.correspondence import Correspondence
 from labpilot.agent.extract_claims import make_claims_node, wants_claims
 from labpilot.agent.fan_out import fan_out
 from labpilot.agent.fan_out_claims import fan_out_claims
 from labpilot.agent.find_missing import make_find_missing_node, wants_missing
 from labpilot.agent.finding import Finding
+from labpilot.agent.gate import make_gate_node
+from labpilot.agent.halt import halted, make_halt_node
 from labpilot.agent.merge import make_merge_node
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.planner import make_planner_node
@@ -45,8 +48,17 @@ def build_graph(
     find_missing: Callable[[str, str], tuple[CodeFinding, ...]] | None = None,
     whole_side: Callable[[Any, str], Chunks | None] | None = None,
     answer_text: Callable[[Any], str] | None = None,
+    gate: Callable[[str, str], Correspondence] | None = None,
+    halt_answer: Callable[[str, str, str], Any] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
+    # The gate reads the two summaries and a halt answers from them, so the three
+    # come together or not at all. A half-wired gate is a caller's bug.
+    if gate is not None and (summarize is None or halt_answer is None):
+        raise ValueError("a gate needs 'summarize' and 'halt_answer'")
+    if gate is None and halt_answer is not None:
+        raise ValueError("'halt_answer' is only used with a gate")
+
     def measure_node(state: State) -> dict[str, Any]:
         sides = measure(state["a"], state["b"])
         return {"sides": sides, "fits": fits(sides, state["question"])}
@@ -57,6 +69,9 @@ def build_graph(
 
     def pick(state: State) -> str | list[Send]:
         return "stuff" if state["fits"] else fan_out(state)
+
+    def after_gate(state: State) -> str:
+        return "halt" if halted(state) else "measure"
 
     def checks_and_scan(state: State) -> str | list[Send]:
         # One fan-out step: a check for each claim and the scan of B run at the
@@ -100,14 +115,26 @@ def build_graph(
     # The planner and the two summaries start together, and measure waits for
     # all of them, so respond can read the summaries whichever way it was reached.
     first_steps = ["plan"]
+    summaries = []
     if summarize is not None:
         for slot in ("a", "b"):
             name = f"summarize_{slot}"
             builder.add_node(name, make_summarize_node(slot, summarize))
             first_steps.append(name)
+            summaries.append(name)
     for step in first_steps:
         builder.add_edge(first, step)
-    builder.add_edge(first_steps, "measure")
+    if gate is None:
+        builder.add_edge(first_steps, "measure")
+    else:
+        # The gate waits for both summaries; the planner runs beside them. When
+        # the verdict is NONE the run ends with an answer made from the two
+        # summaries, and nothing after this point runs (D78 to D80).
+        builder.add_node("gate", make_gate_node(gate))
+        builder.add_node("halt", make_halt_node(halt_answer))
+        builder.add_edge(summaries, "gate")
+        builder.add_conditional_edges("gate", after_gate, ["measure", "halt"])
+        builder.add_edge("halt", "remember")
     builder.add_conditional_edges("measure", pick)
     builder.add_edge("search_one", "merge")
     # The plan decides which of these run: the claims (and a check for each),
