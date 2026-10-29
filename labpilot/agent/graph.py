@@ -135,7 +135,6 @@ def build_graph(
         builder.add_edge(summaries, "gate")
         builder.add_conditional_edges("gate", after_gate, ["measure", "halt"])
         builder.add_edge("halt", "remember")
-    builder.add_edge(first_steps, "measure")
     builder.add_conditional_edges("measure", pick)
     builder.add_edge("search_one", "merge")
     # The plan decides which of these run: the claims (and a check for each),
