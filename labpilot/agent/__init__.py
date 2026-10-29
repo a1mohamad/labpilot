@@ -22,8 +22,16 @@ from labpilot.agent.code_schema import (
     differences_schema,
     read_code_findings,
 )
-from labpilot.agent.errors import CheckError, ClaimsError, DifferencesError, PlanError
+from labpilot.agent.correspondence import GATE_VERDICTS, HALT_VERDICT, Correspondence
+from labpilot.agent.errors import (
+    CheckError,
+    ClaimsError,
+    DifferencesError,
+    GateError,
+    PlanError,
+)
 from labpilot.agent.finding import UNCHECKED, Finding
+from labpilot.agent.gate_schema import GATE_TOOL_NAME, gate_schema, read_correspondence
 from labpilot.agent.graph import build_graph
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.plan_check import (
@@ -37,6 +45,13 @@ from labpilot.agent.plan_schema import PLAN_TOOL_NAME, plan_schema, read_plan
 from labpilot.agent.state import State
 
 __all__ = [
+    "GATE_TOOL_NAME",
+    "GATE_VERDICTS",
+    "HALT_VERDICT",
+    "Correspondence",
+    "GateError",
+    "gate_schema",
+    "read_correspondence",
     "A_SILENT",
     "DIFFERENCES_TOOL_NAME",
     "MAX_ITEMS_PER_ANSWER",
