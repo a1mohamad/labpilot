@@ -249,6 +249,10 @@ class ClaimsClient:
         name = tool.name if tool else None
         if name == "make_plan":
             return self.result({"steps": ["extract_claims"], "queries": []})
+        if name == "judge_correspondence":
+            return self.result(
+                {"verdict": "PARTIAL", "reason": "they describe the same work"}
+            )
         if name == "list_claims":
             self.claim_prompts.append(prompt)
             return self.result(
@@ -512,3 +516,39 @@ def test_the_scan_reads_the_stored_b_beside_all_of_a_and_the_answer_reads_it(
     ) in answer
     values = open_saver(db).get_tuple(config).checkpoint["channel_values"]
     assert not values.get("code_findings")
+
+
+class HaltClient(ClaimsClient):
+    """The gate says NONE: the two summaries do not correspond."""
+
+    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
+        if tool is not None and tool.name == "judge_correspondence":
+            return self.result(
+                {"verdict": "NONE", "reason": "they are about different things"}
+            )
+        return super().generate(
+            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
+        )
+
+
+def test_a_none_verdict_answers_from_the_two_summaries_and_the_chat_is_saved(
+    db, chat_tables
+):
+    client = HaltClient()
+    config = {"configurable": {"thread_id": "chat-halt"}}
+
+    comparison = ask(db, client, thread_id="chat-halt")
+
+    text = comparison.result.text
+    assert comparison.result.model == "correspondence gate"
+    assert "I did not compare these two" in text
+    assert "they are about different things" in text
+    assert "A: a summary" in text and "B: a summary" in text
+    # nothing after the gate ran: no claims, no checks, no report
+    assert client.claim_prompts == []
+    assert client.check_prompts == []
+    assert client.answers == []
+    assert comparison.chunks == ()
+    assert comparison.prompt == ""
+    values = open_saver(db).get_tuple(config).checkpoint["channel_values"]
+    assert values["correspondence"].verdict == "NONE"
