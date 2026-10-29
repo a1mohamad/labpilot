@@ -22,6 +22,7 @@ from labpilot.api.errors import (
 )
 from labpilot.api.file_facts import FileFacts
 from labpilot.api.followups import last_answer_text, make_rewriter
+from labpilot.api.gate import halt_answer, make_gate
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
@@ -246,6 +247,8 @@ def _ask_graph(
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,
+        gate=make_gate(claims_client),
+        halt_answer=halt_answer,
         generate=generate,
         checkpointer=open_saver(_saving_place(conn, pool)) if thread_id else None,
     )
