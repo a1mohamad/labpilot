@@ -6,6 +6,10 @@ class CheckError(Exception):
     pass
 
 
+class GateError(Exception):
+    pass
+
+
 class PlanError(Exception):
     pass
 
