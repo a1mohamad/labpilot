@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from labpilot.agent import Query
-from labpilot.api import asking
+from labpilot.api import asking, gate
 from labpilot.api.searching import rank_pile
 
 
@@ -203,3 +203,12 @@ def test_ask_gives_the_graph_builder_the_pool(monkeypatch):
     asking.ask(None, "A-1", "B-1", question="why?", client=None, pool="the pool")
 
     assert built == ["the pool"]
+
+
+def test_the_graph_gets_the_gate_and_the_halt_answer(monkeypatch):
+    seen = capture(monkeypatch)
+
+    asking._ask_graph("conn", "client")
+
+    assert callable(seen["gate"])
+    assert seen["halt_answer"] is gate.halt_answer

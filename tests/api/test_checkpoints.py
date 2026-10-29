@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from labpilot.agent import Claim, Finding, Plan, Query
+from labpilot.agent import Claim, Correspondence, Finding, Plan, Query
 from labpilot.api.checkpoints import SERDE, _OneAtATime, open_saver
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
@@ -40,7 +40,7 @@ PLAN = Plan(
     steps=("find_missing",),
     queries=(Query("B", "CLIP_NORM"),),
 )
-
+CORRESPONDENCE = Correspondence("NONE", "they are about different things")
 CLAIM = Claim(
     "the time step is 0.01 s",
     "[paper.md · 4 Setup · lines 10-19]",
@@ -57,7 +57,7 @@ def round_trip(value):
 
 @pytest.mark.parametrize(
     "value",
-    [CLAIM, FINDING, CHUNK, RESULT, STORED, RECORD, PLAN],
+    [CLAIM, FINDING, CHUNK, RESULT, STORED, RECORD, PLAN, CORRESPONDENCE],
     ids=lambda value: type(value).__name__,
 )
 def test_every_class_in_the_state_comes_back_as_itself(value, caplog):

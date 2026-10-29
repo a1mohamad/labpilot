@@ -54,6 +54,7 @@ from labpilot.prompts.followups import (
     last_answer_block,
     last_answer_excerpt,
 )
+from labpilot.prompts.gate import GATE, GATE_MAX_TOKENS, GATE_VERSION, build_gate_prompt
 from labpilot.prompts.instructions import (
     COMPARE,
     CORE,
@@ -87,6 +88,10 @@ from labpilot.prompts.summary import (
 )
 
 __all__ = [
+    "GATE",
+    "GATE_MAX_TOKENS",
+    "GATE_VERSION",
+    "build_gate_prompt",
     "A_WHOLE_TOKENS",
     "DIFFERENCES",
     "DIFFERENCES_GROUP_TOKENS",
