@@ -3,6 +3,7 @@ from typing import Annotated, Any, TypedDict
 
 from labpilot.agent.claim import Claim
 from labpilot.agent.code_finding import CodeFinding
+from labpilot.agent.correspondence import Correspondence
 from labpilot.agent.finding import Finding
 from labpilot.agent.plan import Plan
 from labpilot.ingest import Chunk
@@ -23,6 +24,7 @@ class State(TypedDict):
     code_findings: Annotated[list[CodeFinding], operator.add]
     summary_a: str
     summary_b: str
+    correspondence: Correspondence | None
     sides: Any
     fits: bool
     found: Annotated[list[Chunks], operator.add]
