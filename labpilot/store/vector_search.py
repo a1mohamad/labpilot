@@ -127,3 +127,40 @@ def _checked(cur, artifact_id: str, query: Vector, *, model: str) -> str:
         )
 
     return str(list(query))
+
+
+# For every part of B, the part of A whose vector is nearest. The vectors are
+# already stored, so this costs ONE round trip and no embedding call. Used by
+# the scan of B (find_missing): each group of B is shown the parts of A that
+# talk about the same thing, beside the list of A's claims.
+
+_NEAREST = """
+    select b.chunk_index, near.chunk_index
+    from chunks b
+    cross join lateral(
+        select a.chunk_index
+        from chunks a
+        where artifact_id = %s
+        order by a.v <=> b.v
+        limit 1
+    ) near
+    where b.artifact_id = %s
+"""
+
+
+def nearest_parts(conn: psycopg.Connection, a_id: str, b_id: str) -> dict[int, int]:
+    with conn.cursor() as cur:
+        models = {}
+        for artifact_id in (a_id, b_id):
+            cur.execute(_ARTIFACT, (artifact_id,))
+            row = cur.fetchone()
+            if row is None:
+                raise UnknownArtifact(f"no artifact {artifact_id!r} is stored")
+            models[artifact_id] = row[0]
+            if models[a_id] != models[b_id]:
+                raise ModelMismatch(
+                    f"{a_id!r} was embedded with {models[a_id]!r} and {b_id!r} with "
+                    f"{models[b_id]!r}: their vectors do not compare"
+                )
+            cur.execute(_NEAREST, (a_id, b_id))
+            return dict(cur.fetchall())
