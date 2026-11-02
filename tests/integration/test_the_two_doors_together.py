@@ -25,7 +25,7 @@ from labpilot.api import ApiConfig, app, get_client, ingestion, searching
 from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
 from labpilot.llm import LLMResult
-from labpilot.prompts import SUMMARY_MAX_TOKENS
+from labpilot.prompts import FOLLOW_UP_MAX_TOKENS, SUMMARY_MAX_TOKENS
 
 pytestmark = pytest.mark.database
 
@@ -290,3 +290,68 @@ def test_a_second_question_searches_the_stored_corpus_and_never_re_ingests(
     # in the prompt here too.
     assert "SUMMARY OF SIDE A\n\na summary" in llm.prompts[-1]
     assert "SUMMARY OF SIDE B\n\na summary" in llm.prompts[-1]
+
+
+def test_a_halt_reaches_the_page_and_the_next_message_is_judged_again(
+    api, embedder, llm, monkeypatch
+):
+    """Slice 8 over HTTP, with the real saver between the two messages.
+
+    The first message halts: the reply says who answered (no model), reads no
+    side and cites nothing. The second message of the same chat is judged
+    again (an old NONE must never decide it), goes on to a real answer, and its
+    follow-up rewrite reads the halt text as the last answer.
+    """
+    verdicts = iter(["NONE", "PARTIAL"])
+    rewrites: list[str] = []
+    plain = llm.generate
+
+    def generate(prompt, *, max_tokens=0, tool=None, problem_with=None):
+        if tool is not None and tool.name == "judge_correspondence":
+            return LLMResult(
+                text="",
+                model="fake-model",
+                tier=1,
+                finish_reason="STOP",
+                arguments={"verdict": next(verdicts), "reason": "two works"},
+            )
+        if tool is None and max_tokens == FOLLOW_UP_MAX_TOKENS:
+            rewrites.append(prompt)
+            return LLMResult(
+                text="why do the results diverge?",
+                model="fake-model",
+                tier=1,
+                finish_reason="STOP",
+            )
+        return plain(
+            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
+        )
+
+    monkeypatch.setattr(llm, "generate", generate)
+    a_id = ingest(api, "paper.md", PAPER, "A")
+    b_id = ingest(api, "train.py", CODE, "B")
+    ask = {"a": a_id, "b": b_id, "question": "why do the results diverge?"}
+
+    first = api.post(f"{ApiConfig.PREFIX}/compare", json=ask)
+
+    assert first.status_code == 200, first.text
+    halted = first.json()
+    assert halted["model"] == "correspondence gate"
+    assert halted["tier"] == 0
+    assert halted["finish_reason"] == "stop"
+    assert halted["chunks"] == {}
+    assert halted["citations"]["written"] == 0
+    assert "I did not compare these two" in halted["answer"]
+    assert llm.prompts == []
+
+    second = api.post(
+        f"{ApiConfig.PREFIX}/compare",
+        json={**ask, "thread_id": halted["thread_id"]},
+    )
+
+    assert second.status_code == 200, second.text
+    answered = second.json()
+    assert answered["answer"] == ANSWER
+    assert set(answered["chunks"]) == {"A", "B"}
+    [rewrite] = rewrites
+    assert "I did not compare these two" in rewrite
