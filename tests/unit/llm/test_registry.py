@@ -29,6 +29,9 @@ ROUTEWAY_WITHOUT_REASONING = (
     "Gemma 4 26B A4B Luminous (Routeway)",
     "Gemma 4 26B A4B Chimerax (Routeway)",
     "Gemma 4 26B A4B MeroMero (Routeway)",
+    # Added 2026-11-02 on the same rule: an unlisted field is a guess.
+    "MiniMax M3.1 Flash (Routeway)",
+    "Muse Glimmer 30B (Routeway)",
 )
 # Bazaarlink's two free models were probed 2026-10-18 without any reasoning
 # field: Qwen 3.7 Flash spent no reasoning tokens by default, DeepSeek 0731 about
@@ -45,6 +48,8 @@ MISTRAL_SMALL_WITHOUT_REASONING = (
     "Ministral 8B",
     "Mistral Nemo",
     "Ministral 14B",
+    # Codestral joined 2026-11-02: a code model, not a reasoning model.
+    "Codestral",
 )
 REJECTS_REASONING = (
     "Devstral 2",
@@ -76,6 +81,10 @@ GEMMA_LEVELS = ("MINIMAL", "HIGH")
 # and Step 2's small code jobs fit easily at 1,000 requests a day.
 OUTPUT_TOO_SMALL = (
     "Qwen3.8 27B (Groq)",
+    # Beam 1.0 on Cline joined 2026-11-02 with a DELIBERATE 16,384 output cap: its
+    # window was not measured on Cline, so it serves small jobs only until a long
+    # answer is tried. A local guard, like Bazaarlink's.
+    "Beam 1.0 (Cline)",
     # Bazaarlink joined 2026-10-18 with a DELIBERATELY small output cap of 8,192.
     # Its binding limit is a daily quota of 60 "units" for the whole account
     # that grows with the prompt: 13 calls (~70,000 prompt tokens) used it up. A
@@ -91,7 +100,14 @@ OUTPUT_TOO_SMALL = (
     "Ministral 8B",
     "Mistral Nemo",
     "Ministral 14B",
+    "Codestral",
+    # GPT-OSS 120B on LiteRouter (2026-11-02): a DELIBERATE 16,384 cap, no long
+    # answer was tried on this route.
+    "GPT-OSS 120B (LiteRouter)",
     "GPT-OSS 120B (Groq)",
+    # The smaller GPT-OSS on the same Groq account (2026-11-02): the same 8,000
+    # token per-minute budget, so it can never serve a report either.
+    "GPT-OSS 20B (Groq)",
     # the dead tiers, at the tail with the rest of KNOWN_DEAD, in chain order.
     # GLM-5.2 moved from Mistral to OpenRouter's free tier 2026-09-19 and
     # brought a 32,768 context with it, against the 58,000 a report needs. That
@@ -122,6 +138,8 @@ INPUT_LIMITED = ("gemma-4-26b-a4b-it", "gemma-4-31b-it")
 # these six are the ONLY ones a budget between 26,000 and 33,000 turns away.
 CONTEXT_TOO_SMALL = (
     "DeepSeek V4 Flash (Routeway)",
+    # Added 2026-11-02: AA v4.3.2 = 43, and its free window is 42,000 as well.
+    "MiniMax M3.1 Flash (Routeway)",
     "Gemma 4 26B A4B Darksoul (Routeway)",
     "Gemma 4 26B A4B Moonlight (Routeway)",
     "Gemma 4 26B A4B Musica (Routeway)",
@@ -139,7 +157,18 @@ CONTEXT_TOO_SMALL = (
 #
 # The `:free` suffix on Laguna is load-bearing in the other direction: the
 # paid id `poolside/laguna-s-2.1` also answers, and spends credits.
-CLINE_MODELS_THE_API_SERVES = ("z-ai/glm-5.3-flash", "poolside/laguna-s-2.1:free")
+#
+# Re-measured 2026-11-02: the free list is now four ids and two of them answer
+# (reflection/beam-free in 1.4 s, nvidia/nemotron-3.5-lightning-free in 3.3 s);
+# cline-free/nemotron-3.5-super-vl, solar-mini4, solar-pro4 and deepseek-v4.1-
+# flash answer 403. Laguna answered HTTP 500 and is KNOWN_DEAD, so it stays
+# listed only because the chain still holds that tier.
+CLINE_MODELS_THE_API_SERVES = (
+    "z-ai/glm-5.3-flash",
+    "poolside/laguna-s-2.1:free",
+    "reflection/beam-free",
+    "nvidia/nemotron-3.5-lightning-free",
+)
 
 # Gateways whose free limit is account-wide, so every tier shares ONE pool.
 # LiteRouter is NOT here: its dashboard shows a daily limit per model, so its
@@ -546,18 +575,23 @@ def test_each_gateway_shares_one_quota_pool():
 # the test cannot follow the registry when somebody reorders it. Only the models
 # placed by this table are listed: a model with no score is not here, because
 # its place rests on something else.
+#
+# 2026-11-02: the families that LEFT the free list (V4 Pro, GLM-5.2, MiniMax M3,
+# GLM-5, Kimi, GLM-5.1) are gone from this table, because their only tiers now
+# sit in KNOWN_DEAD at the tail and the test compares the FIRST tier of each
+# family. The new families are read from v4.3.2 pages too, and the notes in
+# registry.py say where a score rests on a comparison page and not a model page.
 AA_SCORES = {
+    "MiniMax M3.1 Flash": 43,
+    "Ling 3.1 Flash": 41,
     "DeepSeek V4.1 Flash": 39,
-    "DeepSeek V4 Pro": 36,
     "DeepSeek V4 Flash": 34,
-    "GLM-5.2": 34,
-    "MiniMax M3": 29,
-    "GLM-5": 28,
-    "Kimi K2.6 cheap": 27,
-    "GLM-5.1": 26,
-    "Kimi K2.7 Code cheap": 26,
+    "Beam 1.0": 30,
+    "GLM-5.1 cheap": 26,
     "Gemini 3.5 Flash-Lite": 23,
     "MiniMax M2.7": 23,
+    "Hy3": 23,
+    "Muse Glimmer 30B": 18,
     "DeepSeek V3.2": 16,
     "Mistral Large 3": 9,
 }
@@ -760,6 +794,31 @@ NO_LIVE_ROUTE = (
     "Magistral Small",
     # The changelog: "Devstral 2.0 moves to paid API access" (2026-01-27).
     "Devstral 2",
+    # 2026-11-02: models whose ONLY free routes left their gateways' lists. Each
+    # was probed and answered an error on every call (LiteRouter 403 "not
+    # available or misspelled", Kilo 404, Cline 500, OpenRouter 404 "unavailable
+    # for free"). A twin on another gateway would take the name off this list.
+    "DeepSeek V4.1 Flash stable (LiteRouter)",
+    "DeepSeek V4 Pro (LiteRouter)",
+    "DeepSeek V4 Pro cheap (LiteRouter)",
+    # GLM-5.2 lost its LiteRouter routes too, so the family has no live route.
+    "GLM-5.2 (LiteRouter)",
+    "GLM-5.2 cheap (LiteRouter)",
+    "GLM-5.2 (Kilo)",
+    "GLM-5.2",
+    "MiniMax M3 (LiteRouter)",
+    "MiniMax M3 cheap (LiteRouter)",
+    "GLM-5 (LiteRouter)",
+    "Kimi K2.6 cheap (LiteRouter)",
+    # Only a "-cheap" id of GLM-5.1 is still free, and that is its own family.
+    "GLM-5.1 (LiteRouter)",
+    "Kimi K2.7 Code cheap (LiteRouter)",
+    "Laguna S 2.1 (Cline)",
+    "Laguna S 2.1 (Kilo)",
+    "Inkling Small (Kilo)",
+    "Step 3.7 Flash (Kilo)",
+    "Nemotron 3 Super (Kilo)",
+    "Nemotron 3 Super",
 )
 
 
