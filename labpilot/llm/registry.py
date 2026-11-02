@@ -193,6 +193,33 @@ CLINE_LAGUNA_S_2_1 = _cline(
     max_output_tokens=32_768,
 )
 
+# ADDED 2026-11-02, and placed on the evidence that exists. Both answered the
+# real provider code on 2026-11-02 (1.4 s and 3.3 s) and cost zero credits.
+#
+#   Beam 1.0 (Reflection)   AA v4.3.2 = 30  - launch article and a comparison
+#       page agree; the page for the CURRENT index (v5.0) says 18, because
+#       GDPval-AA was dropped from the index, so only v4.3.2 numbers are used
+#       beside the rest of this file.
+#   Nemotron 3.5 Lightning  UNSCORED - AA shows 6, 13, 16 and 24 on different
+#       pages and versions, so no number is trusted and it sits with the other
+#       unscored tiers.
+#
+# The windows are NOT measured on Cline. Beam is modelled for SMALL JOBS only
+# (a 16,384 output cap, like Bazaarlink's guard) until a long answer is tried.
+# Cline publishes no quota and no rate-limit headers, as for tier 1.
+CLINE_BEAM_1_0 = _cline(
+    name="Beam 1.0 (Cline)",
+    model="reflection/beam-free",
+    context_window=131_072,
+    max_output_tokens=16_384,
+)
+CLINE_NEMOTRON_3_5_LIGHTNING = _cline(
+    name="Nemotron 3.5 Lightning (Cline)",
+    model="nvidia/nemotron-3.5-lightning-free",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
+
 # ADDED 2026-09-19. AA v4.3 = 41 at 297.8 tok/s, which puts it SECOND -
 # between GLM-5.3 Flash (42) and Gemini 3.7 Flash (39) - and it is free on the
 # key this project already holds, so it cost nothing to reach.
@@ -515,6 +542,21 @@ GPT_OSS_120B_GROQ = OpenAICompatibleProvider(
     extra_body=OPENAI_REASONING,
 )
 
+# ADDED 2026-11-02, UNSCORED (no v4.3.2 page was found), 1.5 s live. The smaller
+# GPT-OSS on the same Groq account: the same 8,000-token per-minute budget, so
+# it can never serve a report and _check_fits turns one away for free. Small
+# jobs only, like its sibling.
+GPT_OSS_20B_GROQ = OpenAICompatibleProvider(
+    name="GPT-OSS 20B (Groq)",
+    tier=0,
+    url=GROQ_URL,
+    model="openai/gpt-oss-20b",
+    api_key_env="GROQ_API_KEY",
+    context_window=8_000,
+    max_output_tokens=8_000,
+    extra_body=OPENAI_REASONING,
+)
+
 
 # KILO — A SECOND FREE ALLOWANCE FOR MODELS WE ALREADY REACH, added 2026-09-19.
 #
@@ -620,6 +662,25 @@ KILO_NEMOTRON_3_SUPER = _kilo(
     context_window=262_144,
     max_output_tokens=235_929,
 )
+# ADDED 2026-11-02. Ling 3.1 Flash is 41 on AA v4.3.2 (the comparison pages that
+# use that index), a tie with Gemini 3.8 Flash and the fastest strong free model
+# found: 2.0 s on Kilo, 2.3 s on Requesty. The catalogue id is the 1019 build;
+# AA's current-index page for that build says 29 (v5.0), so the 41 rests on the
+# older pages and the match between the two names is NOT proven.
+KILO_LING_3_1_FLASH = _kilo(
+    name="Ling 3.1 Flash (Kilo)",
+    model="inclusionai/ling-3.1-flash-1019-free",
+    context_window=1_000_000,
+    max_output_tokens=262_144,
+)
+# UNSCORED (AA shows 6 to 24 depending on page), so it sits with the unscored
+# tiers. 9.6 s on 2026-11-02.
+KILO_NEMOTRON_3_5_LIGHTNING = _kilo(
+    name="Nemotron 3.5 Lightning (Kilo)",
+    model="nvidia/nemotron-3.5-lightning:free",
+    context_window=1_000_000,
+    max_output_tokens=65_536,
+)
 
 
 # REQUESTY — a third free route, INDEPENDENT of Google and OpenRouter.
@@ -674,6 +735,15 @@ REQUESTY_NEMOTRON_3_ULTRA = _requesty(
 REQUESTY_MUSE_GLIMMER = _requesty(
     name="Muse Glimmer 30B (Requesty)",
     model="nvidia/muse-glimmer-30b",
+    context_window=262_144,
+    max_output_tokens=32_768,
+)
+
+# The same Ling 3.1 Flash as on Kilo, second because Kilo allows 200 an HOUR and
+# this is 200 a DAY. 2.3 s on 2026-11-02.
+REQUESTY_LING_3_1_FLASH = _requesty(
+    name="Ling 3.1 Flash (Requesty)",
+    model="novita/ling-3.1-flash",
     context_window=262_144,
     max_output_tokens=32_768,
 )
@@ -1010,6 +1080,77 @@ LITEROUTER_MISTRAL_LARGE_3 = _literouter(
     max_output_tokens=32_768,
 )
 
+# ADDED 2026-11-02 after the free lists of every gateway were re-read through
+# their own APIs and every new id probed (one call, up to 2 retries). 12 of the
+# ids above had LEFT the free list (403 "not available or misspelled") and moved
+# to KNOWN_DEAD; these are the free ids that answered and are worth a slot.
+#
+#   GLM-5.1 cheap   AA v4.3.2 = 26 (the GLM-5.1 score; the "-cheap" serving is
+#                   not proven identical, as for every "-cheap" id here). 3.9 s.
+#   Hy3             AA v4.3.2 = 23 (Hy3-preview, reasoning), a tie with
+#                   Flash-Lite. 7.7 s here, 3.5 s on OrcaRouter. The window is
+#                   what the family is rated for, not measured on this gateway.
+#   Qwen3.8 Flash stable   the "-stable" twin of the tier above it. 6.1 s.
+#   Qwen3 Coder Next / Qwen3 Coder   UNSCORED. AA shows 21 for Coder Next on
+#                   index v4.1.1 and 9 on an older page, and 12 to 18 for the
+#                   480B Coder, none of them on v4.3.2, so they go with the
+#                   unscored tiers. 8.7 s and 7.0 s. Qwen was asked for.
+LITEROUTER_GLM_5_1_CHEAP = _literouter(
+    name="GLM-5.1 cheap (LiteRouter)",
+    model="glm-5.1-cheap:free",
+    context_window=204_800,
+    max_output_tokens=131_072,
+)
+LITEROUTER_HY3 = _literouter(
+    name="Hy3 (LiteRouter)",
+    model="hy3:free",
+    context_window=262_144,
+    max_output_tokens=65_536,
+)
+LITEROUTER_QWEN_3_8_FLASH_STABLE = _literouter(
+    name="Qwen3.8 Flash stable (LiteRouter)",
+    model="qwen3.8-flash-stable:free",
+    context_window=1_000_000,
+    max_output_tokens=131_072,
+)
+LITEROUTER_QWEN3_CODER_NEXT = _literouter(
+    name="Qwen3 Coder Next (LiteRouter)",
+    model="qwen3-coder-next:free",
+    context_window=262_144,
+    max_output_tokens=235_929,
+)
+# GPT-OSS 120B on LiteRouter (added 2026-11-02 at the user's request): the same
+# model as the Cloudflare and Groq tiers, 9.9 s live. A DELIBERATE 16,384 output
+# cap, because no long answer was tried on this route, so it serves small jobs
+# until one is. It goes after Cloudflare's route and before Groq's.
+LITEROUTER_GPT_OSS_120B = _literouter(
+    name="GPT-OSS 120B (LiteRouter)",
+    model="gpt-oss-120b:free",
+    context_window=131_072,
+    max_output_tokens=16_384,
+)
+LITEROUTER_QWEN3_CODER = _literouter(
+    name="Qwen3 Coder (LiteRouter)",
+    model="qwen3-coder:free",
+    context_window=262_144,
+    max_output_tokens=65_536,
+)
+# OrcaRouter, same day. DeepSeek V4.1 Flash is the AA v4.3.2 = 39 model that
+# LiteRouter also serves; this route answered in 2.3 s against 17 s there, but
+# OrcaRouter allows 50 a day, so it goes AFTER the LiteRouter ids.
+ORCAROUTER_DEEPSEEK_V4_1_FLASH = _orcarouter(
+    name="DeepSeek V4.1 Flash (OrcaRouter)",
+    model="deepseek/deepseek-v4.1-flash-free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+ORCAROUTER_HY3 = _orcarouter(
+    name="Hy3 (OrcaRouter)",
+    model="tencent/hy3-free",
+    context_window=262_144,
+    max_output_tokens=65_536,
+)
+
 
 # ROUTEWAY — a fourth free gateway, probed LIVE 2026-09-29 with
 # scripts/probe_routeway.py before any line here was written.
@@ -1089,6 +1230,31 @@ ROUTEWAY_DEEPSEEK_V4_FLASH = _routeway(
     name="DeepSeek V4 Flash (Routeway)",
     model="deepseek-v4-flash:free",
     context_window=42_000,
+    timeout=ROUTEWAY_DEEPSEEK_TIMEOUT,
+)
+# ADDED 2026-11-02 (the DeepSeek id above is GONE: 400 "No model found"; the
+# replacement id deepseek-v4.1-flash:free is listed free but timed out on 5 of 5
+# tries at 120 s, so it is NOT added - retest later with a short timeout).
+#
+#   MiniMax M3.1 Flash  AA v4.3.2 = 43 (the comparison pages on that index; the
+#       current v5.0 page says 29). Probed 29.5 s for a one-line answer, so it
+#       is slow for small jobs, and the catalogue window is 42,000, so it can
+#       NEVER serve a report (CONTEXT_TOO_SMALL names it). It sits in the 42-41
+#       group, a tie by this project's rule, and not first, because a 30-second
+#       tier at position 1 would slow every small call that it answers.
+#   Muse Glimmer 30B   AA v4.3 = 18, the model Requesty serves. 13.0 s here,
+#       131,072 window. An earlier probe (2026-09-29) lost 3 of 3 answers to
+#       timeouts, so it is the SECOND route, after Requesty's.
+ROUTEWAY_MINIMAX_M3_1_FLASH = _routeway(
+    name="MiniMax M3.1 Flash (Routeway)",
+    model="minimax-m3.1-flash:free",
+    context_window=42_000,
+    timeout=ROUTEWAY_DEEPSEEK_TIMEOUT,
+)
+ROUTEWAY_MUSE_GLIMMER = _routeway(
+    name="Muse Glimmer 30B (Routeway)",
+    model="muse-glimmer-30b:free",
+    context_window=131_072,
     timeout=ROUTEWAY_DEEPSEEK_TIMEOUT,
 )
 
@@ -1237,6 +1403,12 @@ MISTRAL_NEMO = _mistral_small(
 MINISTRAL_14B = _mistral_small(
     name="Ministral 14B", model="ministral-14b-2512", context_window=262_144
 )
+# ADDED 2026-11-02 (answered in 2.3 s on the live catalogue check; the size test
+# above gave recall .79 and 16 invented names, the reason it was left out on
+# 2026-10-23). UNSCORED and small jobs only, like the three above.
+CODESTRAL = _mistral_small(
+    name="Codestral", model="codestral-2508", context_window=256_000
+)
 
 
 def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
@@ -1268,18 +1440,28 @@ CHAIN = _ordered(
     LITEROUTER_GLM_5_3_FLASH,
     LITEROUTER_GLM_5_3_FLASH_CHEAP,
     ORCAROUTER_GLM_5_3_FLASH,
+    # ADDED 2026-11-02: AA v4.3.2 = 43, a tie with GLM-5.3 Flash (42) by this
+    # project's one-point rule, and not first: it answers in about 30 s and its
+    # 42,000 window can never hold a report, so a tier at position 1 would only
+    # slow every small call. See ROUTEWAY_MINIMAX_M3_1_FLASH.
+    ROUTEWAY_MINIMAX_M3_1_FLASH,
     GEMINI_3_8_FLASH,
     *_other_accounts(GEMINI_3_8_FLASH),
+    # ADDED 2026-11-02: Ling 3.1 Flash, AA v4.3.2 = 41 (a tie with Gemini 3.8
+    # Flash), 2 s on both routes. Kilo (200 an hour) before Requesty (200 a day).
+    KILO_LING_3_1_FLASH,
+    REQUESTY_LING_3_1_FLASH,
     GEMINI_3_7_FLASH,
     *_other_accounts(GEMINI_3_7_FLASH),
     # --- ADDED 2026-10-11: DeepSeek on LiteRouter, by AA v4.3.2 -------------
     # V4.1 Flash (39) ties Gemini 3.7 Flash, and 3.7 is now served by 3.8 (41),
     # so it goes after the pair. Each "-stable" and "-cheap" id follows its base.
+    # (The stable id, V4 Pro and the plain V4 Flash left the free list on
+    # 2026-11-02 and wait in KNOWN_DEAD.) OrcaRouter's V4.1 Flash is the same
+    # model on a smaller allowance, so it goes after the LiteRouter ids.
     LITEROUTER_DEEPSEEK_V4_1_FLASH,
-    LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE,
     LITEROUTER_DEEPSEEK_V4_1_FLASH_CHEAP,
-    LITEROUTER_DEEPSEEK_V4_PRO,
-    LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
+    ORCAROUTER_DEEPSEEK_V4_1_FLASH,
     # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
     # DeepSeek first of the three: it and Qwen TIE on AA (35 vs 34, inside
     # the +-1 interval), Qwen wins Code Arena by 13 Elo, and DeepSeek is
@@ -1288,20 +1470,15 @@ CHAIN = _ordered(
     # slowdown when generation is already 98.2% of an answer.
     #
     # Its two ORIGINAL routes died on 2026-09-23 and wait at the END of the
-    # chain; these two took their place.
-    LITEROUTER_DEEPSEEK_V4_FLASH,
+    # chain; the LiteRouter and Routeway ones followed on 2026-11-02.
     LITEROUTER_DEEPSEEK_V4_FLASH_CHEAP,
     ORCAROUTER_DEEPSEEK_V4_FLASH,
-    # A third route, and the last of the three because it is the only one that
-    # cannot serve a report: 42,000 of context against 58,000. _check_fits
-    # refuses it for a report at no cost, and it answers the small jobs.
-    ROUTEWAY_DEEPSEEK_V4_FLASH,
     # Then the coding specialist. It ties Gemini 3.6 Flash on general
     # intelligence and beats it by 56 Elo on code, which is the task this
     # project actually does - so it goes above it.
     # Qwen3.8 Flash first: on the same index it outscored the 27B it replaces.
     LITEROUTER_QWEN_3_8_FLASH,
-    KILO_QWEN_3_8_27B,
+    LITEROUTER_QWEN_3_8_FLASH_STABLE,
     QWEN_3_8_27B,
     # ADJACENT, for the same reason the Google twins are: once Cloudflare's
     # neurons are gone the strongest thing still available is the same model
@@ -1312,30 +1489,25 @@ CHAIN = _ordered(
     *_other_accounts(GEMINI_3_6_FLASH),
     GEMINI_3_5_FLASH,
     *_other_accounts(GEMINI_3_5_FLASH),
-    LITEROUTER_GLM_5_2,
-    LITEROUTER_GLM_5_2_CHEAP,
-    CLINE_LAGUNA_S_2_1,
-    KILO_LAGUNA_S_2_1,
+    # ADDED 2026-11-02: Beam 1.0, AA v4.3.2 = 30. Small jobs only (see the
+    # definition). 1.4 s.
+    CLINE_BEAM_1_0,
     KILO_NEMOTRON_3_ULTRA,
     NEMOTRON_3_ULTRA,
     REQUESTY_NEMOTRON_3_ULTRA,
-    # --- ADDED 2026-10-11, AA v4.3.2: 29, 28*, 27, 26, 26 -------------------
-    # Inkling Small (26) follows because it is capped for the whole world and
-    # usually answers 429; the two 26s tie, so the one with a daily limit of
-    # its own goes first.
-    LITEROUTER_MINIMAX_M3,
-    LITEROUTER_MINIMAX_M3_CHEAP,
-    LITEROUTER_GLM_5,
-    LITEROUTER_KIMI_K2_6,
-    LITEROUTER_GLM_5_1,
-    LITEROUTER_KIMI_K2_7_CODE,
-    KILO_INKLING_SMALL,
+    # GLM-5.1 cheap, AA 26 (GLM-5.1's score, "-cheap" serving unproven).
+    LITEROUTER_GLM_5_1_CHEAP,
     GEMINI_3_5_FLASH_LITE,
     *_other_accounts(GEMINI_3_5_FLASH_LITE),
-    # AA 23, a tie with Flash-Lite, which has a measured allowance.
+    # AA 23, a tie with Flash-Lite, which has a measured allowance. Hy3-preview
+    # is 23 on v4.3.2 as well (ADDED 2026-11-02): LiteRouter first, OrcaRouter
+    # (50 a day) second.
     LITEROUTER_MINIMAX_M2_7,
-    KILO_STEP_3_7_FLASH,
+    LITEROUTER_HY3,
+    ORCAROUTER_HY3,
+    # Muse Glimmer: Requesty first, Routeway's slower route second (2026-11-02).
     REQUESTY_MUSE_GLIMMER,
+    ROUTEWAY_MUSE_GLIMMER,
     # ADDED 2026-09-30: AA 17 sits between Muse Glimmer (18) and the 31B (15), and
     # it is the reliable, fast Gemma. Adjacent to its key-2 twin for the same
     # reason every Google model is - a spent account costs nothing to skip.
@@ -1351,18 +1523,26 @@ CHAIN = _ordered(
     # are all tested. Both serve small jobs only - see BAZAARLINK above.
     BAZAARLINK_QWEN_3_7_FLASH,
     BAZAARLINK_DEEPSEEK_V4_FLASH_0731,
-    # ADDED 2026-10-23, UNSCORED: see MINISTRAL_8B. Best recall first.
+    # ADDED 2026-10-23, UNSCORED: see MINISTRAL_8B. Best recall first. Codestral
+    # joined them 2026-11-02.
     MINISTRAL_8B,
     MISTRAL_NEMO,
     MINISTRAL_14B,
+    CODESTRAL,
+    # ADDED 2026-11-02, UNSCORED: AA shows 6 to 24 for Nemotron 3.5 Lightning
+    # depending on the page, and none of the Qwen3 Coder pages is on v4.3.2.
+    CLINE_NEMOTRON_3_5_LIGHTNING,
+    KILO_NEMOTRON_3_5_LIGHTNING,
+    LITEROUTER_QWEN3_CODER_NEXT,
+    LITEROUTER_QWEN3_CODER,
     # UNSCORED community finetunes, below the measured Gemma 4 31B on purpose.
     *ROUTEWAY_GEMMA_VARIANTS,
     KILO_NORTH_MINI_CODE,
     NORTH_MINI_CODE,
-    KILO_NEMOTRON_3_SUPER,
-    NEMOTRON_3_SUPER,
     GPT_OSS_120B,
+    LITEROUTER_GPT_OSS_120B,
     GPT_OSS_120B_GROQ,
+    GPT_OSS_20B_GROQ,
     GEMINI_3_1_FLASH_LITE,
     *_other_accounts(GEMINI_3_1_FLASH_LITE),
     # Unscored and the worst on the one question asked of it, so it goes
@@ -1371,6 +1551,26 @@ CHAIN = _ordered(
     LITEROUTER_MISTRAL_LARGE_3,
     # KNOWN DEAD, KEPT ON PURPOSE - see KNOWN_DEAD below. Kilo before its
     # OpenRouter twin even here, so the day one revives the order is right.
+    LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE,
+    LITEROUTER_DEEPSEEK_V4_PRO,
+    LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
+    LITEROUTER_DEEPSEEK_V4_FLASH,
+    ROUTEWAY_DEEPSEEK_V4_FLASH,
+    LITEROUTER_GLM_5_2,
+    LITEROUTER_GLM_5_2_CHEAP,
+    LITEROUTER_MINIMAX_M3,
+    LITEROUTER_MINIMAX_M3_CHEAP,
+    LITEROUTER_GLM_5,
+    LITEROUTER_KIMI_K2_6,
+    LITEROUTER_GLM_5_1,
+    LITEROUTER_KIMI_K2_7_CODE,
+    CLINE_LAGUNA_S_2_1,
+    KILO_LAGUNA_S_2_1,
+    KILO_QWEN_3_8_27B,
+    KILO_INKLING_SMALL,
+    KILO_STEP_3_7_FLASH,
+    KILO_NEMOTRON_3_SUPER,
+    NEMOTRON_3_SUPER,
     KILO_GLM_5_2,
     GLM_5_2,
     KILO_DEEPSEEK_V4_FLASH,
@@ -1423,7 +1623,43 @@ CHAIN = _ordered(
 # Moved to the END rather than deleted, like the two above, because Mistral may
 # change what the free plan includes. Devstral 2 and Magistral Small have NO live
 # route elsewhere, which test_registry names as an exception on purpose.
+# 2026-11-02: TWENTY MORE, found by probing every tier (one call, up to 2
+# retries) and re-reading each gateway's own free list. None of these ids is on
+# its gateway's free list any more, and each answered an error on every call:
+#
+#   LiteRouter  403 "model is not available or misspelled" for DeepSeek V4.1
+#               Flash stable, V4 Pro (+cheap), V4 Flash, GLM-5.2 (+cheap),
+#               MiniMax M3 (+cheap), GLM-5, GLM-5.1, Kimi K2.6 cheap and Kimi
+#               K2.7 Code cheap
+#   Routeway    400 "No model found: deepseek-v4-flash:free"
+#   Cline       Laguna S 2.1 answers HTTP 500 and is no longer on the free list
+#   Kilo        404 for Laguna S 2.1, Qwen3.8 27B, Inkling Small, Step 3.7
+#               Flash and Nemotron 3 Super
+#   OpenRouter  404 "unavailable for free" for Nemotron 3 Super
+#
+# Gemini 3.8, 3.7 and Gemma 31B were 503 or timeouts the same day; that is
+# Google's capacity, so they are NOT listed here.
 KNOWN_DEAD = (
+    LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE.name,
+    LITEROUTER_DEEPSEEK_V4_PRO.name,
+    LITEROUTER_DEEPSEEK_V4_PRO_CHEAP.name,
+    LITEROUTER_DEEPSEEK_V4_FLASH.name,
+    ROUTEWAY_DEEPSEEK_V4_FLASH.name,
+    LITEROUTER_GLM_5_2.name,
+    LITEROUTER_GLM_5_2_CHEAP.name,
+    LITEROUTER_MINIMAX_M3.name,
+    LITEROUTER_MINIMAX_M3_CHEAP.name,
+    LITEROUTER_GLM_5.name,
+    LITEROUTER_KIMI_K2_6.name,
+    LITEROUTER_GLM_5_1.name,
+    LITEROUTER_KIMI_K2_7_CODE.name,
+    CLINE_LAGUNA_S_2_1.name,
+    KILO_LAGUNA_S_2_1.name,
+    KILO_QWEN_3_8_27B.name,
+    KILO_INKLING_SMALL.name,
+    KILO_STEP_3_7_FLASH.name,
+    KILO_NEMOTRON_3_SUPER.name,
+    NEMOTRON_3_SUPER.name,
     KILO_GLM_5_2.name,
     GLM_5_2.name,
     KILO_DEEPSEEK_V4_FLASH.name,
