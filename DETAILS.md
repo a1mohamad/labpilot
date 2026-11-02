@@ -16681,11 +16681,11 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 5 | **run the plan** | one search per query, all at the same time (dynamic fan-out); the merge step with duplicates removed (D42); the final `respond` node replaces `generate` (D31) and carries the fix part (D49); "stuff when it fits" stays | **heavy**, 3 lessons; lesson 1 DONE 2026-10-19 (17.22) |
 | 6 | **follow-ups and `respond` for every case** | the node that rewrites a follow-up question into a standalone one; the first node that reads `history` (D5, D6). **Added 2026-10-21 (D56):** `respond` chooses its instruction by how many files exist (none: plain chat and code, one: `SCAN`, two: the report), and `ask()`, the API and the page accept 0 or 1 artifact id | medium, 2 lessons, **DONE 2026-10-22** (17.24) |
 | 7 | **claims, check, retry** | `extract_claims`; each claim searches B with its own text; one check per claim at the same time; the bounded retry loop (D4); the findings list; a small A merges with the planner (D40) | **heavy**, 3 lessons (all three DONE; lesson 3 in section 24.2) |
-| 8 | **the gate** | halt when A and B do not correspond. **DONE 2026-10-30 except its closing review (moved to the start of slice 9, section 28.9); M28 passed (0 wrong halts of 18 matches, 0 wrong FULL of 42; `GATE_VERSION` 1). REDESIGNED 2026-10-29 (D78 to D83, [section 28](#28-slice-8--the-correspondence-gate-redesigned-on-summaries--decided-2026-10-29)):** ONE function-calling call compares the two SUMMARIES (verdict FULL, PARTIAL or NONE, plus a short reason; unsure means PARTIAL); the planner runs beside it; on NONE a prepared answer made from the two summaries ends the run. No cosine, no threshold for each embedder, no claims needed. The instruction is the main work; a small test M28 (8 to 10 summary pairs) ends the slice, and the instruction may change after it. Summaries move to ingest in slice 12 (D47) and Jev is tried as the gate in slice 14 (D73 job 2) | medium, 2 lessons (lesson 1 = the design, DONE 2026-10-29, no code; lesson 2 = the build and M28) |
-| 9 | **nodes for B alone** | **FIRST: the closing review of slice 8 (28.9), before any slice 9 code.** `find_missing` (the claim table read by chunk) and `find_bugs` (a scan of B), then the precision pass for `find_bugs` (D75, test M26). **Also owed here (2026-10-28, D77): redesign and tune the `find_missing` scan, which is a demo version today (section 26.10)** | medium, 2 lessons |
+| 8 | **the gate** | halt when A and B do not correspond. **DONE 2026-10-30 and its closing review was done on 2026-10-31 (section 28.10); M28 passed (0 wrong halts of 18 matches, 0 wrong FULL of 42; `GATE_VERSION` 1). REDESIGNED 2026-10-29 (D78 to D83, [section 28](#28-slice-8--the-correspondence-gate-redesigned-on-summaries--decided-2026-10-29)):** ONE function-calling call compares the two SUMMARIES (verdict FULL, PARTIAL or NONE, plus a short reason; unsure means PARTIAL); the planner runs beside it; on NONE a prepared answer made from the two summaries ends the run. No cosine, no threshold for each embedder, no claims needed. The instruction is the main work; a small test M28 (8 to 10 summary pairs) ends the slice, and the instruction may change after it. Summaries move to ingest in slice 12 (D47) and Jev is tried as the gate in slice 14 (D73 job 2) | medium, 2 lessons (lesson 1 = the design, DONE 2026-10-29, no code; lesson 2 = the build and M28) |
+| 9 | **nodes for B alone** | The closing review of slice 8 is DONE (28.10, 2026-10-31); its 3 tests wait to be pasted in. `find_missing` (the claim table read by chunk) and `find_bugs` (a scan of B), then the precision pass for `find_bugs` (D75, test M26). **Also owed here (2026-10-28, D77): redesign and tune the `find_missing` scan, which is a demo version today (section 26.10)** | medium, 2 lessons |
 | 10 | **outcomes and comparability** | `extract_outcomes`; "are these two numbers comparable?" YES / NO / CANNOT TELL; "does it add up?" | medium, 2 lessons |
 | 11 | **routing** | a chain, a `max_tokens` and a thinking level for each node; the chain of `respond` for each plan; the quota-leak test | light, 1 lesson |
-| 12 | **the size gate and big repositories** | one `fits(side, budget)` check (D43); the top-N path for claims on a big A; the scan of a big B; claim ranking (D28); the good summary of a big artifact (D46); **store the summary at ingest and read it in the graph, instead of making it on every message (added 2026-10-29, see D47; readers: the slice 8 gate and its halt answer, and the planner only if the M5 third arm shows a gain; the gate may then move before the planner, one arrow in `graph.py`, section 28)**; the new test pair. This was slice 9. **UPDATE 2026-10-22: the part size is ONE fixed 12K and the join is a round-robin cut (section 23, D68 and D69).** | medium, 2 lessons, maybe more |
+| 12 | **the size gate and big repositories** | one `fits(side, budget)` check (D43); the top-N path for claims on a big A; the scan of a big B; claim ranking (D28); the good summary of a big artifact (D46); **store the summary at ingest and read it in the graph, instead of making it on every message (added 2026-10-29, see D47; readers: the slice 8 gate and its halt answer, and the planner only if the M5 third arm shows a gain; the gate may then move before the planner, one arrow in `graph.py`, section 28)**; the new test pair. This was slice 9. **UPDATE 2026-10-22: the part size is ONE fixed 12K and the join is a round-robin cut (section 23, D68 and D69).** **Also owed from slice 9 (2026-11-02, 29.8): real measurements of find_bugs on a big repository: the 40K read limit and how files are chosen, the smart cut, the group size, and the cheap trace model.** | medium, 2 lessons, maybe more |
 | 13 | **measure** | findings against `EXPECTED.md` on the search path (M6; a first small baseline is made at the end of slice 7 and after each slice, D74), the wall clock (M8), M4, M7 and the fix quality (M17). **Also the generalization job (27.1): run every decision of section 27 on MANY pairs, tune on some and test on others, and replace what only fits `quora_siamese`.** | none |
 | 14 | **Jev for decisions** | the decision model `typesafe/jev-1.13` (D73), tried on every job whose answer is a choice or a yes/no, with ONE SCHEMA for each job, against the LLM version that already works (the baseline from slice 13): the gate (8); "are these two numbers comparable?" and "does it add up?" (10); `find_missing` (9); the labels of a finding, kind, box, basis and direction (7); the planner's list of steps (M16, 4); "is this follow-up already a full question?" (6, an idea of 2026-10-23). Reranking is done, and the check of a claim is the pilot M15 at the end of slice 7. **All the work on Jev is kept in THIS slice (the user's rule, 2026-10-28): every measurement of it and every code change for it. The check of a claim was measured once in the pilot M15 (25.5: Jev 27 to 29 of 32 claims, 10 to 30 times faster than the LLM checkers, not proven). Slice 14 takes NEW measurements of Jev on the check and on the other jobs. If they agree with 25.5, Jev is added. Other slices put no Jev code in the graph.** | not decided; written when the slice starts |
 
@@ -20876,7 +20876,251 @@ The reasons were read by hand: plain, they name what each side is about. A gate 
 
 **Limits.** The match side rests on ONE pair (`quora_siamese`). The Go and `requests` code and a two-language pair were not available. The gate was never forced to choose PARTIAL on a real partial match (P3 got FULL 5 of 6). Sibling pairs all got NONE (allowed in advance, but a user who wants to compare two works on different tasks would be halted). All summaries came from one tier. Slice 13 repeats this on many pairs (27.1).
 
-**The closing review of slice 8 is NOT done (the user's weekly quota, 2026-10-30).** It is the FIRST job of slice 9, before any slice 9 code: the Working Rules review pass (joins no test crosses, for example a halt through the real `ask()` and the real saver; a deliberate break of each new invariant; dead code and scripts; the whole suite; ruff), and then a section "The closing review of slice 8". Slice 8 is otherwise done.
+**The closing review of slice 8 is DONE (2026-10-31), see 28.10.**
+
+#### 28.10 The closing review of slice 8 — 2026-10-31
+
+*The Working Rules review pass, done on a scratch copy of the committed tree (`git archive HEAD`). The repository was not changed by the review. No model was called, so no ISP probe was needed.*
+
+**The whole suite on the committed tree** (unit, api and database tests, no `--run-smoke`): **2090 passed, 139 skipped, 0 failed** in 10 minutes. Every skip is a smoke test or one of the three with a stated reason; none is about the database. `ruff check .` and `ruff format --check .` are clean (397 files).
+
+**Joins that no test crossed, and the 3 tests added for them** (written in the scratch copy, NOT in the repository yet; the user pastes them from `artifacts/slice8-review/tests/`, git-ignored):
+
+| join | new test | why it was open |
+|---|---|---|
+| A halt over HTTP and the next message of the same chat, with the real saver between them | `tests/integration/test_the_two_doors_together.py::test_a_halt_reaches_the_page_and_the_next_message_is_judged_again` | The halt through the real `ask()` and saver was tested (`test_claims_over_the_store.py`), but never through the route: the reply (`model` "correspondence gate", `tier` 0, `chunks` `{}`, no citations), a second message that is judged again, and the follow-up rewrite that reads the halt text as the last answer |
+| The gate uses the cheap chain (`for_claims`, Flash-Lite first, D82) | `tests/api/test_ask_wiring.py::test_the_gate_asks_the_cheap_chain_first` | The wiring test only checked that `gate` is callable. Break B1 (the gate on the full chain) was caught by NO older test |
+| The gate through the real `LLMClient` and the real Gemini wire | `tests/api/test_gate_over_the_wire.py` (2 tests) | `test_gate.py` uses a fake client. Now the tool really reaches the request, the verdict is read from a real function call, and a wrong verdict goes on to the next tier (D50) |
+
+**Deliberate breaks: 12, each on a kept copy of the file, every one caught** (`artifacts/slice8-review/break_gate.py` and its two result files): B1 the gate on the full chain (only the new wiring test); B2 the gate does not write the key on a missing summary (8 tests); B3 the gate catches every error (2); B4 PARTIAL halts too (14); B5 the halt keeps the old chunks (6); B6 the halt skips `remember` (2, one of them the new HTTP test); B7 the case of a verdict matters (4); B8 no problem hook (2, one of them new); B9 the halt claims a model tier (2); B10 `Correspondence` not saved (2); B11 the prompt drops summary B (4); B12 a NONE goes on to `measure` (6). Note on B3: its second failure, in a search test of the two-doors file, came in a run that took 11 minutes against 2 for the others, so it may be a slow network and not the break; the unit test `test_a_bug_in_the_gate_is_not_hidden` is the one that guards it.
+
+**Found, NOT fixed (product code, the user types it):**
+
+- A typo in an error text, `labpilot/api/gate.py` line 48: `f"no tier could judge it ({len(exc.attempts)}"` has no closing bracket. Proposed: `f"no tier could judge it ({len(exc.attempts)} tiers tried)"`. It only changes a log line.
+- **The fake clients of `tests/integration/test_ask.py` and `test_the_two_doors_together.py` answer EVERY tool with the plan's arguments**, so the gate reads `{"steps": ..., "queries": ...}`, refuses it and fails open with a warning. Those tests pass, but they run the gate on its fail-open path every time, not on a real verdict. Harmless, and worth fixing when those files are touched next (answer `judge_correspondence` with `PARTIAL`).
+- **Dead or nearly dead code (unchanged since 26.11):** `checks_text` and `code_findings_text` in `api/prompting.py` are used only by tests. `retrieval/gate.py` (the old skip gate for reranking, `should_rerank`, `margin`, `SKIP_MARGIN`) has no caller in `labpilot/` (D57), only `scripts/score_rerank.py` and its tests. Its name now clashes with `agent/gate.py` and `api/gate.py` (the correspondence gate): rename it (for example `retrieval/skip_gate.py`) or delete it in slice 13.
+- No script names a removed function (`tests/unit/test_scripts.py` passes).
+
+**Not done:** the weekly smoke run (it spends quota; `test_gate_answers.py` is the live gate test). The design limits of 28.8 and 28.9 stay (one real matching pair; no "compare anyway" switch).
+
+**Verdict.** No known failure that loses an answer is left unprotected. Once the 3 tests are pasted in, slice 9 can start on a new branch from `main` (ask the user first).
+
+### 29. SLICE 9 — find_missing and find_bugs, measured on three cases before any lesson — 2026-10-31 to 11-01
+
+*The user asked for the two nodes to be designed from measurement, on three different cases and not on `quora_siamese` alone, with the approaches professional tools use, and with low cost and low waiting time. Exit AS58212 dataforest, Frankfurt, Google 200 before each batch. Everything ran in a scratch copy and in `artifacts/slice9-study/` (git-ignored): `RESULTS.md`, `keys.py` (the answer keys, written before the runs), `fb_gold.py` (my labels of the pooled bug suspects), the harness and `results/*.jsonl`. One fixture set may reject, never confirm (27.1): every number below is three cases and 1 to 4 runs a cell.*
+
+#### 29.1 The three cases
+
+| case | A | B | kind |
+|---|---|---|---|
+| quora | `A_paper.md` (4.3K tokens) | `B_train.py` (19K) | the existing fixture |
+| adam | the Adam paper, PDF, arXiv 1412.6980 (16K) | PyTorch `torch/optim/adam.py` at v2.5.1 (12.5K), with 4 bugs put in (X1-X4) | a real paper and real library code |
+| otp | RFC 4226 sections 1-7 and RFC 6238 (21K) | `pquerna/otp` v1.4.0, three Go files (6.4K), with 4 bugs put in (Y1-Y4) | a real standard and a real Go repository |
+
+**A correction to the key, made after the first runs and written down in `keys.py`:** the quora paper STATES that attention excludes padding "and nothing else" and gives `r` with four parts, so the stopword mask, the punctuation and `<UNK>` mask and the cosine feature are "B differs" items, not "A silent" ones; the vocabulary cap, the empty-row drop and the layer norms agree with A. In the otp case RFC 4226 allows 7 digits, so the digit coercion is a difference too.
+
+#### 29.2 find_missing: four approaches
+
+| approach | what it does | result |
+|---|---|---|
+| **S, search only** | every line (or part) of B searched in A by vector and BM25; the least similar are "A silent" | **at or below chance on all three cases.** The most "silent" lines are plumbing (file writing, URL building). Search can tell that A never talks about a line, not whether the line matters. No model call can be saved this way |
+| **C, claims** | the list of A's claims beside each 2K group of B | silent items: adam 5/5, otp 3-5/5; 3-7 items a run that A already states, because the claims list is incomplete |
+| **D0, today's scan** | all of A beside each group | good on "differs", weak on silent (otp 2/5); 2.4-4.3 times the input tokens; calls of 18-24K tokens overflow Gemma's room |
+| **CR, claims + the nearest parts of A** (the combination) | the claims list, the 3 parts of A nearest to the group's parts, kinds "silent" and "differs" with a fact number | **best: silent 9 of 10 (adam and otp), differs about 7 of 9, items A already states 0-2 a run, about 18 s, 5-8K tokens a call** |
+| CS, a search check after the call | relabel an item "A may mention this" when search finds a close part of A | the score separates (AUC 0.77-0.82) but every threshold moves a third to a half of the good silent items; not used |
+
+Also measured: one search per GROUP of B is a little weaker than one per part (otp silent 2-3/5 against 4/5); the product finds the nearest A part of every B part with ONE SQL query over the stored vectors, so it costs no embedding call. Merging repeats by topic alone lost an item (adam: "weight decay" was a silent default AND a sign that differs), so the key is the kind plus the topic: 22 items became 13-14 with no key item lost.
+
+#### 29.3 find_bugs: shapes, models, skeptic
+
+- **The model matters most.** Flash-Lite finds 1-2 easy bugs a case whatever the prompt; "list every suspect" did not help it.
+- **Three questions, as the professional tools ask** (small units, a focused question each, then a check):
+  - **trace**, one call per 2K group with the file's summary: what is it meant to compute, compare it term by term with the standard form, run the first call and edge inputs in your head, check that settings take effect. Gemini 3.6 Flash: adam 3/4 and otp 3/4, including the RFC truncation mask no other arm found.
+  - **method and numbers**, over the whole file: data used twice, tuning on the reported data, one seed; read every block of numbers. GLM-5.3: the threshold tuned on validation, no test set, one seed, the 12-point train/validation gap and the unused class weight, in one 37 s call.
+  - **concept**, over the whole file with the summary: a choice an expert of the field knows is wrong or unsafe, though the code runs. Added on 2026-11-01 at the user's request, with its own key written first. GLM-5.3 found both quora concept bugs (masking "what", "how", "why"; masking every unknown word) and on otp the short secret and the timing-leak comparison (and MD5 on the per-part run). Nobody found "a code can be used twice" or the AdamW weight-decay pitfall. Flash-Lite found 0-2.
+- **The skeptic.** One Flash-Lite call per file with the whole file and all suspects (10-40 s); strong models as skeptics timed out. Its first wording threw away method and numbers bugs as "common practice"; the fixed wording says method, numbers and concept defects are real even when the code runs. One vote was unstable (11 to 16 of 17 real kept over four runs). **Two votes at the same time, and a suspect dropped only when both say false or intended: 16 of 17 real kept in both pairs, 17-21 of 28 false removed.** On the concept suspects it kept 10 of 10.
+- **Whole pipelines after the skeptic** (real defects of the 17 in the labelled pool): Flash-Lite hunters 6; GLM 10; Gemini 3.6 trace + GLM method 12; GLM and Gemini 3.6 together 14; 1-5 false left.
+
+#### 29.4 Decisions
+
+| # | decision |
+|---|---|
+| **D84** | **find_missing is CR.** One call for each group of about 2,000 tokens of B, at most 4 at once, with the WHOLE list of A's claims and the `NEAR_A_PARTS = 3` nearest parts of A, which `store.nearest_parts` reads from the stored vectors in one query. Kinds "silent" and "differs" (with a fact number; `a_says` is that claim's text, or "A states it otherwise"). A is never put beside B whole any more, so the scan has no size limit on A. Repeats are merged by (kind, topic). Two embedders, or a dropped connection, stop the scan and not the answer. `DIFFERENCES_VERSION` 2 |
+| **D85** | **The claims list is kept whole.** `join_claims` no longer caps it; `fan_out_claims` checks only the first `MAX_CLAIMS = 48` method claims, the same ones as before, and the scan reads every claim. The scan runs after the claims (it needs them) |
+| **D86** | **The never-called findings of the old scan are removed** (26.10, the user's view: an unused function is rarely the cause). `FileFacts` still serves the checker |
+| **D87** | **find_bugs reads one file alone**: B when there are two, else the file there is. Three hunter questions (trace per 2K group with the summary; method and numbers, and concept, over the whole file in groups of 24K, concept with the summary), all at once, on the FULL chain (strong models first); suspects with an invented quote are dropped; repeats on one line are merged. Then the skeptic on the cheap chain: `SKEPTIC_VOTES = 2` at once, whole file when it is at most 30K tokens, else the suspects' own parts; a suspect is dropped only when every vote answered and every one says false or intended; one "real" makes it real; a lost or split vote keeps it as "unclear"; no vote keeps it "unchecked". `BUGS_VERSION` 1 |
+| **D88** | **find_bugs runs on the stuffed path too**, unlike the checks and the scan (R21): one call over a whole file found about half of what the hunt finds. It is allowed with one file and with two; `PLANNER_VERSION` 4 |
+| **D89** | **The bugs reach the answer** as their own block (`[real - logic] ...`); a real high-severity bug ranks with the differences, the rest with the silent lines; the part of a real bug is shown first among the evidence. `Bug` is a saved type and is cleared after each message |
+
+#### 29.5 Not settled
+
+- Three cases only, 1-4 runs a cell, my own labels; slice 13 repeats it on many pairs (27.1).
+- The strong models have small daily limits (Gemini 3.6 Flash 20 a day for each key); the hunt costs about one call per 2K of the file plus 2 whole-file calls plus 2 skeptic calls (quora: 9 + 2 + 2). An ensemble of two strong models found 14 of 17 against 10-12 for one: worth measuring again in slice 11 with the chains.
+- The concept question misses replay and pitfalls that need outside knowledge of the field; a search of documentation (Step 2.5) may help. **Answered in 29.7: the checklist step finds replay in 3 of 3 runs, AdamW in 1 of 3.**
+- find_bugs on a paper (one file that is a paper) was not measured.
+- The group size (2,000), `NEAR_A_PARTS` (3), `WHOLE_GROUP_TOKENS` (24,000) and the caps are first values from three cases.
+
+#### 29.6 Built and checked in a scratch copy (2026-11-01)
+
+Both lessons were built in a scratch copy of the working tree, outside the repository, and handed to the user in `artifacts/slice9-lessons/` (git-ignored): `LESSON_1_find_missing.md`, `LESSON_2_find_bugs.md`, `SHARED_FILES.md` (the files both lessons change) and `tests/` (the test files to paste). The user types the product code.
+
+- **Tests:** unit and api 1970 passed, 5 skipped. The whole suite with the database tests: 2150 passed, 139 skipped, 2 failed; one was an old integration test that pinned the old scan prompt (`test_claims_over_the_store.py`, its fake model answers the new shape now, 17 of 17 pass), the other a connection that Supabase closed mid-request (`SSL SYSCALL error: EOF`), which passed alone. `ruff check .` and `ruff format --check .` clean.
+- **Deliberate breaks: 22, every one caught**, each on a kept copy of the file (`break_s9.py`): the nearest-part query sorted the wrong way, reading another artifact, two embedders allowed; no cap on the parts of A; the merge ignoring the kind; a "differs" item losing its fact; every claim checked; the scan getting no claims; repeats not merged; one vote throwing a bug out; a real vote not winning; one vote only; no hunt on the stuffed path; A hunted when there are two files; the skeptic always reading the whole file; the method question reading the summary; the bug merge ignoring the source; bugs not cleared; `Bug` not saved; no hunt with one file; the bugs never reaching the prompt; invented quotes kept.
+
+#### 29.7 Concept bugs made findable: a checklist, then an audit (2026-11-01)
+
+*The user's request after 29.6: two concept bugs (a one-time code that can be used again, and the AdamW weight-decay pitfall) were missed by every model and every prompt, and they matter; find out what professionals do, fix the concept finding, and keep the other parts as strong. Same exit, same three cases, same key (`CONCEPT` in `keys.py`, written before the first concept run: c1 and c2 quora, c3 adam, c4 to c7 otp).*
+
+**What professionals do** (read from search results and paper pages; strength: method descriptions, no shared benchmark with ours). Tools that check code against a standard (RFCAudit, VSpector, and an industrial report on protocol code) do not ask "find a wrong idea". They first turn the standard and the known pitfalls into a list of small obligations ("the counter must not be accepted twice"), then check the code against each obligation, one by one. A reviewer who is asked an open question stops at the ideas it thinks of first; a reviewer who must answer every item of a checklist does not skip the item.
+
+**Measured arms** (GLM-5.3 Flash; concept keys found, with the quote placed again where needed):
+
+| arm | what it asks | concept keys found |
+|---|---|---|
+| CONCEPT question alone (29.3) | "a choice an expert knows is wrong", whole file | c1 c2 c4 c6, or c1 c4 c6 c7: about 4 of 7. Replay (c5) and AdamW (c3) never |
+| OBLIG | a checklist from the summary and the headers, then "report only the rules it breaks" | otp c4 c5 c6 c7 once |
+| OBLIG2 | the same, but "answer EVERY obligation by its number" | c5 found in 4 of 5 runs; c3 once |
+| **OBLIG3** | **two checklists at the same time (the standards, and the known pitfalls of the method), then one audit that answers every obligation** | **otp 4 of 4 in 3 of 3 runs; AdamW in 1 of 3; quora 0 (the CONCEPT question covers c1 and c2)** |
+
+With the CONCEPT question and OBLIG3 together, about 6 of 7 concept keys a run, against about 4 of 7 before. OBLIG3 costs 3 calls a file (two checklists of about 4 s at the same time, then one audit of 11 to 17 s for each 24K group), 14 to 47 s.
+
+**The quote fix.** 19 suspects of these runs had a quote that is not in the part they named. Most were real: the model named the wrong part of the same call, or joined two lines with "...". Searching the other parts, then the first piece of the quote, placed 15 of the 19 again (the AdamW find and the short secret among them).
+
+**The skeptic dropped the new finds.** With the rule of D87 (dropped when both votes say false or intended), the skeptic called the 10-byte secret, MD5 and the missing replay check "intended" (the code does them on purpose) and dropped 4 of the 5 concept keys of an OBLIG3 run. Two fixes were measured on the same pool:
+- a skeptic that asks only "does the code break this rule, and does the rule apply?": it kept c4, c6 and c7 (c7 with one vote) and lost c3 and c5. Not chosen;
+- **the rule chosen: a concept suspect is dropped only when every vote says "false" (a misreading); "intended" makes it "unclear", shown with the skeptic's reason.** It kept all 5 (c6 "real", the rest "unclear"). The labelled pool of 29.3 has no concept suspect, so its numbers do not move (16 of 17 real kept, 17 to 21 of 28 false removed). The price: about 6 of the 28 concept suspects of that run are weak (what a checkpoint saves, no git hash logged, the digits or the period not checked), and they now reach the answer as "unclear".
+
+**Decisions:**
+
+| # | decision |
+|---|---|
+| **D90** | **find_bugs gets a checklist step.** Two questions write the checklist an expert uses for this kind of work, at the same time, from the summary and the headers of the parts only (`STANDARDS`: 12 to 20 MUST and MUST NOT obligations; `PITFALLS`: 6 to 12 known pitfalls of the method and their known fixes). The two lists are merged (the same words are one obligation). Then `AUDIT` answers EVERY obligation by its number, for each 24K group: "no" (with the part and the quote), "yes" or "n/a". Each "no" is a suspect of kind concept, with the obligation in its text, and it goes to the same skeptic. The checklists are asked first and the hunts run while they are written; with no checklist there is no audit and the hunts still give their answer. On the full chain. `BUGS_VERSION` 2 |
+| **D91** | **A quote is placed where it really is**: the named part first, then any part of the same call, then the first piece of the quote (split at "..." and at line ends, at least 9 characters). A quote that is in no part is still dropped as made up. Used by the hunters and the audit |
+| **D92** | **A concept suspect is dropped only when every vote says false**; "intended" makes it "unclear". Every other kind keeps the rule of D87 |
+
+**Built in the scratch copy and checked.** Unit and api: 2004 passed, 5 skipped (34 new tests: the checklist and audit readers, the quote placing, the drop rule, the prompts, the wiring with the fake client). The whole suite with the database tests: 2186 passed, 139 skipped, 0 failed (10 minutes). `ruff check .` and `ruff format --check .` clean. Deliberate breaks: 17, every one caught after one test was added (a "yes" that carries a part and a quote was read as a defect, and no test noticed; `test_a_rule_that_is_met_or_does_not_apply_is_not_a_defect` now does): intended dropping a concept suspect; the kind not looked at; every kind keeping an intended vote; only the named part searched; no piece of a quote tried; a tiny piece used; a "yes" or an "n/a" read as a defect; the obligation missing from the text; an audit that answers nothing accepted; the checklists not merged; the audit run with no checklist; one checklist only; a runaway checklist accepted; the checklist not reading the summary; the audit not seeing the code; an invented quote placed.
+
+**The real product code, live** (the scratch copy's `make_bug_finder`, the full chain for the hunters and the cheap chain for the skeptic, the parts from the harness, no database; `fb_product.py`, `results/fb_product.jsonl`). For comparison, the three questions of 29.3 alone with GLM-5.3 and BEFORE the skeptic reached quora 18 of 21, adam 6 of 11 and otp 11 of 15 on the bug key, and concept c1 c2 / none / c4 c6.
+
+| run | case | seconds | bugs shown | real / unclear | bug key | concept keys |
+|---|---|---|---|---|---|---|
+| 1 | quora | 711.6 | 47 | 46 / 1 | 18 of 21 | c1 c2 |
+| 1 | adam | 49.2 | 12 | 11 / 1 | 11 of 11 (X1-X4) | none |
+| 1 | otp | 40.5 | 22 | 17 / 5 | 15 of 15 | c4 c5 c6 c7 |
+| 2 | quora | 72.9 | 44 | 42 / 2 | 19 of 21 | c1 c2 |
+| 2 | adam | 51.7 | 10 | 9 / 1 | 11 of 11 | c3 |
+| 2 | otp | 48.6 | 23 | 23 / 0 | 15 of 15 | c4 c5 c6 c7 |
+
+**Concept keys: 6 of 7 and 7 of 7** (AdamW in run 2), against about 4 of 7 before; the bug key is as strong as before or stronger (adam 11 of 11 against 6 of 11, otp 15 of 15 against 11 of 15, quora 18-19 of 21 against 18). The 711.6 s of quora run 1 was a slow provider moment: the same file took 72.9 s an hour later, and the earlier harness measured the whole-file method call alone at 267 s on that file; the checklist step itself is 3 calls of 14 to 47 s that run while the hunts run. Not measured: how many of the shown bugs are false on these runs (the skeptic called nearly all of them "real"; the precision numbers stay those of the labelled pool, 29.3), and quora shows 44 to 47 bugs, which the answer prompt must rank.
+
+**Still open.** AdamW (c3) is found in 1 of 3 runs only: the models see coupled L2 decay as normal Adam, and the key itself calls it borderline. The weak "unclear" concept lines make the answer longer; the answer prompt ranks them below the real ones. Three cases, my own labels; slice 13 repeats it (27.1).
+
+#### 29.8 Cheaper trace, the smart cut and a 3-vote skeptic (2026-11-02)
+
+*Asked by the user after 29.7: find_bugs costs about 16 calls for one file, and about 14 of them went to the strong models. Exit AS58212 dataforest, Frankfurt, Google 200. Harness `artifacts/slice9-study/trace_mid.py`, `trace_compare.py` and `sk3.py` (git-ignored); results `results/trace_mid.jsonl`, `results/fb_skeptic.jsonl`.*
+
+**1. The trace question on a mid-level model (only trace was changed).** Same prompt, same 2K groups and summary as in 29.3. Scored with the bug key (`FB`, weights: quora 21, adam 11, otp 15, so 47 in all), alone and together with the strong whole-file calls (GLM-5.3: method, concept, checklist audit, from the saved runs). 2 runs a model.
+
+| trace model | with the whole-file calls, run 1 / run 2 (of 47) | gain over the whole-file calls alone (41 / 44) | time a case |
+|---|---|---|---|
+| Gemini 3.6 Flash (strong, 1 old run) | 46 | +5 (X2, X3) | 92-190 s |
+| **Gemini 3.1 Flash-Lite** | **44 / 47** | **+3 both runs** (X3 and q16) | **7-61 s** |
+| DeepSeek V4 Flash (LiteRouter) | 43 / 44 | +2, then 0 | 67-341 s |
+| Gemma 4 26B | 41 / 44 | 0 | 12-56 s |
+| Ministral 14B | 41 / 44 | 0, and 15-27 suspects a run | 11-40 s |
+
+- **The whole-file calls on the strong model find almost every key bug alone.** Trace adds only on adam (X2 and X3, two bugs put in by hand). Flash-Lite 3.1 found X3 in both runs and never X2.
+- **Routes that failed, not a verdict on the model:** Qwen3.8 27B on Kilo (404, gone), Qwen3.8 27B on Groq (**a new fact: 1,000 OUTPUT tokens a minute**, "Request too large ... output tokens per minute (OTPM): Limit 1000"), GPT-OSS 120B on Cloudflare and on Groq (empty answers, timeouts), Nemotron 3 Super on Kilo (404).
+- **Cost:** on quora the strong calls fall from about 14 of 16 to 5 of 16 (method, concept, the 2 checklists, the audit). Flash-Lite 3.1 has 500 calls a day on each of 3 keys.
+- **Limits:** 3 cases, 2 runs, the regex screen of the key, the false suspects were not counted, and on a big file trace makes many more calls, so it may matter more there.
+
+**2. A 3-vote skeptic.** Same `SKEPTIC` prompt on the saved labelled pool (74 suspects: 17 real, 28 false, the rest minor or unclear; whole file, 25 suspects a call). New jurors Flash-Lite 3.1 and Ministral 14B, 2 runs each; the old Flash-Lite 3.5 votes reused. Gemma was not tested: the whole quora file is bigger than its 16K input room.
+
+| rule | real kept (of 17) | false removed (of 28) |
+|---|---|---|
+| **today: Flash-Lite 3.5 x2, dropped when both say false or intended** | **16** | **17** |
+| 3 models (3.5 + 3.1 + Ministral 14B), majority | 14-17 | 15 |
+| the same 3, dropped only when all 3 agree | 17 | 4-5 |
+| Flash-Lite 3.5 x2 + Flash-Lite 3.1, majority | 16 | 18 |
+
+One vote alone: Flash-Lite 3.5 removed 19 or 24 (and kept 16 or 11 real), Flash-Lite 3.1 14, Ministral 14B only 6. **A panel is only as good as its judges; the best 3-vote panel removed 1 more false bug, which is inside the noise. The 2 votes stay.**
+
+**3. The cut, read from the code (`prompts/_groups.py`, `api/bugs.py`).** The words "whole file" in 29.3 and 29.4 mean groups of `WHOLE_GROUP_TOKENS`: the count of groups is the total divided by 24,000, ROUNDED (so 25K or 35K is one group, 37K two groups of about 18.5K), and the groups have equal shares. A part (a function, a class, a section) is never cut. But the code knew nothing about FILES:
+- a group boundary could fall inside a file, so one file was split between two calls (with many tiny files, the one file on each boundary, for example `graph.py`);
+- the read limit `BUGS_SCAN_TOKENS` (40,000) took parts until the next one did not fit, so the last file was read in part, and it chose files by their sorted path, not by meaning. LabPilot's own code (161 files, about 180K tokens) would be read for about 22%, with only a log line.
+
+**Decisions:**
+
+| # | decision |
+|---|---|
+| **D93** | **The trace question goes to a cheap chain led by Gemini 3.1 Flash-Lite** (`for_trace`, `TRACE_FIRST`). The method, concept, checklist and audit calls stay on the full chain. If the 3.1 keys fail, the chain falls back to the rest of the full chain |
+| **D94** | **The smart cut: a file is not cut in the middle when it can be avoided.** (1) The big groups follow files: a group boundary that falls inside a file moves to the start or the end of that file, whichever is nearer, when the file fits in one group; a bigger file is cut between its parts, as before. 24,000 is a target, not a hard limit. (2) The read limit takes WHOLE files: a file that does not fit is skipped and the next file is tried; only when nothing was taken and the first file alone is bigger than the limit are its first parts read. The log says how many files were read and skipped. The trace groups (2K) still cut files on purpose, because trace looks inside one function. `groups_of(..., files=...)` and `whole_files` in `prompts/_groups.py` are shared, so the claims groups and the `find_missing` scan can use them later |
+| **D95** | **The skeptic keeps 2 votes** (point 2 above) |
+
+**Built and checked in the scratch copy (2026-11-02), handed over in `artifacts/slice9-lessons/` (lesson 2):** `api/chains.py` (`TRACE_FIRST`, `for_trace`), `prompts/_groups.py` (`groups_of(..., files=...)`, `whole_files`), `api/bugs.py` (a fourth argument `trace_client`; whole files up to the read limit; the big groups follow files), `api/asking.py` (`for_trace(client)`). 13 new tests (`test_groups.py` 9, `test_bugs.py` 3, `test_chains.py` 1). Whole suite with the database tests: 2199 passed, 139 skipped, 0 failed; `ruff` clean. 12 deliberate breaks, all caught after one test was fixed: its fixture had its plain cut on a file edge by luck, so breaks that dropped `files=` from the hunt and audit groups survived; the fixture now puts a file on the line.
+
+**Owed to slice 12 (real measurements on a big repository):** the 40,000 read limit and how files are chosen (by the question, the outline and `file_scores`, not by name) and what the user is told ("12 of 161 files read"); the smart cut against the plain cut; the group size of 24,000; trace on Flash-Lite 3.1 on a big file (many more trace calls); merging method and concept into one call; whether the open concept question is still needed beside the audit; a 3-vote panel with a stronger judge.
+
+### 30. THE CHAIN UPDATE OF 2026-11-02 — dead tiers moved, new models added
+
+*Done at the user's request, in this order: probe every tier, read every gateway's own free list, probe every new free id, rank the new models, then edit the chain, the tests and the docs. Exit AS58212 dataforest, Google 200 (probed first). `labpilot/llm/registry.py` and `tests/unit/llm/test_registry.py` changed; Claude typed them at the user's explicit request (an exception to "the user types the product code"). Nothing is committed.*
+
+#### 30.1 What was measured
+
+- **The first pass (86 tiers, 1 call each, 60 s read timeout, 2 retries for a temporary fault, no retry for 400/403/404 or a 429 with limit 0): 50 alive, 36 not.** The Google tiers that failed (Gemini 3.8 and 3.7 on all three keys, Gemma 31B on all three) were 503, a 500 or a read timeout, which is Google's capacity, so they were NOT moved.
+- **The free lists** were read from each gateway's own API (Kilo, Requesty, LiteRouter, OrcaRouter, Routeway, Bazaarlink, OpenRouter, Cline's public list, and the Groq and Mistral model lists). Then every free chat id that was not in `CHAIN` was probed once (45 ids; Bazaarlink and OpenRouter extras were NOT probed, their daily quotas are tiny).
+- **Routeway's `deepseek-v4.1-flash:free` is listed free and does not answer:** 5 of 5 tries timed out at 120 s with no HTTP status. It was NOT added; retest it later with a short timeout. LiteRouter's dashboard (a screenshot of its free list) agrees with its API.
+- **Cline's free list is 4 ids now**, and `reflection/beam-free` (1.4 s) and `nvidia/nemotron-3.5-lightning-free` (3.3 s) answer; `cline-free/nemotron-3.5-super-vl`, `solar-mini4`, `solar-pro4` and `deepseek-v4.1-flash` are 403.
+
+#### 30.2 Dead tiers: 20 moved to `KNOWN_DEAD` (it has 27 names now)
+
+`KNOWN_DEAD` stays at the TAIL of `CHAIN` in chain order, and each family without another live route is named in `NO_LIVE_ROUTE` in the registry tests.
+
+| gateway | tiers moved | what the provider answered |
+|---|---|---|
+| LiteRouter (12) | DeepSeek V4.1 Flash stable, V4 Pro and V4 Pro cheap, V4 Flash, GLM-5.2 and cheap, MiniMax M3 and cheap, GLM-5, GLM-5.1, Kimi K2.6 cheap, Kimi K2.7 Code cheap | 403 "not available or misspelled": left the free list |
+| Routeway (1) | DeepSeek V4 Flash | 400 "No model found" |
+| Cline (1) | Laguna S 2.1 | HTTP 500, off the free list |
+| Kilo (5) | Laguna S 2.1, Qwen3.8 27B, Inkling Small, Step 3.7 Flash, Nemotron 3 Super | 404 |
+| OpenRouter (1) | Nemotron 3 Super | 404 "unavailable for free" |
+
+The seven names that were already there (GLM-5.2 and DeepSeek V4 Flash on Kilo and OpenRouter, Mistral Medium, Magistral Small, Devstral 2) stay.
+
+#### 30.3 Ranking the new models (Artificial Analysis, read through search results 2026-11-02)
+
+**The index moved: AA is on v5.0 now, and v4.3.2 numbers, which this file's whole table uses, only survive on older model pages and on comparison pages.** v5.0 dropped GDPval-AA, so the same model shows a different number (MiniMax-M3.1-Flash 43 on v4.3.2 and 29 on v5.0; Beam 30 and 18; Ling 3.1 Flash 41 and 29). Only v4.3.2 numbers are placed beside the old ones.
+
+| model | v4.3.2 | placed | note |
+|---|---|---|---|
+| MiniMax-M3.1-Flash | 43 | tier 5 (Routeway) | tie with GLM-5.3 (42) by the one-point rule; not first because it answers in about 30 s and its free window is 42,000 so it can never write a report |
+| Ling 3.1 Flash | 41 | after Gemini 3.8 (Kilo, then Requesty) | 2.0 s and 2.3 s; the 41 is on comparison pages for "Ling 3.1 Flash", the catalogue id is the 1019 build whose own page says 29 on v5.0, so the match of the two names is not proven |
+| DeepSeek V4.1 Flash on OrcaRouter | 39 | after the LiteRouter V4.1 ids | 2.3 s, 50 a day |
+| Beam 1.0 (Cline) | 30 | after Gemini 3.5 Flash | small jobs only (16,384 output cap, window not measured on Cline) |
+| GLM-5.1 cheap (LiteRouter) | 26 (GLM-5.1's score) | before Flash-Lite | the "-cheap" serving is not proven identical |
+| Hy3 (LiteRouter, OrcaRouter) | 23 (Hy3-preview) | with MiniMax M2.7 | 7.7 s and 3.5 s |
+| Muse Glimmer 30B (Routeway) | 18 | after the Requesty route | 13 s; Routeway lost 3 of 3 answers to timeouts on 2026-09-29, so it is the second route |
+| Qwen3.8 Flash stable (LiteRouter) | - | after Qwen3.8 Flash | 6.1 s, twin of the tier above |
+| Nemotron 3.5 Lightning (Cline, Kilo) | 6, 13, 16, 24 on different pages | unscored | no number trusted |
+| Qwen3 Coder Next, Qwen3 Coder (LiteRouter) | 21 on v4.1.1, 9 and 12-18 on older pages | unscored | none on v4.3.2 |
+| Codestral (Mistral), GPT-OSS 20B (Groq) | not found | unscored, small jobs | Codestral recall .79 in the 2026-10-22 size test |
+| GPT-OSS 120B (LiteRouter) | not found | unscored, small jobs | 9.9 s; the same model as the Cloudflare and Groq tiers; added at the user's request with a 16,384 output cap (no long answer tried) |
+
+Not added, on purpose: Hy4-preview (no score, 53 s), MiniMax M2/M2.1/M2.5 (older than the M2.7 already there), the LiteRouter Qwen3 30B/32B/Next 80B (about 10 to 12 on old pages), Llama 3.3 70B and the small Ministrals, Kilo's Nemotron 3 Nano Omni (about 10), and Routeway's `deepseek-v4.1-flash:free` (does not answer).
+
+#### 30.4 Code and tests
+
+- `registry.py`: 17 new tier definitions (`CLINE_BEAM_1_0`, `CLINE_NEMOTRON_3_5_LIGHTNING`, `KILO_LING_3_1_FLASH`, `KILO_NEMOTRON_3_5_LIGHTNING`, `REQUESTY_LING_3_1_FLASH`, `LITEROUTER_GLM_5_1_CHEAP`, `LITEROUTER_HY3`, `LITEROUTER_QWEN_3_8_FLASH_STABLE`, `LITEROUTER_QWEN3_CODER_NEXT`, `LITEROUTER_QWEN3_CODER`, `ORCAROUTER_DEEPSEEK_V4_1_FLASH`, `ORCAROUTER_HY3`, `ROUTEWAY_MINIMAX_M3_1_FLASH`, `ROUTEWAY_MUSE_GLIMMER`, `GPT_OSS_20B_GROQ`, `CODESTRAL`, `LITEROUTER_GPT_OSS_120B`), `CHAIN` rebuilt, **`CHAIN` is 103 tiers (was 86)**. No old constant was removed, so scripts that import them still work.
+- `tests/unit/llm/test_registry.py`: `AA_SCORES` (the dead families out, six new in), `NO_LIVE_ROUTE` (17 names with reasons), `OUTPUT_TOO_SMALL` (Beam, Codestral, GPT-OSS 20B), `CONTEXT_TOO_SMALL` (MiniMax M3.1 Flash), the reasoning excuse lists (Routeway x2, Codestral) and the Cline served list.
+- **Run: 401 tests passed** (`tests/unit/llm`, `test_smoke_live`, `test_measure_latency`, `test_public_api`, `test_architecture`, `test_packaging`, and the API tests that read the chain), `ruff check` and `ruff format --check` clean on the two changed areas. No smoke test, and the full suite was not run (the user asked for the changed tests only). **No deliberate break (mutation test) was run on the edited lists.**
+- No new environment variable, so `.env.example` and `smoke.yaml` did not change.
+
+#### 30.5 Open
+
+- The three Google families that failed (Gemini 3.8, 3.7, Gemma 31B) need a retest on another day.
+- Probes skipped on purpose: OpenRouter's `gemma-4-26b/31b-it:free`, `inkling:free`, `nemotron-3.5-lightning:free` (50 a day) and Bazaarlink's `ling-3.1-flash-1019` and `nemotron-3.5-lightning-free`.
+- The AA numbers come from search results, not from reading each page; the Ling, Beam and MiniMax M3.1 Flash placements are the three that rest on v4.3.2 comparison pages and should be read on the model pages before anyone leans on them.
+- The weekly smoke run has not run these new tiers; `test_gateway_tiers_are_free.py` (live) will check that the new gateway ids are still free.
+- Speed is unmeasured at report length for every new tier.
 
 ---
 
