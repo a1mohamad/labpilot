@@ -162,7 +162,9 @@ CONTEXT_TOO_SMALL = (
 # (reflection/beam-free in 1.4 s, nvidia/nemotron-3.5-lightning-free in 3.3 s);
 # cline-free/nemotron-3.5-super-vl, solar-mini4, solar-pro4 and deepseek-v4.1-
 # flash answer 403. Laguna answered HTTP 500 and is KNOWN_DEAD, so it stays
-# listed only because the chain still holds that tier.
+# listed only because the chain still holds that tier. Re-measured 2026-11-03:
+# z-ai/glm-5.3-flash moved to Cline Pass and answers 402 (KNOWN_DEAD); it stays
+# listed for the same reason.
 CLINE_MODELS_THE_API_SERVES = (
     "z-ai/glm-5.3-flash",
     "poolside/laguna-s-2.1:free",

@@ -42,6 +42,7 @@ from labpilot.prompts.differences import (
     DIFFERENCES_GROUP_TOKENS,
     DIFFERENCES_MAX_TOKENS,
     DIFFERENCES_VERSION,
+    NEAR_A_PARTS,
     SCAN_TOKENS,
     build_differences_prompt,
 )
@@ -97,6 +98,7 @@ __all__ = [
     "DIFFERENCES_GROUP_TOKENS",
     "DIFFERENCES_MAX_TOKENS",
     "DIFFERENCES_VERSION",
+    "NEAR_A_PARTS",
     "SCAN_TOKENS",
     "build_differences_prompt",
     "groups_of",
