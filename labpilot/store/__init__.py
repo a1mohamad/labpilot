@@ -24,7 +24,7 @@ from labpilot.store.errors import (
 )
 from labpilot.store.keyword import bm25_search, keyword_search
 from labpilot.store.reader import measure, read_chunks, read_headers
-from labpilot.store.vector_search import file_scores, nearest_parts, search
+from labpilot.store.vector_search import file_scores, search
 from labpilot.store.writer import write_artifact
 
 __all__ = [
@@ -34,7 +34,6 @@ __all__ = [
     "ConnectionFailed",
     "keyword_search",
     "measure",
-    "nearest_parts",
     "ModelMismatch",
     "NotConfigured",
     "POOL_SIZE",
