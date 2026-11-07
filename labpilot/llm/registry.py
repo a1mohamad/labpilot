@@ -1433,10 +1433,9 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
 # by capability then means "the same model on another account" beats
 # "a weaker model on this one".
 CHAIN = _ordered(
-    CLINE_GLM_5_3_FLASH,
-    # Tier 1's model on two more gateways. Cline first because it is free and
-    # was measured first; LiteRouter's quota is unpublished, OrcaRouter's is
-    # 50 a day, so the smaller known allowance goes last.
+    # GLM-5.3 Flash on two gateways (its Cline route is KNOWN_DEAD since
+    # 2026-11-03). LiteRouter's quota is unpublished, OrcaRouter's is 50 a day,
+    # so the smaller known allowance goes last.
     LITEROUTER_GLM_5_3_FLASH,
     LITEROUTER_GLM_5_3_FLASH_CHEAP,
     ORCAROUTER_GLM_5_3_FLASH,
@@ -1551,6 +1550,7 @@ CHAIN = _ordered(
     LITEROUTER_MISTRAL_LARGE_3,
     # KNOWN DEAD, KEPT ON PURPOSE - see KNOWN_DEAD below. Kilo before its
     # OpenRouter twin even here, so the day one revives the order is right.
+    CLINE_GLM_5_3_FLASH,
     LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE,
     LITEROUTER_DEEPSEEK_V4_PRO,
     LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
@@ -1639,7 +1639,12 @@ CHAIN = _ordered(
 #
 # Gemini 3.8, 3.7 and Gemma 31B were 503 or timeouts the same day; that is
 # Google's capacity, so they are NOT listed here.
+# 2026-11-03: GLM-5.3 Flash on Cline answers HTTP 402 "insufficient_credits"
+# (balance $0.01, total_spent 0). Cline moved it off its free list to Cline
+# Pass (cline-pass/glm-5.3-flash), so it now costs credits. The LiteRouter and
+# OrcaRouter routes above stay live.
 KNOWN_DEAD = (
+    CLINE_GLM_5_3_FLASH.name,
     LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE.name,
     LITEROUTER_DEEPSEEK_V4_PRO.name,
     LITEROUTER_DEEPSEEK_V4_PRO_CHEAP.name,
