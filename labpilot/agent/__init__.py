@@ -23,6 +23,26 @@ from labpilot.agent.code_schema import (
     read_code_findings,
 )
 from labpilot.agent.correspondence import GATE_VERDICTS, HALT_VERDICT, Correspondence
+from labpilot.agent.difference import DIFFERS, MISSING, SILENT, Difference
+from labpilot.agent.difference_schema import (
+    AUDIT_TOOL_NAME,
+    JUDGE_TOOL_NAME,
+    MERGE_TOOL_NAME,
+    SCAN_TOOL_NAME,
+    audit_schema,
+    judge_schema,
+    merge_schema,
+    read_audit,
+    read_judge,
+    read_merge,
+    read_scan,
+    scan_schema,
+)
+from labpilot.agent.difference_votes import (
+    audit_findings,
+    judged_findings,
+    merged_findings,
+)
 from labpilot.agent.errors import (
     CheckError,
     ClaimsError,
@@ -45,6 +65,25 @@ from labpilot.agent.plan_schema import PLAN_TOOL_NAME, plan_schema, read_plan
 from labpilot.agent.state import State
 
 __all__ = [
+    "AUDIT_TOOL_NAME",
+    "DIFFERS",
+    "MISSING",
+    "SILENT",
+    "Difference",
+    "JUDGE_TOOL_NAME",
+    "MERGE_TOOL_NAME",
+    "SCAN_TOOL_NAME",
+    "audit_findings",
+    "audit_schema",
+    "judge_schema",
+    "judged_findings",
+    "merge_schema",
+    "merged_findings",
+    "read_audit",
+    "read_judge",
+    "read_merge",
+    "read_scan",
+    "scan_schema",
     "GATE_TOOL_NAME",
     "GATE_VERDICTS",
     "HALT_VERDICT",
