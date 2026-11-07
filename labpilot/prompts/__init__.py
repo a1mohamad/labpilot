@@ -1,4 +1,4 @@
-from labpilot.prompts._groups import groups_of
+from labpilot.prompts._groups import groups_of, whole_files
 from labpilot.prompts._hints import OPENING_CHARS
 from labpilot.prompts.answer import (
     CHAT,
@@ -6,6 +6,15 @@ from labpilot.prompts.answer import (
     TWO_FILES,
     build_chat_prompt,
     instructions_for,
+)
+from labpilot.prompts.audit import (
+    AUDIT_BATCH,
+    AUDIT_GROUP_TOKENS,
+    AUDIT_MAX_TOKENS,
+    AUDIT_VERSION,
+    AUDIT_VOTES,
+    DIFFERENCES_READ_TOKENS,
+    build_audit_prompt,
 )
 from labpilot.prompts.builder import (
     PRIOR_HEADING,
@@ -80,6 +89,22 @@ from labpilot.prompts.requery import (
     build_requery_prompt,
     requery_problem,
 )
+from labpilot.prompts.review import (
+    JUDGE_BATCH,
+    JUDGE_MAX_TOKENS,
+    JUDGE_VOTES,
+    MERGE_MAX_TOKENS,
+    REVIEW_VERSION,
+    build_judge_prompt,
+    build_merge_prompt,
+)
+from labpilot.prompts.scan import (
+    SCAN_A_TEXT_TOKENS,
+    SCAN_GROUP_TOKENS,
+    SCAN_MAX_TOKENS,
+    SCAN_VERSION,
+    build_scan_prompt,
+)
 from labpilot.prompts.summary import (
     SUMMARY,
     SUMMARY_BUDGET,
@@ -88,6 +113,26 @@ from labpilot.prompts.summary import (
 )
 
 __all__ = [
+    "AUDIT_BATCH",
+    "AUDIT_GROUP_TOKENS",
+    "AUDIT_VOTES",
+    "AUDIT_MAX_TOKENS",
+    "AUDIT_VERSION",
+    "DIFFERENCES_READ_TOKENS",
+    "build_audit_prompt",
+    "REVIEW_VERSION",
+    "SCAN_VERSION",
+    "JUDGE_BATCH",
+    "JUDGE_MAX_TOKENS",
+    "JUDGE_VOTES",
+    "MERGE_MAX_TOKENS",
+    "build_judge_prompt",
+    "build_merge_prompt",
+    "SCAN_A_TEXT_TOKENS",
+    "SCAN_GROUP_TOKENS",
+    "SCAN_MAX_TOKENS",
+    "build_scan_prompt",
+    "whole_files",
     "GATE",
     "GATE_MAX_TOKENS",
     "GATE_VERSION",

@@ -56,6 +56,10 @@ ALLOWED_TO_ESCAPE: dict[str, str] = {
     # The planner node of the graph catches it and runs the default plan, so
     # ask() never lets it out. It is raised in api/ and caught in agent/.
     "PlanError": "the planner node catches it inside the graph",
+    # The same shape: the finders raise them in api/ when they cannot read a
+    # file or no tier answers, and their nodes catch them, so the answer goes
+    # on without the findings.
+    "DifferencesError": "the find_differences node catches it inside the graph",
 }
 
 
