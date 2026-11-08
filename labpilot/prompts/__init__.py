@@ -16,6 +16,20 @@ from labpilot.prompts.audit import (
     DIFFERENCES_READ_TOKENS,
     build_audit_prompt,
 )
+from labpilot.prompts.bugs import (
+    BUGS_MAX_TOKENS,
+    BUGS_SCAN_TOKENS,
+    BUGS_VERSION,
+    HUNTS,
+    SKEPTIC_BATCH,
+    SKEPTIC_MAX_TOKENS,
+    SKEPTIC_TOKENS,
+    SKEPTIC_VOTES,
+    WHOLE_GROUP_TOKENS,
+    Hunt,
+    build_hunt_prompt,
+    build_skeptic_prompt,
+)
 from labpilot.prompts.builder import (
     PRIOR_HEADING,
     PROMPT_BUDGET,
@@ -23,6 +37,13 @@ from labpilot.prompts.builder import (
     REPORT_MAX_TOKENS,
     build_prompt,
     reserve,
+)
+from labpilot.prompts.checklists import (
+    CHECKLIST_AUDIT_MAX_TOKENS,
+    CHECKLIST_MAX_TOKENS,
+    CHECKLISTS,
+    build_checklist_audit_prompt,
+    build_checklist_prompt,
 )
 from labpilot.prompts.checks import (
     CHECK,
@@ -113,6 +134,23 @@ from labpilot.prompts.summary import (
 )
 
 __all__ = [
+    "BUGS_MAX_TOKENS",
+    "BUGS_SCAN_TOKENS",
+    "BUGS_VERSION",
+    "HUNTS",
+    "SKEPTIC_BATCH",
+    "SKEPTIC_MAX_TOKENS",
+    "SKEPTIC_TOKENS",
+    "SKEPTIC_VOTES",
+    "WHOLE_GROUP_TOKENS",
+    "Hunt",
+    "build_hunt_prompt",
+    "build_skeptic_prompt",
+    "CHECKLIST_AUDIT_MAX_TOKENS",
+    "CHECKLIST_MAX_TOKENS",
+    "CHECKLISTS",
+    "build_checklist_audit_prompt",
+    "build_checklist_prompt",
     "AUDIT_BATCH",
     "AUDIT_GROUP_TOKENS",
     "AUDIT_VOTES",

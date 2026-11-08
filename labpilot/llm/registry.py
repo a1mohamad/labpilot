@@ -1135,6 +1135,55 @@ LITEROUTER_QWEN3_CODER = _literouter(
     context_window=262_144,
     max_output_tokens=65_536,
 )
+# ADDED 2026-11-08, after LiteRouter's free list was re-read and every new id was
+# probed (one tiny call, `reasoning: high`, 8 s apart, up to 3 tries): all four
+# answered on the FIRST try with a whole answer.
+#
+#   GLM-5.3 cheap         8.6 s   AA v4.3.2 = 42 is the GLM-5.3 Flash score; the
+#                                 id has no "flash" in it, so the match is not
+#                                 proven, like every "-cheap" id here
+#   DeepSeek V4.1 Flash 1017      4.6 s   a dated build of the 39 model, placed
+#                                 after the other V4.1 ids
+#   DeepSeek V4 Flash 0731 stable 7.8 s   a build of the 34 model, after V4 Flash
+#   MiMo V2.6 Flash       1.6 s   the fastest of the set. Scored the same day from
+#                                 the AA v5.0.1 chart: 27 (see its CHAIN slot)
+#
+# Windows come from the catalogue (1,048,576 and 1,050,000); no output cap is
+# published for MiMo, so 32,768 is a conservative guess, not a measurement.
+LITEROUTER_GLM_5_3_CHEAP = _literouter(
+    name="GLM-5.3 cheap (LiteRouter)",
+    model="glm-5.3-cheap:free",
+    context_window=1_048_576,
+    max_output_tokens=131_072,
+)
+LITEROUTER_DEEPSEEK_V4_1_FLASH_1017 = _literouter(
+    name="DeepSeek V4.1 Flash 1017 (LiteRouter)",
+    model="deepseek-v4.1-flash-1017:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_FLASH_0731_STABLE = _literouter(
+    name="DeepSeek V4 Flash 0731 stable (LiteRouter)",
+    model="deepseek-v4-flash-0731-stable:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+# MiniMax M3.1 Flash on LiteRouter, added the same day at the user's request:
+# 1.9 s, whole answer, first try. Routeway's route of this model has a 42,000
+# window and can never hold a report; LiteRouter lists 1,048,576. The 65,536 output
+# cap is the MiniMax M3 figure above, not a measurement of this id.
+LITEROUTER_MINIMAX_M3_1_FLASH = _literouter(
+    name="MiniMax M3.1 Flash (LiteRouter)",
+    model="minimax-m3.1-flash:free",
+    context_window=1_048_576,
+    max_output_tokens=65_536,
+)
+LITEROUTER_MIMO_V2_6_FLASH = _literouter(
+    name="MiMo V2.6 Flash (LiteRouter)",
+    model="mimo-v2.6-flash:free",
+    context_window=1_050_000,
+    max_output_tokens=32_768,
+)
 # OrcaRouter, same day. DeepSeek V4.1 Flash is the AA v4.3.2 = 39 model that
 # LiteRouter also serves; this route answered in 2.3 s against 17 s there, but
 # OrcaRouter allows 50 a day, so it goes AFTER the LiteRouter ids.
@@ -1438,20 +1487,29 @@ CHAIN = _ordered(
     # so the smaller known allowance goes last.
     LITEROUTER_GLM_5_3_FLASH,
     LITEROUTER_GLM_5_3_FLASH_CHEAP,
+    LITEROUTER_GLM_5_3_CHEAP,
     ORCAROUTER_GLM_5_3_FLASH,
-    # ADDED 2026-11-02: AA v4.3.2 = 43, a tie with GLM-5.3 Flash (42) by this
-    # project's one-point rule, and not first: it answers in about 30 s and its
-    # 42,000 window can never hold a report, so a tier at position 1 would only
-    # slow every small call. See ROUTEWAY_MINIMAX_M3_1_FLASH.
-    ROUTEWAY_MINIMAX_M3_1_FLASH,
+    # MOVED UP 2026-11-08 on AA v5.0.1 (one page, one index, read from a
+    # screenshot of the live chart): DeepSeek V4.1 Flash 1017 = 33, ahead of
+    # Gemini 3.8 Flash (31) by two points, so a real gap and not a tie.
+    LITEROUTER_DEEPSEEK_V4_1_FLASH_1017,
     GEMINI_3_8_FLASH,
     *_other_accounts(GEMINI_3_8_FLASH),
     # ADDED 2026-11-02: Ling 3.1 Flash, AA v4.3.2 = 41 (a tie with Gemini 3.8
     # Flash), 2 s on both routes. Kilo (200 an hour) before Requesty (200 a day).
+    # On v5.0.1 it is 30 against Gemini 3.8's 31, still a tie.
     KILO_LING_3_1_FLASH,
     REQUESTY_LING_3_1_FLASH,
     GEMINI_3_7_FLASH,
     *_other_accounts(GEMINI_3_7_FLASH),
+    # MiniMax M3.1 Flash: AA v4.3.2 = 43 (a tie with Ling 41) but v5.0.1 = 29
+    # (index v5 dropped GDPval), two points under Gemini 3.8 (31). It was first
+    # at position 4 on the v4.3.2 number; both indexes agree it belongs after the
+    # Gemini 3.8 and Ling tiers and before DeepSeek V4.1 Flash. LiteRouter's route
+    # first: its 1M window can hold a report, Routeway's 42,000 never can and it
+    # answers in about 30 s.
+    LITEROUTER_MINIMAX_M3_1_FLASH,
+    ROUTEWAY_MINIMAX_M3_1_FLASH,
     # --- ADDED 2026-10-11: DeepSeek on LiteRouter, by AA v4.3.2 -------------
     # V4.1 Flash (39) ties Gemini 3.7 Flash, and 3.7 is now served by 3.8 (41),
     # so it goes after the pair. Each "-stable" and "-cheap" id follows its base.
@@ -1461,6 +1519,10 @@ CHAIN = _ordered(
     LITEROUTER_DEEPSEEK_V4_1_FLASH,
     LITEROUTER_DEEPSEEK_V4_1_FLASH_CHEAP,
     ORCAROUTER_DEEPSEEK_V4_1_FLASH,
+    # REVIVED 2026-11-08: V4 Pro cheap answers again (V4 Pro is 36, between the
+    # V4.1 Flash ids above and the V4 Flash ids below). Only the cheap id is on
+    # the free list; the plain V4 Pro and the V4.1 Flash stable id stay dead.
+    LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
     # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
     # DeepSeek first of the three: it and Qwen TIE on AA (35 vs 34, inside
     # the +-1 interval), Qwen wins Code Arena by 13 Elo, and DeepSeek is
@@ -1470,7 +1532,11 @@ CHAIN = _ordered(
     #
     # Its two ORIGINAL routes died on 2026-09-23 and wait at the END of the
     # chain; the LiteRouter and Routeway ones followed on 2026-11-02.
+    # REVIVED 2026-11-08: the plain V4 Flash id is free again; each "-cheap" and
+    # "-stable" id follows its base.
+    LITEROUTER_DEEPSEEK_V4_FLASH,
     LITEROUTER_DEEPSEEK_V4_FLASH_CHEAP,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731_STABLE,
     ORCAROUTER_DEEPSEEK_V4_FLASH,
     # Then the coding specialist. It ties Gemini 3.6 Flash on general
     # intelligence and beats it by 56 Elo on code, which is the task this
@@ -1478,12 +1544,19 @@ CHAIN = _ordered(
     # Qwen3.8 Flash first: on the same index it outscored the 27B it replaces.
     LITEROUTER_QWEN_3_8_FLASH,
     LITEROUTER_QWEN_3_8_FLASH_STABLE,
+    # MiMo V2.6 Flash now has a score: AA v5.0.1 = 27, against 20 for Qwen3.8 27B
+    # and 18 for Beam 1.0 on the same page, so it goes above both. It sat among the
+    # unscored tiers until 2026-11-08.
+    LITEROUTER_MIMO_V2_6_FLASH,
     QWEN_3_8_27B,
     # ADJACENT, for the same reason the Google twins are: once Cloudflare's
     # neurons are gone the strongest thing still available is the same model
     # on Groq, not a weaker one. It can never serve a report (8,000 tokens a
     # MINUTE), and _check_fits refuses it locally for free.
     QWEN_3_8_27B_GROQ,
+    # REVIVED 2026-11-08: GLM-5.2 cheap, AA 34 (the GLM-5.2 score), a tie with
+    # Gemini 3.6 Flash. Only the cheap id is free; plain GLM-5.2 stays dead.
+    LITEROUTER_GLM_5_2_CHEAP,
     GEMINI_3_6_FLASH,
     *_other_accounts(GEMINI_3_6_FLASH),
     GEMINI_3_5_FLASH,
@@ -1553,11 +1626,8 @@ CHAIN = _ordered(
     CLINE_GLM_5_3_FLASH,
     LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE,
     LITEROUTER_DEEPSEEK_V4_PRO,
-    LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
-    LITEROUTER_DEEPSEEK_V4_FLASH,
     ROUTEWAY_DEEPSEEK_V4_FLASH,
     LITEROUTER_GLM_5_2,
-    LITEROUTER_GLM_5_2_CHEAP,
     LITEROUTER_MINIMAX_M3,
     LITEROUTER_MINIMAX_M3_CHEAP,
     LITEROUTER_GLM_5,
@@ -1643,15 +1713,16 @@ CHAIN = _ordered(
 # (balance $0.01, total_spent 0). Cline moved it off its free list to Cline
 # Pass (cline-pass/glm-5.3-flash), so it now costs credits. The LiteRouter and
 # OrcaRouter routes above stay live.
+#
+# 2026-11-08: THREE REVIVED. LiteRouter's free list was re-read and DeepSeek V4
+# Pro cheap, DeepSeek V4 Flash and GLM-5.2 cheap answered a live call again
+# (6.4 s, 8.3 s, 6.1 s, first try), so they left this list and moved up the chain.
 KNOWN_DEAD = (
     CLINE_GLM_5_3_FLASH.name,
     LITEROUTER_DEEPSEEK_V4_1_FLASH_STABLE.name,
     LITEROUTER_DEEPSEEK_V4_PRO.name,
-    LITEROUTER_DEEPSEEK_V4_PRO_CHEAP.name,
-    LITEROUTER_DEEPSEEK_V4_FLASH.name,
     ROUTEWAY_DEEPSEEK_V4_FLASH.name,
     LITEROUTER_GLM_5_2.name,
-    LITEROUTER_GLM_5_2_CHEAP.name,
     LITEROUTER_MINIMAX_M3.name,
     LITEROUTER_MINIMAX_M3_CHEAP.name,
     LITEROUTER_GLM_5.name,

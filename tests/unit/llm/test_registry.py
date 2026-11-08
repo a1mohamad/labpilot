@@ -583,11 +583,21 @@ def test_each_gateway_shares_one_quota_pool():
 # sit in KNOWN_DEAD at the tail and the test compares the FIRST tier of each
 # family. The new families are read from v4.3.2 pages too, and the notes in
 # registry.py say where a score rests on a comparison page and not a model page.
+#
+# 2026-11-08: "DeepSeek V4 Pro cheap" (36, V4 Pro's score) and "GLM-5.2 cheap"
+# (34, GLM-5.2's score) are back in the table, because both answered a live call
+# again and left KNOWN_DEAD. The "-cheap" serving is not proven identical to its
+# base, as for every "-cheap" id here. GLM-5.3 cheap, DeepSeek V4.1 Flash 1017,
+# DeepSeek V4 Flash 0731 stable and MiMo V2.6 Flash are NOT listed: the first
+# three are builds of families already scored, and MiMo is scored only on the v5
+# page (AA_V5_SCORES below), which must not be mixed with this v4.3.2 table.
 AA_SCORES = {
     "MiniMax M3.1 Flash": 43,
     "Ling 3.1 Flash": 41,
     "DeepSeek V4.1 Flash": 39,
+    "DeepSeek V4 Pro cheap": 36,
     "DeepSeek V4 Flash": 34,
+    "GLM-5.2 cheap": 34,
     "Beam 1.0": 30,
     "GLM-5.1 cheap": 26,
     "Gemini 3.5 Flash-Lite": 23,
@@ -625,6 +635,41 @@ def test_the_models_we_scored_are_ordered_by_their_artificial_analysis_score():
                     f"{first_tier[stronger]} and {weaker} ({low}) at tier "
                     f"{first_tier[weaker]}: Artificial Analysis scores "
                     f"{stronger} higher."
+                )
+
+
+# Artificial Analysis Intelligence Index v5.0.1, read on 2026-11-08 from ONE page
+# (a screenshot of the live chart, 29 models). It is a second table and not a
+# replacement: v5 dropped GDPval, so the same model scores differently (MiniMax
+# M3.1 Flash 43 on v4.3.2, 29 here) and the two indexes must never be mixed in one
+# comparison. Only the families that appear on that page are listed.
+AA_V5_SCORES = {
+    "DeepSeek V4.1 Flash 1017": 33,
+    "Gemini 3.8 Flash": 31,
+    "Ling 3.1 Flash": 30,
+    "MiniMax M3.1 Flash": 29,
+    "MiMo V2.6 Flash": 27,
+    "Qwen3.8 27B": 20,
+    "Beam 1.0": 18,
+}
+
+
+def test_the_models_on_the_v5_page_are_ordered_by_their_v5_score():
+    """The same rule as the v4.3.2 test, on the one index that scores all of
+    these models on a single page. A gap of one is a tie; two or more must be in
+    order, counting every route to a model."""
+    first_tier = {
+        family: min(p.tier for p in CHAIN if p.name.split(" (")[0] == family)
+        for family in AA_V5_SCORES
+    }
+
+    for stronger, high in AA_V5_SCORES.items():
+        for weaker, low in AA_V5_SCORES.items():
+            if high - low > AA_TIE:
+                assert first_tier[stronger] < first_tier[weaker], (
+                    f"{stronger} ({high}) is reached at tier "
+                    f"{first_tier[stronger]} and {weaker} ({low}) at tier "
+                    f"{first_tier[weaker]}: AA v5.0.1 scores {stronger} higher."
                 )
 
 
@@ -802,10 +847,10 @@ NO_LIVE_ROUTE = (
     # for free"). A twin on another gateway would take the name off this list.
     "DeepSeek V4.1 Flash stable (LiteRouter)",
     "DeepSeek V4 Pro (LiteRouter)",
-    "DeepSeek V4 Pro cheap (LiteRouter)",
-    # GLM-5.2 lost its LiteRouter routes too, so the family has no live route.
+    # 2026-11-08: "DeepSeek V4 Pro cheap" and "GLM-5.2 cheap" answered again and
+    # are live, so they are NOT here. Only the plain ids below are still dead,
+    # and a "-cheap" id is its own family, so it is no twin of its base.
     "GLM-5.2 (LiteRouter)",
-    "GLM-5.2 cheap (LiteRouter)",
     "GLM-5.2 (Kilo)",
     "GLM-5.2",
     "MiniMax M3 (LiteRouter)",
