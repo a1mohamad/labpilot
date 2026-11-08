@@ -1,3 +1,11 @@
+from labpilot.agent.bug import BUG_KINDS, SKEPTIC_VERDICTS, Bug
+from labpilot.agent.bug_schema import (
+    BUGS_TOOL_NAME,
+    MAX_BUGS_PER_ANSWER,
+    bugs_schema,
+    merge_bugs,
+    read_bugs,
+)
 from labpilot.agent.check_schema import (
     CHECK_TOOL_NAME,
     KINDS,
@@ -5,6 +13,16 @@ from labpilot.agent.check_schema import (
     VERDICTS,
     check_schema,
     read_finding,
+)
+from labpilot.agent.checklist_schema import (
+    CHECKLIST_AUDIT_TOOL_NAME,
+    CHECKLIST_TOOL_NAME,
+    MAX_OBLIGATIONS,
+    checklist_audit_schema,
+    checklist_schema,
+    merge_obligations,
+    read_checklist,
+    read_checklist_audit,
 )
 from labpilot.agent.claim import CLAIM_KINDS, METHOD, RESULT, Claim
 from labpilot.agent.claims_schema import (
@@ -44,6 +62,7 @@ from labpilot.agent.difference_votes import (
     merged_findings,
 )
 from labpilot.agent.errors import (
+    BugsError,
     CheckError,
     ClaimsError,
     DifferencesError,
@@ -62,10 +81,39 @@ from labpilot.agent.plan_check import (
     problem_with,
 )
 from labpilot.agent.plan_schema import PLAN_TOOL_NAME, plan_schema, read_plan
+from labpilot.agent.skeptic_schema import (
+    SKEPTIC_TOOL_NAME,
+    Vote,
+    judged_bug,
+    read_verdicts,
+    skeptic_schema,
+)
 from labpilot.agent.state import State
 
 __all__ = [
+    "Vote",
+    "BUG_KINDS",
+    "SKEPTIC_VERDICTS",
+    "Bug",
+    "BUGS_TOOL_NAME",
+    "MAX_BUGS_PER_ANSWER",
+    "bugs_schema",
+    "merge_bugs",
+    "read_bugs",
+    "CHECKLIST_AUDIT_TOOL_NAME",
+    "CHECKLIST_TOOL_NAME",
+    "MAX_OBLIGATIONS",
+    "checklist_audit_schema",
+    "checklist_schema",
+    "merge_obligations",
+    "read_checklist",
+    "read_checklist_audit",
+    "SKEPTIC_TOOL_NAME",
+    "judged_bug",
+    "read_verdicts",
+    "skeptic_schema",
     "AUDIT_TOOL_NAME",
+    "BugsError",
     "DIFFERS",
     "MISSING",
     "SILENT",
