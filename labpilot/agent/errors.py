@@ -1,3 +1,7 @@
+class BugsError(Exception):
+    pass
+
+
 class ClaimsError(Exception):
     pass
 
