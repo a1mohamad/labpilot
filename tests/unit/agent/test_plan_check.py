@@ -3,7 +3,12 @@ import logging
 import pytest
 
 from labpilot.agent import Plan, Query, allowed_steps, present_sides
-from labpilot.agent.plan_check import check_plan, default_plan, question_queries
+from labpilot.agent.plan_check import (
+    check_plan,
+    default_plan,
+    problem_with,
+    question_queries,
+)
 
 QUESTION = "why is the clip value 1.5?"
 BOTH = ("A", "B")
@@ -112,3 +117,15 @@ def test_a_rejected_plan_leaves_the_reason_in_the_log(caplog):
         check_plan(Plan(("dance",), ()), QUESTION, BOTH)
 
     assert "'dance'" in caplog.text
+
+
+def test_a_alone_gets_no_bug_hunt():
+    # D106: the reference is explained, not checked.
+    assert allowed_steps(("A",)) == ("summarize",)
+    assert default_plan(QUESTION, ("A",)).steps == ("summarize",)
+
+
+def test_a_plan_that_hunts_a_alone_is_refused():
+    plan = Plan(steps=("find_bugs",), queries=(Query("A", QUESTION),))
+
+    assert problem_with(plan, ("A",)) == "step 'find_bugs' is not allowed with A"
