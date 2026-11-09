@@ -39,7 +39,7 @@ BEYOND_THE_OPENING = "WORD_BEYOND_THE_OPENING"
 IN_A_LATER_PART = "WORD_IN_A_LATER_PART"
 
 GOOD = {
-    "steps": ["extract_claims", "find_missing"],
+    "steps": ["find_differences", "find_bugs"],
     "queries": [
         {"side": "A", "text": "AdamW learning rate 3e-4"},
         {"side": "B", "text": "clip_grad_norm_ CLIP_NORM"},
@@ -175,7 +175,7 @@ def test_stored_rows_reach_the_provider_as_a_map_and_the_answer_becomes_a_plan(d
     plan = planner(QUESTION, a, b)
 
     assert plan == Plan(
-        steps=("extract_claims", "find_missing"),
+        steps=("find_differences", "find_bugs"),
         queries=(
             Query("A", "AdamW learning rate 3e-4"),
             Query("B", "clip_grad_norm_ CLIP_NORM"),
@@ -253,7 +253,7 @@ def test_a_wrong_plan_from_the_first_tier_is_tried_again_on_the_second(db):
 
     plan = planner(QUESTION, a, b)
 
-    assert plan.steps == ("extract_claims", "find_missing")
+    assert plan.steps == ("find_differences", "find_bugs")
     assert [call.request.url for call in responses.calls] == [url("one"), url("two")]
     assert (
         request(responses.calls[0])["contents"]
@@ -274,7 +274,7 @@ def test_a_tier_that_answers_in_a_code_fence_instead_of_a_call_still_gives_the_p
         QUESTION, a, b
     )
 
-    assert plan.steps == ("extract_claims", "find_missing")
+    assert plan.steps == ("find_differences", "find_bugs")
     assert plan.source == "planner"
 
 
@@ -311,7 +311,7 @@ def test_the_plan_is_saved_in_the_real_chat_memory_and_comes_back_as_a_plan(
     saved = open_saver(db).get_tuple(config).checkpoint["channel_values"]["plan"]
     assert isinstance(saved, Plan)
     assert [type(query) for query in saved.queries] == [Query, Query]
-    assert list(saved.steps) == ["extract_claims", "find_missing"]
+    assert list(saved.steps) == ["find_differences", "find_bugs"]
     assert saved.source == "planner"
 
 
@@ -321,7 +321,7 @@ def test_the_second_message_of_a_chat_is_planned_again_and_replaces_the_plan(
 ):
     a, b = store(db)
     second = {
-        "steps": ["find_missing"],
+        "steps": ["find_differences"],
         "queries": [{"side": "B", "text": "zero_grad"}],
     }
     responses.post(url("one"), json=called(GOOD))
@@ -336,7 +336,7 @@ def test_the_second_message_of_a_chat_is_planned_again_and_replaces_the_plan(
     compiled.invoke({"question": "second?", "a": a, "b": b}, config, durability="exit")
 
     values = open_saver(db).get_tuple(config).checkpoint["channel_values"]
-    assert list(values["plan"].steps) == ["find_missing"]
+    assert list(values["plan"].steps) == ["find_differences"]
     assert values["history"] == ["first?", "second?"]
     assert len(responses.calls) == 2
 
