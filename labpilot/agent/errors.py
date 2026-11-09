@@ -6,10 +6,6 @@ class ClaimsError(Exception):
     pass
 
 
-class CheckError(Exception):
-    pass
-
-
 class GateError(Exception):
     pass
 
