@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from labpilot.agent import Claim, ClaimsError, Plan, Query, allowed_steps, build_graph
-from labpilot.agent.extract_claims import STEP, make_claims_node, wants_claims
+from labpilot.agent.extract_claims import make_claims_node
 from labpilot.ingest import Chunk
 
 CLAIMS = (
@@ -13,7 +13,7 @@ CLAIMS = (
         "time step is 0.01 s",
     ),
 )
-WANTS = Plan(steps=("extract_claims",), queries=(Query("B", "time step"),))
+WANTS = Plan(steps=("find_differences",), queries=(Query("B", "time step"),))
 NOT_WANTED = Plan(steps=("summarize",), queries=(Query("B", "time step"),))
 FOUND = Chunk(
     text="dt = 0.01",
@@ -69,14 +69,12 @@ def run(plan, *, fits_value, extract="default", order=None):
     return final, order
 
 
-def test_the_step_is_one_the_planner_may_choose_for_two_files_and_not_for_one():
-    assert STEP in allowed_steps(("A", "B"))
-    assert STEP not in allowed_steps(("B",))
-
-
-def test_the_claims_are_wanted_only_when_the_plan_lists_the_step():
-    assert wants_claims({"plan": WANTS}) is True
-    assert wants_claims({"plan": NOT_WANTED}) is False
+def test_the_claims_are_no_step_of_their_own_they_come_with_the_differences():
+    # The claims give the differences A's facts, so they run when the
+    # differences run, and the planner cannot choose them alone.
+    assert "extract_claims" not in allowed_steps(("A", "B"))
+    assert "find_differences" in allowed_steps(("A", "B"))
+    assert "find_differences" not in allowed_steps(("B",))
 
 
 def test_the_node_reads_the_reference_and_returns_the_claims():
@@ -134,7 +132,7 @@ def test_a_plan_without_the_step_never_runs_it(fits_value):
     assert order[-1] == "generate"
 
 
-def test_without_a_function_the_graph_has_no_claims_step_even_if_the_plan_lists_it():
+def test_without_a_function_there_is_no_claims_step_even_with_differences_planned():
     graph = build_graph(
         measure=lambda a, b: SIDES,
         fits=lambda sides, question: True,
