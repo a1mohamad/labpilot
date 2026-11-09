@@ -69,9 +69,7 @@ def run(*, fits_value, fail_in=None):
         calls.append(("totals_of", sides))
         return TOTALS
 
-    def make_prompt(
-        chunks, question, totals, summaries, files, last_answer, reference=False
-    ):
+    def make_prompt(chunks, question, totals, summaries, files, last_answer, **_):
         calls.append(("make_prompt", chunks, question, totals))
         fail("make_prompt")
         return "the prompt", chunks[:1]
