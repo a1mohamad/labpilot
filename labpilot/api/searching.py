@@ -159,8 +159,8 @@ def rank_pile(
     on the visible fact. The degraded path reads `pile`, not `window`: a tier
     that declined has not narrowed anything.
 
-    There is no skip gate here. A merged pile has no comparable scores, and
-    SKIP_MARGIN is off anyway (D53).
+    There is no skip gate here: a merged pile has no comparable scores (D53),
+    and the old skip gate was deleted on 2026-11-10.
     """
     if not pile:
         return ()
