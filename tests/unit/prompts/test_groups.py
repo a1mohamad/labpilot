@@ -85,3 +85,27 @@ def test_a_big_file_is_skipped_when_a_later_file_fits():
     files = ["big.py"] * 4 + ["small.py"]
 
     assert whole_files(parts, files, 1_000) == [4]
+
+
+def test_every_part_gets_its_number_in_front_in_order():
+    from labpilot.prompts._groups import numbered_parts
+
+    assert numbered_parts(["alpha", "beta"]) == ["[part 0]\nalpha", "[part 1]\nbeta"]
+    assert numbered_parts([]) == []
+
+
+def test_no_prompt_numbers_its_parts_by_hand():
+    # The model names a part by this number and the code reads it back, so one
+    # function writes it. A copy that drifts would make a step read the wrong part.
+    from pathlib import Path
+
+    import labpilot.prompts as package
+
+    folder = Path(package.__file__).parent
+    by_hand = [
+        path.name
+        for path in folder.glob("*.py")
+        if path.name != "_groups.py" and "[part {number}]" in path.read_text("utf-8")
+    ]
+
+    assert by_hand == []
