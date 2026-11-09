@@ -17,10 +17,9 @@ def make_remember_node(
         # is the one place that says so, as `merge` does for `found`.
         if state.get("claims"):
             remembered["claims"] = ()
-        if state.get("findings"):
-            remembered["findings"] = Overwrite([])
-        if state.get("code_findings"):
-            remembered["code_findings"] = Overwrite([])
+        for key in ("differences", "bugs"):
+            if state.get(key):
+                remembered[key] = Overwrite([])
         return remembered
 
     return remember_node
