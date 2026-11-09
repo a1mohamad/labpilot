@@ -7,7 +7,7 @@ from labpilot.tokens import estimate_tokens
 # The wording below is FIXED. Change it only together with this number, and the
 # number is logged beside every list of claims, so a list can be tied to its
 # wording.
-CLAIMS_VERSION = 3
+CLAIMS_VERSION = 4
 
 # The reference is read WHOLE or not at all: a fact we cut off is a question we
 # never ask. A reference larger than this gets no claims (a big A is slice 12).
@@ -34,7 +34,8 @@ A claim is ONE fact, in the words of the reference, with its numbers and names.
 "the mesh has 200 cells and the time step is 0.01 s" is two claims, not one.
 If one sentence gives several values, write one claim for each value. Also write
 the rules and the steps of the method as claims: how something is chosen, when
-something stops, in what order things happen, what is left out.
+something stops, in what order things happen, what is left out. A table of
+rules, values or settings gives one claim for each row.
 A claim must be checkable: a value, a setting, a step, a method, or a number
 the work reports. An opinion ("our method is better") is not a claim, and
 neither is background.
