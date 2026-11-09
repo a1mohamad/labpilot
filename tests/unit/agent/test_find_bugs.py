@@ -118,7 +118,7 @@ def test_a_plan_without_the_step_never_hunts():
 
     _, seen = run(NO_HUNT, find=find, fits_value=True)
 
-    assert "bugs" not in seen[0]
+    assert not seen[0]["bugs"]
 
 
 def test_the_hunt_and_the_differences_run_together_and_respond_runs_once():
