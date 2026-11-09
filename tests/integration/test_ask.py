@@ -12,6 +12,8 @@ from collections import Counter
 import pytest
 
 from labpilot.agent import Plan
+from labpilot.agent.gate_schema import GATE_TOOL_NAME
+from labpilot.agent.plan_schema import PLAN_TOOL_NAME
 from labpilot.api import asking, searching
 from labpilot.api.checkpoints import open_saver
 from labpilot.api.errors import (
@@ -42,13 +44,16 @@ V = (1.0, 0.0, 0.0)
 
 # What the planner's tool call returns: a plan with one query of its own.
 PLAN = {"steps": [], "queries": [{"side": "B", "text": "weights"}]}
+# The gate's tool call: the two summaries describe the same work, so it goes on.
+VERDICT = {"verdict": "PARTIAL", "reason": "both describe the same work"}
 
 
 class FakeClient:
-    """Answers the planner with PLAN and the report with a fixed text.
+    """Answers each tool by its name, and the report with a fixed text.
 
-    The two kinds of call are kept apart, so `prompts` still holds the report
-    prompts only.
+    The planner gets PLAN and the gate a real verdict (VERDICT), so the gate is
+    tested on its normal path and not on its fail-open one. The kinds of call
+    are kept apart, so `prompts` still holds the report prompts only.
     """
 
     def __init__(self, plan: dict | None = None, rewrite_to: str | None = None) -> None:
@@ -56,13 +61,28 @@ class FakeClient:
         self.rewrite_to = rewrite_to
         self.prompts: list[str] = []
         self.planner_prompts: list[str] = []
+        self.gate_prompts: list[str] = []
         self.summary_prompts: list[str] = []
         self.follow_up_prompts: list[str] = []
 
     def generate(
         self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
     ) -> LLMResult:
+        if tool is not None and tool.name == GATE_TOOL_NAME:
+            self.gate_prompts.append(prompt)
+            return LLMResult(
+                text="a verdict",
+                model="fake",
+                tier=1,
+                finish_reason="STOP",
+                arguments=VERDICT,
+            )
         if tool is not None:
+            if tool.name != PLAN_TOOL_NAME:
+                # The finders' own tools (claims, audit, hunts, checklists): no
+                # tier answers them, so each finder takes its fail-open path on
+                # purpose, as it would in a real outage.
+                raise AllFreeTiersExhausted(())
             self.planner_prompts.append(prompt)
             return LLMResult(
                 text="a plan",
@@ -121,7 +141,7 @@ class PlannerFails(FakeClient):
     def generate(
         self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
     ) -> LLMResult:
-        if tool is not None:
+        if tool is not None and tool.name == PLAN_TOOL_NAME:
             raise AllFreeTiersExhausted(())
         return super().generate(
             prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
@@ -824,3 +844,17 @@ def test_a_small_a_is_read_whole_while_a_big_b_is_searched(db, monkeypatch):
     assert 0 < len(b_parts) <= SEARCH_LIMIT
     assert comparison.totals == {"A": 60, "B": 60}
     assert "[A.py - part 59]" in client.prompts[0]
+
+
+def test_with_two_files_the_gate_really_judges_and_the_answer_goes_on(db):
+    # The fake answers the gate's own tool, so this is the gate's normal path
+    # (a PARTIAL verdict), not the fail-open one an unreadable answer takes.
+    a = stored(db, "A", parts=3, words=20)
+    b = stored(db, "B", parts=3, words=20)
+    client = FakeClient()
+
+    asking.ask(db, a, b, question="why?", client=client)
+
+    assert len(client.gate_prompts) == 1
+    assert len(client.planner_prompts) == 1
+    assert len(client.prompts) == 1
