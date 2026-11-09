@@ -1,7 +1,3 @@
-class BugsError(Exception):
-    pass
-
-
 class ClaimsError(Exception):
     pass
 
@@ -15,4 +11,8 @@ class PlanError(Exception):
 
 
 class DifferencesError(Exception):
+    pass
+
+
+class BugsError(Exception):
     pass
