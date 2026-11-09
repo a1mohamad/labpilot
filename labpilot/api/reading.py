@@ -84,7 +84,11 @@ def fits_whole(sides: dict[Side, StoredArtifact], *, question: str) -> bool:
         for found in sides.values()
     )
     outline = sum((found.files + 1) * FILE_ROW_TOKENS for found in sides.values())
-    instructions = instructions_for(len(sides))
+    # A alone is answered with the longer REFERENCE instruction (D106).
+    if list(sides) == ["A"]:
+        instructions = instructions_for(1, reference=True)
+    else:
+        instructions = instructions_for(len(sides))
     fixed = estimate_tokens(f"{instructions.header}{instructions.closing}{question}")
 
     return evidence + outline + fixed + PROMPT_EXTRAS_TOKENS <= PROMPT_BUDGET
