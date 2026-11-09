@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from labpilot.agent import Claim, Correspondence, Finding, Plan, Query
+from labpilot.agent import Bug, Claim, Correspondence, Difference, Plan, Query
 from labpilot.api.checkpoints import SERDE, _OneAtATime, open_saver
 from labpilot.ingest import Chunk
 from labpilot.llm import Attempt, LLMResult
@@ -37,7 +37,7 @@ RESULT = LLMResult(
 )
 STORED = StoredArtifact(artifact=RECORD, chunks=1, files=1, characters=9)
 PLAN = Plan(
-    steps=("find_missing",),
+    steps=("find_differences",),
     queries=(Query("B", "CLIP_NORM"),),
 )
 CORRESPONDENCE = Correspondence("NONE", "they are about different things")
@@ -46,9 +46,15 @@ CLAIM = Claim(
     "[paper.md · 4 Setup · lines 10-19]",
     "time step is 0.01 s",
 )
-FINDING = Finding(
-    CLAIM, "mismatch", "choice", "[solver.py · lines 1-3]", "dt = 0.05", "bigger step"
+DIFFERENCE = Difference(
+    "differs",
+    "B uses a bigger step",
+    "[solver.py · lines 1-3]",
+    "dt = 0.05",
+    fact="the time step is 0.01 s",
+    evidence=CHUNK,
 )
+BUG = Bug("logic", "the step is never updated", "[solver.py]", "t = 0", evidence=CHUNK)
 
 
 def round_trip(value):
@@ -57,7 +63,7 @@ def round_trip(value):
 
 @pytest.mark.parametrize(
     "value",
-    [CLAIM, FINDING, CHUNK, RESULT, STORED, RECORD, PLAN, CORRESPONDENCE],
+    [CLAIM, DIFFERENCE, BUG, CHUNK, RESULT, STORED, RECORD, PLAN, CORRESPONDENCE],
     ids=lambda value: type(value).__name__,
 )
 def test_every_class_in_the_state_comes_back_as_itself(value, caplog):
@@ -74,11 +80,12 @@ def test_a_class_nested_inside_another_comes_back_as_itself_too():
     assert isinstance(back.attempts[0], Attempt)
 
 
-def test_a_finding_comes_back_with_its_claim_as_a_claim():
-    back = round_trip(FINDING)
+@pytest.mark.parametrize("value", [DIFFERENCE, BUG], ids=lambda v: type(v).__name__)
+def test_a_finding_comes_back_with_its_part_as_a_chunk(value):
+    back = round_trip(value)
 
-    assert type(back.claim) is Claim
-    assert back == FINDING
+    assert type(back.evidence) is Chunk
+    assert back == value
 
 
 def test_the_saver_uses_our_list_of_classes():
