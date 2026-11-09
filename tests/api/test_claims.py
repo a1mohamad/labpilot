@@ -1,9 +1,10 @@
 import threading
 
+import psycopg
 import pytest
 
 from labpilot.agent import RESULT, Claim, ClaimsError
-from labpilot.api import claims
+from labpilot.api import claims, file_parts
 from labpilot.api.errors import UnknownArtifactId
 from labpilot.llm import AllFreeTiersExhausted, LLMResult
 from labpilot.prompts import CLAIMS_MAX_TOKENS
@@ -58,7 +59,7 @@ def make(monkeypatch, client, *, chunks=(), error=None):
             raise error
         return tuple(chunks)
 
-    monkeypatch.setattr(claims, "read_chunks", fake_read)
+    monkeypatch.setattr(file_parts, "read_chunks", fake_read)
     return claims.make_claims_extractor(object(), client)
 
 
@@ -231,3 +232,14 @@ def test_a_group_that_fails_loses_only_its_own_claims(monkeypatch, caplog):
 
     assert {c.source for c in found} == {"[paper.md · part 10]", "[paper.md · part 11]"}
     assert "1 of 2 groups are missing" in caplog.text
+
+
+def test_a_dropped_connection_gives_no_claims_and_the_answer_goes_on(monkeypatch):
+    # The claims are a safety net: a read that fails is a ClaimsError, which the
+    # claims node turns into "no claims", never a raw database error.
+    extract = make(
+        monkeypatch, FakeClient(GOOD), error=psycopg.OperationalError("gone")
+    )
+
+    with pytest.raises(ClaimsError, match="could not read"):
+        extract("A-1")
