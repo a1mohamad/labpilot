@@ -1,9 +1,14 @@
 from types import SimpleNamespace
 
+import psycopg
 import pytest
 
-from labpilot.api import summaries
-from labpilot.api.errors import GenerationUnavailable, UnknownArtifactId
+from labpilot.api import file_parts, summaries
+from labpilot.api.errors import (
+    GenerationUnavailable,
+    StorageUnavailable,
+    UnknownArtifactId,
+)
 from labpilot.llm import AllFreeTiersExhausted
 from labpilot.prompts import SUMMARY_MAX_TOKENS
 from labpilot.store import StoredChunk, UnknownArtifact
@@ -38,7 +43,7 @@ def make(monkeypatch, client, *, chunks=(), error=None):
             raise error
         return tuple(chunks)
 
-    monkeypatch.setattr(summaries, "read_chunks", fake_read)
+    monkeypatch.setattr(file_parts, "read_chunks", fake_read)
     return summaries.make_summarizer(object(), client)
 
 
@@ -72,4 +77,11 @@ def test_when_every_tier_fails_the_error_becomes_the_api_error(monkeypatch):
     summarize = make(monkeypatch, client, chunks=[chunk(0, "alpha body")])
 
     with pytest.raises(GenerationUnavailable):
+        summarize("A-1")
+
+
+def test_a_dropped_connection_is_the_storage_error(monkeypatch):
+    summarize = make(monkeypatch, FakeClient(), error=psycopg.OperationalError("gone"))
+
+    with pytest.raises(StorageUnavailable, match="could not read"):
         summarize("A-1")
