@@ -52,9 +52,7 @@ def build(verdicts, calls, *, with_gate=True, **extra):
         calls.append("measure")
         return SIDES
 
-    def make_prompt(
-        chunks, question, totals, summaries, files, last_answer, reference=False
-    ):
+    def make_prompt(chunks, question, totals, summaries, files, last_answer, **_):
         calls.append("make_prompt")
         return "the prompt", chunks[:1]
 
