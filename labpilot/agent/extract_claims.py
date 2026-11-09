@@ -7,12 +7,6 @@ from labpilot.agent.state import State
 
 logger = logging.getLogger(__name__)
 
-STEP = "extract_claims"
-
-
-def wants_claims(state: State) -> bool:
-    return STEP in state["plan"].steps
-
 
 def make_claims_node(
     extract: Callable[[str], tuple[Claim, ...]],
