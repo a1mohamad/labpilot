@@ -70,7 +70,7 @@ def test_respond_hands_the_findings_and_their_parts_to_the_prompt():
     assert [c.chunk_index for c in seen[0]["evidence"]] == [2, 4]
 
 
-def test_without_findings_respond_hands_none_of_them_over():
+def test_without_findings_respond_hands_them_over_empty():
     seen = []
     node = make_respond_node(
         lambda chunks, **kw: seen.append(kw) or ("p", chunks), lambda p: "r"
@@ -78,7 +78,10 @@ def test_without_findings_respond_hands_none_of_them_over():
 
     node({"chunks": (), "question": "why?", "totals": None, "a": "A-1", "b": "B-1"})
 
-    assert not {"evidence", "differences", "bugs"} & set(seen[0])
+    assert seen[0]["differences"] == ()
+    assert seen[0]["bugs"] == ()
+    assert seen[0]["evidence"] == ()
+    assert seen[0]["reference"] is False
 
 
 def test_a_side_small_enough_is_read_whole_and_not_ranked():
