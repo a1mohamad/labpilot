@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from labpilot.prompts._groups import groups_of
+from labpilot.prompts._groups import groups_of, numbered_parts
 from labpilot.prompts.instructions import Instructions
 from labpilot.tokens import estimate_tokens
 
@@ -67,5 +67,5 @@ def build_claims_prompt(parts: Sequence[str]) -> str:
     if not claims_fit(parts):
         raise ValueError("the parts do not fit CLAIMS_BUDGET and nothing is cut")
 
-    numbered = [f"[part {number}]\n{part}" for number, part in enumerate(parts)]
+    numbered = numbered_parts(parts)
     return "\n\n".join([CLAIMS.header, "THE REFERENCE", *numbered, CLAIMS.closing])
