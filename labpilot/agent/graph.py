@@ -6,15 +6,23 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
-from labpilot.agent.check_one import NewQuery, make_check_node
 from labpilot.agent.claim import Claim
-from labpilot.agent.code_finding import CodeFinding
 from labpilot.agent.correspondence import Correspondence
-from labpilot.agent.extract_claims import make_claims_node, wants_claims
+from labpilot.agent.extract_claims import make_claims_node
 from labpilot.agent.fan_out import fan_out
-from labpilot.agent.fan_out_claims import fan_out_claims
-from labpilot.agent.find_missing import make_find_missing_node, wants_missing
-from labpilot.agent.finding import Finding
+from labpilot.agent.final_merge import Merge, make_final_merge_node
+from labpilot.agent.find_bugs import (
+    FindBugs,
+    bugs_task,
+    make_find_bugs_node,
+    wants_bugs,
+)
+from labpilot.agent.find_differences import (
+    FindDifferences,
+    differences_task,
+    make_find_differences_node,
+    wants_differences,
+)
 from labpilot.agent.gate import make_gate_node
 from labpilot.agent.halt import halted, make_halt_node
 from labpilot.agent.merge import make_merge_node
@@ -42,10 +50,9 @@ def build_graph(
     rewrite: Callable[[str, list[str], str], str] | None = None,
     summarize: Callable[[str], str] | None = None,
     extract_claims: Callable[[str], tuple[Claim, ...]] | None = None,
-    check: Callable[[Claim, Chunks], Finding] | None = None,
-    search_claim: Callable[[Any, Query], Chunks] | None = None,
-    new_query: NewQuery | None = None,
-    find_missing: Callable[[str, str], tuple[CodeFinding, ...]] | None = None,
+    find_differences: FindDifferences | None = None,
+    find_bugs: FindBugs | None = None,
+    final_merge: Merge | None = None,
     whole_side: Callable[[Any, str], Chunks | None] | None = None,
     answer_text: Callable[[Any], str] | None = None,
     gate: Callable[[str, str], Correspondence] | None = None,
@@ -58,6 +65,9 @@ def build_graph(
         raise ValueError("a gate needs 'summarize' and 'halt_answer'")
     if gate is None and halt_answer is not None:
         raise ValueError("'halt_answer' is only used with a gate")
+
+    # Where the two finders lead: the last cheap merge when there is one.
+    after_finders = "final_merge" if final_merge is not None else "respond"
 
     def measure_node(state: State) -> dict[str, Any]:
         sides = measure(state["a"], state["b"])
@@ -73,28 +83,31 @@ def build_graph(
     def after_gate(state: State) -> str:
         return "halt" if halted(state) else "measure"
 
-    def checks_and_scan(state: State) -> str | list[Send]:
-        # One fan-out step: a check for each claim and the scan of B run at the
-        # same time, and respond runs once, after all of them.
-        sends: list[Send] = []
-        if extract_claims is not None and check is not None:
-            claims = fan_out_claims(state)
-            if claims != "respond":
-                sends.extend(claims)
-        if find_missing is not None and wants_missing(state):
-            sends.append(Send("find_missing", {"a": state["a"], "b": state["b"]}))
+    def bug_hunt(state: State) -> list[Send]:
+        task = bugs_task(state) if find_bugs is not None else None
+        if task is None or not wants_bugs(state):
+            return []
+        return [Send("find_bugs", task)]
+
+    def finders(state: State) -> str | list[Send]:
+        # The differences and the bug hunt run at the same time, and the next
+        # node runs once, after both of them.
+        sends = bug_hunt(state)
+        if find_differences is not None and wants_differences(state):
+            sends.append(Send("find_differences", differences_task(state)))
         return sends or "respond"
 
     def after_search(state: State) -> str | list[Send]:
         # R21: when everything was read, the answer sees all of both files, and
-        # the claims and the scan only cost time. Measured on 2026-10-24: the
-        # stuffed answer alone scored 30 of 39 in 35 s; with claims and scan
-        # 26 and 28, in 181 and 244 s.
+        # the claims and the differences only cost time (measured 2026-10-24:
+        # the stuffed answer alone scored 30 of 39 in 35 s). The bug hunt still
+        # runs: one call over a whole file found about half of what the hunt
+        # finds (section 29).
         if state["totals"] is None:
-            return "respond"
-        if extract_claims is not None and wants_claims(state):
+            return bug_hunt(state) or "respond"
+        if extract_claims is not None and wants_differences(state):
             return "extract_claims"
-        return checks_and_scan(state)
+        return finders(state)
 
     builder = StateGraph(State)
     builder.add_node("plan", make_planner_node(plan))
@@ -137,30 +150,31 @@ def build_graph(
         builder.add_edge("halt", "remember")
     builder.add_conditional_edges("measure", pick)
     builder.add_edge("search_one", "merge")
-    # The plan decides which of these run: the claims (and a check for each),
-    # and the scan of B for what A does otherwise or never says.
-    fanned = ["respond"]
+
+    # The plan decides which finders run: the differences between A and B
+    # (after the claims, which give it A's facts) and the bugs of one file.
+    found_by = []
+    if find_differences is not None:
+        builder.add_node(
+            "find_differences", make_find_differences_node(find_differences)
+        )
+        found_by.append("find_differences")
+    if find_bugs is not None:
+        builder.add_node("find_bugs", make_find_bugs_node(find_bugs))
+        found_by.append("find_bugs")
+    for name in found_by:
+        builder.add_edge(name, after_finders)
+    if final_merge is not None:
+        builder.add_node("final_merge", make_final_merge_node(final_merge))
+        builder.add_edge("final_merge", "respond")
+
+    after = ["respond", *found_by]
     if extract_claims is not None:
         builder.add_node("extract_claims", make_claims_node(extract_claims))
-        fanned.append("extract_claims")
-        if check is not None:
-            builder.add_node(
-                "check_one",
-                make_check_node(search_claim or search_one, check, new_query),
-            )
-            builder.add_edge("check_one", "respond")
-    if find_missing is not None:
-        builder.add_node("find_missing", make_find_missing_node(find_missing))
-        builder.add_edge("find_missing", "respond")
-    after_claims = [
-        name for name in ("check_one", "find_missing") if name in builder.nodes
-    ]
+        builder.add_conditional_edges("extract_claims", finders, after)
+        after.append("extract_claims")
     for searched in ("stuff", "merge"):
-        builder.add_conditional_edges(searched, after_search, fanned + after_claims)
-    if extract_claims is not None:
-        builder.add_conditional_edges(
-            "extract_claims", checks_and_scan, ["respond", *after_claims]
-        )
+        builder.add_conditional_edges(searched, after_search, after)
     builder.add_edge("respond", "remember")
     builder.add_edge("remember", END)
     return builder.compile(checkpointer=checkpointer)
