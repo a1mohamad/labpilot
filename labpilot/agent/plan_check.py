@@ -7,15 +7,15 @@ logger = logging.getLogger(__name__)
 
 MAX_QUERIES = 6
 
-# Only steps that a node really runs (R18). find_bugs (slice 9) and
-# extract_outcomes (slice 10) are not built yet: the planner listed them on
-# every run of 2026-10-24 and nothing ran them. The summaries run on every
-# message whatever the plan says, so "summarize" is listed for the planner to
-# read and costs nothing.
+# Only steps that a node really runs (R18). extract_outcomes (slice 10) is not
+# built yet. The summaries run on every message whatever the plan says, so
+# "summarize" is listed for the planner to read and costs nothing. The claims
+# run when find_differences runs, because they give it A's facts. find_bugs
+# reads one file alone, so it is allowed with one file and with two (then B).
 STEPS_BY_FILES: dict[int, tuple[str, ...]] = {
     0: (),
-    1: ("summarize",),
-    2: ("summarize", "extract_claims", "find_missing"),
+    1: ("summarize", "find_bugs"),
+    2: ("summarize", "find_differences", "find_bugs"),
 }
 
 
