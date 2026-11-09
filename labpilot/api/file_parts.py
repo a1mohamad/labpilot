@@ -86,8 +86,8 @@ def read_parts(
     side = artifact_id[:1]
     chunks = [as_chunk(part, side, artifact_id) for part in stored]
     if limit is not None:
-        texts = [f"{part.header}\n{part.text}" for part in stored]
-        names = [part.source for part in stored]
+        texts = FileParts.of(chunks).texts
+        names = [chunk.source for chunk in chunks]
         picked = whole_files(texts, names, limit)
         if len(picked) < len(chunks):
             logger.warning(
