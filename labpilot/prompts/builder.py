@@ -10,6 +10,10 @@ from labpilot.tokens import estimate_tokens
 
 REPORT_MAX_TOKENS = 32_000
 PROMPT_BUDGET = 30_000
+# On the search path the reference A is read WHOLE when it is at most this
+# size (section 25.6: a search over a small paper left out the very sections
+# the answer needed). B is always searched on that path.
+A_WHOLE_TOKENS = 10_000
 
 
 PRIOR_HEADING = "ALREADY FOUND IN SIDE B"

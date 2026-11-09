@@ -1,10 +1,10 @@
 import operator
 from typing import Annotated, Any, TypedDict
 
+from labpilot.agent.bug import Bug
 from labpilot.agent.claim import Claim
-from labpilot.agent.code_finding import CodeFinding
 from labpilot.agent.correspondence import Correspondence
-from labpilot.agent.finding import Finding
+from labpilot.agent.difference import Difference
 from labpilot.agent.plan import Plan
 from labpilot.ingest import Chunk
 
@@ -20,8 +20,8 @@ class State(TypedDict):
     last_answer: str
     plan: Plan
     claims: tuple[Claim, ...]
-    findings: Annotated[list[Finding], operator.add]
-    code_findings: Annotated[list[CodeFinding], operator.add]
+    differences: Annotated[list[Difference], operator.add]
+    bugs: Annotated[list[Bug], operator.add]
     summary_a: str
     summary_b: str
     correspondence: Correspondence | None

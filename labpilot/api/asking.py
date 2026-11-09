@@ -7,26 +7,20 @@ import psycopg
 from langgraph.graph.state import CompiledStateGraph
 from psycopg_pool import ConnectionPool
 
-from labpilot.agent import CheckError, build_graph
-from labpilot.api.chains import for_claims
-from labpilot.api.checking import make_checker
+from labpilot.agent import build_graph
+from labpilot.api.bugs import make_bug_finder
+from labpilot.api.chains import bounded, for_claims, for_skeptic, for_trace
 from labpilot.api.checkpoints import open_saver, prune
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison
-from labpilot.api.differences import make_difference_finder
-from labpilot.api.errors import (
-    ArtifactChanged,
-    EmbeddingUnavailable,
-    GenerationUnavailable,
-    InvalidQuestion,
-)
-from labpilot.api.file_facts import FileFacts
+from labpilot.api.difference_finder import make_find_differences
+from labpilot.api.difference_review import make_merger
+from labpilot.api.errors import GenerationUnavailable, InvalidQuestion
 from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.gate import halt_answer, make_gate
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
-from labpilot.api.requery import make_query_writer
 from labpilot.api.searching import embed_query, rank_pile, retrieve_query
 from labpilot.api.summaries import make_summarizer
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
@@ -185,15 +179,6 @@ def _ask_graph(
                 logger.warning("a pooled connection died, searching again")
         raise AssertionError("unreachable")
 
-    def search_claim(sides, query):
-        # The check of a claim is a safety net (D39). When its search fails, the
-        # claim is left unchecked and the answer goes on. The question's own
-        # search keeps raising, because without it there is no answer.
-        try:
-            return search_one(sides, query)
-        except (EmbeddingUnavailable, ArtifactChanged, psycopg.Error) as exc:
-            raise CheckError(f"the search for a claim failed: {exc}") from exc
-
     def whole_side(sides, side):
         # The reference is read whole when it is as small as the step that puts
         # it beside B allows (A_WHOLE_TOKENS); B never is, on this path.
@@ -227,7 +212,14 @@ def _ask_graph(
             ) from exc
 
     claims_client = for_claims(client)
-    whole_files = FileFacts(conn)
+    # Time limits (D102): a call that reads a big group waits at most 120 s for
+    # a tier and 300 s in all, a small call 40 s and 150 s with no second try,
+    # so one slow provider cannot use up the answer.
+    whole = bounded(claims_client, read=120.0, budget=300.0)
+    small = bounded(claims_client, read=40.0, budget=150.0, retries=0)
+    # The merge of the differences: a strong model first with a short limit,
+    # then Flash-Lite (the Flash-Lite merge alone missed obvious repeats).
+    strong_merge = bounded(client, read=40.0, budget=60.0, retries=0)
 
     return build_graph(
         measure=partial(measure_sides, conn),
@@ -239,10 +231,16 @@ def _ask_graph(
         plan=make_planner(conn, client),
         summarize=summarize,
         extract_claims=make_claims_extractor(conn, claims_client),
-        check=make_checker(claims_client, whole_files.facts_for, whole_files.expand),
-        search_claim=search_claim,
-        new_query=make_query_writer(claims_client, whole_files.outline),
-        find_missing=make_difference_finder(conn, claims_client, whole_files),
+        find_differences=make_find_differences(
+            conn, whole=whole, small=small, merge=make_merger(strong_merge, small)
+        ),
+        find_bugs=make_bug_finder(
+            conn,
+            client=bounded(client, read=120.0, budget=300.0),
+            skeptic_client=bounded(for_skeptic(client), read=120.0, budget=300.0),
+            trace_client=bounded(for_trace(client), read=40.0, budget=150.0, retries=0),
+        ),
+        final_merge=make_merger(small),
         whole_side=whole_side,
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),

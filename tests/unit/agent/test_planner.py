@@ -6,7 +6,7 @@ from labpilot.agent import Plan, PlanError, Query, build_graph
 from labpilot.agent.planner import make_planner_node
 
 PLAN = Plan(
-    steps=("extract_claims", "find_missing"),
+    steps=("find_differences", "find_bugs"),
     queries=(Query("A", "gradient clipping value"), Query("B", "CLIP_NORM")),
 )
 
@@ -84,7 +84,7 @@ def test_a_plan_the_files_do_not_allow_is_replaced_by_the_default_plan():
 
     assert plan.source == "default"
     assert plan.queries == (Query("B", "why?"),)
-    assert "extract_claims" not in plan.steps
+    assert "find_differences" not in plan.steps
 
 
 def test_a_planner_that_cannot_read_the_model_answer_gives_the_default_plan():

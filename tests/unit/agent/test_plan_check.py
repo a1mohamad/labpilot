@@ -9,7 +9,7 @@ QUESTION = "why is the clip value 1.5?"
 BOTH = ("A", "B")
 
 GOOD = Plan(
-    steps=("extract_claims", "find_missing"),
+    steps=("find_differences", "find_bugs"),
     queries=(Query("A", "gradient clipping value"), Query("B", "CLIP_NORM")),
 )
 
@@ -35,9 +35,10 @@ def test_more_files_never_remove_a_step():
     assert set(allowed_steps(("B",))) <= set(allowed_steps(BOTH))
 
 
-def test_searching_with_claims_needs_two_files():
-    assert "extract_claims" not in allowed_steps(("A",))
-    assert "extract_claims" in allowed_steps(BOTH)
+def test_comparing_a_and_b_needs_two_files_and_bugs_need_one():
+    assert "find_differences" not in allowed_steps(("A",))
+    assert "find_differences" in allowed_steps(BOTH)
+    assert "find_bugs" in allowed_steps(("B",))
 
 
 @pytest.mark.parametrize(
@@ -94,7 +95,7 @@ def test_six_queries_are_allowed():
     [
         pytest.param(Plan(("dance",), ()), BOTH, id="a step nobody knows"),
         pytest.param(Plan(("verify",), ()), BOTH, id="a name from lesson 1"),
-        pytest.param(Plan(("extract_claims",), ()), ("B",), id="claims, one file"),
+        pytest.param(Plan(("find_differences",), ()), ("B",), id="compare, one file"),
         pytest.param(Plan(("summarize",) * 2, ()), BOTH, id="the same step twice"),
         pytest.param(Plan((), (Query("A", "x"),)), ("B",), id="a side with no file"),
         pytest.param(Plan((), (Query("C", "x"),)), BOTH, id="an unknown side"),

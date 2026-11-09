@@ -2,73 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from labpilot.agent import A_SILENT, CodeFinding, Finding
-from labpilot.api.differences import NEVER_CALLED
-from labpilot.api.errors import (
-    ArtifactsTooLargeToCompare,
-)
-from labpilot.ingest import (
-    Chunk,
-)
+from labpilot.agent import Bug, Difference
+from labpilot.api.errors import ArtifactsTooLargeToCompare
+from labpilot.api.finding_lines import prior_text
+from labpilot.ingest import Chunk
 from labpilot.prompts import (
-    CHECKS_NOTE,
     PROMPT_BUDGET,
     build_chat_prompt,
     build_prompt,
     instructions_for,
-    render_checks,
     reserve,
 )
 from labpilot.retrieval import select
 from labpilot.tokens import estimate_tokens
-
-# A line of the checks is cut at this length, so twenty of them stay near 2,000
-# tokens whatever the model wrote.
-CHECK_LINE_CHARS = 300
-_SHOWN_FIRST = {"mismatch": 0, "absent": 1, "unchecked": 2, "match": 3}
-
-
-def _check_line(finding: Finding) -> str:
-    claim = finding.claim
-    tag = f"{finding.verdict} - {finding.kind}" if finding.kind else finding.verdict
-    line = f'[{tag}] A says "{claim.text}" ({claim.source}).'
-    if finding.quote:
-        line += f' B ({finding.source}): "{finding.quote}".'
-    if finding.note:
-        line += f" {finding.note}"
-    if len(line) > CHECK_LINE_CHARS:
-        line = line[: CHECK_LINE_CHARS - 1] + "…"
-    return line
-
-
-def checks_text(findings: Sequence[Finding]) -> str:
-    ordered = sorted(findings, key=lambda found: _SHOWN_FIRST[found.verdict])
-    return render_checks([_check_line(found) for found in ordered])
-
-
-CODE_NOTE = (
-    "B was also read part by part beside the whole of A, to find what B does "
-    "that A does otherwise or never says. [B differs] means A states something "
-    "else; [A silent] means A does not mention it. Each line is one reading of "
-    "the code: check it against the parts before you rely on it."
-)
-
-
-def _code_line(found: CodeFinding) -> str:
-    tag = "A silent" if found.a_says == A_SILENT else "B differs"
-    line = f'[{tag}] {found.text} B ({found.source}): "{found.quote}".'
-    if found.a_says != A_SILENT:
-        line += f' A says: "{found.a_says}".'
-    if len(line) > CHECK_LINE_CHARS:
-        line = line[: CHECK_LINE_CHARS - 1] + "…"
-    return line
-
-
-def code_findings_text(found: Sequence[CodeFinding]) -> str:
-    if not found:
-        return ""
-    return "\n".join([CODE_NOTE, *(_code_line(item) for item in found)])
-
 
 # The lines of what was already found get at most this share of the prompt's
 # budget. On 2026-10-25 48 check lines and 33 code lines, with the instruction
@@ -78,61 +24,6 @@ PRIOR_SHARE = 0.25
 # What the block around the finding lines adds to the prompt (its title and
 # the blank lines), kept free when the lines are fitted into the room left.
 PRIOR_LABEL_TOKENS = 200
-# A match line in short form: the claim alone. The writer needs the mismatches
-# in full; a match only says what not to report.
-_MATCH_CHARS = 140
-_RANK = {"mismatch": 0, "differs": 1, "absent": 2, "unchecked": 3, "silent": 4}
-
-
-def prior_text(
-    findings: Sequence[Finding],
-    code_findings: Sequence[CodeFinding],
-    limit: int,
-) -> str:
-    """The checks and the code findings, the most telling lines first, within
-    `limit` tokens. What does not fit is counted in one line, never lost
-    silently."""
-    entries: list[tuple[int, str, str]] = []
-    for found in findings:
-        if found.verdict == "match":
-            line = f'[match] A says "{found.claim.text}"'[:_MATCH_CHARS]
-            entries.append((5, "check", line))
-        else:
-            entries.append((_RANK[found.verdict], "check", _check_line(found)))
-    for item in code_findings:
-        rank = _RANK["silent"] if item.a_says == A_SILENT else _RANK["differs"]
-        # A fact read from the whole file is certain, so it is kept with the
-        # differences (2026-10-24, F5b: "pos_class_weight is never called" was
-        # the first line cut for room, because A never mentions it).
-        if NEVER_CALLED in item.text:
-            rank = _RANK["differs"]
-        entries.append((rank, "code", _code_line(item)))
-
-    notes = estimate_tokens(CHECKS_NOTE) + estimate_tokens(CODE_NOTE)
-    kept: list[tuple[int, str, str]] = []
-    spent = notes
-    left_out = 0
-    for entry in sorted(entries, key=lambda entry: entry[0]):
-        cost = estimate_tokens(entry[2]) + 1
-        if spent + cost > limit:
-            left_out += 1
-            continue
-        kept.append(entry)
-        spent += cost
-
-    blocks = []
-    checks = [line for _, kind, line in kept if kind == "check"]
-    codes = [line for _, kind, line in kept if kind == "code"]
-    if checks:
-        blocks.append(render_checks(checks))
-    if codes:
-        blocks.append("\n".join([CODE_NOTE, *codes]))
-    if left_out:
-        blocks.append(
-            f"({left_out} more lines of findings were left out for room, the "
-            "least telling first.)"
-        )
-    return "\n\n".join(blocks)
 
 
 def _first(evidence: Sequence[Chunk], chunks: tuple[Chunk, ...]) -> tuple[Chunk, ...]:
@@ -151,8 +42,8 @@ def build_answer_prompt(
     totals: dict[str, int] | None = None,
     summaries: Mapping[str, str] | None = None,
     last_answer: str = "",
-    findings: Sequence[Finding] = (),
-    code_findings: Sequence[CodeFinding] = (),
+    differences: Sequence[Difference] = (),
+    bugs: Sequence[Bug] = (),
     evidence: Sequence[Chunk] = (),
 ) -> tuple[str, tuple[Chunk, ...]]:
     if files == 0:
@@ -161,7 +52,7 @@ def build_answer_prompt(
     instructions = instructions_for(files)
     # The checks ride in the block that already carries what an earlier pass
     # found, so `build_prompt` and `reserve` both count them.
-    prior = prior_text(findings, code_findings, int(PROMPT_BUDGET * PRIOR_SHARE))
+    prior = prior_text(differences, bugs, int(PROMPT_BUDGET * PRIOR_SHARE))
 
     if totals is None:
         # Everything was read, so send everything whenever the whole prompt fits.
@@ -184,7 +75,7 @@ def build_answer_prompt(
         )
         room = PROMPT_BUDGET - estimate_tokens(bare) - PRIOR_LABEL_TOKENS
         limit = min(int(PROMPT_BUDGET * PRIOR_SHARE), room)
-        fitted = prior_text(findings, code_findings, limit) if limit > 0 else ""
+        fitted = prior_text(differences, bugs, limit) if limit > 0 else ""
         prompt = build_prompt(
             chunks,
             chunks,
