@@ -1,4 +1,4 @@
-from labpilot.agent import A_SILENT, Claim, CodeFinding, Finding
+from labpilot.agent import Bug, Difference
 from labpilot.agent.merge import make_merge_node
 from labpilot.agent.respond import deciding_parts, make_respond_node, with_parts
 from labpilot.ingest import Chunk
@@ -16,31 +16,34 @@ def chunk(index, side="B"):
     )
 
 
-CLAIM = Claim("fact", "[paper.md]", "fact")
-
-
-def finding(verdict, evidence):
-    return Finding(CLAIM, verdict, "", "[f.py]", "q", "n", evidence)
-
-
-def code(evidence, a_says="A says otherwise"):
-    return CodeFinding("B does x", "[f.py]", "x", a_says, evidence)
-
-
-def test_mismatches_come_first_then_differences_then_silences_each_once():
-    found = deciding_parts(
-        [finding("match", chunk(1)), finding("mismatch", chunk(2))],
-        [code(chunk(3), A_SILENT), code(chunk(4)), code(chunk(2))],
+def difference(kind, evidence, unclear=False):
+    return Difference(
+        kind, "B does x", "[f.py]", "x", evidence=evidence, unclear=unclear
     )
 
-    assert [c.chunk_index for c in found] == [2, 4, 3]
+
+def bug(verdict, evidence):
+    return Bug("code", "it breaks", "[f.py]", "x", verdict=verdict, evidence=evidence)
+
+
+def test_differences_and_real_bugs_come_first_then_the_rest_each_once():
+    found = deciding_parts(
+        [
+            difference("silent", chunk(3)),
+            difference("differs", chunk(4)),
+            difference("missing", chunk(5), unclear=True),
+        ],
+        [bug("unclear", chunk(6)), bug("real", chunk(2)), bug("real", chunk(4))],
+    )
+
+    assert [c.chunk_index for c in found] == [4, 2, 3, 5, 6]
 
 
 def test_findings_with_no_part_give_none():
-    assert deciding_parts([finding("absent", None)], [code(None)]) == ()
+    assert deciding_parts([difference("differs", None)], [bug("real", None)]) == ()
 
 
-def test_respond_hands_the_deciding_parts_to_the_prompt():
+def test_respond_hands_the_findings_and_their_parts_to_the_prompt():
     seen = []
 
     def make_prompt(chunks, **kwargs):
@@ -48,6 +51,8 @@ def test_respond_hands_the_deciding_parts_to_the_prompt():
         return "p", chunks
 
     node = make_respond_node(make_prompt, lambda prompt: "r")
+    differences = [difference("differs", chunk(2))]
+    bugs = [bug("real", chunk(4))]
     node(
         {
             "chunks": (chunk(9),),
@@ -55,15 +60,17 @@ def test_respond_hands_the_deciding_parts_to_the_prompt():
             "totals": {"B": 9},
             "a": "A-1",
             "b": "B-1",
-            "findings": [finding("mismatch", chunk(2))],
-            "code_findings": [code(chunk(4))],
+            "differences": differences,
+            "bugs": bugs,
         }
     )
 
+    assert seen[0]["differences"] == differences
+    assert seen[0]["bugs"] == bugs
     assert [c.chunk_index for c in seen[0]["evidence"]] == [2, 4]
 
 
-def test_without_findings_respond_gives_no_evidence():
+def test_without_findings_respond_hands_none_of_them_over():
     seen = []
     node = make_respond_node(
         lambda chunks, **kw: seen.append(kw) or ("p", chunks), lambda p: "r"
@@ -71,7 +78,7 @@ def test_without_findings_respond_gives_no_evidence():
 
     node({"chunks": (), "question": "why?", "totals": None, "a": "A-1", "b": "B-1"})
 
-    assert "evidence" not in seen[0]
+    assert not {"evidence", "differences", "bugs"} & set(seen[0])
 
 
 def test_a_side_small_enough_is_read_whole_and_not_ranked():
@@ -130,7 +137,7 @@ def test_respond_numbers_the_prompt_and_saves_the_chunks_on_one_list():
             "totals": {"B": 9},
             "a": "A-1",
             "b": "B-1",
-            "findings": [finding("mismatch", chunk(2))],
+            "differences": [difference("differs", chunk(2))],
         }
     )
 
