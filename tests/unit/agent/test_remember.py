@@ -1,10 +1,11 @@
 from langgraph.types import Overwrite
 
-from labpilot.agent import Claim, Finding
+from labpilot.agent import Bug, Claim, Difference
 from labpilot.agent.remember import make_remember_node
 
 CLAIM = Claim("a fact", "[paper.md]", "a fact")
-FINDING = Finding(CLAIM, "match", "", "[solver.py]", "a fact", "the same")
+DIFFERENCE = Difference("differs", "B does it otherwise", "[solver.py]", "dt = 1")
+BUG = Bug("code", "it divides by zero", "[solver.py]", "x / n")
 STATE = {"question": "why?", "result": "the result"}
 
 
@@ -19,15 +20,18 @@ def test_the_last_answer_is_written_when_a_function_gives_its_text():
 
 
 def test_the_claims_and_the_findings_of_this_message_are_cleared():
-    state = {**STATE, "claims": (CLAIM,), "findings": [FINDING]}
+    state = {**STATE, "claims": (CLAIM,), "differences": [DIFFERENCE], "bugs": [BUG]}
 
     remembered = make_remember_node(None)(state)
 
     assert remembered["claims"] == ()
-    assert remembered["findings"] == Overwrite([])
+    assert remembered["differences"] == Overwrite([])
+    assert remembered["bugs"] == Overwrite([])
 
 
 def test_a_key_that_holds_nothing_is_not_written_at_all():
-    remembered = make_remember_node(None)({**STATE, "claims": (), "findings": []})
+    state = {**STATE, "claims": (), "differences": [], "bugs": []}
 
-    assert "claims" not in remembered and "findings" not in remembered
+    remembered = make_remember_node(None)(state)
+
+    assert not {"claims", "differences", "bugs"} & set(remembered)
