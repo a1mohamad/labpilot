@@ -1,11 +1,11 @@
-"""The claims and the checks, from stored rows to the answer.
+"""The claims, the differences and the bugs, from stored rows to the answer.
 
-The unit tests give the claim step and the check step fake functions, and the
-api tests give them a fake client and fake rows. So nothing proved the joins:
-the rows in Postgres read back in order, the number the model writes turned into
-the place of a stored part, the quote looked up in the part the model named, a
-wrong number sent on to the next tier, and the findings that the answer reads
-and the saved chat does not keep.
+The unit tests give these steps fake functions, and the api tests give them a
+fake client and fake rows. So nothing proved the joins: the rows in Postgres
+read back in order, the number the model writes turned into the place of a
+stored part, the quote looked up in the part the model named, a wrong number
+sent on to the next tier, and the findings that the answer reads and the saved
+chat does not keep.
 
 `database` marked and free: no API quota. The first group uses the real provider
 code with `responses` in place of the provider, and the second runs `ask()` with
@@ -17,18 +17,17 @@ from __future__ import annotations
 import json
 import re
 
-import psycopg
 import pytest
 import responses
-from psycopg_pool import PoolTimeout
 
 from labpilot.agent import ClaimsError
 from labpilot.api import asking, reading, searching
 from labpilot.api.checkpoints import open_saver
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.errors import EmbeddingUnavailable
+from labpilot.api.finding_lines import BUGS_NOTE, DIFFERENCES_NOTE
 from labpilot.llm import AllFreeTiersExhausted, GeminiProvider, LLMClient, LLMResult
-from labpilot.prompts import CHECKS_NOTE, REQUERY, SUMMARY_MAX_TOKENS
+from labpilot.prompts import SUMMARY_MAX_TOKENS
 from labpilot.store import ArtifactRecord, ChunkRecord, write_artifact
 
 pytestmark = pytest.mark.database
@@ -219,237 +218,223 @@ def test_when_every_tier_makes_up_its_quotes_there_are_no_claims(db):
         extract(a)
 
 
-class ClaimsClient:
-    """Plans for the claims step, then answers each tool by its name.
+class FindersClient:
+    """Plans the steps it is given, then answers each tool by its name.
 
-    It reads the numbered parts out of the prompt, as a model would, and names
-    the part that holds the words it is looking for. If the code numbered the
-    parts differently from the way it looks them up, this client would name the
-    wrong one and the quote would not be in it.
+    It reads the numbered parts and facts out of the prompt, as a model would,
+    and names the part that holds the words it is looking for. If the code
+    numbered the parts differently from the way it looks them up, this client
+    would name the wrong one and the quote would not be in it.
     """
 
-    def __init__(self, verdict="mismatch"):
-        self.verdict = verdict
-        self.claim_prompts = []
-        self.check_prompts = []
+    def __init__(self, steps=("find_differences",), judge="real", groups=()):
+        self.steps = list(steps)
+        self.judge = judge
+        self.groups = [list(group) for group in groups]
+        self.prompts = {}
         self.answers = []
 
     def part_with(self, prompt, words):
-        parts = re.findall(
-            r"\[part (\d+)\]\n(.*?)(?=\n\n\[part|\n\nGive|\n\nList)", prompt, re.S
-        )
-        return next(int(number) for number, text in parts if words in text)
+        marks = list(re.finditer(r"\[part (\d+)\]\n", prompt))
+        for mark, after in zip(marks, [*marks[1:], None], strict=True):
+            end = after.start() if after else len(prompt)
+            if words in prompt[mark.end() : end]:
+                return int(mark.group(1))
+        raise AssertionError(f"no part holds {words!r}")
+
+    def fact_number(self, prompt, words):
+        return int(re.search(rf"(\d+)\. [^\n]*{re.escape(words)}", prompt).group(1))
 
     def result(self, arguments):
         return LLMResult(
             text="ok", model="fake", tier=1, finish_reason="STOP", arguments=arguments
         )
 
-    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
-        name = tool.name if tool else None
+    def answer(self, name, prompt):
         if name == "make_plan":
-            return self.result({"steps": ["extract_claims"], "queries": []})
+            return {"steps": self.steps, "queries": []}
         if name == "judge_correspondence":
-            return self.result(
-                {"verdict": "PARTIAL", "reason": "they describe the same work"}
-            )
+            return {"verdict": "PARTIAL", "reason": "they describe the same work"}
         if name == "list_claims":
-            self.claim_prompts.append(prompt)
-            return self.result(
-                {
-                    "claims": [
-                        claim(self.part_with(prompt, "time step is 0.01 s")),
-                        {
-                            "text": "the mesh has 200 cells",
-                            "part": self.part_with(prompt, "mesh has 200 cells"),
-                            "quote": "mesh has 200 cells",
-                        },
-                    ]
-                }
-            )
-        if name == "give_verdict":
-            self.check_prompts.append(prompt)
-            if "time step" in prompt.split("THE PARTS", 1)[0]:
-                part = self.part_with(prompt, "dt = 0.05")
-                return self.result(
+            return {
+                "claims": [
+                    claim(self.part_with(prompt, "time step is 0.01 s")),
                     {
-                        "verdict": self.verdict,
-                        "kind": "choice",
-                        "part": part,
+                        "text": "the mesh has 200 cells",
+                        "part": self.part_with(prompt, "mesh has 200 cells"),
+                        "quote": "mesh has 200 cells",
+                    },
+                ]
+            }
+        if name == "give_verdicts":
+            return {
+                "answers": [
+                    {
+                        "n": self.fact_number(prompt, "time step"),
+                        "verdict": "differs",
+                        "part": self.part_with(prompt, "dt = 0.05"),
                         "quote": "dt = 0.05",
-                        "note": "B uses a bigger step",
+                        "why": "B uses a bigger step",
+                    },
+                    {"n": self.fact_number(prompt, "mesh has"), "verdict": "same"},
+                ]
+            }
+        if name == "list_items":
+            return {"items": []}
+        if name == "judge_findings":
+            listed = prompt.split("FINDINGS", 1)[1]
+            count = len(re.findall(r"^\d+\. ", listed, re.M))
+            return {
+                "answers": [
+                    {"n": n, "verdict": self.judge, "relation": "differs", "why": ""}
+                    for n in range(count)
+                ]
+            }
+        if name == "group_findings":
+            return {"groups": self.groups}
+        if name == "list_defects":
+            if "steps = 0" not in prompt:
+                return {"defects": []}
+            return {
+                "defects": [
+                    {
+                        "kind": "logic",
+                        "part": self.part_with(prompt, "steps = 0"),
+                        "quote": "steps = 0",
+                        "text": "the solver never takes a step",
                     }
-                )
-            part = self.part_with(prompt, "mesh = 200")
-            return self.result(
-                {
-                    "verdict": "match",
-                    "part": part,
-                    "quote": "mesh = 200",
-                    "note": "same",
-                }
-            )
+                ]
+            }
+        if name == "list_obligations":
+            return {"obligations": ["Does the solver take at least one step?"]}
+        if name == "answer_checklist":
+            return {"answers": [{"n": 0, "meets": "yes"}]}
+        if name == "judge_suspects":
+            return {"verdicts": [{"n": 0, "verdict": "real", "reason": "no step"}]}
+        raise AssertionError(f"an unexpected tool: {name}")
+
+    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
+        if tool is not None:
+            self.prompts.setdefault(tool.name, []).append(prompt)
+            return self.result(self.answer(tool.name, prompt))
         if max_tokens == SUMMARY_MAX_TOKENS:
             return LLMResult(text="a summary", model="fake", tier=1)
         self.answers.append(prompt)
         return LLMResult(text="an answer", model="fake", tier=1, finish_reason="STOP")
 
 
-def ask(db, client, **kwargs):
+def store_with_a_bug(db):
     a, b = store(db)
+    write_artifact(
+        db,
+        ArtifactRecord(id=b, name="solver.py", side="B", embedding_model=MODEL, dim=3),
+        [
+            row(0, SOLVER_MESH, "mesh = 200", "solver.py"),
+            row(1, SOLVER_STEP, "dt = 0.05\nsteps = 0", "solver.py"),
+        ],
+    )
+    return a, b
+
+
+def ask(db, client, *, with_a_bug=False, **kwargs):
+    a, b = store_with_a_bug(db) if with_a_bug else store(db)
     return asking.ask(db, a, b, question=QUESTION, client=client, **kwargs)
 
 
 @pytest.fixture(autouse=True)
 def embedded(monkeypatch):
     monkeypatch.setattr(searching, "_embed_question", lambda *a, **k: V)
-    # The claims run on the search path only (R21): when everything is read the
-    # answer sees both files whole. This small pair would fit, so it is searched.
+    # The claims and the differences run on the search path only (R21): when
+    # everything is read the answer sees both files whole. This small pair
+    # would fit, so it is searched.
     monkeypatch.setattr(asking, "fits_whole", lambda *a, **k: False)
 
 
-def test_every_claim_is_checked_in_the_stored_other_file_and_the_answer_reads_it(db):
-    client = ClaimsClient()
+def test_a_fact_of_a_that_b_breaks_reaches_the_answer_with_its_place_in_b(db):
+    client = FindersClient()
 
     ask(db, client)
 
-    assert len(client.check_prompts) == 2
-    assert len(client.answers) == 1
+    audit = client.prompts["give_verdicts"][0]
+    assert "the time step is 0.01 s" in audit and "dt = 0.05" in audit
     answer = client.answers[0]
-    assert CHECKS_NOTE in answer
+    assert DIFFERENCES_NOTE in answer
     assert (
-        f'[mismatch - choice] A says "the time step is 0.01 s" ({STEP}). '
-        f'B ({SOLVER_STEP}): "dt = 0.05". B uses a bigger step'
+        '[B differs] B uses a bigger step A states: "the time step is 0.01 s". '
+        f'B ({SOLVER_STEP}): "dt = 0.05".'
     ) in answer
-    # A match is written short since 6782bb9: the claim alone, so the room goes
-    # to the mismatches.
-    assert '[match] A says "the mesh has 200 cells"' in answer
+    assert "mesh has 200 cells" not in answer.split(DIFFERENCES_NOTE, 1)[1]
 
 
-def test_the_mismatch_is_listed_before_the_match_in_the_answer(db):
-    client = ClaimsClient()
+def test_the_scan_reads_the_whole_of_a_beside_b(db):
+    client = FindersClient()
 
     ask(db, client)
 
-    answer = client.answers[0]
-    assert answer.index("\n[mismatch") < answer.index("\n[match]")
+    scan = client.prompts["list_items"][0]
+    assert "The mesh has 200 cells." in scan and "The time step is 0.01 s." in scan
+    assert "dt = 0.05" in scan
 
 
-def test_a_check_that_no_tier_can_make_is_listed_as_unchecked_and_the_answer_goes_on(
-    db,
-):
-    class NoChecks(ClaimsClient):
+def test_a_difference_every_judge_calls_false_never_reaches_the_answer(db):
+    client = FindersClient(judge="false")
+
+    ask(db, client)
+
+    assert DIFFERENCES_NOTE not in client.answers[0]
+
+
+def test_when_no_tier_answers_the_differences_the_answer_goes_on_without_them(db):
+    class Silent(FindersClient):
         def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
-            if tool is not None and tool.name == "give_verdict":
+            if tool is not None and tool.name in ("give_verdicts", "list_items"):
                 raise AllFreeTiersExhausted(())
             return super().generate(
                 prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
             )
 
-    client = NoChecks()
-
-    comparison = ask(db, client)
+    comparison = ask(db, Silent())
 
     assert comparison.result.text == "an answer"
-    assert client.answers[0].count("\n[unchecked]") == 2
+    assert DIFFERENCES_NOTE not in comparison.prompt
+
+
+def test_the_bugs_of_b_reach_the_answer_beside_the_differences(db):
+    client = FindersClient(steps=("find_differences", "find_bugs"))
+
+    ask(db, client, with_a_bug=True)
+
+    answer = client.answers[0]
+    assert BUGS_NOTE in answer
+    assert "[real - logic] the solver never takes a step" in answer
+    assert "[B differs] B uses a bigger step" in answer
+
+
+def test_a_bug_that_makes_the_same_point_as_a_difference_is_shown_once(db):
+    # The final merge numbers the differences first, then the bugs: 0 is the
+    # difference and 1 the bug, and a group of both keeps the difference.
+    client = FindersClient(steps=("find_differences", "find_bugs"), groups=[[0, 1]])
+
+    ask(db, client, with_a_bug=True)
+
+    answer = client.answers[0]
+    assert "[B differs] B uses a bigger step" in answer
+    assert "the solver never takes a step" not in answer
 
 
 def test_the_saved_chat_keeps_no_claims_and_no_findings_after_the_message(
     db, chat_tables
 ):
-    client = ClaimsClient()
-    config = {"configurable": {"thread_id": "chat-claims"}}
+    client = FindersClient(steps=("find_differences", "find_bugs"))
+    config = {"configurable": {"thread_id": "chat-finders"}}
 
-    ask(db, client, thread_id="chat-claims")
+    ask(db, client, with_a_bug=True, thread_id="chat-finders")
 
     values = open_saver(db).get_tuple(config).checkpoint["channel_values"]
     assert not values.get("claims")
-    assert not values.get("findings")
+    assert not values.get("differences")
+    assert not values.get("bugs")
     assert values["history"] == [QUESTION]
-
-
-class RetryClient(ClaimsClient):
-    """The first check of the time step finds nothing, so the search is tried again.
-
-    After that it answers as the plain client does, so the claim is checked a
-    second time against whatever the new query found.
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.requeries = []
-
-    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
-        if tool is None and prompt.endswith(REQUERY.closing):
-            self.requeries.append(prompt)
-            return LLMResult(text="dt step", model="fake", tier=1)
-        first_step_check = (
-            tool is not None
-            and tool.name == "give_verdict"
-            and "time step" in prompt.split("THE PARTS", 1)[0]
-            and not self.requeries
-        )
-        if first_step_check:
-            self.check_prompts.append(prompt)
-            return self.result(
-                {"verdict": "absent", "note": "the parts do not show the step"}
-            )
-        return super().generate(
-            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
-        )
-
-
-def test_an_absent_claim_is_searched_again_with_the_query_the_model_wrote(
-    db, monkeypatch
-):
-    embedded = []
-    monkeypatch.setattr(
-        searching,
-        "_embed_question",
-        lambda text, **_: embedded.append(text) or V,
-    )
-    client = RetryClient()
-
-    ask(db, client)
-
-    assert len(client.requeries) == 1
-    assert "the time step is 0.01 s" in client.requeries[0]
-    assert "the parts do not show the step" in client.requeries[0]
-    assert embedded.count("the time step is 0.01 s") == 1
-    assert embedded.count("dt step") == 1
-    answer = client.answers[0]
-    assert f'[mismatch - choice] A says "the time step is 0.01 s" ({STEP})' in answer
-    assert "\n[absent]" not in answer
-
-
-FAULTS = [
-    pytest.param(EmbeddingUnavailable("the embedder is down"), id="embedder-down"),
-    pytest.param(
-        psycopg.OperationalError("SSL SYSCALL error: EOF detected"), id="database-drop"
-    ),
-    pytest.param(PoolTimeout("couldn't get a connection after 30.00 sec"), id="pool"),
-]
-
-
-@pytest.mark.parametrize("fault", FAULTS)
-def test_a_search_that_fails_for_a_claim_leaves_it_unchecked_and_the_answer_goes_on(
-    db, monkeypatch, fault
-):
-    claims = {"the time step is 0.01 s", "the mesh has 200 cells"}
-
-    def broken(text, **_kwargs):
-        # Only the claims' own searches fail; the question is searched as usual.
-        if text in claims:
-            raise fault
-        return V
-
-    monkeypatch.setattr(searching, "_embed_question", broken)
-    client = ClaimsClient()
-
-    comparison = ask(db, client)
-
-    assert comparison.result.text == "an answer"
-    assert client.answers[0].count("\n[unchecked]") == 2
 
 
 def test_a_search_that_fails_for_the_question_itself_still_stops_the_answer(
@@ -463,72 +448,16 @@ def test_a_search_that_fails_for_the_question_itself_still_stops_the_answer(
     monkeypatch.setattr(searching, "_embed_question", down)
 
     with pytest.raises(EmbeddingUnavailable):
-        ask(db, ClaimsClient())
+        ask(db, FindersClient())
 
 
-class ScanClient(ClaimsClient):
-    """Plans the claims AND the scan of B, and answers the scan from the prompt."""
-
-    def __init__(self):
-        super().__init__()
-        self.scan_prompts = []
-
-    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
-        name = tool.name if tool else None
-        if name == "make_plan":
-            return self.result(
-                {"steps": ["extract_claims", "find_missing"], "queries": []}
-            )
-        if name == "list_differences":
-            self.scan_prompts.append(prompt)
-            part = self.part_with(prompt.split("PARTS OF FILE B", 1)[1], "dt = 0.05")
-            return self.result(
-                {
-                    "items": [
-                        {
-                            "text": "B uses a time step of 0.05",
-                            "part": part,
-                            "quote": "dt = 0.05",
-                            "a_says": "The time step is 0.01 s.",
-                        }
-                    ]
-                }
-            )
-        return super().generate(
-            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
-        )
-
-
-def test_the_scan_reads_the_stored_b_beside_all_of_a_and_the_answer_reads_it(
-    db, chat_tables
-):
-    client = ScanClient()
-    config = {"configurable": {"thread_id": "chat-scan"}}
-
-    ask(db, client, thread_id="chat-scan")
-
-    (scan,) = client.scan_prompts
-    assert "The mesh has 200 cells." in scan and "The time step is 0.01 s." in scan
-    answer = client.answers[0]
-    assert (
-        f'[B differs] B uses a time step of 0.05 B ({SOLVER_STEP}): "dt = 0.05". '
-        'A says: "The time step is 0.01 s."'
-    ) in answer
-    values = open_saver(db).get_tuple(config).checkpoint["channel_values"]
-    assert not values.get("code_findings")
-
-
-class HaltClient(ClaimsClient):
+class HaltClient(FindersClient):
     """The gate says NONE: the two summaries do not correspond."""
 
-    def generate(self, prompt, *, max_tokens=0, tool=None, problem_with=None):
-        if tool is not None and tool.name == "judge_correspondence":
-            return self.result(
-                {"verdict": "NONE", "reason": "they are about different things"}
-            )
-        return super().generate(
-            prompt, max_tokens=max_tokens, tool=tool, problem_with=problem_with
-        )
+    def answer(self, name, prompt):
+        if name == "judge_correspondence":
+            return {"verdict": "NONE", "reason": "they are about different things"}
+        return super().answer(name, prompt)
 
 
 def test_a_none_verdict_answers_from_the_two_summaries_and_the_chat_is_saved(
@@ -544,9 +473,9 @@ def test_a_none_verdict_answers_from_the_two_summaries_and_the_chat_is_saved(
     assert "I did not compare these two" in text
     assert "they are about different things" in text
     assert "A: a summary" in text and "B: a summary" in text
-    # nothing after the gate ran: no claims, no checks, no report
-    assert client.claim_prompts == []
-    assert client.check_prompts == []
+    # nothing after the gate ran: no claims, no differences, no report
+    assert "list_claims" not in client.prompts
+    assert "give_verdicts" not in client.prompts
     assert client.answers == []
     assert comparison.chunks == ()
     assert comparison.prompt == ""
