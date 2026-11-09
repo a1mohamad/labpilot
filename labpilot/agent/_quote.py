@@ -18,6 +18,7 @@ def has_quote(part: str, quote: str) -> bool:
     return bool(wanted) and wanted in _plain(part)
 
 
+# A piece of a quote shorter than this is too short to place it safely.
 MIN_PIECE_CHARS = 9
 
 
@@ -34,8 +35,7 @@ def place_quote(part: int, quote: str, texts: Sequence[str]) -> tuple[int, str] 
         for piece in quote.replace("...", "\n").splitlines()
         if len(piece.strip()) >= MIN_PIECE_CHARS
     ]
-
-    for wanted in (quote, *pieces[:1]):
+    for wanted in [quote, *pieces[:1]]:
         for i in order:
             if has_quote(texts[i], wanted):
                 return i, wanted.strip()

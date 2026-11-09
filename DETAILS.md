@@ -167,6 +167,15 @@ text, so it never holds LESS than CLAUDE.md and may hold more.
   both were updated.
 - Claude does this without being asked, every time.
 
+### Commit messages go in ONE file, and it is overwritten every time
+
+*Rule added 2026-11-10, at the user's request, after Claude made a second file.*
+
+When the user asks for commit messages, Claude REWRITES `artifacts/commit_messages.txt`
+(one line for each file, `path|message`, the format `scripts/merge_per_file.py --messages`
+reads). The old content is not needed any more, so it is simply overwritten. Claude never
+creates a new messages file (no `commit_messages_lesson4.txt` and the like).
+
 ### Review pass after every slice, and a hand-off prompt at the end of every session
 
 *Two rules added 2026-10-21, at the user's request. Both are Claude's job, and both are done

@@ -50,7 +50,7 @@ def build_answer_prompt(
         return build_chat_prompt(question, last_answer), ()
 
     instructions = instructions_for(files)
-    # The checks ride in the block that already carries what an earlier pass
+    # The findings ride in the block that already carries what an earlier pass
     # found, so `build_prompt` and `reserve` both count them.
     prior = prior_text(differences, bugs, int(PROMPT_BUDGET * PRIOR_SHARE))
 

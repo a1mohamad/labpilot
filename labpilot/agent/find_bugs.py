@@ -18,7 +18,7 @@ class BugsTask(TypedDict):
     summary: str
 
 
-def wants_bug(state: State) -> bool:
+def wants_bugs(state: State) -> bool:
     return STEP in state["plan"].steps
 
 
