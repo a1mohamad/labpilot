@@ -961,7 +961,7 @@ generation-time problem below — it cannot generate.
 | 10 | outcomes and comparability: `extract_outcomes`, "are these numbers comparable?" | not started. At its end: the "two files, question about one" gap (D105, 29.11) |
 | 11 | routing: a chain, `max_tokens` and thinking level per node | not started |
 | 12 | the size gate, big repositories and the summary of a big artifact (was slice 9) | not started (sections 18 and 21, D46; the part size and the join are in section 23, D68 and D69; since 2026-10-29 it also stores the summary at ingest and reads it in the graph, D47; and since 2026-11-09 the extension for big repositories of the follow-up design D104, which is built at the end of slice 9, 29.10); and the ranking of findings by a cheap model, M32, 29.13; and keeping the most important parts when a big B is cut, M34, 29.14 |
-| 13 | measure findings against `EXPECTED.md` and the wall clock | not started; a small baseline of the same run is made at the end of slice 7 and after each slice (D74). **It must also test every decision of section 27 on many pairs and generalize what only fits `quora_siamese` (27.1)** |
+| 13 | measure findings against `EXPECTED.md` and the wall clock | not started; a small baseline of the same run is made at the end of slice 7 and after each slice (D74). **It must also test every decision of section 27 on many pairs and generalize what only fits `quora_siamese` (27.1)** **And the tuning job (27.2): every number that is still a guess (A_WHOLE_TOKENS, the budgets, the group sizes, the caps, the votes, the waits and the rest of the table) is swept on many pairs and set from the results.** |
 | 14 | Jev for decisions: the decision model tried on the other jobs of D73 (the gate, comparability, "does it add up", `find_missing`, the labels of a finding, the planner's steps, the follow-up check), one schema for each job, against the LLM versions | not started; added 2026-10-23 (D73). The pilot M15, the check of a claim, is at the end of slice 7. **All the work on Jev is kept in THIS slice (the user's rule, 2026-10-28): every measurement of it and every code change for it. The check of a claim was measured once in the pilot M15 (25.5: Jev 27 to 29 of 32 claims, 10 to 30 times faster than the LLM checkers, not proven). Slice 14 takes NEW measurements of Jev on the check and on the other jobs. If they agree with 25.5, Jev is added. Other slices put no Jev code in the graph.** |
 
 **What landed, and the section that tells the story:**
@@ -9714,7 +9714,7 @@ about Step 1 slices (for example "slice 7 wired the ask path") are history and k
 | 10 | **outcomes and comparability** | `extract_outcomes`; "are these two numbers comparable?" YES / NO / CANNOT TELL; "does it add up?". **At the END of the slice (added 2026-11-08, D105, 29.11): a question about ONE file when TWO are sent. The planner says which file the question is about (A, B or both), and `respond` then answers with `ONE_FILE` and no `find_differences` runs.** | medium, 2 lessons, plus the D105 step |
 | 11 | **routing** | a chain, a `max_tokens` and a thinking level for each node; the chain of `respond` for each plan; the quota-leak test | light, 1 lesson |
 | 12 | **the size gate and big repositories** | one `fits(side, budget)` check (D43); the top-N path for claims on a big A; the scan of a big B; claim ranking (D28); the good summary of a big artifact (D46); **store the summary at ingest and read it in the graph, instead of making it on every message (added 2026-10-29, see D47; readers: the slice 8 gate and its halt answer, and the planner only if the M5 third arm shows a gain; the gate may then move before the planner, one arrow in `graph.py`, section 28)**; the new test pair. This was slice 9. **UPDATE 2026-10-22: the part size is ONE fixed 12K and the join is a round-robin cut (section 23, D68 and D69).** **Also owed from slice 9 (2026-11-02, 29.8): real measurements of find_bugs on a big repository: the 40K read limit and how files are chosen, the smart cut, the group size, and the cheap trace model.** **Also from slice 9 (D104, 29.10): EXTEND for big repositories the follow-up design that is built at the end of slice 9 (the whole last answer, the findings and the claims saved once for each pair of files, three paths).** **And M32 (2026-11-09, 29.13): rank the finding lines (differences and bugs together) against the question with one cheap Flash-Lite call, against today's fixed rule order.** **And M34 (2026-11-09, 29.14): keep the most important parts of a big B when the prompt cuts it: measure the loss first, then candidates K1 to K8.** | medium, 2 lessons, maybe more |
-| 13 | **measure** | findings against `EXPECTED.md` on the search path (M6; a first small baseline is made at the end of slice 7 and after each slice, D74), the wall clock (M8), M4, M7 and the fix quality (M17). **Also the generalization job (27.1): run every decision of section 27 on MANY pairs, tune on some and test on others, and replace what only fits `quora_siamese`.** | none |
+| 13 | **measure** | findings against `EXPECTED.md` on the search path (M6; a first small baseline is made at the end of slice 7 and after each slice, D74), the wall clock (M8), M4, M7 and the fix quality (M17). **Also the generalization job (27.1): run every decision of section 27 on MANY pairs, tune on some and test on others, and replace what only fits `quora_siamese`.** **And the tuning job (27.2): every number that is still a guess (A_WHOLE_TOKENS, the budgets, the group sizes, the caps, the votes, the waits and the rest of the table) is swept on many pairs and set from the results.** | none |
 | 14 | **Jev for decisions** | the decision model `typesafe/jev-1.13` (D73), tried on every job whose answer is a choice or a yes/no, with ONE SCHEMA for each job, against the LLM version that already works (the baseline from slice 13): the gate (8); "are these two numbers comparable?" and "does it add up?" (10); `find_missing` (9); the labels of a finding, kind, box, basis and direction (7); the planner's list of steps (M16, 4); "is this follow-up already a full question?" (6, an idea of 2026-10-23). Reranking is done, and the check of a claim is the pilot M15 at the end of slice 7. **All the work on Jev is kept in THIS slice (the user's rule, 2026-10-28): every measurement of it and every code change for it. The check of a claim was measured once in the pilot M15 (25.5: Jev 27 to 29 of 32 claims, 10 to 30 times faster than the LLM checkers, not proven). Slice 14 takes NEW measurements of Jev on the check and on the other jobs. If they agree with 25.5, Jev is added. Other slices put no Jev code in the graph.** | not decided; written when the slice starts |
 
 *(Slice 14 was added on 2026-10-23, so the list has fifteen slices, 0 to 14. The heading of this section keeps its old words so that links to it work. See D73 in section 23.2.)*
@@ -13777,6 +13777,57 @@ This is the same open item as "the scan, the rerank window and a cap on the part
 1. `CLAIMS_BUDGET` = 28,000 tokens: the most of A that the claims step reads. Above it, no claims are made (D65). Slice 12 plans to raise it with a total budget of about 90K tokens for a big A, cut into parts and joined (D68, D69; the 90K is a first guess, M12).
 2. `A_WHOLE_TOKENS` = 10,000 tokens: the largest A that is read whole on the search path (decision 12) and put beside every group of B in the scan (decision 10). It is a different number from the 28,000 for the same A, and nothing ties them.
 3. The algorithm that reads A whole: it only checks the size of A. Slice 13 should measure on many pairs whether 10,000 is a good limit, whether the two limits should be one, and whether a bigger A should be read in another way (for example only the parts near the question, or a summary) and not be dropped.
+
+#### 27.2 FOR SLICE 13 (the user's rule, 2026-11-10): tune every number that is still a guess
+
+**The rule.** LabPilot has many numbers that decide how much is read, how it is cut, how many calls run and how much goes into a prompt. Most of them are **our first guess**, or were measured on **one pair** (`quora_siamese`) or on the three cases of slice 9. They were never swept to find the best value. A number can be the best one for our pair and a poor one for others (27.1). **Slice 13 tunes them**: for each number, try several values on MANY pairs, on held-out pairs too, with several runs a cell, and choose from the results. Count quality (findings, claims, coverage, faults read by hand), seconds and calls. A number may also become a value that DEPENDS on the input size or the model, if one fixed value cannot fit all cases.
+
+**How to tune.** One number at a time; the others stay fixed. Name the pair, the tier and the denominator beside every result. Numbers that are linked (the three size limits of 27.1, and the rerank window with the top N) are tuned together. Choose by the worst pair, not only by the mean.
+
+**The numbers** (the value today, where it lives, and what is known about it). "Guess" means never measured. "One pair" or "three cases" means measured on that only, so it is still a candidate.
+
+| group | number | today | where | known |
+|---|---|---|---|---|
+| what is read whole | `A_WHOLE_TOKENS` | 10,000 | `prompts/builder.py` | guess (decision 12, 26.10) |
+| | `CLAIMS_BUDGET` | 28,000 | `prompts/claims.py` | guess (D68 was a proxy) |
+| | `SCAN_A_TEXT_TOKENS` | 20,000 | `prompts/scan.py` | three cases (29.2) |
+| | `SUMMARY_BUDGET` | 12,000 | `prompts/summary.py` | from Gemma's minute limit, not tuned (D46) |
+| | `DIFFERENCES_READ_TOKENS`, `BUGS_SCAN_TOKENS` | 40,000 | `prompts/audit.py`, `prompts/bugs.py` | guess (owed to slice 12, 29.8) |
+| prompt budget | `PROMPT_BUDGET` | 30,000 | `prompts/builder.py` | a decision (D61), not tuned |
+| | `PROMPT_EXTRAS_TOKENS` | 2,000 | `prompts/builder.py` | guess |
+| | `PRIOR_SHARE` | 0.25 | `api/prompting.py` | one pair: 10% looked the same at 30K (26.4) |
+| | `PRIOR_LABEL_TOKENS` | 200 | `api/prompting.py` | guess |
+| | `OUTLINE_BUDGET` | 4,000 | `prompts/context.py` | guess |
+| | `FILE_ROW_TOKENS` | 24 | `prompts/context.py` | measured on our own repository (D61) |
+| | `PLANNER_BUDGET` | 12,000 | `prompts/corpus_map.py` | from Gemma's limit; M5 sweeps it |
+| | `REPORT_MAX_TOKENS` | 32,000 | `prompts/builder.py` | measured to finish at MEDIUM thinking |
+| group sizes | `CLAIMS_GROUP_TOKENS` | 2,000 | `prompts/claims.py` | one paper; 2K and 2.9K are within noise (M27) |
+| | `SCAN_GROUP_TOKENS`, `TRACE_GROUP_TOKENS` | 2,000 | `prompts/scan.py`, `prompts/bugs.py` | taken from the claims, not measured for these jobs |
+| | `AUDIT_GROUP_TOKENS`, `WHOLE_GROUP_TOKENS` | 24,000 | `prompts/audit.py`, `prompts/bugs.py` | guess (29.8) |
+| | `SKEPTIC_TOKENS` | 30,000 | `prompts/bugs.py` | guess |
+| counts and caps | `MAX_CLAIMS` | 48 | `agent/claims_schema.py` | guess, from the cost (25.11) |
+| | `MAX_QUERIES` | 6 | `agent/plan_check.py` | guess (D54, M5) |
+| | `AUDIT_BATCH`, `JUDGE_BATCH`, `SKEPTIC_BATCH` | 30, 30, 25 | `prompts/audit.py`, `prompts/review.py`, `prompts/bugs.py` | guess |
+| | `AUDIT_VOTES`, `JUDGE_VOTES`, `SKEPTIC_VOTES` | 2 | same files | three cases (29.8: 2 votes kept) |
+| | `MAX_OBLIGATIONS`, `MAX_BUGS_PER_ANSWER` | 40 | `agent/checklist_schema.py`, `agent/bug_schema.py` | guess |
+| | `CLAIMS_AT_ONCE`, `CALLS_AT_ONCE` | 4 | `api/claims.py`, `api/tool_calls.py` | guess (the provider limits of D70 are not modelled) |
+| | `DEFAULT_MAX_REJECTED_ANSWERS` | 3 | `llm/defaults.py` | guess (D50) |
+| search and rerank | `SEARCH_LIMIT` | 50 | `store/defaults.py` | slice 8 (20 corpora) |
+| | `RERANK_WINDOW` | 20 | `api/searching.py` | for ONE query's pile; a merged pile was not measured (D53); 50 changed nothing on one pair (26.4) |
+| | `RERANK_TOP_N`, `VECTOR_TOP_N` | 10, 15 | `rerank/defaults.py`, `api/searching.py` | retrieval measurements, never on report quality (R23) |
+| | `SCORE_ALPHA` | 0.85 | `retrieval/fusion.py` | slice 8 (20 corpora) |
+| | `SIDE_SHARE` | 0.5 | `retrieval/selector.py` | a rule, never swept |
+| | `POOL_SIZE` | 8 | `store/defaults.py` | measured with `select 1` only (D55) |
+| text cuts | `LINE_CHARS`, `MERGE_LINE_CHARS` | 300 | `api/finding_lines.py`, `agent/final_merge.py`, `api/difference_review.py` | guess |
+| | `LAST_ANSWER_CHARS`, `RECENT_QUESTIONS`, `QUESTION_CHARS` | 2,000, 4, 300 | `prompts/followups.py` | guess (D104 changes this) |
+| | `OPENING_CHARS` | 300 | `prompts/_hints.py` | guess (D52) |
+| | `MIN_PIECE_CHARS` | 9 | `agent/_quote.py` | guess (D91) |
+| waits | `EMBED_WAITS`, `MAX_EMBED_WAIT` | 2 s, 5 s; 10 s | `api/searching.py` | guess (decision 19) |
+| | the time limits of D102 | 120 s / 300 s; 40 s / 150 s | `api/asking.py` | guess |
+
+**Out of this list on purpose:** the chunk sizes (`CHUNK_SIZE`, `MAX_CHUNK_TOKENS`, ...), because a change there means re-chunking and re-embedding every stored artifact (decide only with a strong reason); limits a provider sets (Google's per-minute numbers, `MAX_DOCUMENTS`); and the size and safety limits of uploads (`MAX_UPLOAD_BYTES`, `MAX_FILE_BYTES`, ...), which are safety rules and not quality knobs. `INPUT_BUDGET` (20,000, `retrieval/selector.py`) is an old default that nothing uses (17.18): delete it, do not tune it.
+
+**Before slice 13:** when a new number is added in slices 10 to 12, add it to this table the same day.
 
 ### 28. SLICE 8 — THE CORRESPONDENCE GATE, REDESIGNED ON SUMMARIES — decided 2026-10-29
 
