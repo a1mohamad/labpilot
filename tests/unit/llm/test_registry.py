@@ -591,9 +591,11 @@ def test_each_gateway_shares_one_quota_pool():
 # DeepSeek V4 Flash 0731 stable and MiMo V2.6 Flash are NOT listed: the first
 # three are builds of families already scored, and MiMo is scored only on the v5
 # page (AA_V5_SCORES below), which must not be mixed with this v4.3.2 table.
+#
+# 2026-11-10: "MiniMax M3.1 Flash" (43) and "Ling 3.1 Flash" (41) left this table.
+# Their order comes from the v5 page (AA_V5_SCORES), where Ling is above
+# MiniMax, and one model must never be in both tables.
 AA_SCORES = {
-    "MiniMax M3.1 Flash": 43,
-    "Ling 3.1 Flash": 41,
     "DeepSeek V4.1 Flash": 39,
     "DeepSeek V4 Pro cheap": 36,
     "DeepSeek V4 Flash": 34,
