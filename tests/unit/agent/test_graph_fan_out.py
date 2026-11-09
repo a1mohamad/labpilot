@@ -88,9 +88,7 @@ def test_the_merged_chunks_and_the_totals_reach_the_prompt():
     }
     seen = []
 
-    def make_prompt(
-        chunks, question, totals, summaries, files, last_answer, reference=False
-    ):
+    def make_prompt(chunks, question, totals, summaries, files, last_answer, **_):
         seen.append((chunks, totals))
         return "the prompt", chunks[:1]
 

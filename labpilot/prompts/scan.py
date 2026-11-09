@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from labpilot.prompts._groups import numbered_parts
 from labpilot.prompts.instructions import Instructions
 
 # The wording below is FIXED. Change it only together with this number.
@@ -38,7 +39,7 @@ def build_scan_prompt(reference: str, parts: Sequence[str]) -> str:
     if not parts:
         raise ValueError("the scan needs at least one part of B")
 
-    numbered = [f"[part {number}]\n{part}" for number, part in enumerate(parts)]
+    numbered = numbered_parts(parts)
     return "\n\n".join(
         [
             SCAN.header,

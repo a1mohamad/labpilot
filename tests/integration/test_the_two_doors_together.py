@@ -21,10 +21,12 @@ import contextlib
 import pytest
 from fastapi.testclient import TestClient
 
+from labpilot.agent.gate_schema import GATE_TOOL_NAME
+from labpilot.agent.plan_schema import PLAN_TOOL_NAME
 from labpilot.api import ApiConfig, app, get_client, ingestion, searching
 from labpilot.embed import MAX_BATCH_SIZE
 from labpilot.embed.contracts import EmbeddingBatch
-from labpilot.llm import LLMResult
+from labpilot.llm import AllFreeTiersExhausted, LLMResult
 from labpilot.prompts import FOLLOW_UP_MAX_TOKENS, SUMMARY_MAX_TOKENS
 
 pytestmark = pytest.mark.database
@@ -85,18 +87,34 @@ PLAN = {"steps": [], "queries": [{"side": "B", "text": "weights"}]}
 
 
 class FakeClient:
-    """Answers the planner with PLAN and the report with ANSWER, and keeps the
-    two kinds of call apart so `prompts` holds the report prompts only."""
+    """Answers each tool by its name (the planner with PLAN, the gate with a
+    real verdict) and the report with ANSWER, and keeps the kinds of call apart
+    so `prompts` holds the report prompts only."""
 
     def __init__(self) -> None:
         self.prompts: list[str] = []
         self.planner_prompts: list[str] = []
+        self.gate_prompts: list[str] = []
         self.summary_prompts: list[str] = []
 
     def generate(
         self, prompt: str, *, max_tokens: int = 0, tool=None, problem_with=None
     ) -> LLMResult:
+        if tool is not None and tool.name == GATE_TOOL_NAME:
+            self.gate_prompts.append(prompt)
+            return LLMResult(
+                text="a verdict",
+                model="fake-model",
+                tier=1,
+                finish_reason="STOP",
+                arguments={"verdict": "PARTIAL", "reason": "the same work"},
+            )
         if tool is not None:
+            if tool.name != PLAN_TOOL_NAME:
+                # The finders' own tools (claims, audit, hunts, checklists): no
+                # tier answers them, so each finder takes its fail-open path on
+                # purpose, as it would in a real outage.
+                raise AllFreeTiersExhausted(())
             self.planner_prompts.append(prompt)
             return LLMResult(
                 text="a plan",

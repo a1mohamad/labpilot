@@ -51,24 +51,11 @@ def make_respond_node(
         summaries = {"A": state.get("summary_a", ""), "B": state.get("summary_b", "")}
         sides = present_sides(state.get("a", ""), state.get("b", ""))
         files = len(sides)
-        # Handed over only when there are some, so a graph with no finders calls
-        # make_prompt exactly as it did before they existed.
-        found: dict[str, Any] = {}
-        # A alone is the reference the person trusts: explained, not checked
-        # (D106). Handed over only then, for the same reason as the finders.
-        if sides == ("A",):
-            found["reference"] = True
         differences = state.get("differences", ())
-        if differences:
-            found["differences"] = differences
         bugs = state.get("bugs", ())
-        if bugs:
-            found["bugs"] = bugs
         # The parts that show a finding, so the answer reads the code itself
         # and not only one quoted line (R20).
         evidence = deciding_parts(differences, bugs)
-        if evidence:
-            found["evidence"] = evidence
         chunks = with_parts(state["chunks"], evidence)
         prompt, selected = make_prompt(
             chunks,
@@ -77,7 +64,12 @@ def make_respond_node(
             summaries=summaries,
             files=files,
             last_answer=state.get("last_answer", ""),
-            **found,
+            differences=differences,
+            bugs=bugs,
+            evidence=evidence,
+            # A alone is the reference the person trusts: explained, not
+            # checked (D106).
+            reference=sides == ("A",),
         )
         out = {"prompt": prompt, "selected": selected, "result": generate(prompt)}
         if chunks is not state["chunks"]:

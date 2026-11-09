@@ -3,6 +3,15 @@ from collections.abc import Sequence
 from labpilot.tokens import estimate_tokens
 
 
+def numbered_parts(parts: Sequence[str]) -> list[str]:
+    """Each part with its number in front: [part 0], [part 1], ...
+
+    The model names a part by this number and the code reads it back, so every
+    prompt must number its parts the same way.
+    """
+    return [f"[part {number}]\n{part}" for number, part in enumerate(parts)]
+
+
 def groups_of(
     parts: Sequence[str], target: int, *, files: Sequence[str] | None = None
 ) -> list[list[int]]:

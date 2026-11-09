@@ -14236,6 +14236,17 @@ Count for every arm: the known findings whose code is sent, the findings the ans
 
 **Not measured.** The REFERENCE instruction was never run on a real model: whether the sections are useful, whether the last line is always written, and whether a model still slips in "bugs" are open. Measure it with M31 at the end of slice 9: a paper alone and a code file alone in slot A, two tiers, read by hand.
 
+#### 29.16 Shared helpers, tests on today's behavior, and the old skip gate removed (2026-11-10)
+
+*At the user's request ("don't repeat yourself", and "make the tests support only the new behavior"). Built by Claude at the user's request.*
+
+- **One reader of a stored file.** `api/claims.py` and `api/summaries.py` read the parts with `read_parts` (`api/file_parts.py`) instead of reading the rows and joining header and text by hand. A dropped connection is now a `ClaimsError` for the claims (no claims, the answer goes on) and a `StorageUnavailable` (503) for a summary, never a raw database error. `read_parts` builds its texts once, from `FileParts.of`.
+- **One part numbering.** `numbered_parts` (`prompts/_groups.py`) writes `[part 0]`, `[part 1]`, ... for the six prompts that use it (audit, bugs, checklists, claims, review, scan). A test fails if a prompt file numbers its parts by hand again, because the code reads the number back from the answer.
+- **`respond` passes every keyword every time:** `differences`, `bugs`, `evidence` and `reference`, empty or `False` when there is nothing. The old rule "hand them over only when there are some" existed only so that old strict fake functions kept working; those fakes now take `**_`.
+- **The database test fakes answer each tool by its name** (`tests/integration/test_ask.py`, `test_the_two_doors_together.py`). Before, every tool got the planner's plan, so the gate could not read its answer and always took its fail-open path (noted in 28.10). Now the gate gets a real `PARTIAL` verdict and a new test checks that it judged. Any other tool (the finders' claims, audit, hunts and checklists) gets "no tier answered", so those finders take their fail-open path on purpose, as in a real outage.
+- **The old rerank skip gate is deleted** (`retrieval/gate.py` and its test: `should_rerank`, `margin`, `SKIP_MARGIN`). Nothing in the product called it since D57, and its name was confusing next to the correspondence gate. `scripts/score_rerank.py` keeps its own `margin` for the measurement.
+- **Kept on purpose:** the frozen `FULL`, `CORE` and `REPORT` templates, which the weekly smoke run compares against.
+
 ### 30. THE CHAIN UPDATE OF 2026-11-02 — dead tiers moved, new models added
 
 *Done at the user's request, in this order: probe every tier, read every gateway's own free list, probe every new free id, rank the new models, then edit the chain, the tests and the docs. Exit AS58212 dataforest, Google 200 (probed first). `labpilot/llm/registry.py` and `tests/unit/llm/test_registry.py` changed; Claude typed them at the user's explicit request (an exception to "the user types the product code"). Nothing is committed.*

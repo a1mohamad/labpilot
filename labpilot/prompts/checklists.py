@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from labpilot.prompts._groups import numbered_parts
 from labpilot.prompts.instructions import Instructions
 
 # The checklist step of find_bugs (measured on 2026-11-01, section 29.7): two
@@ -95,7 +96,7 @@ def build_checklist_audit_prompt(
         raise ValueError("an audit needs at least one part")
 
     listed = "\n".join(f"{number}. {rule}" for number, rule in enumerate(obligations))
-    numbered = [f"[part {number}]\n{part}" for number, part in enumerate(parts)]
+    numbered = numbered_parts(parts)
     return "\n\n".join(
         [CHECKLIST_AUDIT.header, "THE CHECKLIST", listed, "THE PARTS", *numbered]
     )

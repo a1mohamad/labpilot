@@ -187,7 +187,7 @@ def test_the_final_merge_runs_between_the_finders_and_respond():
     )
 
     assert seen[0]["differences"] == [FOUND]
-    assert "bugs" not in seen[0]
+    assert not seen[0]["bugs"]
 
 
 def test_on_the_stuffed_path_only_the_bugs_are_hunted():
@@ -199,7 +199,7 @@ def test_on_the_stuffed_path_only_the_bugs_are_hunted():
     )
 
     assert seen[0]["bugs"] == [BUG]
-    assert "differences" not in seen[0]
+    assert not seen[0]["differences"]
 
 
 def test_the_findings_of_one_message_do_not_pile_up_in_the_next():

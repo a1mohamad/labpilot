@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from labpilot.prompts._groups import numbered_parts
 from labpilot.prompts.instructions import Instructions
 
 # The wording below is FIXED. Change it only together with this number, which is
@@ -185,7 +186,7 @@ def build_hunt_prompt(
         raise ValueError("a hunt needs at least one part")
 
     context = ["WHAT THE WHOLE WORK IS (a summary)", summary] if summary else []
-    numbered = [f"[part {number}]\n{part}" for number, part in enumerate(parts)]
+    numbered = numbered_parts(parts)
     return "\n\n".join(
         [instructions.header, *context, "THE PARTS", *numbered, instructions.closing]
     )

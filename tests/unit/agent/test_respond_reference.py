@@ -37,4 +37,4 @@ def test_a_alone_is_answered_as_a_reference():
 
 @pytest.mark.parametrize(("a", "b"), [("", "B-1"), ("A-1", "B-1"), ("", "")])
 def test_any_other_case_is_not_a_reference(a, b):
-    assert "reference" not in asked_with(a, b)
+    assert asked_with(a, b)["reference"] is False

@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from labpilot.prompts._groups import numbered_parts
 from labpilot.prompts.instructions import Instructions
 
 # The wording below is FIXED. Change it only together with this number.
@@ -50,7 +51,7 @@ def build_audit_prompt(
         raise ValueError("the audit needs at least one part of B")
 
     listed = "\n".join(f"{n}. {facts[n]}" for n in numbers)
-    numbered = [f"[part {number}]\n{part}" for number, part in enumerate(parts)]
+    numbered = numbered_parts(parts)
     return "\n\n".join(
         [
             AUDIT.header,

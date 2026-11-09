@@ -34,6 +34,7 @@ import pickle
 import statistics
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -51,7 +52,6 @@ from labpilot.rerank import (
     LLMReranker,
     RerankError,
 )
-from labpilot.retrieval.gate import margin
 from labpilot.store.defaults import SEARCH_LIMIT
 from scripts.jev_reranker import JEV_RERANK
 from scripts.local_reranker import LOCAL_RERANK
@@ -247,6 +247,19 @@ RETRY_WAIT = {
     "timed out": 10.0,
 }
 RETRY_LIMIT = 8
+
+
+def margin(scores: Sequence[float]) -> float:
+    """How far the best hit leads the runner-up, m = s(1) - s(2).
+
+    It was the skip gate of `labpilot/retrieval/gate.py`, deleted on 2026-11-10
+    because nothing in the product called it after D57. This script still
+    measures it. One score has no runner-up, so its margin is 0.0.
+    """
+    if len(scores) < 2:
+        return 0.0
+    best, second = sorted(scores, reverse=True)[:2]
+    return best - second
 
 
 def retry_wait(message: str) -> float | None:
