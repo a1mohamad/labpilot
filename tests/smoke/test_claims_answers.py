@@ -1,21 +1,20 @@
-"""THE REAL CLAIMS, CHECK AND NEW-QUERY STEPS, ON STORED FILES, WITH A REAL MODEL.
+"""THE REAL CLAIMS, DIFFERENCES AND BUGS STEPS, ON STORED FILES, WITH A REAL MODEL.
 
-Slice 7 added three model calls: the claims and the check of one claim are
-answered through a TOOL (the model "calls" a function and its arguments are the
-answer), and the new query is plain text. Every part of them was proven with a
-fake provider, plus one live look on 2026-10-24. A tier that stops honouring
-tools, or a prompt that stops giving parts the code can read, would first show
-up as a report with no findings and no error, because a failed claims step is
-only logged (D65).
+Slice 9 answers every step through a TOOL (the model "calls" a function and its
+arguments are the answer). Every part was proven with a fake provider. A tier
+that stops honouring tools, or a prompt that stops giving parts the code can
+read, would first show up as a report with no findings and no error, because a
+failed finder is only logged.
 
 WHAT THIS SPENDS, per run: two ingests of embedder quota (a paper and a code
-file), ONE query embed, and three generation calls on the claims chain, which
-starts with Flash-Lite. It needs a live Postgres, so it carries both gates.
+file), the claims (a few Flash-Lite calls), the differences (about 8 calls: the
+audit, the scan, the judge and the merge) and the bugs (about 16 calls on the
+full chain). It needs a live Postgres, so it carries both gates.
 
-WHAT IT CHECKS: claims come back, each with its quote and its place; one claim
-is checked against what a search found and the verdict is one of the three we
-read; a new query is one short line. It does NOT check that the claims or the
-verdict are good. That is what the measurements of slices 7 and 13 are for.
+WHAT IT CHECKS: claims come back with their quotes; the differences and the
+bugs come back placed in B (a source and a quote that is in that part). It does
+NOT check that they are good. That is what the measurements of slices 9 and 13
+are for.
 """
 
 from __future__ import annotations
@@ -25,56 +24,54 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from labpilot.agent.check_one import EVIDENCE_PARTS
-from labpilot.agent.check_schema import VERDICTS
-from labpilot.api import ingestion, reading, searching
-from labpilot.api.chains import for_claims
-from labpilot.api.checking import make_checker
+from labpilot.agent import DIFFERS, METHOD, MISSING, SILENT
+from labpilot.api import ingestion
+from labpilot.api.bugs import make_bug_finder
+from labpilot.api.chains import for_claims, for_skeptic, for_trace
 from labpilot.api.claims import make_claims_extractor
-from labpilot.api.requery import make_query_writer
+from labpilot.api.difference_finder import make_find_differences
+from labpilot.api.difference_review import make_merger
 from labpilot.llm import LLMClient
-from labpilot.prompts import MAX_QUERY_CHARS
 
 load_dotenv()
 
 SAMPLES = Path("data/samples/quora_siamese")
-QUESTION = "Compare these and explain why the results diverge."
 
 
 @pytest.mark.smoke
-def test_claims_a_check_and_a_new_query_work_on_stored_files(db):
+def test_claims_differences_and_bugs_work_on_stored_files(db):
     paper = ingestion.ingest_artifact(
         db, (SAMPLES / "A_paper.md").read_bytes(), name="A_paper.md", side="A"
     )
     code = ingestion.ingest_artifact(
         db, (SAMPLES / "B_train.py").read_bytes(), name="B_train.py", side="B"
     )
-    client = for_claims(LLMClient())
+    client = LLMClient()
+    cheap = for_claims(client)
 
-    claims = make_claims_extractor(db, client)(paper.artifact.id)
+    claims = make_claims_extractor(db, cheap)(paper.artifact.id)
 
     assert claims, "a claims step that gives nothing is a failed tier, not an answer"
     assert all(claim.text and claim.source and claim.quote for claim in claims)
 
-    sides = reading.measure_sides(db, paper.artifact.id, code.artifact.id)
-    evidence = searching.retrieve_query(db, sides, side="B", text=claims[0].text)
-    evidence = evidence[:EVIDENCE_PARTS]
-    assert evidence, "the stored code must give the search something to find"
+    facts = [claim.text for claim in claims if claim.kind == METHOD]
+    find = make_find_differences(db, whole=cheap, small=cheap, merge=make_merger(cheap))
+    differences = find(paper.artifact.id, code.artifact.id, facts)
 
-    finding = make_checker(client)(claims[0], evidence)
+    print(*differences, sep="\n")
 
-    print(finding)
+    assert differences, "the sample pair has known differences"
+    assert all(found.kind in (DIFFERS, MISSING, SILENT) for found in differences)
+    assert all(found.source and found.evidence for found in differences if found.quote)
 
-    assert finding.verdict in VERDICTS
-    if finding.verdict != "absent":
-        assert finding.source and finding.quote
+    bugs = make_bug_finder(
+        db,
+        client=client,
+        skeptic_client=for_skeptic(client),
+        trace_client=for_trace(client),
+    )(code.artifact.id, "")
 
-    query = make_query_writer(client)(
-        claims[0], (claims[0].text,), "the parts do not show it"
-    )
+    print(*bugs, sep="\n")
 
-    print(query)
-
-    assert query, "no tier wrote a new query"
-    assert "\n" not in query
-    assert len(query) <= MAX_QUERY_CHARS
+    assert bugs, "the sample code has known defects"
+    assert all(bug.source and bug.quote for bug in bugs)
