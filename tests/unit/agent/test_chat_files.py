@@ -17,7 +17,9 @@ from labpilot.agent import Plan, build_graph
 def run_chat(turns):
     seen = []
 
-    def make_prompt(chunks, question, totals, summaries, files, last_answer):
+    def make_prompt(
+        chunks, question, totals, summaries, files, last_answer, reference=False
+    ):
         seen.append(
             {"files": files, "summaries": dict(summaries), "last_answer": last_answer}
         )

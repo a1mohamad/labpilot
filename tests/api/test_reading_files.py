@@ -75,3 +75,17 @@ def test_two_artifacts_are_charged_for_the_two_file_instruction(monkeypatch):
 
     assert reading.fits_whole(sides, question="hi") is True
     assert asked == [2]
+
+
+def test_a_reference_alone_is_charged_for_the_reference_instruction(monkeypatch):
+    asked = []
+
+    def fake_instructions_for(files, reference=False):
+        asked.append((files, reference))
+        return Instructions("small", "h", "")
+
+    monkeypatch.setattr(reading, "instructions_for", fake_instructions_for)
+
+    assert reading.fits_whole({"A": stored("A-1", "A")}, question="hi") is True
+    assert reading.fits_whole({"B": stored("B-1", "B")}, question="hi") is True
+    assert asked == [(1, True), (1, False)]

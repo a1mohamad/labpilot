@@ -626,7 +626,9 @@ def test_a_question_about_one_file_is_answered_from_that_file_alone(db):
     comparison = asking.ask(db, a, "", question="what does this do?", client=client)
 
     prompt = client.prompts[0]
-    assert "Write ANSWER, then PROBLEMS now." in prompt
+    # D106: A alone is the reference, so it is explained and never checked.
+    assert "TO GET RIGHT now, then the last line." in prompt
+    assert "Write ANSWER, then PROBLEMS now." not in prompt
     assert "DIVERGENCES" not in prompt
     assert "SIDE A" in prompt
     assert "SIDE B" not in prompt

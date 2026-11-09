@@ -4,7 +4,7 @@ from labpilot.prompts.corpus_map import PLANNER_BUDGET
 
 # The wording below is FIXED. Change it only together with this number, and the
 # number is logged beside every plan, so a plan can be tied to its wording.
-PLANNER_VERSION = 4
+PLANNER_VERSION = 5
 
 # The answer is a short plan, but a tier that thinks spends tokens first, so
 # this is only a backstop. A small number would give such a tier an empty
@@ -23,7 +23,7 @@ STEP_MEANINGS: dict[str, str] = {
     "summarize": "write a short summary of each file",
     "find_differences": "compare A and B both ways: what B does otherwise or "
     "leaves out of what A states, and what B does that A never says",
-    "find_bugs": "read one file alone and look for its defects: in the code, the "
+    "find_bugs": "read B alone and look for its defects: in the code, the "
     "logic, the method, the numbers and the idea itself",
     "extract_outcomes": "list the results each file reports, and say if they compare",
 }

@@ -23,12 +23,12 @@ def wants_bugs(state: State) -> bool:
 
 
 def bugs_task(state: State) -> BugsTask | None:
-    # One file is read alone: B when there are two (the work being checked),
-    # else whichever file there is. Its summary says what the work is for.
+    # Only B is hunted, the work being checked (D106). A is the reference the
+    # person chose to trust: hunting it would go against that choice, and could
+    # make them doubt a good reference over bugs that are not there. A file in
+    # slot A alone is explained, not hunted (the REFERENCE instruction).
     if state.get("b"):
         return {"artifact": state["b"], "summary": state.get("summary_b", "")}
-    if state.get("a"):
-        return {"artifact": state["a"], "summary": state.get("summary_a", "")}
     return None
 
 

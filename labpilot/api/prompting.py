@@ -45,11 +45,13 @@ def build_answer_prompt(
     differences: Sequence[Difference] = (),
     bugs: Sequence[Bug] = (),
     evidence: Sequence[Chunk] = (),
+    reference: bool = False,
 ) -> tuple[str, tuple[Chunk, ...]]:
     if files == 0:
         return build_chat_prompt(question, last_answer), ()
 
-    instructions = instructions_for(files)
+    # `reference` is True when the only file is A: it is explained, not checked.
+    instructions = instructions_for(files, reference=reference)
     # The findings ride in the block that already carries what an earlier pass
     # found, so `build_prompt` and `reserve` both count them.
     prior = prior_text(differences, bugs, int(PROMPT_BUDGET * PRIOR_SHARE))

@@ -49,10 +49,15 @@ def make_respond_node(
 ) -> Callable[[State], dict[str, Any]]:
     def respond_node(state: State) -> dict[str, Any]:
         summaries = {"A": state.get("summary_a", ""), "B": state.get("summary_b", "")}
-        files = len(present_sides(state.get("a", ""), state.get("b", "")))
+        sides = present_sides(state.get("a", ""), state.get("b", ""))
+        files = len(sides)
         # Handed over only when there are some, so a graph with no finders calls
         # make_prompt exactly as it did before they existed.
         found: dict[str, Any] = {}
+        # A alone is the reference the person trusts: explained, not checked
+        # (D106). Handed over only then, for the same reason as the finders.
+        if sides == ("A",):
+            found["reference"] = True
         differences = state.get("differences", ())
         if differences:
             found["differences"] = differences

@@ -53,6 +53,65 @@ that raises an error with a clear message).""",
     closing="Write ANSWER, then PROBLEMS now.",
 )
 
+# The sentence every answer about a reference alone ends with (D106).
+REFERENCE_NOTE = (
+    "This file is your reference, so I did not look for bugs in it. "
+    "To have it checked, add it in slot B."
+)
+
+# A file in slot A alone: the person chose it as the reference they trust, so it
+# is explained and never hunted for bugs (D106). It is the opposite job of
+# ONE_FILE, which checks the work it reads.
+REFERENCE = Instructions(
+    name="reference",
+    header=f"""\
+You are reading the person's REFERENCE: the paper, standard or code they trust,
+given alone. It is not being checked. Never call anything in it a bug, a mistake
+or wrong. Help the person understand it and use it well.
+
+It is given as a list of parts with ids like A-17.
+Anything the list does not mark as included was not sent to you.
+
+Cite every claim as [A-17 "one line copied exactly from that part"].
+The id, one space, then one whole line in double quotes. Nothing else.
+An id on its own is not a citation and is dropped, so [A-17] and [A-8, A-25]
+are both wrong. Never write a line number.
+
+{_LAST_ANSWER_RULE}
+
+Write these sections, in this order. If the question is narrow, keep the other
+sections short, but write every one.
+
+ANSWER - answer the question first, in the first lines, using only what the
+parts show. If the parts do not hold what the question needs, say what is
+missing.
+
+WHAT IT IS - what the work is for, what goes in and what comes out, and its
+main steps in order.
+
+KEY VALUES - every setting, size, constant and number the work depends on, one
+line each, cited. These are the values a faithful copy must use.
+
+HARD PARTS - the two to five hardest parts (a formula, a step, a piece of
+code), explained in plain words: what each symbol or name means, why it is
+there, and a tiny worked example with real numbers when it helps.
+
+UNCLEAR OR MISSING - what someone who rebuilds this would need and the parts
+do not say: values, the order of steps, edge cases, inputs, versions, seeds.
+For each: why it matters and the usual choice. These are gaps, not errors.
+Write NONE if there are none.
+
+TO GET RIGHT - 5 to 15 short rules a copy of this work must follow to match
+it, each cited. They can later be checked against the person's own work.
+
+End with this line, word for word:
+{REFERENCE_NOTE}""",
+    closing=(
+        "Write ANSWER, WHAT IT IS, KEY VALUES, HARD PARTS, UNCLEAR OR MISSING and "
+        "TO GET RIGHT now, then the last line."
+    ),
+)
+
 _TWO_FILES_SECTIONS = """\
 Write these sections, in this order.
 
@@ -99,11 +158,11 @@ TWO_FILES = Instructions(
 )
 
 
-def instructions_for(files: int) -> Instructions:
+def instructions_for(files: int, *, reference: bool = False) -> Instructions:
     if files == 0:
         return CHAT
     if files == 1:
-        return ONE_FILE
+        return REFERENCE if reference else ONE_FILE
     if files == 2:
         return TWO_FILES
     raise ValueError(f"LabPilot reads 0, 1 or 2 files, not {files}")

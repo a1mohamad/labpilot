@@ -135,7 +135,9 @@ def make_graph(
         calls.append(("rank_side", question))
         return pile
 
-    def make_prompt(chunks, question, totals, summaries, files, last_answer):
+    def make_prompt(
+        chunks, question, totals, summaries, files, last_answer, reference=False
+    ):
         calls.append(("make_prompt", question))
         return "the prompt", chunks
 

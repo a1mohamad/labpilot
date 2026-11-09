@@ -3,6 +3,8 @@ import pytest
 from labpilot.prompts import (
     CHAT,
     ONE_FILE,
+    REFERENCE,
+    REFERENCE_NOTE,
     TWO_FILES,
     build_chat_prompt,
     instructions_for,
@@ -60,7 +62,7 @@ def test_the_one_file_instruction_leaves_out_what_the_code_does_on_purpose():
 
 
 def test_every_instruction_lets_the_last_answer_be_used_only_when_pointed_at():
-    for instructions in (CHAT, ONE_FILE, TWO_FILES):
+    for instructions in (CHAT, ONE_FILE, REFERENCE, TWO_FILES):
         assert "Use it only when the question points at it" in squeezed(
             instructions.header
         )
@@ -160,3 +162,68 @@ def test_every_finding_already_made_must_be_carried_or_dismissed():
 def test_a_match_needs_a_quote_from_each_side():
     # R19: the 2026-10-24 baseline listed the flagship divergence as a match.
     assert "Say A and B match only with a quote from each" in squeezed(TWO_FILES.header)
+
+
+# The reference alone (D106): the file in slot A is explained, never checked.
+
+# The lean templates must stay under 2,200 bytes (test_instructions.py); this one
+# was 2,123 bytes with its closing line when it was written.
+REFERENCE_BYTES = 2_200
+
+
+def test_a_reference_alone_gets_its_own_instruction():
+    assert instructions_for(1, reference=True) is REFERENCE
+    assert instructions_for(1) is ONE_FILE
+    assert instructions_for(2, reference=True) is TWO_FILES
+
+
+def test_the_reference_instruction_never_calls_the_reference_wrong():
+    header = squeezed(REFERENCE.header)
+
+    assert "It is not being checked" in header
+    assert "Never call anything in it a bug, a mistake or wrong" in header
+    assert "PROBLEMS" not in REFERENCE.header
+
+
+def test_the_reference_instruction_answers_first_and_keeps_its_sections_in_order():
+    header = REFERENCE.header
+    order = [
+        "ANSWER -",
+        "WHAT IT IS -",
+        "KEY VALUES -",
+        "HARD PARTS -",
+        "UNCLEAR OR MISSING -",
+        "TO GET RIGHT -",
+    ]
+
+    positions = [header.index(name) for name in order]
+
+    assert positions == sorted(positions)
+    for name in order:
+        assert name.removesuffix(" -") in REFERENCE.closing
+
+
+def test_the_reference_instruction_cites_side_a_in_the_shape_we_resolve():
+    expected = 'Cite every claim as [A-17 "one line copied exactly from that part"]'
+
+    assert expected in REFERENCE.header
+    assert "Never write a line number" in REFERENCE.header
+
+
+def test_the_reference_answer_ends_with_the_note_about_slot_b():
+    assert REFERENCE.header.rstrip().endswith(REFERENCE_NOTE)
+    assert "add it in slot B" in REFERENCE_NOTE
+    assert "the last line" in REFERENCE.closing
+
+
+def test_the_reference_instruction_stays_under_its_size_limit():
+    whole = f"{REFERENCE.header}\n{REFERENCE.closing}"
+
+    assert len(whole.encode()) < REFERENCE_BYTES
+
+
+def test_the_reference_instruction_names_no_language_and_no_field():
+    banned = ("python", "pytorch", "gradient", "dataset", "epoch", "notebook")
+    text = f"{REFERENCE.header} {REFERENCE.closing}".lower()
+
+    assert [word for word in banned if word in text] == []

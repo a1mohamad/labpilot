@@ -66,22 +66,24 @@ def run(plan, *, find, fits_value=False, differences=None, claims=(), saver=None
     return final, seen
 
 
-def test_the_step_is_allowed_with_one_file_and_with_two():
+def test_the_step_is_allowed_only_when_b_has_a_file():
+    # D106: A is the reference the person trusts, so it is never hunted.
     assert STEP in allowed_steps(("B",))
-    assert STEP in allowed_steps(("A",))
+    assert STEP not in allowed_steps(("A",))
     assert STEP in allowed_steps(("A", "B"))
     assert STEP not in allowed_steps(())
     assert wants_bugs({"plan": HUNT}) and not wants_bugs({"plan": NO_HUNT})
 
 
-def test_with_two_files_b_is_hunted_and_with_one_the_file_there_is():
+def test_only_b_is_hunted_and_a_alone_is_never_hunted():
     two = {"a": "A-1", "b": "B-1", "summary_a": "paper", "summary_b": "code"}
 
     assert bugs_task(two) == {"artifact": "B-1", "summary": "code"}
-    assert bugs_task({"a": "A-1", "b": "", "summary_a": "paper"}) == {
-        "artifact": "A-1",
-        "summary": "paper",
+    assert bugs_task({"a": "", "b": "B-1", "summary_b": "code"}) == {
+        "artifact": "B-1",
+        "summary": "code",
     }
+    assert bugs_task({"a": "A-1", "b": "", "summary_a": "paper"}) is None
     assert bugs_task({"a": "", "b": ""}) is None
 
 

@@ -3,6 +3,8 @@ from labpilot.prompts._hints import OPENING_CHARS
 from labpilot.prompts.answer import (
     CHAT,
     ONE_FILE,
+    REFERENCE,
+    REFERENCE_NOTE,
     TWO_FILES,
     build_chat_prompt,
     instructions_for,
@@ -179,6 +181,8 @@ __all__ = [
     "resolve",
     "CHAT",
     "ONE_FILE",
+    "REFERENCE",
+    "REFERENCE_NOTE",
     "TWO_FILES",
     "build_chat_prompt",
     "instructions_for",

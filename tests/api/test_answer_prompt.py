@@ -3,7 +3,7 @@ import pytest
 from labpilot.api.errors import ArtifactsTooLargeToCompare
 from labpilot.api.prompting import build_answer_prompt
 from labpilot.ingest import Chunk
-from labpilot.prompts import CHAT, ONE_FILE, PROMPT_BUDGET, TWO_FILES
+from labpilot.prompts import CHAT, ONE_FILE, PROMPT_BUDGET, REFERENCE, TWO_FILES
 from labpilot.tokens import estimate_tokens
 
 
@@ -134,3 +134,22 @@ def test_a_refusal_says_whether_the_person_asked_to_read_or_to_compare(files, ve
         build_answer_prompt(
             (chunk(0, words=100_000),), question="what is this?", files=files
         )
+
+
+def test_a_reference_alone_is_answered_with_the_reference_instruction():
+    chunks = (chunk(0, side="A"), chunk(1, side="A"))
+
+    prompt, selected = build_answer_prompt(
+        chunks, question="explain it", files=1, reference=True
+    )
+
+    assert REFERENCE.header in prompt
+    assert ONE_FILE.header not in prompt
+    assert selected == chunks
+
+
+def test_one_file_without_the_flag_is_still_checked():
+    prompt, _ = build_answer_prompt((chunk(0),), question="bugs?", files=1)
+
+    assert ONE_FILE.header in prompt
+    assert REFERENCE.header not in prompt
