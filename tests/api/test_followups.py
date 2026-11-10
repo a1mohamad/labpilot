@@ -5,7 +5,7 @@ import pytest
 
 from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.llm import AllFreeTiersExhausted
-from labpilot.prompts import FOLLOW_UP_MAX_TOKENS
+from labpilot.prompts import FOLLOW_UP_MAX_TOKENS, KEPT_ANSWER_CHARS
 
 
 class FakeClient:
@@ -68,10 +68,14 @@ def test_a_caller_bug_is_not_swallowed():
         make_rewriter(FakeClient())("   ", ["why?"], "")
 
 
-def test_the_saved_last_answer_is_the_end_of_the_text_in_the_result():
+def test_the_saved_last_answer_is_the_whole_answer_up_to_its_cap():
+    # D104: a follow-up such as "fix bug 3" needs the part that names bug 3, so
+    # the chat keeps the whole answer, cut only past KEPT_ANSWER_CHARS.
     short = SimpleNamespace(text="  a short answer  ")
-    long = SimpleNamespace(text="x" * 3_000 + "the end")
+    report = SimpleNamespace(text="the start " + "x" * 12_000 + "the end")
+    huge = SimpleNamespace(text="x" * (KEPT_ANSWER_CHARS + 500) + "the end")
 
     assert last_answer_text(short) == "a short answer"
-    assert len(last_answer_text(long)) == 2_000
-    assert last_answer_text(long).endswith("the end")
+    assert last_answer_text(report) == report.text
+    assert len(last_answer_text(huge)) == KEPT_ANSWER_CHARS
+    assert last_answer_text(huge).endswith("the end")
