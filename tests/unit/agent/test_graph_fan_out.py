@@ -36,7 +36,7 @@ def keep_all(question, pile):
 def required():
     return {
         "measure": lambda a, b: SIDES,
-        "fits": lambda sides, question: False,
+        "fits": lambda sides, question, last_answer: False,
         "stuff": lambda sides, question: (STUFFED, None),
         "make_prompt": lambda chunks, **_: ("the prompt", chunks[:1]),
         "generate": lambda prompt: "the result",
@@ -48,7 +48,7 @@ def fan_out_graph(*, search_one, queries=(), fits_value=False, checkpointer=None
         return Plan(steps=(), queries=tuple(queries))
 
     return build_graph(
-        **{**required(), "fits": lambda sides, question: fits_value},
+        **{**required(), "fits": lambda sides, question, last_answer: fits_value},
         search_one=search_one,
         totals_of=lambda sides: TOTALS,
         rank_side=keep_all,
@@ -280,3 +280,26 @@ def test_a_graph_without_one_of_the_search_functions_cannot_be_built(missing):
 
     with pytest.raises(TypeError, match=missing):
         build_graph(**required(), **wiring)
+
+
+def test_the_fit_check_is_given_the_last_answer_of_the_chat():
+    # D104: the answer prompt carries the whole last answer, so whether a pair
+    # still fits whole is decided with it counted.
+    seen = []
+
+    def fits(sides, question, last_answer):
+        seen.append(last_answer)
+        return True
+
+    graph = build_graph(
+        **{**required(), "fits": fits},
+        search_one=lambda sides, query: (),
+        totals_of=lambda sides: TOTALS,
+        rank_side=keep_all,
+        plan=lambda question, a, b: Plan(steps=(), queries=()),
+    )
+
+    graph.invoke({"question": "why?", "a": "A-1", "b": "B-1", "last_answer": "1. a"})
+    graph.invoke({"question": "why?", "a": "A-1", "b": "B-1"})
+
+    assert seen == ["1. a", ""]
