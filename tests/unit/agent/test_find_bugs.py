@@ -48,7 +48,7 @@ def run(plan, *, find, fits_value=False, differences=None, claims=(), saver=None
 
     graph = build_graph(
         measure=lambda a, b: {"A": "stored A", "B": "stored B"},
-        fits=lambda sides, question: fits_value,
+        fits=lambda sides, question, last_answer: fits_value,
         stuff=lambda sides, question: ((chunk(0),), None),
         search_one=lambda sides, query: (chunk(1),),
         totals_of=lambda sides: {"A": 1, "B": 1},
