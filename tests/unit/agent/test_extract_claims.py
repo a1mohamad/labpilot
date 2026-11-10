@@ -55,7 +55,7 @@ def run(plan, *, fits_value, extract="default", order=None):
 
     graph = build_graph(
         measure=lambda a, b: SIDES,
-        fits=lambda sides, question: fits_value,
+        fits=lambda sides, question, last_answer: fits_value,
         stuff=stuff,
         search_one=lambda sides, query: (FOUND,),
         totals_of=lambda sides: {"A": 1, "B": 1},
@@ -135,7 +135,7 @@ def test_a_plan_without_the_step_never_runs_it(fits_value):
 def test_without_a_function_there_is_no_claims_step_even_with_differences_planned():
     graph = build_graph(
         measure=lambda a, b: SIDES,
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: ((FOUND,), None),
         search_one=lambda sides, query: (FOUND,),
         totals_of=lambda sides: {"A": 1},
