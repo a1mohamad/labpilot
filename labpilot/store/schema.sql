@@ -66,3 +66,19 @@ create index if not exists chunks_tsv on chunks using gin (tsv);
 -- policy, that API sees nothing. Our app connects as `postgres`, which skips it.
 alter table artifacts enable row level security;
 alter table chunks enable row level security;
+
+-- D104: what a step made for one or two stored files (the claims of A, the
+-- differences of A and B, the bugs of B), saved once and read again by the next
+-- message or the next chat with the same files. `key` names the step, the files
+-- and the instruction versions, so a new instruction is never answered from an
+-- old result. The bytes are written and read by `api/`; the store cannot read
+-- them. The rows go with their artifacts.
+create table if not exists saved_results (
+    key        text        primary key,
+    kind       text        not null,
+    payload    bytea       not null,
+    artifact_a text        not null references artifacts (id) on delete cascade,
+    artifact_b text        references artifacts (id) on delete cascade,
+    created_at timestamptz not null default now()
+);
+alter table saved_results enable row level security;
