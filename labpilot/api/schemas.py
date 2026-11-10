@@ -82,6 +82,11 @@ class CompareResponse(BaseModel):
     chunks: dict[str, SideChunks]
     citations: CitationReport
     thread_id: str = Field(description="Send this back to continue the chat.")
+    reused: list[str] = Field(
+        default_factory=list,
+        description="Results read from an earlier analysis of the same files "
+        "(claims, differences, bugs), not made again (D104).",
+    )
 
 
 class ErrorBody(BaseModel):
