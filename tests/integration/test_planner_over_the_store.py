@@ -281,7 +281,7 @@ def test_a_tier_that_answers_in_a_code_fence_instead_of_a_call_still_gives_the_p
 def graph(planner, saver):
     return build_graph(
         measure=lambda a, b: "sides",
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: ((), None),
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1},
