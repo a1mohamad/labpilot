@@ -69,7 +69,7 @@ def graph_with(summarize, seen, *, fits=False, plan=None):
 
     return build_graph(
         measure=lambda a, b: SIDES,
-        fits=lambda sides, question: fits,
+        fits=lambda sides, question, last_answer: fits,
         stuff=lambda sides, question: ((chunk(9),), None),
         make_prompt=make_prompt,
         generate=lambda prompt: "the result",
