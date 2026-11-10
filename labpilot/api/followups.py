@@ -7,14 +7,14 @@ from labpilot.prompts import (
     FOLLOW_UP_VERSION,
     build_follow_up_prompt,
     follow_up_problem,
-    last_answer_excerpt,
+    kept_answer,
 )
 
 logger = logging.getLogger(__name__)
 
 
 def last_answer_text(result: LLMResult) -> str:
-    return last_answer_excerpt(result.text)
+    return kept_answer(result.text)
 
 
 def make_rewriter(client: LLMClient) -> Callable[[str, list[str], str], str]:
