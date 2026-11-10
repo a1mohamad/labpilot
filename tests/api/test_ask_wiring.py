@@ -20,6 +20,13 @@ class FakePool:
         yield "pooled"
 
 
+def look_through_saved(monkeypatch):
+    # The saved-results wrappers (D104) are tested in test_saved.py; here the
+    # wiring is checked through them, so each wrapper hands back what it wraps.
+    for name in ("saved_claims", "saved_differences", "saved_bugs", "with_saved_steps"):
+        monkeypatch.setattr(asking, name, lambda saved, made: made)
+
+
 def capture(monkeypatch):
     seen = {}
 
@@ -27,6 +34,7 @@ def capture(monkeypatch):
         seen.update(kwargs)
         return "the graph"
 
+    look_through_saved(monkeypatch)
     monkeypatch.setattr(asking, "build_graph", fake_build_graph)
     monkeypatch.setattr(
         asking, "make_planner", lambda conn, client: ("planner", conn, client)
@@ -194,7 +202,7 @@ def test_ask_gives_the_graph_builder_the_pool(monkeypatch):
                 "totals": None,
             }
 
-    def fake_ask_graph(conn, client, thread_id=None, pool=None):
+    def fake_ask_graph(conn, client, thread_id=None, pool=None, **_):
         built.append(pool)
         return Graph()
 
