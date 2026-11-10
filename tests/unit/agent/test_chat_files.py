@@ -25,7 +25,7 @@ def run_chat(turns):
 
     graph = build_graph(
         measure=lambda a, b: {s: "stored" for s, i in (("A", a), ("B", b)) if i},
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: ((), None),
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {},
