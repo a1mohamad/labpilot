@@ -15,7 +15,7 @@ class Boom(Exception):
 def run(summarize=None):
     graph = build_graph(
         measure=lambda a, b: object(),
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: (STUFFED, None),
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1},
