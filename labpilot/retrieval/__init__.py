@@ -6,7 +6,6 @@ from labpilot.retrieval.fusion import (
     weighted_rrf,
 )
 from labpilot.retrieval.selector import (
-    INPUT_BUDGET,
     LABEL_TOKENS,
     SIDE_SHARE,
     SIDES,
@@ -19,7 +18,6 @@ from labpilot.retrieval.usage import (
 )
 
 __all__ = [
-    "INPUT_BUDGET",
     "LABEL_TOKENS",
     "RRF_K",
     "RRF_WEIGHTS",
