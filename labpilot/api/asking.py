@@ -21,6 +21,13 @@ from labpilot.api.gate import halt_answer, make_gate
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
 from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
+from labpilot.api.saved import (
+    SavedResults,
+    saved_bugs,
+    saved_claims,
+    saved_differences,
+    with_saved_steps,
+)
 from labpilot.api.searching import embed_query, rank_pile, retrieve_query
 from labpilot.api.summaries import make_summarizer
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
@@ -62,7 +69,8 @@ def ask(
         raise InvalidQuestion("question must not be empty")
 
     a_id, b_id = _in_their_own_slots(a_id, b_id)
-    graph = _ask_graph(conn, client, thread_id, pool)
+    saved = SavedResults(conn)
+    graph = _ask_graph(conn, client, thread_id, pool, saved=saved)
     start = {"question": question, "a": a_id, "b": b_id}
     if thread_id is None:
         final = graph.invoke(start)
@@ -76,6 +84,7 @@ def ask(
         selected=final["selected"],
         prompt=final["prompt"],
         totals=final["totals"],
+        reused=tuple(saved.reused),
     )
 
 
@@ -138,6 +147,8 @@ def _ask_graph(
     client: LLMClient,
     thread_id: str | None = None,
     pool: ConnectionPool | None = None,
+    *,
+    saved: SavedResults | None = None,
 ) -> CompiledStateGraph:
     """The graph ask() runs, with the real functions handed to it.
 
@@ -146,8 +157,8 @@ def _ask_graph(
     each keeps the conversion of errors that belongs to the API layer.
     """
 
-    def fits(sides, question):
-        return fits_whole(sides, question=question)
+    def fits(sides, question, last_answer):
+        return fits_whole(sides, question=question, last_answer=last_answer)
 
     def stuff_sides(sides, question):
         return stuffed_chunks(conn, sides), None
@@ -221,6 +232,10 @@ def _ask_graph(
     # then Flash-Lite (the Flash-Lite merge alone missed obvious repeats).
     strong_merge = bounded(client, read=40.0, budget=60.0, retries=0)
 
+    # D104: the claims, the differences and the bugs of these files are made
+    # once and read again by the next message or chat with the same files.
+    saved = saved if saved is not None else SavedResults(conn)
+
     return build_graph(
         measure=partial(measure_sides, conn),
         fits=fits,
@@ -228,17 +243,28 @@ def _ask_graph(
         search_one=search_one,
         totals_of=totals_of,
         rank_side=rank_pile,
-        plan=make_planner(conn, client),
+        plan=with_saved_steps(saved, make_planner(conn, client)),
         summarize=summarize,
-        extract_claims=make_claims_extractor(conn, claims_client),
-        find_differences=make_find_differences(
-            conn, whole=whole, small=small, merge=make_merger(strong_merge, small)
+        extract_claims=saved_claims(saved, make_claims_extractor(conn, claims_client)),
+        find_differences=saved_differences(
+            saved,
+            make_find_differences(
+                conn,
+                whole=whole,
+                small=small,
+                merge=make_merger(strong_merge, small),
+            ),
         ),
-        find_bugs=make_bug_finder(
-            conn,
-            client=bounded(client, read=120.0, budget=300.0),
-            skeptic_client=bounded(for_skeptic(client), read=120.0, budget=300.0),
-            trace_client=bounded(for_trace(client), read=40.0, budget=150.0, retries=0),
+        find_bugs=saved_bugs(
+            saved,
+            make_bug_finder(
+                conn,
+                client=bounded(client, read=120.0, budget=300.0),
+                skeptic_client=bounded(for_skeptic(client), read=120.0, budget=300.0),
+                trace_client=bounded(
+                    for_trace(client), read=40.0, budget=150.0, retries=0
+                ),
+            ),
         ),
         final_merge=make_merger(small),
         whole_side=whole_side,

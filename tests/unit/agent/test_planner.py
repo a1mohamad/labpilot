@@ -24,7 +24,7 @@ def run(plan=lambda question, a, b: PLAN, order=None):
 
     graph = build_graph(
         measure=measure,
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: (("whole",), None),
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1},

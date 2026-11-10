@@ -2,6 +2,7 @@ import pytest
 
 from labpilot.prompts import (
     FOLLOW_UP,
+    KEPT_ANSWER_CHARS,
     build_follow_up_prompt,
     follow_up_problem,
     last_answer_excerpt,
@@ -49,14 +50,23 @@ def test_the_last_answer_comes_after_the_questions_and_before_the_new_question()
     assert prompt.index("The last answer") < prompt.index("New question:")
 
 
-def test_the_prompt_holds_only_the_end_of_a_very_long_last_answer():
+def test_the_prompt_holds_the_whole_last_answer():
+    # "the first difference" points at the START of a list (measured, D104).
     answer = "STARTMARK" + "q" * 5_000 + "ENDMARK"
+
+    prompt = build_follow_up_prompt("and now?", ["first?"], answer)
+
+    assert "STARTMARK" in prompt
+    assert "ENDMARK" in prompt
+
+
+def test_the_prompt_cuts_only_an_answer_past_the_kept_size():
+    answer = "STARTMARK" + "q" * KEPT_ANSWER_CHARS + "ENDMARK"
 
     prompt = build_follow_up_prompt("and now?", ["first?"], answer)
 
     assert "STARTMARK" not in prompt
     assert "ENDMARK" in prompt
-    assert "q" * 2_000 not in prompt
 
 
 def test_without_a_last_answer_the_prompt_has_no_answer_block():

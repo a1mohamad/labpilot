@@ -111,6 +111,7 @@ def _response(comparison: Comparison, thread_id: str) -> CompareResponse:
         chunks={side: _counts(comparison, side) for side in _sides_read(comparison)},
         citations=_citations(result.text, comparison.chunks),
         thread_id=thread_id,
+        reused=list(comparison.reused),
     )
 
 

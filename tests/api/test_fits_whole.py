@@ -140,7 +140,9 @@ def test_a_file_row_never_costs_more_than_the_charge_for_it():
         assert costliest <= FILE_ROW_TOKENS, rows
 
 
-def test_the_extras_cover_the_largest_summaries_and_last_answer():
+def test_the_extras_cover_the_largest_summaries():
+    # The last answer is not in the extras any more: it is kept whole (D104)
+    # and counted exactly, see the next test.
     chunks = chunk_file(SAMPLES / "A_paper.md", side="A", artifact_id="A-p")
     instructions = Instructions("tiny", "h", "")
     long_summary = " ".join(["overview"] * 150)
@@ -152,10 +154,19 @@ def test_the_extras_cover_the_largest_summaries_and_last_answer():
         question="q",
         instructions=instructions,
         summaries={"A": long_summary, "B": long_summary},
-        last_answer="x" * 5_000,
     )
 
     assert estimate_tokens(full) - estimate_tokens(bare) <= PROMPT_EXTRAS_TOKENS
+
+
+def test_a_long_last_answer_is_counted_and_can_turn_a_fit_into_a_search():
+    # D104: the answer prompt carries the whole last answer, so the fit check
+    # counts it. A pair that fits on the first message may not fit on a
+    # follow-up whose last answer is long.
+    sides = {"A": stored("A", files=1, characters=66_000, chunks=60)}
+
+    assert reading.fits_whole(sides, question="q") is True
+    assert reading.fits_whole(sides, question="q", last_answer="x" * 19_000) is False
 
 
 # ---- "fits" keeps every part ---------------------------------------------------

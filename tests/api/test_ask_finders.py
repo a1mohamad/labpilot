@@ -2,6 +2,13 @@ from labpilot.api import asking
 from labpilot.llm import CHAIN, GEMINI_3_1_FLASH_LITE, GEMINI_3_5_FLASH_LITE, LLMClient
 
 
+def look_through_saved(monkeypatch):
+    # The saved-results wrappers (D104) are tested in test_saved.py; here the
+    # wiring is checked through them, so each wrapper hands back what it wraps.
+    for name in ("saved_claims", "saved_differences", "saved_bugs", "with_saved_steps"):
+        monkeypatch.setattr(asking, name, lambda saved, made: made)
+
+
 def capture(monkeypatch):
     seen = {}
 
@@ -17,6 +24,7 @@ def capture(monkeypatch):
         seen["bug_clients"] = (client, skeptic_client, trace_client)
         return "find_bugs"
 
+    look_through_saved(monkeypatch)
     monkeypatch.setattr(asking, "build_graph", fake_build_graph)
     monkeypatch.setattr(asking, "make_planner", lambda conn, client: ("plan", client))
     monkeypatch.setattr(

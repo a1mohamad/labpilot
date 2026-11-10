@@ -28,6 +28,10 @@ class Comparison:
     # to prove the file was read becomes a claim that it was read whole.
     totals: dict[str, int] | None = None
 
+    # D104: the steps whose results were READ from an earlier analysis of the
+    # same files (claims, differences, bugs), so the page can say so.
+    reused: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Ingested:

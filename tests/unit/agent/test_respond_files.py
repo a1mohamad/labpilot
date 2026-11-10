@@ -94,7 +94,7 @@ def run(a, b, *, last_answer=""):
 
     graph = build_graph(
         measure=lambda x, y: {} if not (x or y) else {"B": "stored"},
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: ((), None),
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {},

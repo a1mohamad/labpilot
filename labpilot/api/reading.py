@@ -14,9 +14,11 @@ from labpilot.ingest import (
 )
 from labpilot.prompts import (
     FILE_ROW_TOKENS,
+    KEPT_ANSWER_CHARS,
     PROMPT_BUDGET,
     PROMPT_EXTRAS_TOKENS,
     instructions_for,
+    last_answer_block,
 )
 from labpilot.retrieval import LABEL_TOKENS
 from labpilot.store import (
@@ -59,7 +61,9 @@ def measure_sides(
     return found
 
 
-def fits_whole(sides: dict[Side, StoredArtifact], *, question: str) -> bool:
+def fits_whole(
+    sides: dict[Side, StoredArtifact], *, question: str, last_answer: str = ""
+) -> bool:
     """Would everything fit the prompt whole, without reading a single row?
 
     Four things are added up, and none of them needs a row:
@@ -69,7 +73,8 @@ def fits_whole(sides: dict[Side, StoredArtifact], *, question: str) -> bool:
                      one row per FILE, so it costs FILE_ROW_TOKENS times the
                      number of files; no artifact, no outline
       the fixed text the instruction for THIS many files, and the question
-      the extras     two summaries and the last answer, which are not known yet
+      the extras     two summaries, which are not known yet, and the last
+                     answer, counted exactly (D104: it is kept whole now)
 
     Before 2026-10-22 the outline was a flat OUTLINE_BUDGET of 4,000, which
     over-charged almost everything that fits (a 30-file repository really costs
@@ -90,6 +95,7 @@ def fits_whole(sides: dict[Side, StoredArtifact], *, question: str) -> bool:
     else:
         instructions = instructions_for(len(sides))
     fixed = estimate_tokens(f"{instructions.header}{instructions.closing}{question}")
+    fixed += estimate_tokens(last_answer_block(last_answer, KEPT_ANSWER_CHARS))
 
     return evidence + outline + fixed + PROMPT_EXTRAS_TOKENS <= PROMPT_BUDGET
 

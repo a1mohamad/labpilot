@@ -6,8 +6,12 @@ import pytest
 
 from labpilot.ingest import Chunk, chunk_file
 from labpilot.ingest.defaults import MAX_CHUNK_TOKENS
-from labpilot.retrieval import INPUT_BUDGET, LABEL_TOKENS, SIDE_SHARE, SIDES, select
+from labpilot.prompts import PROMPT_BUDGET
+from labpilot.retrieval import LABEL_TOKENS, SIDE_SHARE, SIDES, select
 from labpilot.tokens import estimate_tokens
+
+# The budget the old default gave; the product always passes its own room.
+BUDGET = 20_000
 
 SAMPLES = Path("data/samples/quora_siamese")
 
@@ -53,7 +57,7 @@ def test_it_takes_from_both_sides():
 
 
 def test_no_chunk_is_picked_twice():
-    picked = select(_pair())
+    picked = select(_pair(), budget=BUDGET)
     assert len({id(chunk) for chunk in picked}) == len(picked)
 
 
@@ -79,7 +83,7 @@ def test_on_the_real_pair_it_drops_chunks():
     chunks = chunk_file(
         SAMPLES / "B_train.py", side="B", artifact_id="quora"
     ) + chunk_file(SAMPLES / "A_paper.md", side="A", artifact_id="quora")
-    picked = select(chunks)
+    picked = select(chunks, budget=BUDGET)
     assert len(picked) < len(chunks)
 
 
@@ -215,7 +219,7 @@ def test_a_chunk_at_the_hard_cap_still_fits_a_single_side():
     share. Two constants in two packages have to stay in that relationship,
     and nothing else checks it.
     """
-    share = INPUT_BUDGET * SIDE_SHARE
+    share = PROMPT_BUDGET * SIDE_SHARE
 
     assert MAX_CHUNK_TOKENS < share / 10, "a chunk must be small against a side's share"
 

@@ -48,7 +48,7 @@ def run(*, fits_value, fail_in=None):
         fail("measure")
         return SIDES
 
-    def fits(sides, question):
+    def fits(sides, question, last_answer):
         calls.append(("fits", sides, question))
         return fits_value
 
@@ -200,7 +200,7 @@ def test_the_old_one_shot_search_is_not_a_parameter_any_more():
 def chat_graph(saver=None, *, generate=None):
     return build_graph(
         measure=lambda a, b: SIDES,
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: (STUFFED, None),
         search_one=lambda sides, query: (FOUND_B,),
         totals_of=lambda sides: TOTALS,

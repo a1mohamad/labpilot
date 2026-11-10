@@ -141,7 +141,7 @@ def make_graph(
 
     return build_graph(
         measure=lambda a, b: {"A": "stored A", "B": "stored B"},
-        fits=lambda sides, question: fits_value,
+        fits=lambda sides, question, last_answer: fits_value,
         stuff=stuff,
         search_one=search_one,
         totals_of=lambda sides: {"A": 5, "B": 9},

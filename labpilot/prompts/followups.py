@@ -7,7 +7,12 @@ FOLLOW_UP_VERSION = 1
 FOLLOW_UP_MAX_TOKENS = 3_000
 RECENT_QUESTIONS = 4
 QUESTION_CHARS = 300
+# The shortest cut of an answer, for a caller that wants only its end.
 LAST_ANSWER_CHARS = 2_000
+# The chat keeps the WHOLE last answer, and the answer prompt reads all of
+# it (D104): a report is about 10,000 to 20,000 characters, and a follow-up
+# such as "fix bug 3" needs the part that names bug 3. This is only a cap.
+KEPT_ANSWER_CHARS = 20_000
 MAX_REWRITE_CHARS = 600
 
 FOLLOW_UP = Instructions(
@@ -42,20 +47,25 @@ Answer: why is that one slow?
 )
 
 
-def last_answer_excerpt(text: str) -> str:
+def last_answer_excerpt(text: str, chars: int = LAST_ANSWER_CHARS) -> str:
     """The END of an answer, because an offer or a list of options comes last.
 
-    The result is never longer than LAST_ANSWER_CHARS, so cutting it again
-    changes nothing.
+    The result is never longer than `chars`, so cutting it again changes
+    nothing.
     """
     text = text.strip()
-    if len(text) <= LAST_ANSWER_CHARS:
+    if len(text) <= chars:
         return text
-    return "…" + text[-(LAST_ANSWER_CHARS - 1) :]
+    return "…" + text[-(chars - 1) :]
 
 
-def last_answer_block(last_answer: str) -> str:
-    answer = last_answer_excerpt(last_answer)
+def kept_answer(text: str) -> str:
+    """The last answer as the chat keeps it: whole, up to KEPT_ANSWER_CHARS."""
+    return last_answer_excerpt(text, KEPT_ANSWER_CHARS)
+
+
+def last_answer_block(last_answer: str, chars: int = LAST_ANSWER_CHARS) -> str:
+    answer = last_answer_excerpt(last_answer, chars)
     return f"The last answer the tool gave:\n{answer}" if answer else ""
 
 
@@ -72,7 +82,12 @@ def build_follow_up_prompt(
         for number, text in enumerate(history[-RECENT_QUESTIONS:], start=1)
     )
     blocks = [FOLLOW_UP.header, f"Earlier questions, oldest first:\n{earlier}"]
-    if answer_block := last_answer_block(last_answer):
+    # The WHOLE kept answer (D104): "the first difference" points at the start
+    # of a list. Measured 2026-11-10 on the OTP pair: with only the last 2,000
+    # characters the rewrite copied the question 2 of 2 times (and once named
+    # the wrong difference in the real chat); with the whole answer it named
+    # the right one 2 of 2 times.
+    if answer_block := last_answer_block(last_answer, KEPT_ANSWER_CHARS):
         blocks.append(answer_block)
     blocks.append(f"New question:\n{question.strip()}")
     blocks.append(FOLLOW_UP.closing)

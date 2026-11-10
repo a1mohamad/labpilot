@@ -9,13 +9,6 @@ SIDES = ("A", "B")
 
 # The evidence budget, and it is OURS - no provider enforces it.
 #
-# Far below every tier's context window on purpose. Tokens-per-minute binds
-# before context does, and a focused prompt beats a padded one because
-# attention spreads and the important lines get buried. Measured: stuffing all
-# 96 chunks of the sample pair scored 11 of 18 against this selector's 10, so
-# more evidence is nowhere near proportional to more findings.
-INPUT_BUDGET = 20_000
-
 # How much of the budget ONE side may claim before the other has had its turn.
 #
 # A KNOB, not a law, and slice 8 sweeps it the way it will sweep the retrieval
@@ -36,9 +29,7 @@ SIDE_SHARE = 0.5
 LABEL_TOKENS = 3
 
 
-def select(
-    chunks: tuple[Chunk, ...], *, budget: int = INPUT_BUDGET
-) -> tuple[Chunk, ...]:
+def select(chunks: tuple[Chunk, ...], *, budget: int) -> tuple[Chunk, ...]:
     """Fill the prompt from both sides, and let unspent room flow over.
 
     NEITHER SIDE IS PRIVILEGED, and that is a decision rather than an accident.

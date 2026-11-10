@@ -157,7 +157,7 @@ class MeetingClient:
 def graph(summarize):
     return build_graph(
         measure=lambda a, b: "sides",
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: ((), None),
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1},
