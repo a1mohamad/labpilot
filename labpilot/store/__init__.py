@@ -24,6 +24,7 @@ from labpilot.store.errors import (
 )
 from labpilot.store.keyword import bm25_search, keyword_search
 from labpilot.store.reader import measure, read_chunks, read_headers
+from labpilot.store.saved import read_saved, write_saved
 from labpilot.store.vector_search import file_scores, search
 from labpilot.store.writer import write_artifact
 
@@ -38,6 +39,8 @@ __all__ = [
     "NotConfigured",
     "POOL_SIZE",
     "read_chunks",
+    "read_saved",
+    "write_saved",
     "read_headers",
     "SearchHit",
     "SEARCH_LIMIT",
