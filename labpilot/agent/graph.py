@@ -39,7 +39,7 @@ from labpilot.agent.summarize import make_summarize_node
 def build_graph(
     *,
     measure: Callable[[str, str], Any],
-    fits: Callable[[Any, str], bool],
+    fits: Callable[[Any, str, str], bool],
     stuff: Callable[[Any, str], tuple[Chunks, Totals]],
     search_one: Callable[[Any, Query], Chunks],
     totals_of: Callable[[Any], Totals],
@@ -71,7 +71,9 @@ def build_graph(
 
     def measure_node(state: State) -> dict[str, Any]:
         sides = measure(state["a"], state["b"])
-        return {"sides": sides, "fits": fits(sides, state["question"])}
+        # The last answer is counted too: the answer prompt carries it whole.
+        fitted = fits(sides, state["question"], state.get("last_answer", ""))
+        return {"sides": sides, "fits": fitted}
 
     def stuff_node(state: State) -> dict[str, Any]:
         chunks, totals = stuff(state["sides"], state["question"])
