@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from labpilot.ingest import Chunk
 from labpilot.prompts.context import build_context
-from labpilot.prompts.followups import last_answer_block
+from labpilot.prompts.followups import KEPT_ANSWER_CHARS, last_answer_block
 from labpilot.prompts.instructions import Instructions
 from labpilot.tokens import estimate_tokens
 
@@ -63,7 +63,7 @@ def build_prompt(
     blocks.append(build_context(chunks, selected, totals=totals))
     if prior.strip():
         blocks.append(f"{PRIOR_HEADING}\n\n{prior.strip()}")
-    if answer_block := last_answer_block(last_answer):
+    if answer_block := last_answer_block(last_answer, KEPT_ANSWER_CHARS):
         blocks.append(answer_block)
     blocks.append(ending)
 
