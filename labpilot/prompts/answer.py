@@ -1,4 +1,4 @@
-from labpilot.prompts.followups import last_answer_block
+from labpilot.prompts.followups import KEPT_ANSWER_CHARS, last_answer_block
 from labpilot.prompts.instructions import LEAN_PREAMBLE, LEAN_RULES, Instructions
 
 _LAST_ANSWER_RULE = (
@@ -173,7 +173,7 @@ def build_chat_prompt(question: str, last_answer: str = "") -> str:
         raise ValueError("question must not be empty")
 
     blocks = [CHAT.header]
-    if answer_block := last_answer_block(last_answer):
+    if answer_block := last_answer_block(last_answer, KEPT_ANSWER_CHARS):
         blocks.append(answer_block)
     blocks.append(f"QUESTION: {question.strip()}")
     return "\n\n".join(blocks)
