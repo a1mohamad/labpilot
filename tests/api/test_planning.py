@@ -309,7 +309,7 @@ def test_wrong_plans_do_not_walk_the_whole_chain(monkeypatch):
 def run_graph(plan):
     graph = build_graph(
         measure=lambda a, b: object(),
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: (("whole",), None),
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1},
