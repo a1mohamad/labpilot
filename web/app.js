@@ -281,6 +281,11 @@ function showReport(body) {
     // MAX_TOKENS means the report was CUT and looks complete otherwise.
     tag(body.finish_reason, body.finish_reason !== "STOP")
   );
+  // D104: say when the findings were read from an earlier analysis of the same
+  // files and not made again, so the person knows which path ran.
+  if (body.reused.length) {
+    meta.append(tag(`from the earlier analysis: ${body.reused.join(", ")}`));
+  }
 
   for (const attempt of body.attempts) {
     meta.append(tag(`${attempt.model} failed`, true));
