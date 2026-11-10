@@ -63,7 +63,7 @@ def build(verdicts, calls, *, with_gate=True, **extra):
     options = {"gate": gate, "halt_answer": halt_answer} if with_gate else {}
     return build_graph(
         measure=measure,
-        fits=lambda sides, question: True,
+        fits=lambda sides, question, last_answer: True,
         stuff=lambda sides, question: (STUFFED, None),
         search_one=lambda sides, query: (),
         totals_of=lambda sides: {"A": 1, "B": 1},
