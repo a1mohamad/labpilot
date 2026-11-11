@@ -34,6 +34,7 @@ from labpilot.agent.rewrite import make_rewrite_node
 from labpilot.agent.search_one import make_one_search_node
 from labpilot.agent.state import Chunks, State, Totals
 from labpilot.agent.summarize import make_summarize_node
+from labpilot.timing import timed
 
 
 def build_graph(
@@ -112,19 +113,25 @@ def build_graph(
         return finders(state)
 
     builder = StateGraph(State)
-    builder.add_node("plan", make_planner_node(plan))
-    builder.add_node("measure", measure_node)
-    builder.add_node("stuff", stuff_node)
-    builder.add_node("search_one", make_one_search_node(search_one))
-    builder.add_node("merge", make_merge_node(totals_of, rank_side, whole_side))
-    builder.add_node("respond", make_respond_node(make_prompt, generate))
-    builder.add_node("remember", make_remember_node(answer_text))
+
+    def add(name: str, node: Callable[..., Any]) -> None:
+        # Every node reports its own seconds (S1), and names itself for the
+        # model calls it makes.
+        builder.add_node(name, timed(name, node))
+
+    add("plan", make_planner_node(plan))
+    add("measure", measure_node)
+    add("stuff", stuff_node)
+    add("search_one", make_one_search_node(search_one))
+    add("merge", make_merge_node(totals_of, rank_side, whole_side))
+    add("respond", make_respond_node(make_prompt, generate))
+    add("remember", make_remember_node(answer_text))
 
     # A follow-up is rewritten first, so the planner, the searches, the rerank
     # and the answer all read the standalone question.
     first = START
     if rewrite is not None:
-        builder.add_node("rewrite", make_rewrite_node(rewrite))
+        add("rewrite", make_rewrite_node(rewrite))
         builder.add_edge(first, "rewrite")
         first = "rewrite"
     # The planner and the two summaries start together, and measure waits for
@@ -134,7 +141,7 @@ def build_graph(
     if summarize is not None:
         for slot in ("a", "b"):
             name = f"summarize_{slot}"
-            builder.add_node(name, make_summarize_node(slot, summarize))
+            add(name, make_summarize_node(slot, summarize))
             first_steps.append(name)
             summaries.append(name)
     for step in first_steps:
@@ -145,8 +152,8 @@ def build_graph(
         # The gate waits for both summaries; the planner runs beside them. When
         # the verdict is NONE the run ends with an answer made from the two
         # summaries, and nothing after this point runs (D78 to D80).
-        builder.add_node("gate", make_gate_node(gate))
-        builder.add_node("halt", make_halt_node(halt_answer))
+        add("gate", make_gate_node(gate))
+        add("halt", make_halt_node(halt_answer))
         builder.add_edge(summaries, "gate")
         builder.add_conditional_edges("gate", after_gate, ["measure", "halt"])
         builder.add_edge("halt", "remember")
@@ -157,22 +164,20 @@ def build_graph(
     # (after the claims, which give it A's facts) and the bugs of one file.
     found_by = []
     if find_differences is not None:
-        builder.add_node(
-            "find_differences", make_find_differences_node(find_differences)
-        )
+        add("find_differences", make_find_differences_node(find_differences))
         found_by.append("find_differences")
     if find_bugs is not None:
-        builder.add_node("find_bugs", make_find_bugs_node(find_bugs))
+        add("find_bugs", make_find_bugs_node(find_bugs))
         found_by.append("find_bugs")
     for name in found_by:
         builder.add_edge(name, after_finders)
     if final_merge is not None:
-        builder.add_node("final_merge", make_final_merge_node(final_merge))
+        add("final_merge", make_final_merge_node(final_merge))
         builder.add_edge("final_merge", "respond")
 
     after = ["respond", *found_by]
     if extract_claims is not None:
-        builder.add_node("extract_claims", make_claims_node(extract_claims))
+        add("extract_claims", make_claims_node(extract_claims))
         builder.add_conditional_edges("extract_claims", finders, after)
         after.append("extract_claims")
     for searched in ("stuff", "merge"):
