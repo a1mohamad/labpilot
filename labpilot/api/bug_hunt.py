@@ -32,6 +32,7 @@ from labpilot.prompts import (
     build_checklist_prompt,
     build_hunt_prompt,
 )
+from labpilot.timing import in_this_context
 
 logger = logging.getLogger(__name__)
 
@@ -121,18 +122,24 @@ def find_suspects(
     ]
     with ThreadPoolExecutor(CALLS_AT_ONCE) as pool:
         written = [
-            pool.submit(_checklist, client, instructions, summary, parts)
+            pool.submit(
+                in_this_context(_checklist), client, instructions, summary, parts
+            )
             for instructions in CHECKLISTS
         ]
         hunted = [
             pool.submit(
-                _hunt, trace_client if hunt.small else client, hunt, group, summary
+                in_this_context(_hunt),
+                trace_client if hunt.small else client,
+                hunt,
+                group,
+                summary,
             )
             for hunt, group in jobs
         ]
         obligations = merge_obligations([future.result() for future in written])
         audited = [
-            pool.submit(_audit, client, obligations, group)
+            pool.submit(in_this_context(_audit), client, obligations, group)
             for group in parts.groups(WHOLE_GROUP_TOKENS, by_file=True)
             if obligations
         ]
