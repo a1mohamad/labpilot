@@ -20,6 +20,19 @@ from labpilot.store import NotConfigured, make_pool
 logger = logging.getLogger(__name__)
 
 
+def configure_logging(level_name: str) -> None:
+    """Show the INFO lines of labpilot when `level_name` names a level.
+
+    Only the "labpilot" loggers change: at root level INFO every library (the
+    HTTP client, the database driver) would print too.
+    """
+    level = logging.getLevelName(level_name.upper()) if level_name else None
+    if not isinstance(level, int):
+        return
+    logging.basicConfig(format="%(asctime)s %(name)s %(message)s")
+    logging.getLogger("labpilot").setLevel(level)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Fail at boot, not on the first request. Without this the server starts
@@ -47,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 def create_app() -> FastAPI:
+    configure_logging(ApiConfig.LOG_LEVEL)
     application = FastAPI(
         title=ApiConfig.TITLE,
         summary=ApiConfig.SUMMARY,
