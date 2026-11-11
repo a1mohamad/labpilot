@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TypeVar
 
 from labpilot.llm import AllFreeTiersExhausted, LLMClient, LLMResult, Tool
+from labpilot.timing import in_this_context
 
 logger = logging.getLogger(__name__)
 
@@ -62,4 +63,4 @@ def at_once(
     if not jobs:
         return []
     with ThreadPoolExecutor(min(len(jobs), limit)) as pool:
-        return list(pool.map(work, jobs))
+        return list(pool.map(in_this_context(work), jobs))
