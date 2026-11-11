@@ -122,6 +122,10 @@ def client(monkeypatch):
     # lives in memory and there is nothing to clean up afterwards.
     monkeypatch.setattr("labpilot.api.asking.open_saver", lambda conn: InMemorySaver())
     monkeypatch.setattr("labpilot.api.asking.prune", lambda conn, thread_id: None)
+    # The saved results (D104) need a real connection too. This file is about
+    # the chain's verdict, so nothing is saved and nothing is read back.
+    monkeypatch.setattr("labpilot.api.saved.read_saved", lambda conn, key: None)
+    monkeypatch.setattr("labpilot.api.saved.write_saved", lambda *a, **k: None)
     # This file proves the chain's verdict reaches the HTTP body, counting the
     # requests the report makes. The planner is a second call of its own, tested
     # over the real store in test_planner_over_the_store.py, so it is stubbed.

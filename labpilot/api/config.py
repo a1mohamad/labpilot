@@ -38,7 +38,9 @@ class ApiConfig:
     # Mounted at /ui only when it exists, so an API-only deployment needs no
     # change. Same origin as the API, which is why CORS can stay empty.
     FRONTEND_DIR: Path = Path(os.getenv("FRONTEND_DIR", PROJECT_ROOT / "web"))
-
+    # Off by default. "info" shows the step and call lines of labpilot.timing
+    # (and every other INFO line of labpilot) in the server log.
+    LOG_LEVEL: str = os.getenv("LABPILOT_LOG", "").strip()
     CORS_ALLOW_ORIGINS: tuple[str, ...] = tuple(
         origin.strip()
         for origin in os.getenv("CORS_ALLOW_ORIGINS", "").split(",")

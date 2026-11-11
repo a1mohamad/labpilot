@@ -18,6 +18,7 @@ from labpilot.prompts import (
     SCAN_A_TEXT_TOKENS,
     SCAN_VERSION,
 )
+from labpilot.timing import in_this_context
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +51,12 @@ def make_find_differences(
         # The audit (A to B) and the scan (B to A) do not need each other, so
         # they run at the same time.
         with ThreadPoolExecutor(2) as pool:
-            audit = pool.submit(run_audit, whole, facts, b) if facts else None
-            scan = pool.submit(run_scan, small, reference, b)
+            audit = (
+                pool.submit(in_this_context(run_audit), whole, facts, b)
+                if facts
+                else None
+            )
+            scan = pool.submit(in_this_context(run_scan), small, reference, b)
             audited, audit_answered = audit.result() if audit else ([], False)
             scanned, scan_answered = scan.result()
         if not (audit_answered or scan_answered):
