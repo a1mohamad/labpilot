@@ -22,6 +22,7 @@ from labpilot.prompts import (
     claims_fit,
     claims_groups,
 )
+from labpilot.timing import in_this_context
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,10 @@ def make_claims_extractor(
         with ThreadPoolExecutor(min(len(groups), CLAIMS_AT_ONCE)) as pool:
             answers = list(
                 pool.map(
-                    lambda ids: one_group(
-                        [parts[i] for i in ids], [sources[i] for i in ids]
+                    in_this_context(
+                        lambda ids: one_group(
+                            [parts[i] for i in ids], [sources[i] for i in ids]
+                        )
                     ),
                     groups,
                 )
