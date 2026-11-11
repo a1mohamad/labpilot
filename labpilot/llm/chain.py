@@ -22,6 +22,7 @@ from labpilot.llm.defaults import (
 )
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
 from labpilot.llm.registry import CHAIN
+from labpilot.timing import log_call
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,8 @@ class LLMClient:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
 
-        deadline = time.monotonic() + self.total_budget
+        started = time.monotonic()
+        deadline = started + self.total_budget
         attempts: list[Attempt] = []
         dead_pools: set[str] = set()
         rejected = 0
@@ -131,6 +133,13 @@ class LLMClient:
 
             problem = problem_with(result) if problem_with is not None else None
             if problem is None:
+                log_call(
+                    tool=tool.name if tool else "",
+                    seconds=time.monotonic() - started,
+                    tier=result.tier,
+                    model=result.model,
+                    failed=len(attempts),
+                )
                 return replace(result, attempts=tuple(attempts))
 
             # The tier answered, but the caller says the answer is wrong. The
@@ -142,7 +151,13 @@ class LLMClient:
             rejected += 1
             if rejected >= self.max_rejected_answers:
                 break
-
+        log_call(
+            tool=tool.name if tool else "",
+            seconds=time.monotonic() - started,
+            tier=None,
+            model=None,
+            failed=len(attempts),
+        )
         raise AllFreeTiersExhausted(tuple(attempts))
 
     def _complete_with_retries(
