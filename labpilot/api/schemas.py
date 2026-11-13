@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -63,6 +65,12 @@ class CompareRequest(BaseModel):
         description="The chat this question belongs to. Leave it out on the "
         "first message: the reply carries the id to send from then on.",
     )
+    reply: str | None = Field(
+        default=None,
+        description="The answer to the question a paused run asked (D109). Send "
+        "it with the same thread_id and question. The empty text skips the "
+        "question. Leave it out on a normal message.",
+    )
 
 
 class CitationReport(BaseModel):
@@ -72,6 +80,7 @@ class CitationReport(BaseModel):
 
 
 class CompareResponse(BaseModel):
+    kind: Literal["answer"] = "answer"
     answer: str
     model: str = Field(description="Model that actually answered.")
     tier: int = Field(description="Its position in the chain.")
@@ -87,6 +96,18 @@ class CompareResponse(BaseModel):
         description="Results read from an earlier analysis of the same files "
         "(claims, differences, bugs), not made again (D104).",
     )
+
+
+class QuestionResponse(BaseModel):
+    """The run is paused and the person is asked one question (D109).
+
+    Send the same request again with `reply` set to the answer, or to the empty
+    text to skip, and the same `thread_id`.
+    """
+
+    kind: Literal["question"] = "question"
+    question: str
+    thread_id: str = Field(description="Send this back with the reply.")
 
 
 class ErrorBody(BaseModel):

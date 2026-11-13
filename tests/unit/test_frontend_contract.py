@@ -37,13 +37,15 @@ from labpilot.api.schemas import (
     CompareResponse,
     ErrorEnvelope,
     IngestResponse,
+    QuestionResponse,
 )
 
 APP_JS = Path("web/app.js")
 
-# `payload.` is the ingest reply, `body.` the compare reply - the two names
-# app.js gives them. Anything else it reads is a DOM node, not our wire format.
-_READS = re.compile(r"\b(payload|body)\.([a-zA-Z_][a-zA-Z0-9_]*)")
+# `payload.` is the ingest reply, `body.` the compare reply and `asked.` the
+# question a paused run sends back (D109) - the three names app.js gives them.
+# Anything else it reads is a DOM node, not our wire format.
+_READS = re.compile(r"\b(payload|body|asked)\.([a-zA-Z_][a-zA-Z0-9_]*)")
 
 # Names that are not fields of ours. `append` is FormData's; `hidden`,
 # `textContent` and friends belong to the DOM.
@@ -73,8 +75,12 @@ def _reads(prefix: str) -> set[str]:
 
 @pytest.mark.parametrize(
     ("prefix", "model"),
-    [("payload", IngestResponse), ("body", CompareResponse)],
-    ids=("ingest", "compare"),
+    [
+        ("payload", IngestResponse),
+        ("body", CompareResponse),
+        ("asked", QuestionResponse),
+    ],
+    ids=("ingest", "compare", "question"),
 )
 def test_every_response_field_the_page_reads_is_one_we_really_send(prefix, model):
     # EITHER reply may arrive under the same name. `app.js` parses the JSON

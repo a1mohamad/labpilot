@@ -112,8 +112,12 @@ from labpilot.prompts.summary import (
     SUMMARY_MAX_TOKENS,
     build_summary_prompt,
 )
+from labpilot.prompts.user_reply import NOTE as USER_REPLY_NOTE
+from labpilot.prompts.user_reply import question_with_reply
 
 __all__ = [
+    "USER_REPLY_NOTE",
+    "question_with_reply",
     "AUDIT_BATCH",
     "AUDIT_GROUP_TOKENS",
     "AUDIT_VOTES",

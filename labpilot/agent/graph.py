@@ -58,6 +58,7 @@ def build_graph(
     answer_text: Callable[[Any], str] | None = None,
     gate: Callable[[str, str], Correspondence] | None = None,
     halt_answer: Callable[[str, str, str], Any] | None = None,
+    ask: Callable[[State], str] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     # The gate reads the two summaries and a halt answers from them, so the three
@@ -124,7 +125,7 @@ def build_graph(
     add("stuff", stuff_node)
     add("search_one", make_one_search_node(search_one))
     add("merge", make_merge_node(totals_of, rank_side, whole_side))
-    add("respond", make_respond_node(make_prompt, generate))
+    add("respond", make_respond_node(make_prompt, generate, ask))
     add("remember", make_remember_node(answer_text))
 
     # A follow-up is rewritten first, so the planner, the searches, the rerank

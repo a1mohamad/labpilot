@@ -25,6 +25,7 @@ def plan_schema(sides: tuple[Side, ...]) -> dict[str, object]:
                     "required": ["side", "text"],
                 },
             },
+            "ask": {"type": "string"},
         },
         "required": ["steps", "queries"],
     }
@@ -48,4 +49,10 @@ def read_plan(arguments: dict[str, object]) -> Plan:
             raise PlanError("every query needs a 'side' and a 'text', both text")
         made.append(Query(item["side"], item["text"]))
 
-    return Plan(steps=tuple(steps), queries=tuple(made))
+    ask = arguments.get("ask", "")
+    if ask is None:
+        ask = ""
+    if not isinstance(ask, str):
+        raise PlanError(f"'ask' must be text, got {type(ask).__name__}")
+
+    return Plan(steps=tuple(steps), queries=tuple(made), ask=" ".join(ask.split()))

@@ -1,3 +1,4 @@
+from labpilot.agent.ask_user import ask_the_user
 from labpilot.agent.bug import BUG_KINDS, SKEPTIC_VERDICTS, Bug
 from labpilot.agent.bug_schema import (
     BUGS_TOOL_NAME,
@@ -112,6 +113,7 @@ __all__ = [
     "Query",
     "State",
     "allowed_steps",
+    "ask_the_user",
     "audit_findings",
     "audit_schema",
     "bugs_schema",

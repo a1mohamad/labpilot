@@ -22,6 +22,7 @@ const status = document.getElementById("status");
 const result = document.getElementById("result");
 const failure = document.getElementById("failure");
 const questionBox = document.getElementById("question");
+const paused = document.getElementById("paused");
 
 // The question box is prefilled and EDITABLE, never a placeholder: this text is
 // also the retrieval query. What it says follows how many sides are stored, and
@@ -234,8 +235,15 @@ ask.addEventListener("submit", async (event) => {
     return;
   }
 
+  await send(question, null);
+});
+
+// reply is null on a normal message, the person's text when a paused run was
+// answered, and the empty text when the question was skipped (D109).
+async function send(question, reply) {
   hide(result);
   hide(failure);
+  hide(paused);
   waiting = true;
   compareButton.disabled = true;
   status.hidden = false;
@@ -252,10 +260,12 @@ ask.addEventListener("submit", async (event) => {
         b: stored.B ? stored.B.artifact_id : null,
         question,
         thread_id: localStorage.getItem(THREAD_KEY),
+        reply: reply,
       }),
     });
     const payload = await response.json();
-    if (response.ok) showReport(payload);
+    if (response.ok && kindOf(payload) === "question") showQuestion(payload, question);
+    else if (response.ok) showReport(payload);
     else showFailure(forgetMissing(payload.error));
   } catch (error) {
     showFailure({ code: "network_error", message: String(error), request_id: "-" });
@@ -264,7 +274,23 @@ ask.addEventListener("submit", async (event) => {
     waiting = false;
     refreshReady();
   }
-});
+}
+
+// A reply to /compare is either a report or a question (D109). `kind` says which.
+function kindOf(sent) {
+  return sent.kind;
+}
+
+function showQuestion(asked, question) {
+  localStorage.setItem(THREAD_KEY, asked.thread_id);
+  document.getElementById("paused-text").textContent = asked.question;
+  const reply = document.getElementById("paused-reply");
+  reply.value = "";
+  paused.hidden = false;
+  reply.focus();
+  document.getElementById("paused-send").onclick = () => send(question, reply.value);
+  document.getElementById("paused-skip").onclick = () => send(question, "");
+}
 
 function showReport(body) {
   localStorage.setItem(THREAD_KEY, body.thread_id);

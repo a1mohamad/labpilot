@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, status
 
 from labpilot.api import asking
-from labpilot.api.contracts import Comparison
+from labpilot.api.contracts import Comparison, Question
 from labpilot.api.dependencies import LLMClientDep, PoolDep
 from labpilot.api.errors import StorageUnavailable
 from labpilot.api.schemas import (
@@ -15,6 +15,7 @@ from labpilot.api.schemas import (
     CompareRequest,
     CompareResponse,
     ErrorEnvelope,
+    QuestionResponse,
     SideChunks,
 )
 from labpilot.ingest import Chunk
@@ -60,7 +61,7 @@ FAILURES: dict[int | str, dict] = {
 )
 def compare(
     body: CompareRequest, client: LLMClientDep, pool: PoolDep
-) -> CompareResponse:
+) -> CompareResponse | QuestionResponse:
     """Ask a question about up to two artifacts that are already stored.
 
     No id is a chat question, one id is a question about that file, and two ids
@@ -89,9 +90,13 @@ def compare(
                 client=client,
                 thread_id=thread_id,
                 pool=pool,
+                reply=body.reply,
             )
     except (NotConfigured, ConnectionFailed) as exc:
         raise StorageUnavailable(str(exc)) from exc
+
+    if isinstance(comparison, Question):
+        return QuestionResponse(question=comparison.text, thread_id=thread_id)
 
     return _response(comparison, thread_id)
 
