@@ -97,6 +97,15 @@ class ArtifactChanged(ApiError):
     code = "artifact_changed"
 
 
+class NothingToAnswer(ApiError):
+    # 409: a reply came for a chat that is not waiting for one (it was answered
+    # already, or the id is another chat's). Without this check LangGraph does
+    # nothing and the call returns the OLD answer again, so the person would read
+    # an answer to a question they did not just ask (measured 2026-11-12).
+    status = 409
+    code = "nothing_to_answer"
+
+
 class SourceTooLargeToIngest(ApiError):
     # 413, the same class as an oversized upload: the repository really is too
     # big for us. Refuse rather than truncate - half a corpus searched silently
