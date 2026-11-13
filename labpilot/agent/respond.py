@@ -52,20 +52,37 @@ def make_respond_node(
         # D109: the person may be asked one question just before the answer is
         # written. The pause is the FIRST line, because a resume starts here again.
         user_reply = ask(state) if ask is not None else ""
-        summaries = {"A": state.get("summary_a", ""), "B": state.get("summary_b", "")}
-        sides = present_sides(state.get("a", ""), state.get("b", ""))
+        present = present_sides(state.get("a", ""), state.get("b", ""))
+        sides = present
+        # What the plan says the question needs (D107): no file at all, or one
+        # of the two. Everything below then sees only those sides.
+        plan = state.get("plan")
+        if plan is not None and not plan.files:
+            sides = ()
+        elif plan is not None and plan.about in sides:
+            sides = (plan.about,)
         files = len(sides)
+        summaries = {"A": state.get("summary_a", ""), "B": state.get("summary_b", "")}
         differences = state.get("differences", ())
         bugs = state.get("bugs", ())
+        held = state.get("chunks", ())
+        totals = state.get("totals")
+        if sides != present:
+            summaries = {s: text if s in sides else "" for s, text in summaries.items()}
+            if not sides:
+                differences, bugs = (), ()
+            held = tuple(c for c in held if c.side in sides)
+            if isinstance(totals, dict):
+                totals = {side: n for side, n in totals.items() if side in sides}
         # The parts that show a finding, so the answer reads the code itself
         # and not only one quoted line (R20).
         evidence = deciding_parts(differences, bugs)
-        chunks = with_parts(state["chunks"], evidence)
+        chunks = with_parts(held, evidence)
         prompt, selected = make_prompt(
             chunks,
             question=state["question"],
             user_reply=user_reply,
-            totals=state["totals"],
+            totals=totals,
             summaries=summaries,
             files=files,
             last_answer=state.get("last_answer", ""),
@@ -76,9 +93,14 @@ def make_respond_node(
             # checked (D106).
             reference=sides == ("A",),
         )
-        out = {"prompt": prompt, "selected": selected, "result": generate(prompt)}
-        if chunks is not state["chunks"]:
-            out["chunks"] = chunks
-        return out
+        # `ask()` reads these two keys after every run, and a saved chat would
+        # hand it the ones of the message before, so both are always written.
+        return {
+            "prompt": prompt,
+            "selected": selected,
+            "result": generate(prompt),
+            "chunks": chunks,
+            "totals": totals,
+        }
 
     return respond_node
