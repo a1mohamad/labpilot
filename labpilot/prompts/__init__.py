@@ -72,6 +72,11 @@ from labpilot.prompts.followups import (
     last_answer_block,
     last_answer_excerpt,
 )
+from labpilot.prompts.fresh import (
+    FRESH_MAX_TOKENS,
+    FRESH_VERSION,
+    build_fresh_claim_prompt,
+)
 from labpilot.prompts.gate import GATE, GATE_MAX_TOKENS, GATE_VERSION, build_gate_prompt
 from labpilot.prompts.instructions import (
     COMPARE,
@@ -116,6 +121,9 @@ from labpilot.prompts.user_reply import NOTE as USER_REPLY_NOTE
 from labpilot.prompts.user_reply import question_with_reply
 
 __all__ = [
+    "FRESH_MAX_TOKENS",
+    "FRESH_VERSION",
+    "build_fresh_claim_prompt",
     "USER_REPLY_NOTE",
     "question_with_reply",
     "AUDIT_BATCH",
