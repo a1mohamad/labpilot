@@ -112,7 +112,7 @@ def test_the_ids_reach_the_ask_path_in_the_slots_they_were_sent_in(
     """
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool, reply=None):
         seen.update(a=a_id, b=b_id, question=question)
         return answered()
 
@@ -162,7 +162,7 @@ def chat_only() -> Comparison:
 def record_ids(monkeypatch, outcome) -> dict:
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool, reply=None):
         seen.update(a=a_id, b=b_id)
         return outcome
 
@@ -389,7 +389,7 @@ def test_the_first_message_gets_a_new_chat_id_and_ask_receives_the_same_one(
 ):
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool, reply=None):
         seen["thread_id"] = thread_id
         return answered()
 
@@ -404,7 +404,7 @@ def test_the_first_message_gets_a_new_chat_id_and_ask_receives_the_same_one(
 def test_the_route_hands_ask_the_apps_pool(client, no_database, monkeypatch):
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool, reply=None):
         seen["pool"] = pool
         return answered()
 
@@ -427,7 +427,7 @@ def test_two_first_messages_start_two_different_chats(client, no_database, monke
 def test_a_chat_id_that_was_sent_is_kept(client, no_database, monkeypatch):
     seen = {}
 
-    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool):
+    def fake_ask(conn, a_id, b_id, *, question, client, thread_id, pool, reply=None):
         seen["thread_id"] = thread_id
         return answered()
 
