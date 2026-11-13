@@ -1,4 +1,5 @@
 import logging
+from dataclasses import replace
 
 from labpilot.agent.plan import Plan, Query
 from labpilot.ingest import Side
@@ -6,6 +7,10 @@ from labpilot.ingest import Side
 logger = logging.getLogger(__name__)
 
 MAX_QUERIES = 6
+# The question the planner may ask the person (D109): short, but it may use two
+# lines. Longer than this it is dropped (it is shown on the page and goes into
+# the next prompt).
+MAX_ASK_CHARS = 400
 
 # Only steps that a node really runs (R18). extract_outcomes (slice 10) is not
 # built yet. The summaries run on every message whatever the plan says, so
@@ -51,7 +56,25 @@ def default_plan(question: str, sides: tuple[Side, ...]) -> Plan:
     )
 
 
-def problem_with(plan: Plan, sides: tuple[Side, ...]) -> str | None:
+def repeats_with_question(ask: str, question: str) -> bool:
+    return bool(ask) and ask.strip().lower() == question.strip().lower()
+
+
+def ask_problem(ask: str) -> str | None:
+    if len(ask) > MAX_ASK_CHARS:
+        return (
+            f"the question for the user is {len(ask)} characters long,"
+            f"over the {MAX_ASK_CHARS}"
+        )
+
+    return None
+
+
+def problem_with(plan: Plan, sides: tuple[Side, ...], question: str = "") -> str | None:
+    # Only a question that repeats the person's own is worth another try (D109).
+    # A long question is dropped by check_plan, and the plan stays.
+    if repeats_with_question(plan.ask, question):
+        return "the question for the user only repeats the user's own question"
     allowed = allowed_steps(sides)
     for step in plan.steps:
         if step not in allowed:
@@ -71,7 +94,13 @@ def problem_with(plan: Plan, sides: tuple[Side, ...]) -> str | None:
 
 
 def check_plan(plan: Plan, question: str, sides: tuple[Side, ...]) -> Plan:
-    problem = problem_with(plan, sides)
+    # A bad or useless question for the user must not cost the whole plan: the
+    # plan is dropped only for its steps and queries.
+    if plan.ask and (
+        ask_problem(plan.ask) is not None or repeats_with_question(plan.ask, question)
+    ):
+        plan = replace(plan, ask="")
+    problem = problem_with(plan, sides, question)
     if problem is None:
         return plan
     logger.warning("the plan was rejected, the default plan runs: %s", problem)
