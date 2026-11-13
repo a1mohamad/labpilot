@@ -27,6 +27,7 @@ from labpilot.prompts import (
     AUDIT_VERSION,
     BUGS_VERSION,
     CLAIMS_VERSION,
+    FRESH_VERSION,
     REVIEW_VERSION,
     SCAN_VERSION,
 )
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 CLAIMS = "claims"
 DIFFERENCES = "differences"
 BUGS = "bugs"
+FRESH = "fresh"
 
 
 def claims_key(a: str) -> str:
@@ -53,6 +55,13 @@ def differences_key(a: str, b: str, facts: Sequence[str]) -> str:
 
 def bugs_key(b: str) -> str:
     return f"{BUGS}:{b}:v{BUGS_VERSION}"
+
+
+def fresh_key(b: str, question: str) -> str:
+    # The same question about the same file asks the same thing; the audit
+    # version and the wording version are in the key like the other steps.
+    digest = hashlib.sha256(question.strip().lower().encode("utf-8")).hexdigest()[:16]
+    return f"{FRESH}:{b}:a{AUDIT_VERSION}f{FRESH_VERSION}:{digest}"
 
 
 class SavedResults:
@@ -136,6 +145,17 @@ def saved_bugs(
         )
 
     return bugs
+
+
+def saved_fresh(
+    saved: SavedResults, check: Callable[[str, str], tuple[Difference, ...]]
+) -> Callable[[str, str], tuple[Difference, ...]]:
+    def fresh(question: str, b: str) -> tuple[Difference, ...]:
+        return saved.get_or_make(
+            FRESH, fresh_key(b, question), (b,), lambda: check(question, b)
+        )
+
+    return fresh
 
 
 def with_saved_steps(

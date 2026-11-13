@@ -6,6 +6,11 @@ from labpilot.agent.state import State
 
 
 def halted(state: State) -> bool:
+    # A question that needs no file, or that is about one file, does not need the
+    # two files to correspond, so there is nothing to halt (D107).
+    plan = state.get("plan")
+    if plan is not None and (not plan.files or plan.about != "both"):
+        return False
     found = state.get("correspondence")
     return found is not None and found.verdict == HALT_VERDICT
 

@@ -23,6 +23,12 @@ from labpilot.agent.find_differences import (
     make_find_differences_node,
     wants_differences,
 )
+from labpilot.agent.fresh import (
+    FreshCheck,
+    fresh_task,
+    make_fresh_node,
+    wants_fresh,
+)
 from labpilot.agent.gate import make_gate_node
 from labpilot.agent.halt import halted, make_halt_node
 from labpilot.agent.merge import make_merge_node
@@ -53,6 +59,7 @@ def build_graph(
     extract_claims: Callable[[str], tuple[Claim, ...]] | None = None,
     find_differences: FindDifferences | None = None,
     find_bugs: FindBugs | None = None,
+    fresh: FreshCheck | None = None,
     final_merge: Merge | None = None,
     whole_side: Callable[[Any, str], Chunks | None] | None = None,
     answer_text: Callable[[Any], str] | None = None,
@@ -82,6 +89,8 @@ def build_graph(
         return {"chunks": chunks, "totals": totals}
 
     def pick(state: State) -> str | list[Send]:
+        if not state["plan"].files:
+            return "respond"
         return "stuff" if state["fits"] else fan_out(state)
 
     def after_gate(state: State) -> str:
@@ -93,10 +102,16 @@ def build_graph(
             return []
         return [Send("find_bugs", task)]
 
+    def new_check(state: State) -> list[Send]:
+        # D107: a question the first analysis did not cover gets ONE new check.
+        if fresh is None or not wants_fresh(state):
+            return []
+        return [Send("fresh", fresh_task(state))]
+
     def finders(state: State) -> str | list[Send]:
         # The differences and the bug hunt run at the same time, and the next
         # node runs once, after both of them.
-        sends = bug_hunt(state)
+        sends = bug_hunt(state) + new_check(state)
         if find_differences is not None and wants_differences(state):
             sends.append(Send("find_differences", differences_task(state)))
         return sends or "respond"
@@ -108,7 +123,7 @@ def build_graph(
         # runs: one call over a whole file found about half of what the hunt
         # finds (section 29).
         if state["totals"] is None:
-            return bug_hunt(state) or "respond"
+            return bug_hunt(state) + new_check(state) or "respond"
         if extract_claims is not None and wants_differences(state):
             return "extract_claims"
         return finders(state)
@@ -170,6 +185,9 @@ def build_graph(
     if find_bugs is not None:
         add("find_bugs", make_find_bugs_node(find_bugs))
         found_by.append("find_bugs")
+    if fresh is not None:
+        add("fresh", make_fresh_node(fresh))
+        found_by.append("fresh")
     for name in found_by:
         builder.add_edge(name, after_finders)
     if final_merge is not None:

@@ -232,3 +232,11 @@ def test_the_gate_asks_the_cheap_chain_first(monkeypatch):
     asking._ask_graph("conn", "client")
 
     assert seen["gate"] == ("gate", ("cheap", "client"))
+
+
+def test_the_graph_gets_the_new_check_for_a_fresh_question(monkeypatch):
+    seen = capture(monkeypatch)
+
+    asking._ask_graph("conn", "client")
+
+    assert callable(seen["fresh"])

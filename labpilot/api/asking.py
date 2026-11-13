@@ -18,6 +18,7 @@ from labpilot.api.difference_finder import make_find_differences
 from labpilot.api.difference_review import make_merger
 from labpilot.api.errors import GenerationUnavailable, InvalidQuestion, NothingToAnswer
 from labpilot.api.followups import last_answer_text, make_rewriter
+from labpilot.api.fresh import make_fresh_check
 from labpilot.api.gate import halt_answer, make_gate
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
@@ -27,6 +28,7 @@ from labpilot.api.saved import (
     saved_bugs,
     saved_claims,
     saved_differences,
+    saved_fresh,
     with_saved_steps,
 )
 from labpilot.api.searching import embed_query, rank_pile, retrieve_query
@@ -275,6 +277,7 @@ def _ask_graph(
                 ),
             ),
         ),
+        fresh=saved_fresh(saved, make_fresh_check(conn, whole=whole, small=small)),
         final_merge=make_merger(small),
         ask=ask_the_user if thread_id else None,
         whole_side=whole_side,

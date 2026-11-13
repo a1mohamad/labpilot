@@ -26,6 +26,9 @@ def plan_schema(sides: tuple[Side, ...]) -> dict[str, object]:
                 },
             },
             "ask": {"type": "string"},
+            "about": {"type": "string", "enum": ["A", "B", "both"]},
+            "files": {"type": "boolean"},
+            "fresh": {"type": "boolean"},
         },
         "required": ["steps", "queries"],
     }
@@ -55,4 +58,26 @@ def read_plan(arguments: dict[str, object]) -> Plan:
     if not isinstance(ask, str):
         raise PlanError(f"'ask' must be text, got {type(ask).__name__}")
 
-    return Plan(steps=tuple(steps), queries=tuple(made), ask=" ".join(ask.split()))
+    about = arguments.get("about", "both")
+    if about is None:
+        about = "both"
+    if not isinstance(about, str):
+        raise PlanError(f"'about' must be text, got {type(about).__name__}")
+
+    flags: list[bool] = []
+    for name, default in (("files", True), ("fresh", False)):
+        flag = arguments.get(name, default)
+        if flag is None:
+            flag = default
+        if not isinstance(flag, bool):
+            raise PlanError(f"'{name!r}' must be a boolean, got {type(flag).__name__}")
+        flags.append(flag)
+
+    return Plan(
+        steps=tuple(steps),
+        queries=tuple(made),
+        ask=" ".join(ask.split()),
+        about=about,
+        files=flags[0],
+        fresh=flags[1],
+    )

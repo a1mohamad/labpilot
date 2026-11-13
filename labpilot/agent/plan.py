@@ -17,3 +17,6 @@ class Plan:
     source: Literal["planner", "default"] = "planner"
     # One short question for the person, or "" (D109). The planner writes it.
     ask: str = ""
+    about: str = "both"
+    files: bool = True
+    fresh: bool = False
