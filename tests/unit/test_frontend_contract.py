@@ -211,3 +211,17 @@ def test_the_page_keeps_the_chat_id_the_server_sent():
         "web/app.js never reads thread_id off the compare reply, so it cannot "
         "send it back and every question starts a new chat."
     )
+
+
+def test_the_pause_buttons_send_the_typed_answer_and_the_empty_text_for_a_skip():
+    """Send answers with what the person typed, Skip with the empty text. A skip
+    must never be null: the server reads null as "no reply" and starts a NEW run
+    instead of going on from the pause."""
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert re.search(
+        r'paused-send"\)\.onclick = \(\) => send\(question, reply\.value\)', source
+    ), "web/app.js: the Send button of the pause no longer sends the typed answer."
+    assert re.search(
+        r'paused-skip"\)\.onclick = \(\) => send\(question, ""\)', source
+    ), 'web/app.js: the Skip button of the pause must send the empty text "".'
