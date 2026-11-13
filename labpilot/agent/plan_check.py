@@ -12,8 +12,8 @@ MAX_QUERIES = 6
 # the next prompt).
 MAX_ASK_CHARS = 400
 
-# Only steps that a node really runs (R18). extract_outcomes (slice 10) is not
-# built yet. The summaries run on every message whatever the plan says, so
+# Only steps that a node really runs (R18). There is no extract_outcomes step
+# (D108). The summaries run on every message whatever the plan says, so
 # "summarize" is listed for the planner to read and costs nothing. The claims
 # run when find_differences runs, because they give it A's facts. find_bugs
 # reads B alone, so it is allowed only when B has a file (D106).
@@ -75,6 +75,10 @@ def problem_with(plan: Plan, sides: tuple[Side, ...], question: str = "") -> str
     # A long question is dropped by check_plan, and the plan stays.
     if repeats_with_question(plan.ask, question):
         return "the question for the user only repeats the user's own question"
+    if plan.about not in ("A", "B", "both"):
+        return f"'about' is {plan.about!r}, it must be A, B or both"
+    if plan.about in ("A", "B") and plan.about not in sides:
+        return f"the question is about side {plan.about!r}, which has no file"
     allowed = allowed_steps(sides)
     for step in plan.steps:
         if step not in allowed:
@@ -93,6 +97,23 @@ def problem_with(plan: Plan, sides: tuple[Side, ...], question: str = "") -> str
     return None
 
 
+def focus(plan: Plan, sides: tuple[Side, ...]) -> Plan:
+    """Cut a good plan down to what the question needs (D105, D107)."""
+    if not plan.files:
+        return replace(plan, steps=(), queries=(), fresh=False)
+    if len(sides) == 2 and plan.about in sides:
+        dropped = {"find_differences"}
+        if plan.about == "A":
+            dropped.add("find_bugs")
+        return replace(
+            plan,
+            steps=tuple(step for step in plan.steps if step not in dropped),
+            queries=tuple(q for q in plan.queries if q.side == plan.about),
+            fresh=plan.fresh and plan.about == "B",
+        )
+    return plan
+
+
 def check_plan(plan: Plan, question: str, sides: tuple[Side, ...]) -> Plan:
     # A bad or useless question for the user must not cost the whole plan: the
     # plan is dropped only for its steps and queries.
@@ -100,8 +121,11 @@ def check_plan(plan: Plan, question: str, sides: tuple[Side, ...]) -> Plan:
         ask_problem(plan.ask) is not None or repeats_with_question(plan.ask, question)
     ):
         plan = replace(plan, ask="")
+    # With one file "about" has no meaning, so it is "both" (the safe side).
+    if len(sides) < 2 and plan.about != "both":
+        plan = replace(plan, about="both")
     problem = problem_with(plan, sides, question)
     if problem is None:
-        return plan
+        return focus(plan, sides)
     logger.warning("the plan was rejected, the default plan runs: %s", problem)
     return default_plan(question, sides)
