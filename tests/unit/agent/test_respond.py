@@ -45,6 +45,8 @@ def test_respond_builds_the_prompt_from_the_state_and_generates_from_it():
         "prompt": "the prompt",
         "selected": (chunk(1),),
         "result": "answer to the prompt",
+        "chunks": (chunk(1), chunk(2)),
+        "totals": {"A": 1, "B": 2},
     }
 
 
