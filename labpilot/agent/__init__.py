@@ -54,6 +54,7 @@ from labpilot.agent.errors import (
     GateError,
     PlanError,
 )
+from labpilot.agent.fresh import FreshCheck
 from labpilot.agent.gate_schema import GATE_TOOL_NAME, gate_schema, read_correspondence
 from labpilot.agent.graph import build_graph
 from labpilot.agent.plan import Plan, Query
@@ -111,6 +112,7 @@ __all__ = [
     "Plan",
     "PlanError",
     "Query",
+    "FreshCheck",
     "State",
     "allowed_steps",
     "ask_the_user",
