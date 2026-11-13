@@ -38,3 +38,14 @@ class Ingested:
     artifact: ArtifactRecord
     chunks: int
     ingest_minutes: float
+
+
+@dataclass(frozen=True, slots=True)
+class Question:
+    """The run is paused: the person is asked one question (D109).
+
+    The graph is saved at the pause. The next call with the same `thread_id` and
+    a `reply` (the empty text is a skip) goes on from there.
+    """
+
+    text: str
