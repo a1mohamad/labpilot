@@ -46,8 +46,12 @@ def with_parts(chunks: Chunks, extra: Sequence[Chunk]) -> Chunks:
 def make_respond_node(
     make_prompt: Callable[..., tuple[str, Chunks]],
     generate: Callable[[str], Any],
+    ask: Callable[[State], str] | None = None,
 ) -> Callable[[State], dict[str, Any]]:
     def respond_node(state: State) -> dict[str, Any]:
+        # D109: the person may be asked one question just before the answer is
+        # written. The pause is the FIRST line, because a resume starts here again.
+        user_reply = ask(state) if ask is not None else ""
         summaries = {"A": state.get("summary_a", ""), "B": state.get("summary_b", "")}
         sides = present_sides(state.get("a", ""), state.get("b", ""))
         files = len(sides)
@@ -60,6 +64,7 @@ def make_respond_node(
         prompt, selected = make_prompt(
             chunks,
             question=state["question"],
+            user_reply=user_reply,
             totals=state["totals"],
             summaries=summaries,
             files=files,
