@@ -126,8 +126,8 @@ every honest reading, including effects that push the other way, such as a numbe
 tuned on the data it is reported on.
 
 COMPARABLE - for each pair of numbers the two sides report: YES / NO / CANNOT
-TELL, and why. Write NOT APPLICABLE if the question does not involve reported
-numbers.
+TELL, and why. If a side reports no numbers, write CANNOT TELL and say which
+side. Write NOT APPLICABLE if the question does not involve reported numbers.
 
 DIFFERENCES - the places where A and B differ in a way that could change the
 result of the work. For each one: what A says, what B does, both cited, the
