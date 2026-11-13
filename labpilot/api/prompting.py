@@ -11,6 +11,7 @@ from labpilot.prompts import (
     build_chat_prompt,
     build_prompt,
     instructions_for,
+    question_with_reply,
     reserve,
 )
 from labpilot.retrieval import select
@@ -46,7 +47,11 @@ def build_answer_prompt(
     bugs: Sequence[Bug] = (),
     evidence: Sequence[Chunk] = (),
     reference: bool = False,
+    user_reply: str = "",
 ) -> tuple[str, tuple[Chunk, ...]]:
+    # What the person said when they were asked (D109) rides with the question,
+    # which is the last thing the model reads, behind a note that says whose it is.
+    question = question_with_reply(question, user_reply)
     if files == 0:
         return build_chat_prompt(question, last_answer), ()
 
