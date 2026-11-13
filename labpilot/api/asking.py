@@ -5,17 +5,18 @@ from functools import partial
 
 import psycopg
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 from psycopg_pool import ConnectionPool
 
-from labpilot.agent import build_graph
+from labpilot.agent import ask_the_user, build_graph
 from labpilot.api.bugs import make_bug_finder
 from labpilot.api.chains import bounded, for_claims, for_skeptic, for_trace
 from labpilot.api.checkpoints import open_saver, prune
 from labpilot.api.claims import make_claims_extractor
-from labpilot.api.contracts import Comparison
+from labpilot.api.contracts import Comparison, Question
 from labpilot.api.difference_finder import make_find_differences
 from labpilot.api.difference_review import make_merger
-from labpilot.api.errors import GenerationUnavailable, InvalidQuestion
+from labpilot.api.errors import GenerationUnavailable, InvalidQuestion, NothingToAnswer
 from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.gate import halt_answer, make_gate
 from labpilot.api.planning import make_planner
@@ -48,7 +49,8 @@ def ask(
     client: LLMClient,
     thread_id: str | None = None,
     pool: ConnectionPool | None = None,
-) -> Comparison:
+    reply: str | None = None,
+) -> Comparison | Question:
     """Answer a question about up to two STORED artifacts.
 
     An empty id means "no file in that slot". With no file the answer is a chat
@@ -76,8 +78,15 @@ def ask(
         final = graph.invoke(start)
     else:
         config = {"configurable": {"thread_id": thread_id}}
-        final = graph.invoke(start, config, durability="exit")
+        # A reply goes on from the pause the last call left. The empty text is a
+        # skip. It is never None: `Command(resume=None)` crashes LangGraph 1.2.12.
+        if reply is not None and not graph.get_state(config).next:
+            raise NothingToAnswer("this chat is not waiting for an answer")
+        given = start if reply is None else Command(resume=reply)
+        final = graph.invoke(given, config, durability="exit")
         _forget_old_copies(_saving_place(conn, pool), thread_id)
+    if "__interrupt__" in final:
+        return Question(text=final["__interrupt__"][0].value["question"])
     return Comparison(
         result=final["result"],
         chunks=final["chunks"],
@@ -267,6 +276,7 @@ def _ask_graph(
             ),
         ),
         final_merge=make_merger(small),
+        ask=ask_the_user if thread_id else None,
         whole_side=whole_side,
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
