@@ -4,7 +4,7 @@ from labpilot.prompts.corpus_map import PLANNER_BUDGET
 
 # The wording below is FIXED. Change it only together with this number, and the
 # number is logged beside every plan, so a plan can be tied to its wording.
-PLANNER_VERSION = 5
+PLANNER_VERSION = 6
 
 # The answer is a short plan, but a tier that thinks spends tokens first, so
 # this is only a backstop. A small number would give such a tier an empty
@@ -25,7 +25,6 @@ STEP_MEANINGS: dict[str, str] = {
     "leaves out of what A states, and what B does that A never says",
     "find_bugs": "read B alone and look for its defects: in the code, the "
     "logic, the method, the numbers and the idea itself",
-    "extract_outcomes": "list the results each file reports, and say if they compare",
 }
 
 PLANNER = (
@@ -41,6 +40,23 @@ PLANNER = (
     "never a question, and it names the side it is for.\n"
     'Good query: "learning rate 3e-4 cosine decay". '
     'Bad query: "what learning rate is used?"\n\n'
+    "about: which file the question is about, A, B or both. Say A or B only "
+    "when the question names one file, or one thing that only that file holds. "
+    "A comparison, or a question that is not clear, is both.\n"
+    "files: false only when the question can be answered without reading any "
+    "file (a general question, or thanks). When you are not sure, true.\n"
+    "fresh: true when the question asks whether a file does or has ONE "
+    "specific thing, a yes or no check of one named behavior that a general "
+    "comparison would not look at (for example: does it clip the gradient, "
+    "does it raise an error for a negative value). False when the question "
+    "asks what the files say, where something is, how it works, why results "
+    "differ, for a summary, a comparison or the bugs. When you are not sure, "
+    "false.\n"
+    "ask: usually empty. Write one short question for the person only when they "
+    "speak about their OWN result and do not say what it is or how it was "
+    "measured (for example: my numbers came out lower). At most two short "
+    "lines. Never repeat or reword the person's own question. When you are not "
+    "sure, leave it empty.\n\n"
     "The map lists the parts of each file with their line numbers. A signature "
     "or a sentence in quotes was copied from the file itself, so its words are "
     "good words for a query."
