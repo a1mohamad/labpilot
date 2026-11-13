@@ -15,3 +15,5 @@ class Plan:
     steps: tuple[str, ...]
     queries: tuple[Query, ...]
     source: Literal["planner", "default"] = "planner"
+    # One short question for the person, or "" (D109). The planner writes it.
+    ask: str = ""
