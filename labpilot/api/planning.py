@@ -38,14 +38,16 @@ logger = logging.getLogger(__name__)
 TOOL_DESCRIPTION = "Choose the steps LabPilot runs and what to search for."
 
 
-def _plan_problem(result: LLMResult, *, sides: tuple[Side, ...]) -> str | None:
+def _plan_problem(
+    result: LLMResult, *, sides: tuple[Side, ...], question: str
+) -> str | None:
     if result.arguments is None:
         return "no arguments"
     try:
         made = read_plan(result.arguments)
     except PlanError as exc:
         return str(exc)
-    return problem_with(made, sides)
+    return problem_with(made, sides, question)
 
 
 def make_planner(
@@ -89,7 +91,7 @@ def make_planner(
                 prompt,
                 max_tokens=PLANNER_MAX_TOKENS,
                 tool=tool,
-                problem_with=partial(_plan_problem, sides=sides),
+                problem_with=partial(_plan_problem, sides=sides, question=question),
             )
         except AllFreeTiersExhausted as exc:
             raise PlanError(
