@@ -227,3 +227,11 @@ def test_the_reference_instruction_names_no_language_and_no_field():
     text = f"{REFERENCE.header} {REFERENCE.closing}".lower()
 
     assert [word for word in banned if word in text] == []
+
+
+def test_a_side_with_no_numbers_is_named_in_the_comparable_section():
+    # 2026-11-12: on pairs where one side reports no numbers the answers used
+    # three different words, and one said YES. One sentence names the case.
+    header = squeezed(TWO_FILES.header)
+
+    assert "If a side reports no numbers, write CANNOT TELL" in header
