@@ -48,6 +48,9 @@ def no_database(monkeypatch):
         "labpilot.api.routers.artifacts.connect",
         lambda *a, **k: contextlib.nullcontext(object()),
     )
+    monkeypatch.setattr(
+        "labpilot.api.routers.artifacts.store_summary", lambda *a, **k: True
+    )
 
 
 def test_a_file_is_stored_and_its_id_comes_back(client, no_database, monkeypatch):
@@ -475,3 +478,75 @@ def test_every_way_a_source_will_not_open_is_the_callers_fault(
     body = response.json()["error"]
     assert body["code"] == "unreadable_source"
     assert "git said no" in body["message"]
+
+
+def test_the_summary_is_made_right_after_the_file_is_stored(
+    client, no_database, monkeypatch
+):
+    made = []
+    monkeypatch.setattr(
+        "labpilot.api.routers.artifacts.store_summary",
+        lambda conn, llm, artifact_id: made.append(artifact_id) or True,
+    )
+    monkeypatch.setattr(
+        "labpilot.api.ingestion.ingest_artifact", lambda *a, **k: stored(0.4)
+    )
+
+    response = client.post(
+        "/api/v1/artifacts",
+        data={"side": "B"},
+        files={"file": ("train.py", CODE, "text/x-python")},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert made == ["B-abc"]
+
+
+def test_the_summary_uses_its_own_autocommit_connection(client, monkeypatch):
+    opened = []
+
+    @contextlib.contextmanager
+    def connect(*args, **kwargs):
+        opened.append(kwargs)
+        yield object()
+
+    monkeypatch.setattr("labpilot.api.routers.artifacts.connect", connect)
+    monkeypatch.setattr(
+        "labpilot.api.routers.artifacts.store_summary", lambda *a, **k: True
+    )
+    monkeypatch.setattr(
+        "labpilot.api.ingestion.ingest_artifact", lambda *a, **k: stored(0.4)
+    )
+
+    client.post(
+        "/api/v1/artifacts",
+        data={"side": "B"},
+        files={"file": ("train.py", CODE, "text/x-python")},
+    )
+
+    assert opened == [{}, {"autocommit": True}]
+
+
+def test_a_database_that_is_gone_after_the_upload_does_not_undo_it(client, monkeypatch):
+    opened = []
+
+    @contextlib.contextmanager
+    def connect(*args, **kwargs):
+        opened.append(kwargs)
+        if len(opened) > 1:
+            raise ConnectionFailed("gone")
+        yield object()
+
+    monkeypatch.setattr("labpilot.api.routers.artifacts.connect", connect)
+    monkeypatch.setattr(
+        "labpilot.api.ingestion.ingest_artifact", lambda *a, **k: stored(0.4)
+    )
+
+    response = client.post(
+        "/api/v1/artifacts",
+        data={"side": "B"},
+        files={"file": ("train.py", CODE, "text/x-python")},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["artifact_id"] == "B-abc"
