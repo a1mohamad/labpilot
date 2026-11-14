@@ -17,14 +17,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Sequence
 
-from labpilot.llm import (
-    GEMINI_3_1_FLASH_LITE,
-    GEMINI_3_5_FLASH_LITE,
-    GEMMA_4_26B,
-    GEMMA_4_31B,
-    GOOGLE_KEYS,
-    GeminiProvider,
-)
+from labpilot.llm import GOOGLE_KEYS, GeminiProvider, tiers
 from labpilot.rerank import (
     JEV_NETLIFY_RERANK,
     JEV_RERANK,
@@ -65,10 +58,10 @@ RANKING_CONFIG = {
 PROVIDERS = {
     provider.model: provider
     for provider in (
-        GEMINI_3_5_FLASH_LITE,
-        GEMINI_3_1_FLASH_LITE,
-        GEMMA_4_26B,
-        GEMMA_4_31B,
+        tiers.GEMINI_3_5_FLASH_LITE,
+        tiers.GEMINI_3_1_FLASH_LITE,
+        tiers.GEMMA_4_26B,
+        tiers.GEMMA_4_31B,
     )
 }
 
