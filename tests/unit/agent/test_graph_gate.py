@@ -37,7 +37,7 @@ def build(verdicts, calls, *, with_gate=True, **extra):
         calls.append(f"summarize {artifact_id}")
         return f"summary of {artifact_id}"
 
-    def gate(summary_a, summary_b):
+    def gate(a_id, b_id, summary_a, summary_b):
         calls.append(("gate", summary_a, summary_b))
         answer = next(answers)
         if isinstance(answer, Exception):
@@ -230,12 +230,12 @@ def bare(**options):
 
 def test_a_gate_needs_summaries_to_read():
     with pytest.raises(ValueError, match="summarize"):
-        bare(gate=lambda a, b: PARTIAL, halt_answer=lambda a, b, reason: "")
+        bare(gate=lambda a, b, sa, sb: PARTIAL, halt_answer=lambda a, b, reason: "")
 
 
 def test_a_gate_needs_a_halt_answer():
     with pytest.raises(ValueError, match="halt_answer"):
-        bare(summarize=lambda artifact_id: "", gate=lambda a, b: PARTIAL)
+        bare(summarize=lambda artifact_id: "", gate=lambda a, b, sa, sb: PARTIAL)
 
 
 def test_a_halt_answer_without_a_gate_is_a_mistake():

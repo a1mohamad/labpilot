@@ -2,9 +2,13 @@ import logging
 
 import pytest
 
+from labpilot.agent import Correspondence
 from labpilot.api import asking
+from labpilot.api import saved as saved_module
+from labpilot.api.chains import SUMMARY_MODELS
 from labpilot.api.errors import GenerationUnavailable, UnknownArtifactId
 from labpilot.api.prompting import build_answer_prompt
+from labpilot.llm import CHAIN, LLMClient
 
 
 def capture(monkeypatch):
@@ -20,7 +24,18 @@ def capture(monkeypatch):
 
 
 def summarizer(monkeypatch, function):
+    # The stored summaries (D110) are real here; only the database is a dict.
+    rows = {}
+    monkeypatch.setattr(saved_module, "read_saved", lambda conn, key: rows.get(key))
+    monkeypatch.setattr(
+        saved_module,
+        "write_saved",
+        lambda conn, key, kind, payload, *, artifacts: rows.update(
+            {key: (kind, payload)}
+        ),
+    )
     monkeypatch.setattr(asking, "make_summarizer", lambda conn, client: function)
+    return rows
 
 
 def test_the_graph_gets_a_summarize_function(monkeypatch):
@@ -77,3 +92,68 @@ def test_the_graph_gets_the_one_prompt_builder_for_every_number_of_files(
 
     assert seen["make_prompt"] is build_answer_prompt
     assert "make_answer_prompt" not in seen
+
+
+def test_a_stored_summary_is_read_and_the_model_is_not_asked_again(monkeypatch):
+    seen = capture(monkeypatch)
+    calls = []
+    summarizer(monkeypatch, lambda artifact_id: calls.append(artifact_id) or "stored")
+    asking._ask_graph("conn", "client")
+
+    assert seen["summarize"]("A-1") == "stored"
+    assert seen["summarize"]("A-1") == "stored"
+    assert calls == ["A-1"]
+
+
+def test_a_summary_that_failed_is_asked_for_again_on_the_next_message(monkeypatch):
+    seen = capture(monkeypatch)
+    calls = []
+
+    def exhausted(artifact_id):
+        calls.append(artifact_id)
+        raise GenerationUnavailable("every free tier failed", attempts=())
+
+    rows = summarizer(monkeypatch, exhausted)
+    asking._ask_graph("conn", "client")
+
+    assert seen["summarize"]("A-1") == ""
+    assert seen["summarize"]("A-1") == ""
+    assert calls == ["A-1", "A-1"]
+    assert rows == {}
+
+
+def test_the_summarizer_is_given_the_short_summary_chain(monkeypatch):
+    seen = capture(monkeypatch)
+    clients = []
+    monkeypatch.setattr(
+        asking,
+        "make_summarizer",
+        lambda conn, client: clients.append(client) or (lambda artifact_id: "s"),
+    )
+    asking._ask_graph("conn", LLMClient(chain=CHAIN))
+
+    assert {p.model for p in clients[0].chain} == set(SUMMARY_MODELS)
+    assert callable(seen["summarize"])
+
+
+def test_a_stored_verdict_is_read_and_the_gate_is_not_asked_again(monkeypatch):
+    seen = capture(monkeypatch)
+    summarizer(monkeypatch, lambda artifact_id: "s")
+    calls = []
+    monkeypatch.setattr(
+        asking,
+        "make_gate",
+        lambda client: (
+            lambda summary_a, summary_b: (
+                calls.append((summary_a, summary_b))
+                or Correspondence("FULL", "same work")
+            )
+        ),
+    )
+    asking._ask_graph("conn", "client")
+
+    first = seen["gate"]("A-1", "B-1", "about memory", "about memory too")
+    second = seen["gate"]("A-1", "B-1", "about memory", "about memory too")
+
+    assert first == second == Correspondence("FULL", "same work")
+    assert calls == [("about memory", "about memory too")]

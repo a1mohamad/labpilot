@@ -12,11 +12,13 @@ it takes plain strings and lets the caller translate. The same answer works
 here: take `complete(prompt, max_tokens) -> str` and let whoever owns both
 layers supply it. Dependency injection, one function, no import, no coupling.
 
-    from labpilot.llm import GEMINI_3_5_FLASH_LITE
+    from labpilot.llm import tiers
     from labpilot.rerank import LLMReranker
 
     flash = LLMReranker(
-        complete=lambda p, n: GEMINI_3_5_FLASH_LITE.complete(p, max_tokens=n).text,
+        complete=lambda p, n: tiers.GEMINI_3_5_FLASH_LITE.complete(
+            p, max_tokens=n
+        ).text,
         name="Gemini 3.5 Flash-Lite",
         model="gemini-3.5-flash-lite",
     )

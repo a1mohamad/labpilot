@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 from typing import Annotated
@@ -8,6 +9,7 @@ from fastapi import APIRouter, Form, UploadFile, status
 
 from labpilot.api import ingestion
 from labpilot.api.contracts import Ingested
+from labpilot.api.dependencies import LLMClientDep
 from labpilot.api.errors import (
     SourceTooLargeToIngest,
     StorageUnavailable,
@@ -15,6 +17,7 @@ from labpilot.api.errors import (
     UnsafeArchiveUpload,
 )
 from labpilot.api.schemas import ErrorEnvelope, IngestResponse
+from labpilot.api.summaries import store_summary
 from labpilot.api.uploads import read_artifact
 from labpilot.ingest import Side
 from labpilot.sources import (
@@ -27,6 +30,8 @@ from labpilot.sources import (
     open_zip,
 )
 from labpilot.store import ConnectionFailed, NotConfigured, connect
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["artifacts"])
 
@@ -54,6 +59,7 @@ FAILURES = {
 )
 def ingest(
     side: Annotated[Side, Form()],
+    client: LLMClientDep,
     file: UploadFile | None = None,
     url: Annotated[str | None, Form()] = None,
 ) -> IngestResponse:
@@ -91,6 +97,8 @@ def ingest(
     except (CloneFailed, SourceNotFound, UnsupportedURL) as exc:
         raise UnreadableSource(str(exc)) from exc
 
+    _keep_summary(client, result.artifact.id)
+
     return IngestResponse(
         artifact_id=result.artifact.id,
         name=result.artifact.name,
@@ -100,6 +108,20 @@ def ingest(
         ingest_minutes=result.ingest_minutes,
         slow=result.ingest_minutes > ingestion.WARN_MINUTES,
     )
+
+
+def _keep_summary(client: LLMClientDep, artifact_id: str):
+    """D110: the summary of the new file, made once and saved.
+
+    It uses its own connection, in autocommit, because the upload is already
+    committed and one failed statement must not poison the rest. A summary that
+    cannot be made never undoes the upload.
+    """
+    try:
+        with connect(autocommit=True) as conn:
+            store_summary(conn, client, artifact_id)
+    except (NotConfigured, ConnectionFailed):
+        logger.warning("no summary of %s: no database", artifact_id, exc_info=True)
 
 
 def _ingest(conn, side: Side, file: UploadFile | None, url: str | None) -> Ingested:

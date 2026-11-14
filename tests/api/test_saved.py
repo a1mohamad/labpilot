@@ -5,21 +5,27 @@ import logging
 import psycopg
 import pytest
 
-from labpilot.agent import Bug, Claim, Plan, Query
+from labpilot.agent import Bug, Claim, Correspondence, GateError, Plan, Query
 from labpilot.api import saved as saved_module
 from labpilot.api.checkpoints import SERDE
+from labpilot.api.errors import GenerationUnavailable
 from labpilot.api.saved import (
     SavedResults,
     bugs_key,
     claims_key,
     differences_key,
+    gate_key,
     saved_bugs,
     saved_claims,
     saved_differences,
+    saved_gate,
+    saved_summary,
+    summary_key,
     with_saved_steps,
 )
 
 BUG = Bug("logic", "the step is never updated", "[solver.py]", "t = 0")
+VERDICT = Correspondence("NONE", "different things")
 CLAIM = Claim("the time step is 0.01 s", "[paper.md]", "time step is 0.01 s")
 
 
@@ -199,3 +205,181 @@ def test_the_reference_alone_is_never_given_a_saved_bug_hunt(monkeypatch):
     plan = with_saved_steps(SavedResults("conn"), planner)("why?", "A-1", "")
 
     assert plan is PLAN
+
+
+def test_a_summary_is_made_once_and_read_again(monkeypatch):
+    FakeStore(monkeypatch)
+    make, calls = counting("a short summary")
+    summary = saved_summary(SavedResults("conn"), make)
+
+    assert summary("A-1") == "a short summary"
+    assert summary("A-1") == "a short summary"
+    assert calls == [("A-1",)]
+
+
+def test_a_summary_is_tied_to_its_file_and_to_no_other(monkeypatch):
+    store = FakeStore(monkeypatch)
+    make, calls = counting("a short summary")
+    summary = saved_summary(SavedResults("conn"), make)
+
+    summary("A-1")
+    summary("B-2")
+
+    assert calls == [("A-1",), ("B-2",)]
+    assert store.rows[summary_key("A-1")][2] == ("A-1",)
+    assert store.rows[summary_key("B-2")][2] == ("B-2",)
+
+
+def test_a_summary_that_cannot_be_made_is_not_saved(monkeypatch):
+    store = FakeStore(monkeypatch)
+
+    def fails(artifact):
+        raise GenerationUnavailable("every free tier failed", attempts=())
+
+    with pytest.raises(GenerationUnavailable):
+        saved_summary(SavedResults("conn"), fails)("A-1")
+
+    assert store.rows == {}
+
+
+def test_a_new_instruction_version_makes_the_summary_again(monkeypatch):
+    FakeStore(monkeypatch)
+    make, calls = counting("a short summary")
+    summary = saved_summary(SavedResults("conn"), make)
+
+    summary("A-1")
+    monkeypatch.setattr(saved_module, "SUMMARY_VERSION", 2)
+    summary("A-1")
+
+    assert len(calls) == 2
+
+
+def test_a_summary_is_not_listed_as_analysis(monkeypatch):
+    FakeStore(monkeypatch)
+    saved = SavedResults("conn")
+    summary = saved_summary(saved, counting("a short summary")[0])
+
+    summary("A-1")
+    summary("A-1")
+
+    assert saved.reused == []
+    assert saved.made == []
+
+
+def test_a_step_that_is_not_a_summary_is_listed_as_analysis(monkeypatch):
+    FakeStore(monkeypatch)
+    saved = SavedResults("conn")
+    claims = saved_claims(saved, counting((CLAIM,))[0])
+
+    claims("A-1")
+    claims("A-1")
+
+    assert saved.made == ["claims"]
+    assert saved.reused == ["claims"]
+
+
+def test_a_database_that_fails_still_gives_the_summary(monkeypatch):
+    FakeStore(monkeypatch, fail_read=True, fail_write=True)
+    make, calls = counting("a short summary")
+    summary = saved_summary(SavedResults("conn"), make)
+
+    assert summary("A-1") == "a short summary"
+    assert summary("A-1") == "a short summary"
+    assert len(calls) == 2
+
+
+def test_a_verdict_is_made_once_and_read_again(monkeypatch):
+    FakeStore(monkeypatch)
+    make, calls = counting(VERDICT)
+    gate = saved_gate(SavedResults("conn"), make)
+
+    assert gate("A-1", "B-1", "about memory", "about images") == VERDICT
+    assert gate("A-1", "B-1", "about memory", "about images") == VERDICT
+    assert calls == [("about memory", "about images")]
+
+
+def test_a_verdict_comes_back_as_a_correspondence_and_not_as_a_dict(monkeypatch):
+    FakeStore(monkeypatch)
+    gate = saved_gate(SavedResults("conn"), counting(VERDICT)[0])
+
+    gate("A-1", "B-1", "about memory", "about images")
+    again = saved_gate(SavedResults("conn"), counting(VERDICT)[0])
+
+    assert isinstance(
+        again("A-1", "B-1", "about memory", "about images"), Correspondence
+    )
+
+
+def test_a_verdict_is_tied_to_both_files(monkeypatch):
+    store = FakeStore(monkeypatch)
+    gate = saved_gate(SavedResults("conn"), counting(VERDICT)[0])
+
+    gate("A-1", "B-1", "about memory", "about images")
+
+    key = gate_key("A-1", "B-1", "about memory", "about images")
+    assert store.rows[key][2] == ("A-1", "B-1")
+
+
+def test_a_summary_written_again_in_other_words_gets_a_new_verdict(monkeypatch):
+    FakeStore(monkeypatch)
+    make, calls = counting(VERDICT)
+    gate = saved_gate(SavedResults("conn"), make)
+
+    gate("A-1", "B-1", "about memory", "about images")
+    gate("A-1", "B-1", "about recall", "about images")
+
+    assert len(calls) == 2
+
+
+def test_the_same_two_texts_the_other_way_round_are_another_pair():
+    assert gate_key("A-1", "B-1", "x", "y") != gate_key("A-1", "B-1", "y", "x")
+
+
+def test_where_the_first_summary_ends_is_part_of_the_key():
+    assert gate_key("A-1", "B-1", "ab", "c") != gate_key("A-1", "B-1", "a", "bc")
+
+
+def test_a_gate_that_cannot_judge_is_not_saved(monkeypatch):
+    store = FakeStore(monkeypatch)
+
+    def cannot(summary_a, summary_b):
+        raise GateError("no tier could judge it")
+
+    with pytest.raises(GateError):
+        saved_gate(SavedResults("conn"), cannot)("A-1", "B-1", "a", "b")
+
+    assert store.rows == {}
+
+
+def test_a_new_instruction_version_makes_the_verdict_again(monkeypatch):
+    FakeStore(monkeypatch)
+    make, calls = counting(VERDICT)
+    gate = saved_gate(SavedResults("conn"), make)
+
+    gate("A-1", "B-1", "a", "b")
+    monkeypatch.setattr(saved_module, "GATE_VERSION", 2)
+    gate("A-1", "B-1", "a", "b")
+
+    assert len(calls) == 2
+
+
+def test_a_verdict_is_not_listed_as_analysis(monkeypatch):
+    FakeStore(monkeypatch)
+    saved = SavedResults("conn")
+    gate = saved_gate(saved, counting(VERDICT)[0])
+
+    gate("A-1", "B-1", "a", "b")
+    gate("A-1", "B-1", "a", "b")
+
+    assert saved.reused == []
+    assert saved.made == []
+
+
+def test_a_database_that_fails_still_gives_the_verdict(monkeypatch):
+    FakeStore(monkeypatch, fail_read=True, fail_write=True)
+    make, calls = counting(VERDICT)
+    gate = saved_gate(SavedResults("conn"), make)
+
+    assert gate("A-1", "B-1", "a", "b") == VERDICT
+    assert gate("A-1", "B-1", "a", "b") == VERDICT
+    assert len(calls) == 2

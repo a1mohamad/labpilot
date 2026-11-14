@@ -88,7 +88,9 @@ def run(plan: Plan, *, gate_verdict: str | None = None, fits: bool = True):
         from labpilot.agent import Correspondence
 
         extra = {
-            "gate": lambda sa, sb: Correspondence(gate_verdict, "different things"),
+            "gate": lambda a, b, sa, sb: Correspondence(
+                gate_verdict, "different things"
+            ),
             "halt_answer": lambda sa, sb, reason: "HALT",
         }
     graph = build_graph(

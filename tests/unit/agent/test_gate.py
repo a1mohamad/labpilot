@@ -12,16 +12,23 @@ NONE = Correspondence("NONE", "different things")
 def test_the_two_summaries_go_to_the_function_in_order_and_the_verdict_is_kept():
     seen = []
 
-    def gate(summary_a, summary_b):
-        seen.append((summary_a, summary_b))
+    def gate(a_id, b_id, summary_a, summary_b):
+        seen.append((a_id, b_id, summary_a, summary_b))
         return NONE
 
     node = make_gate_node(gate)
 
-    out = node({"summary_a": " about memory ", "summary_b": "about images\n"})
+    out = node(
+        {
+            "a": "A-1",
+            "b": "B-1",
+            "summary_a": " about memory ",
+            "summary_b": "about images\n",
+        }
+    )
 
     assert out == {"correspondence": NONE}
-    assert seen == [("about memory", "about images")]
+    assert seen == [("A-1", "B-1", "about memory", "about images")]
 
 
 @pytest.mark.parametrize(
@@ -35,29 +42,33 @@ def test_the_two_summaries_go_to_the_function_in_order_and_the_verdict_is_kept()
     ],
 )
 def test_with_a_summary_missing_nothing_is_asked_and_the_key_is_still_written(state):
-    def gate(summary_a, summary_b):
+    def gate(a_id, b_id, summary_a, summary_b):
         raise AssertionError("no call is wanted")
 
     assert make_gate_node(gate)(state) == {"correspondence": None}
 
 
 def test_a_gate_that_cannot_judge_lets_the_run_go_on_and_says_so(caplog):
-    def gate(summary_a, summary_b):
+    def gate(a_id, b_id, summary_a, summary_b):
         raise GateError("every tier failed")
 
     with caplog.at_level(logging.WARNING):
-        out = make_gate_node(gate)({"summary_a": "a", "summary_b": "b"})
+        out = make_gate_node(gate)(
+            {"a": "A-1", "b": "B-1", "summary_a": "a", "summary_b": "b"}
+        )
 
     assert out == {"correspondence": None}
     assert "every tier failed" in caplog.text
 
 
 def test_a_bug_in_the_gate_is_not_hidden():
-    def gate(summary_a, summary_b):
+    def gate(a_id, b_id, summary_a, summary_b):
         raise RuntimeError("a bug of ours")
 
     with pytest.raises(RuntimeError):
-        make_gate_node(gate)({"summary_a": "a", "summary_b": "b"})
+        make_gate_node(gate)(
+            {"a": "A-1", "b": "B-1", "summary_a": "a", "summary_b": "b"}
+        )
 
 
 @pytest.mark.parametrize(

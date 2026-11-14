@@ -30,14 +30,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from labpilot.ingest import chunk_file
-from labpilot.llm import (
-    CLINE_GLM_5_3_FLASH,
-    CLINE_LAGUNA_S_2_1,
-    GEMINI_3_1_FLASH_LITE,
-    GEMINI_3_5_FLASH,
-    GEMINI_3_5_FLASH_LITE,
-    GEMMA_4_31B,
-)
+from labpilot.llm import tiers
 from labpilot.prompts import (
     REPORT,
     REPORT_MAX_TOKENS,
@@ -56,16 +49,16 @@ TIERS = {
     # instantly, so if either of these can write the report, a report costs
     # nothing at all - which is a bigger win than moving from 20/day to
     # 500/day.
-    "cline": CLINE_GLM_5_3_FLASH,
-    "laguna": CLINE_LAGUNA_S_2_1,
-    "flashlite": GEMINI_3_5_FLASH_LITE,
-    "flashlite31": GEMINI_3_1_FLASH_LITE,
+    "cline": tiers.CLINE_GLM_5_3_FLASH,
+    "laguna": tiers.CLINE_LAGUNA_S_2_1,
+    "flashlite": tiers.GEMINI_3_5_FLASH_LITE,
+    "flashlite31": tiers.GEMINI_3_1_FLASH_LITE,
     # 14,400 a day, and almost certainly REFUSED before it is sent: its
     # per-minute input ceiling is 16,000 tokens and a stuffed report is about
     # 26,000. Included so the refusal is measured rather than assumed.
-    "gemma": GEMMA_4_31B,
+    "gemma": tiers.GEMMA_4_31B,
     # The 20/day control. Only run this to re-establish the baseline.
-    "flash35": GEMINI_3_5_FLASH,
+    "flash35": tiers.GEMINI_3_5_FLASH,
 }
 
 
