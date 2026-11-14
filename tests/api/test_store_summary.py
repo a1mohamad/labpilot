@@ -107,3 +107,18 @@ def test_the_summary_chain_is_the_short_one_with_time_limits():
     timed = [p for p in short.chain if hasattr(p, "timeout")]
     assert timed
     assert all(p.timeout[1] == SUMMARY_READ_SECONDS for p in timed)
+
+
+def test_the_summary_after_the_upload_uses_the_short_chain(monkeypatch):
+    a_database(monkeypatch)
+    clients = []
+    monkeypatch.setattr(
+        summaries,
+        "make_summarizer",
+        lambda conn, client: clients.append(client) or (lambda artifact_id: "s"),
+    )
+
+    store_summary("conn", LLMClient(chain=CHAIN), "A-1")
+
+    assert {p.model for p in clients[0].chain} == set(SUMMARY_MODELS)
+    assert clients[0].total_budget == SUMMARY_TOTAL_SECONDS

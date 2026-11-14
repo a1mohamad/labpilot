@@ -57,7 +57,7 @@ def store_summary(
     """
 
     saved = SavedResults(conn)
-    summarize = saved_summary(saved, make_summarizer(conn, client))
+    summarize = saved_summary(saved, make_summarizer(conn, summary_chain(client)))
     try:
         summarize(artifact_id)
     except (ApiError, psycopg.Error):
