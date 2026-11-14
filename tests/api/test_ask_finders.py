@@ -1,5 +1,5 @@
 from labpilot.api import asking
-from labpilot.llm import CHAIN, GEMINI_3_1_FLASH_LITE, GEMINI_3_5_FLASH_LITE, LLMClient
+from labpilot.llm import CHAIN, LLMClient, tiers
 
 
 def look_through_saved(monkeypatch):
@@ -55,7 +55,7 @@ def test_the_claims_and_the_differences_start_with_flash_lite(monkeypatch):
 
     whole, small = seen["differences_clients"]
     for client in (seen["extract_claims"][1], whole, small):
-        assert client.chain[0].model == GEMINI_3_5_FLASH_LITE.model
+        assert client.chain[0].model == tiers.GEMINI_3_5_FLASH_LITE.model
         assert len(client.chain) == len(CHAIN)
 
 
@@ -82,7 +82,7 @@ def test_the_trace_of_the_bug_hunt_starts_with_flash_lite_3_1(monkeypatch):
 
     asking._ask_graph("conn", LLMClient())
 
-    assert seen["bug_clients"][2].chain[0].model == GEMINI_3_1_FLASH_LITE.model
+    assert seen["bug_clients"][2].chain[0].model == tiers.GEMINI_3_1_FLASH_LITE.model
 
 
 def test_the_planner_and_the_client_the_caller_gave_keep_their_own_chain(monkeypatch):
