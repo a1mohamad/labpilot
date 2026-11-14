@@ -63,7 +63,7 @@ def build_graph(
     final_merge: Merge | None = None,
     whole_side: Callable[[Any, str], Chunks | None] | None = None,
     answer_text: Callable[[Any], str] | None = None,
-    gate: Callable[[str, str], Correspondence] | None = None,
+    gate: Callable[[str, str, str, str], Correspondence] | None = None,
     halt_answer: Callable[[str, str, str], Any] | None = None,
     ask: Callable[[State], str] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
