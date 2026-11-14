@@ -115,6 +115,7 @@ from labpilot.prompts.summary import (
     SUMMARY,
     SUMMARY_BUDGET,
     SUMMARY_MAX_TOKENS,
+    SUMMARY_VERSION,
     build_summary_prompt,
 )
 from labpilot.prompts.user_reply import NOTE as USER_REPLY_NOTE
@@ -167,6 +168,7 @@ __all__ = [
     "SUMMARY",
     "SUMMARY_BUDGET",
     "SUMMARY_MAX_TOKENS",
+    "SUMMARY_VERSION",
     "PROMPT_BUDGET",
     "PROMPT_EXTRAS_TOKENS",
     "REPORT_MAX_TOKENS",
