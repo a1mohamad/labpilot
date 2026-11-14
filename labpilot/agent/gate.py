@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def make_gate_node(
-    gate: Callable[[str, str], Correspondence],
+    gate: Callable[[str, str, str, str], Correspondence],
 ) -> Callable[[State], dict[str, Correspondence | None]]:
     def gate_node(state: State) -> dict[str, Correspondence | None]:
         summary_a = state.get("summary_a", "").strip()
@@ -20,7 +20,8 @@ def make_gate_node(
         if not summary_a or not summary_b:
             return {"correspondence": None}
         try:
-            return {"correspondence": gate(summary_a, summary_b)}
+            found = gate(state["a"], state["b"], summary_a, summary_b)
+            return {"correspondence": found}
         except GateError as exc:
             # The gate is a guard and not the evidence, so a gate that cannot
             # judge lets the run go on.
