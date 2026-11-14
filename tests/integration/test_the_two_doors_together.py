@@ -310,22 +310,18 @@ def test_a_second_question_searches_the_stored_corpus_and_never_re_ingests(
     assert "SUMMARY OF SIDE B\n\na summary" in llm.prompts[-1]
 
 
-def test_a_halt_reaches_the_page_and_the_next_message_is_judged_again(
-    api, embedder, llm, monkeypatch
-):
-    """Slice 8 over HTTP, with the real saver between the two messages.
+def gate_says(llm, monkeypatch, verdicts):
+    """The gate answers with these verdicts, one for each REAL call.
 
-    The first message halts: the reply says who answered (no model), reads no
-    side and cites nothing. The second message of the same chat is judged
-    again (an old NONE must never decide it), goes on to a real answer, and its
-    follow-up rewrite reads the halt text as the last answer.
+    The follow-up rewrite gives the question back, and every other call goes to
+    the FakeClient. `asked` counts the gate calls and keeps the rewrite prompts.
     """
-    verdicts = iter(["NONE", "PARTIAL"])
-    rewrites: list[str] = []
     plain = llm.generate
+    asked = {"gate": 0, "rewrites": []}
 
     def generate(prompt, *, max_tokens=0, tool=None, problem_with=None):
         if tool is not None and tool.name == "judge_correspondence":
+            asked["gate"] += 1
             return LLMResult(
                 text="",
                 model="fake-model",
@@ -334,7 +330,7 @@ def test_a_halt_reaches_the_page_and_the_next_message_is_judged_again(
                 arguments={"verdict": next(verdicts), "reason": "two works"},
             )
         if tool is None and max_tokens == FOLLOW_UP_MAX_TOKENS:
-            rewrites.append(prompt)
+            asked["rewrites"].append(prompt)
             return LLMResult(
                 text="why do the results diverge?",
                 model="fake-model",
@@ -346,6 +342,20 @@ def test_a_halt_reaches_the_page_and_the_next_message_is_judged_again(
         )
 
     monkeypatch.setattr(llm, "generate", generate)
+    return asked
+
+
+def test_a_halt_reaches_the_page_and_the_same_pair_halts_again_from_the_saved_verdict(
+    api, embedder, llm, monkeypatch
+):
+    """Slice 8 over HTTP, with the real saver between the two messages (D110).
+
+    The first message halts: the reply says who answered (no model), reads no
+    side and cites nothing. The verdict is saved for the pair, so the second
+    message of the same chat reads it, halts again and asks the gate nothing.
+    Its follow-up rewrite reads the halt text as the last answer.
+    """
+    asked = gate_says(llm, monkeypatch, iter(["NONE"]))
     a_id = ingest(api, "paper.md", PAPER, "A")
     b_id = ingest(api, "train.py", CODE, "B")
     ask = {"a": a_id, "b": b_id, "question": "why do the results diverge?"}
@@ -368,8 +378,41 @@ def test_a_halt_reaches_the_page_and_the_next_message_is_judged_again(
     )
 
     assert second.status_code == 200, second.text
-    answered = second.json()
-    assert answered["answer"] == ANSWER
-    assert set(answered["chunks"]) == {"A", "B"}
-    [rewrite] = rewrites
+    again = second.json()
+    assert again["model"] == "correspondence gate"
+    assert "I did not compare these two" in again["answer"]
+    assert llm.prompts == []
+    assert asked["gate"] == 1
+    [rewrite] = asked["rewrites"]
     assert "I did not compare these two" in rewrite
+
+
+def test_an_old_none_in_the_chat_never_decides_a_message_with_one_file(
+    api, embedder, llm, monkeypatch
+):
+    """The saved chat still holds the NONE of the first message. A later message
+    with only one file has nothing to compare, so the gate writes no verdict and
+    the question is answered."""
+    asked = gate_says(llm, monkeypatch, iter(["NONE"]))
+    a_id = ingest(api, "paper.md", PAPER, "A")
+    b_id = ingest(api, "train.py", CODE, "B")
+    ask = {"a": a_id, "b": b_id, "question": "why do the results diverge?"}
+
+    halted = api.post(f"{ApiConfig.PREFIX}/compare", json=ask).json()
+    assert halted["model"] == "correspondence gate"
+
+    second = api.post(
+        f"{ApiConfig.PREFIX}/compare",
+        json={
+            "a": a_id,
+            "question": "what does the paper say?",
+            "thread_id": halted["thread_id"],
+        },
+    )
+
+    assert second.status_code == 200, second.text
+    answered = second.json()
+    assert answered["model"] != "correspondence gate"
+    assert answered["answer"] == ANSWER
+    assert set(answered["chunks"]) == {"A"}
+    assert asked["gate"] == 1
