@@ -4,6 +4,9 @@ from labpilot.prompts.instructions import Instructions
 from labpilot.tokens import estimate_tokens
 
 SUMMARY_BUDGET = 12_000
+# D110: the version of the summary instruction. A stored summary carries it in its
+# key, so a new instruction is never answered from an old summary.
+SUMMARY_VERSION = 1
 SUMMARY_MAX_TOKENS = 4_000
 
 SUMMARY = Instructions(
