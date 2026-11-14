@@ -21,15 +21,17 @@ from typing import Any
 
 import psycopg
 
-from labpilot.agent import METHOD, Bug, Claim, Difference, Plan
+from labpilot.agent import METHOD, Bug, Claim, Correspondence, Difference, Plan
 from labpilot.api.checkpoints import SERDE
 from labpilot.prompts import (
     AUDIT_VERSION,
     BUGS_VERSION,
     CLAIMS_VERSION,
     FRESH_VERSION,
+    GATE_VERSION,
     REVIEW_VERSION,
     SCAN_VERSION,
+    SUMMARY_VERSION,
 )
 from labpilot.store import StoreError, read_saved, write_saved
 
@@ -39,6 +41,23 @@ CLAIMS = "claims"
 DIFFERENCES = "differences"
 BUGS = "bugs"
 FRESH = "fresh"
+SUMMARY = "summary"
+GATE = "gate"
+
+
+def summary_key(artifact: str) -> str:
+    # A summary depends on one file and on the instruction that wrote it.
+    return f"{SUMMARY}:{artifact}:v{SUMMARY_VERSION}"
+
+
+def gate_key(a: str, b: str, summary_a: str, summary_b: str) -> str:
+    # The verdict depends on the two files, on the instruction, and on the exact
+    # words of the two summaries. A summary written again in other words gives a
+    # new key and so a new verdict. The length of the first summary goes in front
+    # so that ("ab", "c") and ("a", "bc") are two different pairs.
+    texts = f"{len(summary_a)}:{summary_a}{summary_b}"
+    digest = hashlib.sha256(texts.encode("utf-8")).hexdigest()[:16]
+    return f"{GATE}:{a}:{b}:g{GATE_VERSION}:{digest}"
 
 
 def claims_key(a: str) -> str:
@@ -93,11 +112,16 @@ class SavedResults:
         key: str,
         artifacts: tuple[str, ...],
         make: Callable[[], tuple[Any, ...]],
+        *,
+        quiet: bool = False,
     ) -> tuple[Any, ...]:
+        # `quiet` keeps the step out of `reused` and `made`: a summary is a guide
+        # and not analysis, so the page does not list it.
         saved = self.read(key)
         if saved is not None:
-            with self._lock:
-                self.reused.append(step)
+            if not quiet:
+                with self._lock:
+                    self.reused.append(step)
             logger.info("%s read from the saved %s", step, key)
             return tuple(saved)
 
@@ -107,12 +131,57 @@ class SavedResults:
             write_saved(self.conn, key, kind, payload, artifacts=artifacts)
         except (StoreError, psycopg.Error):
             logger.warning("could not save %s", key, exc_info=True)
-        with self._lock:
-            self.made.append(step)
+        if not quiet:
+            with self._lock:
+                self.made.append(step)
         return value
 
     def has(self, key: str) -> bool:
         return self.read(key) is not None
+
+
+def saved_summary(
+    saved: SavedResults, make: Callable[[str], str]
+) -> Callable[[str], str]:
+    """D110: a summary is made once for a stored file and read again.
+
+    A summary that cannot be made raises, as `make` does, so nothing is saved
+    and the next message tries again.
+    """
+
+    def summary(artifact: str) -> str:
+        found = saved.get_or_make(
+            SUMMARY,
+            summary_key(artifact),
+            (artifact,),
+            lambda: (make(artifact),),
+            quiet=True,
+        )
+        return found[0]
+
+    return summary
+
+
+def saved_gate(
+    saved: SavedResults, gate: Callable[[str, str], Correspondence]
+) -> Callable[[str, str, str, str], Correspondence]:
+    """D110: the verdict on a pair is made once and read again.
+
+    A gate that cannot judge raises, as `gate` does, so nothing is saved and the
+    next message tries again.
+    """
+
+    def judged(a: str, b: str, summary_a: str, summary_b: str) -> Correspondence:
+        found = saved.get_or_make(
+            GATE,
+            gate_key(a, b, summary_a, summary_b),
+            (a, b),
+            lambda: (gate(summary_a, summary_b),),
+            quiet=True,
+        )
+        return found[0]
+
+    return judged
 
 
 def saved_claims(
