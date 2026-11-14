@@ -51,7 +51,7 @@ def full_graph(*, fits: bool, verdict: str = "PARTIAL", plan: Plan | None = None
         fresh=lambda question, b: (),
         final_merge=lambda lines: [],
         answer_text=lambda result: "answer",
-        gate=lambda sa, sb: Correspondence(verdict, "because"),
+        gate=lambda a, b, sa, sb: Correspondence(verdict, "because"),
         halt_answer=lambda sa, sb, reason: "HALT",
         ask=lambda state: "",
     )
