@@ -222,16 +222,21 @@ def test_the_graph_gets_the_gate_and_the_halt_answer(monkeypatch):
     assert seen["halt_answer"] is gate.halt_answer
 
 
-def test_the_gate_asks_the_cheap_chain_first(monkeypatch):
-    # The gate is a short call made on every message with two files, so it must
-    # not spend the scarce tiers that write the report (D82: `for_claims`).
-    seen = capture(monkeypatch)
-    monkeypatch.setattr(asking, "for_claims", lambda client: ("cheap", client))
-    monkeypatch.setattr(asking, "make_gate", lambda client: ("gate", client))
+def test_the_gate_asks_the_short_summary_chain(monkeypatch):
+    # The gate is a small call that compares two summaries, so it uses the same
+    # short chain of cheap models as the summaries (D110) and never a scarce tier.
+    capture(monkeypatch)
+    clients = []
+    monkeypatch.setattr(asking, "summary_chain", lambda client: ("short", client))
+    monkeypatch.setattr(
+        asking,
+        "make_gate",
+        lambda client: clients.append(client) or (lambda summary_a, summary_b: None),
+    )
 
     asking._ask_graph("conn", "client")
 
-    assert seen["gate"] == ("gate", ("cheap", "client"))
+    assert clients == [("short", "client")]
 
 
 def test_the_graph_gets_the_new_check_for_a_fresh_question(monkeypatch):
