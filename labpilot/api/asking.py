@@ -10,7 +10,12 @@ from psycopg_pool import ConnectionPool
 
 from labpilot.agent import ask_the_user, build_graph
 from labpilot.api.bugs import make_bug_finder
-from labpilot.api.chains import bounded, for_claims, for_skeptic, for_trace
+from labpilot.api.chains import (
+    bounded,
+    for_claims,
+    for_skeptic,
+    for_trace,
+)
 from labpilot.api.checkpoints import open_saver, prune
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison, Question
@@ -29,10 +34,12 @@ from labpilot.api.saved import (
     saved_claims,
     saved_differences,
     saved_fresh,
+    saved_gate,
+    saved_summary,
     with_saved_steps,
 )
 from labpilot.api.searching import embed_query, rank_pile, retrieve_query
-from labpilot.api.summaries import make_summarizer
+from labpilot.api.summaries import make_summarizer, summary_chain
 from labpilot.llm import AllFreeTiersExhausted, LLMClient
 from labpilot.prompts import (
     A_WHOLE_TOKENS,
@@ -212,13 +219,18 @@ def _ask_graph(
     def totals_of(sides):
         return {side: found.chunks for side, found in sides.items()}
 
-    summarizer = make_summarizer(conn, client)
+    # A summary is a small job: the short chain of D110, with a time limit.
+    summarizer = make_summarizer(conn, summary_chain(client))
+
+    # D104 and D110: the stored objects, made once and read again.
+    saved = saved if saved is not None else SavedResults(conn)
+    stored_summary = saved_summary(saved, summarizer)
 
     def summarize(artifact_id):
         # A summary is a guide, not the evidence: when every tier fails the
         # report is still written, from the parts alone.
         try:
-            return summarizer(artifact_id)
+            return stored_summary(artifact_id)
         except GenerationUnavailable:
             logger.warning(
                 "no summary of %s: every tier failed", artifact_id, exc_info=True
@@ -242,10 +254,6 @@ def _ask_graph(
     # The merge of the differences: a strong model first with a short limit,
     # then Flash-Lite (the Flash-Lite merge alone missed obvious repeats).
     strong_merge = bounded(client, read=40.0, budget=60.0, retries=0)
-
-    # D104: the claims, the differences and the bugs of these files are made
-    # once and read again by the next message or chat with the same files.
-    saved = saved if saved is not None else SavedResults(conn)
 
     return build_graph(
         measure=partial(measure_sides, conn),
@@ -284,7 +292,7 @@ def _ask_graph(
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(client),
         answer_text=last_answer_text,
-        gate=make_gate(claims_client),
+        gate=saved_gate(saved, make_gate(summary_chain(client))),
         halt_answer=halt_answer,
         generate=generate,
         checkpointer=open_saver(_saving_place(conn, pool)) if thread_id else None,
