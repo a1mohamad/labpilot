@@ -190,8 +190,6 @@ def test_the_summary_chain_holds_these_models_and_nothing_else():
     allowed = {
         tiers.GEMINI_3_1_FLASH_LITE.model,
         tiers.QWEN_3_8_27B_GROQ.model,
-        tiers.LITEROUTER_QWEN_3_8_FLASH.model,
-        tiers.LITEROUTER_QWEN_3_8_FLASH_STABLE.model,
         tiers.BAZAARLINK_QWEN_3_7_FLASH.model,
         tiers.GEMMA_4_26B.model,
     }
