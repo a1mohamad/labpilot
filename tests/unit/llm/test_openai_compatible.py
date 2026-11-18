@@ -272,7 +272,9 @@ def test_an_error_inside_a_200_keeps_the_providers_words_and_its_status(provider
 
 
 @responses.activate
-def test_a_503_hidden_in_a_200_is_retried_on_the_same_tier_by_the_chain(provider):
+def test_a_503_hidden_in_a_200_is_retried_on_the_same_tier_by_the_chain(
+    provider, no_sleep
+):
     """The reason the status matters: the chain retries 503, but only an
     LLMError that carries the status can be retried."""
     from labpilot.llm import LLMClient
@@ -280,7 +282,7 @@ def test_a_503_hidden_in_a_200_is_retried_on_the_same_tier_by_the_chain(provider
     responses.post(URL, json=HIDDEN_503)
     responses.post(URL, json=ok_body("recovered"))
 
-    result = LLMClient(chain=(provider,), base_delay=0.0).generate("hi")
+    result = LLMClient(chain=(provider,)).generate("hi")
 
     assert result.text == "recovered"
     assert len(responses.calls) == 2
