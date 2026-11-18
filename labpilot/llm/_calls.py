@@ -18,13 +18,17 @@ def json_fallback(tool: Tool) -> str:
 def read_object(text: str, source: str) -> dict[str, object]:
     start = text.find("{")
     if start == -1:
-        raise LLMError(f"{source}: the answer holds no JSON object: {truncate(text)}")
+        raise LLMError(
+            f"{source}: the answer holds no JSON object: {truncate(text)}",
+            retryable=False,
+        )
 
     try:
         value, _ = json.JSONDecoder().raw_decode(text, start)
     except ValueError as exc:
         raise LLMError(
-            f"{source}: the JSON object is not valid: {truncate(text)}"
+            f"{source}: the JSON object is not valid: {truncate(text)}",
+            retryable=False,
         ) from exc
 
     return value
@@ -39,11 +43,13 @@ def read_arguments(raw: object, source: str) -> dict[str, object]:
             value = json.loads(raw)
         except ValueError as exc:
             raise LLMError(
-                f"{source}: the function arguments are not JSON: {truncate(raw)}"
+                f"{source}: the function arguments are not JSON: {truncate(raw)}",
+                retryable=False,
             ) from exc
         if isinstance(value, dict):
             return value
 
     raise LLMError(
-        f"{source}: the function arguments are not an object: {truncate(str(raw))}"
+        f"{source}: the function arguments are not an object: {truncate(str(raw))}",
+        retryable=False,
     )
