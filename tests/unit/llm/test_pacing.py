@@ -1,152 +1,183 @@
 import pytest
-import responses
 
-from labpilot.llm import LLMError, OpenAICompatibleProvider, _pacing
-
-URL = "https://provider.test/v1/chat/completions"
+from labpilot.llm import CHAIN, _pacing, tiers
 
 
 class FakeClock:
-    """A clock that only moves when somebody sleeps, so no test really waits."""
+    """A clock that only moves when the test moves it."""
 
     def __init__(self) -> None:
         self.now = 1_000.0
-        self.slept: list[float] = []
 
     def monotonic(self) -> float:
         return self.now
-
-    def sleep(self, seconds: float) -> None:
-        self.slept.append(seconds)
-        self.now += seconds
 
 
 @pytest.fixture
 def clock(monkeypatch):
     fake = FakeClock()
     monkeypatch.setattr(_pacing, "time", fake)
-    monkeypatch.setattr(_pacing, "_next_free", {})
     return fake
 
 
-def test_the_first_call_on_an_account_does_not_wait(clock):
-    _pacing.wait_for_turn("ACCOUNT_A", 8.0)
-
-    assert clock.slept == []
+def enter(account="A", *, concurrent=None, gap=0.0, max_wait=2.0):
+    return _pacing.enter(account, concurrent=concurrent, gap=gap, max_wait=max_wait)
 
 
-def test_a_second_call_inside_the_gap_waits_for_the_rest_of_it(clock):
-    _pacing.wait_for_turn("ACCOUNT_A", 8.0)
+# ---- the rest between two calls (LiteRouter: 8 seconds) ----------------------
+
+
+def test_the_first_call_on_an_account_is_admitted_at_once(clock):
+    assert enter(gap=8.0) == (None, 0.0)
+
+
+def test_a_call_inside_a_short_rest_is_admitted_with_the_rest_to_sleep(clock):
+    enter(gap=8.0)
+    clock.now += 7.0
+
+    reason, rest = enter(gap=8.0)
+
+    assert reason is None
+    assert rest == pytest.approx(1.0)
+
+
+def test_a_call_inside_a_long_rest_is_refused_and_nothing_is_reserved(clock):
+    enter(gap=8.0)
     clock.now += 3.0
 
-    _pacing.wait_for_turn("ACCOUNT_A", 8.0)
+    reason, rest = enter(gap=8.0)
 
-    assert clock.slept == [5.0]
-
-
-def test_a_call_after_the_gap_does_not_wait(clock):
-    _pacing.wait_for_turn("ACCOUNT_A", 8.0)
-    clock.now += 8.5
-
-    _pacing.wait_for_turn("ACCOUNT_A", 8.0)
-
-    assert clock.slept == []
+    assert reason is not None and "must rest" in reason
+    assert rest == 0.0
+    # The refused call took no turn: at second 8 the account is free again.
+    clock.now += 5.0
+    assert enter(gap=8.0) == (None, 0.0)
 
 
-def test_two_accounts_do_not_wait_for_each_other(clock):
-    _pacing.wait_for_turn("ACCOUNT_A", 8.0)
+def test_a_call_after_the_gap_is_admitted_at_once(clock):
+    enter(gap=8.0)
+    clock.now += 8.0
 
-    _pacing.wait_for_turn("ACCOUNT_B", 8.0)
-
-    assert clock.slept == []
-
-
-def test_calls_queue_up_one_slot_each(clock):
-    """Three calls at the same instant leave 0, 8 and 16 seconds apart.
-
-    The slot is reserved BEFORE the sleep. If it were taken after, every caller
-    would see "nobody has called yet" and all three would go out together.
-    """
-    for _ in range(3):
-        _pacing.wait_for_turn("ACCOUNT_A", 8.0)
-
-    assert clock.slept == [8.0, 8.0]
+    assert enter(gap=8.0) == (None, 0.0)
 
 
-def test_a_gap_of_zero_never_waits_and_keeps_no_state(clock):
-    _pacing.wait_for_turn("ACCOUNT_A", 0.0)
-    _pacing.wait_for_turn("ACCOUNT_A", 0.0)
+def test_two_accounts_do_not_rest_for_each_other(clock):
+    enter("A", gap=8.0)
 
-    assert clock.slept == []
+    assert enter("B", gap=8.0) == (None, 0.0)
+
+
+def test_two_calls_at_the_same_moment_get_two_different_turns(clock):
+    # The first takes the turn, so the second sees the account resting.
+    assert enter(gap=1.5, max_wait=2.0)[0] is None
+    reason, rest = enter(gap=1.5, max_wait=2.0)
+
+    assert reason is None
+    assert rest == pytest.approx(1.5)
+
+
+def test_with_no_limit_the_account_keeps_no_state(clock):
+    enter(gap=0.0)
+    enter(gap=0.0)
+
     assert _pacing._next_free == {}
+    assert _pacing._open_calls == {}
 
 
-def _provider(**extra) -> OpenAICompatibleProvider:
-    return OpenAICompatibleProvider(
-        name="Test Provider",
-        tier=1,
-        url=URL,
-        model="test/model",
-        api_key_env="TEST_API_KEY",
-        context_window=8_000,
-        max_output_tokens=4_000,
-        **extra,
-    )
+# ---- how many calls may be open at once (LiteRouter and Requesty: one) -------
 
 
-def _ok_body():
-    return {"choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]}
+def test_a_second_call_is_refused_while_the_first_is_open(clock):
+    assert enter(concurrent=1)[0] is None
+
+    reason, _ = enter(concurrent=1)
+
+    assert reason is not None and "only 1 at a time" in reason
 
 
-@responses.activate
-def test_complete_waits_for_its_turn_before_it_sends(monkeypatch):
-    monkeypatch.setenv("TEST_API_KEY", "secret")
-    responses.post(URL, json=_ok_body())
-    sent_when_waiting: list[int] = []
+def test_the_place_is_free_again_after_the_call_ends(clock):
+    enter(concurrent=1)
+    _pacing.leave("A", concurrent=1, quiet=0.0)
 
-    def record(account: str, gap: float) -> None:
-        sent_when_waiting.append(len(responses.calls))
-        assert (account, gap) == ("TEST_API_KEY", 8.0)
-
-    monkeypatch.setattr("labpilot.llm.base.wait_for_turn", record)
-
-    _provider(seconds_between_calls=8.0).complete("hello")
-
-    assert sent_when_waiting == [0]
-    assert len(responses.calls) == 1
+    assert enter(concurrent=1) == (None, 0.0)
 
 
-@responses.activate
-def test_a_prompt_refused_locally_does_not_use_up_the_turn(monkeypatch):
-    monkeypatch.setenv("TEST_API_KEY", "secret")
-    taken: list[str] = []
-    monkeypatch.setattr(
-        "labpilot.llm.base.wait_for_turn", lambda account, gap: taken.append(account)
-    )
+def test_a_refused_call_does_not_take_a_place(clock):
+    enter(concurrent=1)
+    enter(concurrent=1)  # refused
+    _pacing.leave("A", concurrent=1, quiet=0.0)  # the one open call ends
 
-    with pytest.raises(LLMError, match="context window"):
-        _provider(seconds_between_calls=8.0).complete("x" * 40_000)
-
-    assert taken == []
-    assert len(responses.calls) == 0
+    assert enter(concurrent=1) == (None, 0.0)
 
 
-@responses.activate
-def test_a_missing_key_does_not_use_up_the_turn(monkeypatch):
-    """Seventeen LiteRouter tiers with no key must fail at once, not after
-    seventeen rests of 8 seconds each."""
-    monkeypatch.delenv("TEST_API_KEY", raising=False)
-    taken: list[str] = []
-    monkeypatch.setattr(
-        "labpilot.llm.base.wait_for_turn", lambda account, gap: taken.append(account)
-    )
+def test_two_accounts_have_their_own_places(clock):
+    enter("A", concurrent=1)
 
-    with pytest.raises(LLMError, match="TEST_API_KEY is not set"):
-        _provider(seconds_between_calls=8.0).complete("hello")
-
-    assert taken == []
-    assert len(responses.calls) == 0
+    assert enter("B", concurrent=1) == (None, 0.0)
 
 
-def test_a_provider_waits_for_nobody_unless_it_is_told_to():
-    assert _provider().seconds_between_calls == 0.0
+def test_with_no_limit_any_number_of_calls_are_open(clock):
+    assert [enter(concurrent=None)[0] for _ in range(5)] == [None] * 5
+
+
+def test_leaving_more_often_than_entering_never_goes_below_zero(clock):
+    _pacing.leave("A", concurrent=1, quiet=0.0)
+    _pacing.leave("A", concurrent=1, quiet=0.0)
+
+    assert enter(concurrent=1) == (None, 0.0)
+    assert enter(concurrent=1)[0] is not None
+
+
+def test_the_account_is_quiet_for_a_moment_after_a_call_ends(clock):
+    enter(concurrent=1)
+    _pacing.leave("A", concurrent=1, quiet=1.0)
+
+    reason, rest = enter(concurrent=1, max_wait=2.0)
+
+    assert reason is None
+    assert rest == pytest.approx(1.0)
+
+
+# ---- the provider does not pace itself any more ------------------------------
+
+
+def test_a_provider_sends_its_call_at_once_and_leaves_the_pacing_to_the_chain(
+    monkeypatch,
+):
+    # complete() used to sleep for the rest of the gap. Now the chain decides, in
+    # one place, whether to call at all, so a direct call is never delayed twice.
+    import responses
+
+    provider = tiers.LITEROUTER_GLM_5_3_FLASH
+    monkeypatch.setenv("LITEROUTER_API_KEY", "key")
+    slept = []
+    monkeypatch.setattr("time.sleep", slept.append)
+
+    with responses.RequestsMock() as mock:
+        mock.post(
+            provider.url,
+            json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
+        )
+        provider.complete("hello")
+        provider.complete("hello again")
+
+    assert slept == []
+
+
+# ---- the limits written in the registry --------------------------------------
+
+
+def test_one_call_at_a_time_belongs_to_literouter_and_requesty_only():
+    one = {"LITEROUTER_API_KEY", "REQUESTY_API_KEY"}
+    for tier in CHAIN:
+        expected = 1 if tier.api_key_env in one else None
+        assert tier.max_concurrent == expected, tier.name
+
+
+def test_literouter_rests_8_seconds_between_calls_and_1_second_after_one():
+    for tier in CHAIN:
+        if tier.api_key_env == "LITEROUTER_API_KEY":
+            assert tier.seconds_between_calls == 8.0, tier.name
+            assert tier.seconds_after_call == 1.0, tier.name
+        else:
+            assert tier.seconds_after_call == 0.0, tier.name
