@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -12,13 +11,12 @@ import requests
 from labpilot._text import truncate
 from labpilot.llm._calls import json_fallback, read_object
 from labpilot.llm._http import error_from_response
-from labpilot.llm._pacing import wait_for_turn
+from labpilot.llm._rooms import with_margin
 from labpilot.llm.contracts import LLMResult, Tool
 from labpilot.llm.defaults import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT,
-    SAFETY_MARGIN_RATIO,
 )
 from labpilot.llm.errors import LLMError
 from labpilot.tokens import estimate_tokens
@@ -42,6 +40,16 @@ class HTTPProvider(ABC):
     # Seconds the ACCOUNT must rest between two calls, across every model on it.
     # Zero for nearly everyone; LiteRouter enforces 7 and answers 403 otherwise.
     seconds_between_calls: float = 0.0
+    # Seconds the ACCOUNT is quiet AFTER a call ends (LiteRouter: a 403 came 0 s
+    # after a call that had ended, measured 2026-11-16).
+    seconds_after_call: float = 0.0
+    # How many calls of this ACCOUNT may be open at once (None = no limit).
+    # LiteRouter and Requesty allow one; the rest allow as many as we send.
+    max_concurrent: int | None = None
+    # Requests a minute that this quota POOL takes (None = not limited, or not
+    # known). The matching limit on input tokens is `max_input_tokens`. Both are
+    # booked by the chain before the call, see _rooms.py.
+    requests_per_minute: int | None = None
 
     @property
     def pool(self) -> str:
@@ -65,7 +73,9 @@ class HTTPProvider(ABC):
         # the account's turn. A missing key is the case that would hurt: every
         # tier on that gateway would rest 8 seconds before failing the same way.
         self._api_key()
-        wait_for_turn(self.api_key_env, self.seconds_between_calls)
+        # The rest between calls, the calls open at once and the minute rooms are
+        # kept by the chain BEFORE it calls (chain.py), because they decide
+        # whether to call this tier at all or to go on to the next one.
 
         try:
             response = requests.post(
@@ -129,16 +139,18 @@ class HTTPProvider(ABC):
         if max_tokens > self.max_output_tokens:
             raise LLMError(
                 f"{self.name}: max_tokens {max_tokens} exceeds the output limit "
-                f"{self.max_output_tokens}"
+                f"{self.max_output_tokens}",
+                retryable=False,
             )
 
         estimate = estimate_tokens(prompt)
-        padded = math.ceil(estimate * (1 + SAFETY_MARGIN_RATIO))
+        padded = with_margin(estimate)
 
         if self.max_input_tokens is not None and padded > self.max_input_tokens:
             raise LLMError(
                 f"{self.name}: prompt needs ~{padded} input tokens but the "
-                f"per-minute input limit is {self.max_input_tokens}"
+                f"per-minute input limit is {self.max_input_tokens}",
+                retryable=False,
             )
 
         required = padded + max_tokens
@@ -147,13 +159,16 @@ class HTTPProvider(ABC):
             raise LLMError(
                 f"{self.name}: prompt needs ~{required} tokens "
                 f"(~{estimate} prompt + {max_tokens} output + margin) "
-                f"but the context window is {self.context_window}"
+                f"but the context window is {self.context_window}",
+                retryable=False,
             )
 
     def _api_key(self) -> str:
         key = os.environ.get(self.api_key_env, "").strip()
         if not key:
-            raise LLMError(f"{self.name}: {self.api_key_env} is not set")
+            raise LLMError(
+                f"{self.name}: {self.api_key_env} is not set", retryable=False
+            )
         return key
 
     @abstractmethod
