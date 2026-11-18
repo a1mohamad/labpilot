@@ -10,7 +10,7 @@ from labpilot.llm import (
     LLMError,
     OpenAICompatibleProvider,
 )
-from labpilot.llm.registry import GOOGLE_KEYS
+from labpilot.llm.registry import GOOGLE_KEYS, NOT_TRUSTED
 from labpilot.prompts import PROMPT_BUDGET, REPORT_MAX_TOKENS
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -41,6 +41,14 @@ BAZAARLINK_WITHOUT_REASONING = (
     "Qwen 3.7 Flash (Bazaarlink)",
     "DeepSeek V4 Flash 0731 (Bazaarlink)",
 )
+# Token Harbor's four free models (2026-11-16) were probed without any reasoning
+# field; whether one is accepted was NOT tested, and an unlisted field is a guess.
+TOKEN_HARBOR_WITHOUT_REASONING = (
+    "DeepSeek V4.1 Flash (Token Harbor)",
+    "DeepSeek V4 Flash (Token Harbor)",
+    "MiMo V2.6 Flash (Token Harbor)",
+    "MiMo V2.5 (Token Harbor)",
+)
 # The three small Mistral models added 2026-10-23 are not reasoning models (the
 # catalogue says reasoning: false), so a reasoning field would be a guess. Named
 # one by one, like the two groups above.
@@ -55,6 +63,7 @@ REJECTS_REASONING = (
     "Devstral 2",
     *ROUTEWAY_WITHOUT_REASONING,
     *BAZAARLINK_WITHOUT_REASONING,
+    *TOKEN_HARBOR_WITHOUT_REASONING,
     *MISTRAL_SMALL_WITHOUT_REASONING,
 )
 
@@ -80,11 +89,17 @@ GEMMA_LEVELS = ("MINIMAL", "HIGH")
 # It earns its place anyway - _check_fits refuses it locally for nothing,
 # and Step 2's small code jobs fit easily at 1,000 requests a day.
 OUTPUT_TOO_SMALL = (
+    # Hy4 preview on OrcaRouter joined 2026-11-16 with a DELIBERATE 16,384 output
+    # cap: the catalogue gives no window or cap, so it serves small jobs only until
+    # a long answer is tried.
+    "Hy4 preview (OrcaRouter)",
+    # Token Harbor joined 2026-11-16 with a DELIBERATE 16,384 output cap: its free
+    # allowance (value-based, 7 days, size unknown) and its privacy rule (staff
+    # may read free-route conversations) argue for small jobs only.
+    "DeepSeek V4.1 Flash (Token Harbor)",
+    "DeepSeek V4 Flash (Token Harbor)",
+    "MiMo V2.6 Flash (Token Harbor)",
     "Qwen3.8 27B (Groq)",
-    # Beam 1.0 on Cline joined 2026-11-02 with a DELIBERATE 16,384 output cap: its
-    # window was not measured on Cline, so it serves small jobs only until a long
-    # answer is tried. A local guard, like Bazaarlink's.
-    "Beam 1.0 (Cline)",
     # Bazaarlink joined 2026-10-18 with a DELIBERATELY small output cap of 8,192.
     # Its binding limit is a daily quota of 60 "units" for the whole account
     # that grows with the prompt: 13 calls (~70,000 prompt tokens) used it up. A
@@ -101,6 +116,7 @@ OUTPUT_TOO_SMALL = (
     "Mistral Nemo",
     "Ministral 14B",
     "Codestral",
+    "MiMo V2.5 (Token Harbor)",
     # GPT-OSS 120B on LiteRouter (2026-11-02): a DELIBERATE 16,384 cap, no long
     # answer was tried on this route.
     "GPT-OSS 120B (LiteRouter)",
@@ -119,6 +135,9 @@ OUTPUT_TOO_SMALL = (
     "GLM-5.2 (Kilo)",
     "GLM-5.2",
     "Devstral 2",
+    # Beam 1.0 on Cline joined 2026-11-02 with a DELIBERATE 16,384 output cap and
+    # went dead 2026-11-15 (402), so it now sits at the very tail.
+    "Beam 1.0 (Cline)",
 )
 # Both Gemma models: the 16,000 is a per-minute INPUT quota, and the 26B joined
 # the chain on 2026-09-30 with the same limit. Neither can serve a report.
@@ -181,6 +200,7 @@ GATEWAYS = (
     "ORCAROUTER_API_KEY",
     "ROUTEWAY_API_KEY",
     "BAZAARLINK_API_KEY",
+    "TOKEN_HARBOR_API_KEY",
 )
 
 # What LiteRouter itself says: "7 seconds between messages". 8 is the value that
@@ -495,12 +515,13 @@ def test_the_gemma_26b_is_in_the_chain_with_minimal_thinking_on_both_keys():
     assert {provider.thinking for provider in tiers} == {"MINIMAL"}
 
 
-def test_the_gemma_26b_sits_between_muse_glimmer_and_the_31b():
-    """Placed on AA v4.3.2: Muse Glimmer 18, the 26B A4B 17, the 31B 15."""
+def test_the_gemma_26b_sits_above_the_31b():
+    """Placed on AA v4.3.2: the 26B A4B 17, the 31B 15. (Muse Glimmer, 18, used
+    to be the upper bound; both its routes are NOT_TRUSTED since 2026-11-16.)"""
     names = [provider.name for provider in CHAIN]
 
     assert (
-        names.index("Muse Glimmer 30B (Requesty)")
+        names.index("MiniMax M2.7 (LiteRouter)")
         < names.index("Gemma 4 26B A4B")
         < names.index("Gemma 4 26B A4B (key 2)")
         < names.index("Gemma 4 31B")
@@ -599,16 +620,16 @@ AA_SCORES = {
     "DeepSeek V4.1 Flash": 39,
     "DeepSeek V4 Pro cheap": 36,
     "DeepSeek V4 Flash": 34,
-    "GLM-5.2 cheap": 34,
-    "Beam 1.0": 30,
-    "GLM-5.1 cheap": 26,
     "Gemini 3.5 Flash-Lite": 23,
     "MiniMax M2.7": 23,
-    "Hy3": 23,
-    "Muse Glimmer 30B": 18,
     "DeepSeek V3.2": 16,
-    "Mistral Large 3": 9,
 }
+# 2026-11-15: "GLM-5.2 cheap" (34), "GLM-5.1 cheap" (26) and "Mistral Large 3" (9)
+# left this table because LiteRouter dropped them from its free list: a dead
+# tier sits at the tail on purpose, so its place says nothing about its score.
+# "Hy3" (23) left it on 2026-11-16 for the same reason: its only live route,
+# OrcaRouter's, is in NOT_TRUSTED, and LiteRouter's is dead. "Muse Glimmer 30B"
+# (18) left it the same day: both its routes (Requesty, Routeway) are NOT_TRUSTED.
 # Artificial Analysis reports its index to the nearest point, and this project
 # reads a gap of one as a tie. Only a gap of TWO or more has to be in order.
 AA_TIE = 1
@@ -650,9 +671,9 @@ AA_V5_SCORES = {
     "Gemini 3.8 Flash": 31,
     "Ling 3.1 Flash": 30,
     "MiniMax M3.1 Flash": 29,
+    # Added 2026-11-16: read from the same chart; its only route is Token Harbor's.
     "MiMo V2.6 Flash": 27,
     "Qwen3.8 27B": 20,
-    "Beam 1.0": 18,
 }
 
 
@@ -829,6 +850,65 @@ def test_the_known_dead_tiers_wait_at_the_end_of_the_chain():
     )
 
 
+def test_the_not_trusted_tiers_sit_after_every_trusted_tier_and_before_the_dead():
+    """NOT_TRUSTED answers sometimes, so a route may use it only LAST.
+
+    The block must be exactly the names listed, in order, right before the dead
+    tiers: a not-trusted tier higher up would be tried first on every report and
+    fail most of the time, and a trusted tier below it would never be reached
+    before a flaky one.
+    """
+    names = [p.name for p in CHAIN]
+    start = len(CHAIN) - len(KNOWN_DEAD) - len(NOT_TRUSTED)
+
+    assert names[start : start + len(NOT_TRUSTED)] == list(NOT_TRUSTED)
+    assert names[len(CHAIN) - len(KNOWN_DEAD) :] == list(KNOWN_DEAD)
+    assert not set(NOT_TRUSTED) & set(KNOWN_DEAD), "a tier is dead or not trusted"
+    assert len(set(NOT_TRUSTED)) == len(NOT_TRUSTED)
+    # And nothing not trusted anywhere above the block.
+    assert not [n for n in names[:start] if n in NOT_TRUSTED]
+
+
+def test_only_the_gemma_31b_on_google_is_not_trusted_on_every_key():
+    """Three sittings on 2026-11-16 and 17, and the rule: trusted in 2 of 3.
+
+    The 26B failed 0 of 2, then passed 5 of 5, then passed 4 of 5: trusted. The
+    31B passed 2 of 4, then 1 of 3, then 5 of 5 (but 36 to 66 s a call): trusted
+    in 1 of 3 only, so its three Google tiers are in NOT_TRUSTED. Requesty's
+    Gemma 31B answered 5 of 5, so it is a different, trusted route.
+    """
+    google_gemma = [
+        p.name
+        for p in CHAIN
+        if getattr(p, "url", "").startswith("https://generativelanguage")
+        and "Gemma" in p.name
+    ]
+    big = [name for name in google_gemma if "31B" in name]
+    small = [name for name in google_gemma if "26B" in name]
+
+    assert len(big) == 3 and len(small) == 3, "premise: two models on three keys"
+    assert set(big) <= set(NOT_TRUSTED)
+    assert not set(small) & set(NOT_TRUSTED)
+    assert "Gemma 4 31B (Requesty)" not in NOT_TRUSTED
+
+
+def test_no_gateway_is_not_trusted_as_a_whole_when_it_has_a_steady_route():
+    """The rule is reliability, not quota size (the user's definition).
+
+    Routeway's Gemma finetunes answered 6 of 6 in 1.7 to 2.9 s, so only the
+    flaky Routeway model is listed and its Gemma tiers stay trusted.
+    """
+    trusted_routeway = [
+        p.name
+        for p in CHAIN
+        if "routeway" in getattr(p, "url", "")
+        and p.name not in NOT_TRUSTED
+        and p.name not in KNOWN_DEAD
+    ]
+
+    assert any("Gemma" in name for name in trusted_routeway), trusted_routeway
+
+
 # Dead tiers with NO live route to the same model, and the reason each is allowed.
 # Named one by one, never by provider, so a NEW dead tier still has to have a
 # twin or earn a line here. Both are Mistral models the free plan stopped
@@ -868,6 +948,20 @@ NO_LIVE_ROUTE = (
     "Step 3.7 Flash (Kilo)",
     "Nemotron 3 Super (Kilo)",
     "Nemotron 3 Super",
+    # 2026-11-15: left LiteRouter's free list, and no other gateway serves them.
+    # Each "-cheap" id is its own family, and "Hy3 (LiteRouter)" is NOT here
+    # because OrcaRouter still serves Hy3.
+    "GLM-5.3 cheap (LiteRouter)",
+    "Qwen3.8 Flash (LiteRouter)",
+    "Qwen3.8 Flash stable (LiteRouter)",
+    # (MiMo V2.6 Flash left this list 2026-11-16: Token Harbor serves it.)
+    "GLM-5.2 cheap (LiteRouter)",
+    "GLM-5.1 cheap (LiteRouter)",
+    "Qwen3 Coder (LiteRouter)",
+    "Mistral Large 3 (LiteRouter)",
+    # 2026-11-15: Cline moved Beam off its free list (402). "Ling 3.1 Flash (Kilo)"
+    # is NOT here because Requesty still serves Ling.
+    "Beam 1.0 (Cline)",
 )
 
 

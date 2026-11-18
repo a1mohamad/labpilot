@@ -33,16 +33,15 @@ SKEPTIC_FIRST = (
 #   2 Qwen3.8 27B on Groq     0.6 s, but its minute budget is 8,000 tokens, so a
 #                             12,000-token summary is refused LOCALLY for free and
 #                             only the gate (about 1,000 tokens in) can use it
-#   3 Qwen3.8 Flash on LiteRouter, and its "-stable" twin   one request at a time
-#   4 Qwen 3.7 Flash on Bazaarlink   60 units a day for the whole account
-#   5 Gemma 4 26B   14,400 a day for each account, so the chain cannot run out
+#   3 Qwen 3.7 Flash on Bazaarlink   60 units a day for the whole account
+#   4 Gemma 4 26B   14,400 a day for each account, so the chain cannot run out
+# (Qwen3.8 Flash on LiteRouter, and its "-stable" twin, left LiteRouter's free
+# list on 2026-11-15.)
 # Cloudflare's Qwen3.8 27B is left out: 41 such calls a day and 32 s each.
 # Not measured on a summary yet (lesson 4 measures it).
 SUMMARY_MODELS = (
     tiers.GEMINI_3_1_FLASH_LITE.model,
     tiers.QWEN_3_8_27B_GROQ.model,
-    tiers.LITEROUTER_QWEN_3_8_FLASH.model,
-    tiers.LITEROUTER_QWEN_3_8_FLASH_STABLE.model,
     tiers.BAZAARLINK_QWEN_3_7_FLASH.model,
     tiers.GEMMA_4_26B.model,
 )

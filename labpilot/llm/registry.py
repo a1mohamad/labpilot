@@ -1168,6 +1168,42 @@ LITEROUTER_DEEPSEEK_V4_FLASH_0731_STABLE = _literouter(
     context_window=1_048_576,
     max_output_tokens=393_216,
 )
+# ADDED 2026-11-15 from LiteRouter's free list (GET /v1/models, ids ending ":free").
+# Builds of families already scored, so each sits next to its base. The windows
+# are what the catalogue lists (1,048,576); the output cap is the family's, not
+# measured on these ids. Probed before they were kept (see the commit notes).
+LITEROUTER_DEEPSEEK_V4_FLASH_0731 = _literouter(
+    name="DeepSeek V4 Flash 0731 (LiteRouter)",
+    model="deepseek-v4-flash-0731:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_FLASH_0731_CHEAP = _literouter(
+    name="DeepSeek V4 Flash 0731 cheap (LiteRouter)",
+    model="deepseek-v4-flash-0731-cheap:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_PRO_0813 = _literouter(
+    name="DeepSeek V4 Pro 0813 (LiteRouter)",
+    model="deepseek-v4-pro-0813:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+LITEROUTER_DEEPSEEK_V4_PRO_STABLE = _literouter(
+    name="DeepSeek V4 Pro stable (LiteRouter)",
+    model="deepseek-v4-pro-stable:free",
+    context_window=1_048_576,
+    max_output_tokens=393_216,
+)
+# UNSCORED, so it goes with the other unscored Qwen3 tiers. 262,144 is the
+# catalogue window; the 65,536 output cap is a guess, like the Kimi ones above.
+LITEROUTER_QWEN3_NEXT_80B = _literouter(
+    name="Qwen3 Next 80B (LiteRouter)",
+    model="qwen3-next-80b-a3b-instruct:free",
+    context_window=262_144,
+    max_output_tokens=65_536,
+)
 # MiniMax M3.1 Flash on LiteRouter, added the same day at the user's request:
 # 1.9 s, whole answer, first try. Routeway's route of this model has a 42,000
 # window and can never hold a report; LiteRouter lists 1,048,576. The 65,536 output
@@ -1198,6 +1234,16 @@ ORCAROUTER_HY3 = _orcarouter(
     model="tencent/hy3-free",
     context_window=262_144,
     max_output_tokens=65_536,
+)
+# ADDED 2026-11-16 after 5 of 5 probes answered in 5.8 to 7.0 s (a reasoning model:
+# 130 to 194 tokens for a one-sentence answer). OrcaRouter's catalogue and Kilo's
+# list give no window and no output cap, so both are CONSERVATIVE GUESSES, not
+# measurements: it serves small jobs until a long answer is tried.
+ORCAROUTER_HY4_PREVIEW = _orcarouter(
+    name="Hy4 preview (OrcaRouter)",
+    model="tencent/hy4-preview-free",
+    context_window=131_072,
+    max_output_tokens=16_384,
 )
 
 
@@ -1400,6 +1446,83 @@ BAZAARLINK_DEEPSEEK_V4_FLASH_0731 = _bazaarlink(
 )
 
 
+# TOKEN HARBOR - four free models, probed and read from its own pages 2026-11-16.
+#
+# THE KEY IS `TOKEN_HARBOR_API_KEY` (the old .env.example said TOKEN_HARBOR_API,
+# a revoked key). Base https://tokenharbor.ai/v1, OpenAI-compatible.
+#
+# MEASURED: 20 calls (4 free models x 5, no retry, 120 s cap) answered 20 of 20,
+# every one `finish_reason=stop`, 2.8 to 7.3 s. That is ONE day. The old note
+# (2026-09-23) measured 8 of 20 rounds, with failures that are a HANG and
+# time-correlated, so these tiers carry a 120 s read cap (a hang must not spend
+# the 600 s default) and the rule of NOT_TRUSTED applies: a tier that answers
+# sometimes and fails sometimes moves there. Re-test on another day.
+#
+# THE LIMITS (the provider's own FAQ):
+#   * 60 requests a minute and 1,800 an hour per ACCOUNT, shared by every key and
+#     every model; 100 and 3,000 per IP. No limit on concurrent requests.
+#   * The free quota is a VALUE-based allowance on a rolling 7-day period that
+#     starts at the first free request. Its size is NOT published; the dashboard
+#     shows a percentage, and every reply carries `x-th-free-used-pct` and
+#     `x-th-free-resets`. When it is spent, free routes stop (an HTTP error).
+#     ONE pool, because the allowance is account-wide.
+#   * 4 MB per request on a free account (413 above it).
+#   * PRIVACY: on free routes the staff may read the conversations and the
+#     providers that serve them may train on them. LabPilot sends users' code, so
+#     these tiers are SMALL JOBS only.
+#
+# So max_output_tokens is a DELIBERATE 16,384, like Hy4: the allowance size is
+# unknown, a report would spend much of it, and the privacy rule above argues
+# against sending a whole pair. A local guard, not a measured limit.
+#
+# `extra_body` is not set: whether a reasoning field is accepted is untested.
+TOKEN_HARBOR_URL = "https://tokenharbor.ai/v1/chat/completions"
+TOKEN_HARBOR_MAX_OUTPUT = 16_384
+TOKEN_HARBOR_TIMEOUT = (10.0, 120.0)
+
+
+def _token_harbor(
+    *, name: str, model: str, context_window: int
+) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        name=name,
+        tier=0,
+        url=TOKEN_HARBOR_URL,
+        model=model,
+        api_key_env="TOKEN_HARBOR_API_KEY",
+        # ONE pool: the 7-day allowance and the 60-a-minute limit are account-wide.
+        quota_pool="TOKEN_HARBOR_API_KEY",
+        context_window=context_window,
+        max_output_tokens=TOKEN_HARBOR_MAX_OUTPUT,
+        timeout=TOKEN_HARBOR_TIMEOUT,
+    )
+
+
+# Windows are the catalogue's own numbers. DeepSeek V4.1 Flash is AA v4.3.2 = 39
+# and DeepSeek V4 Flash 34 (the families LiteRouter already carries), MiMo V2.6
+# Flash 27 on the v5.0.1 chart; MiMo V2.5 has no score.
+TOKEN_HARBOR_DEEPSEEK_V4_1_FLASH = _token_harbor(
+    name="DeepSeek V4.1 Flash (Token Harbor)",
+    model="deepseek-v4.1-flash:free",
+    context_window=1_048_576,
+)
+TOKEN_HARBOR_DEEPSEEK_V4_FLASH = _token_harbor(
+    name="DeepSeek V4 Flash (Token Harbor)",
+    model="deepseek-v4-flash:free",
+    context_window=1_000_000,
+)
+TOKEN_HARBOR_MIMO_V2_6_FLASH = _token_harbor(
+    name="MiMo V2.6 Flash (Token Harbor)",
+    model="mimo-v2.6-flash:free",
+    context_window=1_048_576,
+)
+TOKEN_HARBOR_MIMO_V2_5 = _token_harbor(
+    name="MiMo V2.5 (Token Harbor)",
+    model="mimo-v2.5:free",
+    context_window=1_048_576,
+)
+
+
 # ADDED 2026-10-23: the free Mistral text models that ANSWER on this account and
 # were not in the chain (one live call to every text model on 2026-10-22; the
 # console page lists more than the account may call). UNSCORED - no independent
@@ -1483,25 +1606,30 @@ def _ordered(*providers: GeminiProvider | OpenAICompatibleProvider):
 # "a weaker model on this one".
 CHAIN = _ordered(
     # GLM-5.3 Flash on two gateways (its Cline route is KNOWN_DEAD since
-    # 2026-11-03). LiteRouter's quota is unpublished, OrcaRouter's is 50 a day,
-    # so the smaller known allowance goes last.
+    # 2026-11-03). OrcaRouter's route of it is in NOT_TRUSTED, at the tail.
     LITEROUTER_GLM_5_3_FLASH,
     LITEROUTER_GLM_5_3_FLASH_CHEAP,
-    LITEROUTER_GLM_5_3_CHEAP,
-    ORCAROUTER_GLM_5_3_FLASH,
     # MOVED UP 2026-11-08 on AA v5.0.1 (one page, one index, read from a
     # screenshot of the live chart): DeepSeek V4.1 Flash 1017 = 33, ahead of
     # Gemini 3.8 Flash (31) by two points, so a real gap and not a tie.
     LITEROUTER_DEEPSEEK_V4_1_FLASH_1017,
+    # ADDED 2026-11-16: Hy4 preview on OrcaRouter answered 5 of 5 probes in 5.8 to
+    # 7.0 s, and it has its OWN OrcaRouter allowance (50 a minute, 250 a day).
+    # Its score is NOT settled: the v5.0.1 chart read on 2026-11-08 showed a "Hy4"
+    # at 35, but whether that is this preview build is not proven, and 30.3 found
+    # no score for the preview. So it goes just under the two models that are
+    # scored on that page above it, and it is in no score table. Move it by the
+    # live AA page.
+    ORCAROUTER_HY4_PREVIEW,
     GEMINI_3_8_FLASH,
     *_other_accounts(GEMINI_3_8_FLASH),
     # ADDED 2026-11-02: Ling 3.1 Flash, AA v4.3.2 = 41 (a tie with Gemini 3.8
-    # Flash), 2 s on both routes. Kilo (200 an hour) before Requesty (200 a day).
-    # On v5.0.1 it is 30 against Gemini 3.8's 31, still a tie.
-    KILO_LING_3_1_FLASH,
+    # Flash), 2 s on both routes. On v5.0.1 it is 30 against Gemini 3.8's 31, still
+    # a tie. (Kilo's route answers 404 since 2026-11-15 and waits in KNOWN_DEAD.)
     REQUESTY_LING_3_1_FLASH,
-    GEMINI_3_7_FLASH,
-    *_other_accounts(GEMINI_3_7_FLASH),
+    # Gemini 3.7 Flash is NOT in the chain: Google redirects it to 3.8 (the reply's
+    # modelVersion says "gemini-3.8-flash", checked 2026-11-16), so it was the
+    # same model a second time under a different quota name.
     # MiniMax M3.1 Flash: AA v4.3.2 = 43 (a tie with Ling 41) but v5.0.1 = 29
     # (index v5 dropped GDPval), two points under Gemini 3.8 (31). It was first
     # at position 4 on the v4.3.2 number; both indexes agree it belongs after the
@@ -1514,15 +1642,21 @@ CHAIN = _ordered(
     # V4.1 Flash (39) ties Gemini 3.7 Flash, and 3.7 is now served by 3.8 (41),
     # so it goes after the pair. Each "-stable" and "-cheap" id follows its base.
     # (The stable id, V4 Pro and the plain V4 Flash left the free list on
-    # 2026-11-02 and wait in KNOWN_DEAD.) OrcaRouter's V4.1 Flash is the same
-    # model on a smaller allowance, so it goes after the LiteRouter ids.
+    # 2026-11-02 and wait in KNOWN_DEAD.) OrcaRouter's V4.1 Flash is in
+    # NOT_TRUSTED.
+    # ADDED 2026-11-16: Token Harbor's route first. The same model (AA 39), 2.8 to
+    # 3.8 s on 5 of 5, 60 requests a minute and no concurrency limit, where
+    # LiteRouter takes one request at a time and waits 8 s between calls.
+    TOKEN_HARBOR_DEEPSEEK_V4_1_FLASH,
     LITEROUTER_DEEPSEEK_V4_1_FLASH,
     LITEROUTER_DEEPSEEK_V4_1_FLASH_CHEAP,
-    ORCAROUTER_DEEPSEEK_V4_1_FLASH,
     # REVIVED 2026-11-08: V4 Pro cheap answers again (V4 Pro is 36, between the
     # V4.1 Flash ids above and the V4 Flash ids below). Only the cheap id is on
     # the free list; the plain V4 Pro and the V4.1 Flash stable id stay dead.
     LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
+    # ADDED 2026-11-15: two more builds of V4 Pro, after its cheap id.
+    LITEROUTER_DEEPSEEK_V4_PRO_0813,
+    LITEROUTER_DEEPSEEK_V4_PRO_STABLE,
     # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
     # DeepSeek first of the three: it and Qwen TIE on AA (35 vs 34, inside
     # the +-1 interval), Qwen wins Code Arena by 13 Elo, and DeepSeek is
@@ -1534,61 +1668,62 @@ CHAIN = _ordered(
     # chain; the LiteRouter and Routeway ones followed on 2026-11-02.
     # REVIVED 2026-11-08: the plain V4 Flash id is free again; each "-cheap" and
     # "-stable" id follows its base.
+    # ADDED 2026-11-16: Token Harbor's route of the same model first (5 of 5).
+    TOKEN_HARBOR_DEEPSEEK_V4_FLASH,
     LITEROUTER_DEEPSEEK_V4_FLASH,
     LITEROUTER_DEEPSEEK_V4_FLASH_CHEAP,
     LITEROUTER_DEEPSEEK_V4_FLASH_0731_STABLE,
-    ORCAROUTER_DEEPSEEK_V4_FLASH,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731_CHEAP,
+    # ADDED 2026-11-16: MiMo V2.6 Flash = 27 on the AA v5.0.1 chart, two points
+    # under MiniMax M3.1 Flash (29) and seven over Qwen3.8 27B (20). Its LiteRouter
+    # route left the free list on 2026-11-15, so this is its only route.
+    TOKEN_HARBOR_MIMO_V2_6_FLASH,
     # Then the coding specialist. It ties Gemini 3.6 Flash on general
     # intelligence and beats it by 56 Elo on code, which is the task this
     # project actually does - so it goes above it.
-    # Qwen3.8 Flash first: on the same index it outscored the 27B it replaces.
-    LITEROUTER_QWEN_3_8_FLASH,
-    LITEROUTER_QWEN_3_8_FLASH_STABLE,
-    # MiMo V2.6 Flash now has a score: AA v5.0.1 = 27, against 20 for Qwen3.8 27B
-    # and 18 for Beam 1.0 on the same page, so it goes above both. It sat among the
-    # unscored tiers until 2026-11-08.
-    LITEROUTER_MIMO_V2_6_FLASH,
+    # (Qwen3.8 Flash and MiMo V2.6 Flash left LiteRouter's free list on
+    # 2026-11-15 and wait in KNOWN_DEAD.)
     QWEN_3_8_27B,
     # ADJACENT, for the same reason the Google twins are: once Cloudflare's
     # neurons are gone the strongest thing still available is the same model
     # on Groq, not a weaker one. It can never serve a report (8,000 tokens a
     # MINUTE), and _check_fits refuses it locally for free.
     QWEN_3_8_27B_GROQ,
-    # REVIVED 2026-11-08: GLM-5.2 cheap, AA 34 (the GLM-5.2 score), a tie with
-    # Gemini 3.6 Flash. Only the cheap id is free; plain GLM-5.2 stays dead.
-    LITEROUTER_GLM_5_2_CHEAP,
+    # (GLM-5.2 cheap, revived 2026-11-08, left the free list again 2026-11-15.)
     GEMINI_3_6_FLASH,
     *_other_accounts(GEMINI_3_6_FLASH),
-    GEMINI_3_5_FLASH,
-    *_other_accounts(GEMINI_3_5_FLASH),
-    # ADDED 2026-11-02: Beam 1.0, AA v4.3.2 = 30. Small jobs only (see the
-    # definition). 1.4 s.
-    CLINE_BEAM_1_0,
+    # Gemini 3.5 Flash is NOT in the chain either: Google redirects it to 3.6
+    # (modelVersion "gemini-3.6-flash", checked 2026-11-16).
+    # (Beam 1.0 on Cline answers 402 since 2026-11-15 and waits in KNOWN_DEAD.)
     KILO_NEMOTRON_3_ULTRA,
     NEMOTRON_3_ULTRA,
     REQUESTY_NEMOTRON_3_ULTRA,
-    # GLM-5.1 cheap, AA 26 (GLM-5.1's score, "-cheap" serving unproven).
-    LITEROUTER_GLM_5_1_CHEAP,
     GEMINI_3_5_FLASH_LITE,
     *_other_accounts(GEMINI_3_5_FLASH_LITE),
-    # AA 23, a tie with Flash-Lite, which has a measured allowance. Hy3-preview
-    # is 23 on v4.3.2 as well (ADDED 2026-11-02): LiteRouter first, OrcaRouter
-    # (50 a day) second.
+    # AA 23, a tie with Flash-Lite, which has a measured allowance. (Hy3 has no
+    # trusted route: LiteRouter's is dead and OrcaRouter's is in NOT_TRUSTED.)
     LITEROUTER_MINIMAX_M2_7,
-    LITEROUTER_HY3,
-    ORCAROUTER_HY3,
-    # Muse Glimmer: Requesty first, Routeway's slower route second (2026-11-02).
-    REQUESTY_MUSE_GLIMMER,
-    ROUTEWAY_MUSE_GLIMMER,
-    # ADDED 2026-09-30: AA 17 sits between Muse Glimmer (18) and the 31B (15), and
-    # it is the reliable, fast Gemma. Adjacent to its key-2 twin for the same
-    # reason every Google model is - a spent account costs nothing to skip.
+    # (Muse Glimmer has no trusted route: both Requesty's and Routeway's are in
+    # NOT_TRUSTED, 2026-11-16.)
+    # Gemma 4 26B A4B, AA 17. Moved to NOT_TRUSTED on 2026-11-17 and BACK to
+    # trusted the same day (the user's rule: trusted in 2 of 3 sittings; it
+    # failed 0 of 2, then passed 5 of 5, then passed 4 of 5).
     GEMMA_4_26B,
     *_other_accounts(GEMMA_4_26B),
     # AA 16 (an estimate) sits between the Gemma 26B (17) and the 31B (15).
     LITEROUTER_DEEPSEEK_V3_2,
-    GEMMA_4_31B,
-    *_other_accounts(GEMMA_4_31B),
+    # MOVED UP 2026-11-15 from the unscored tiers. Both routes answered the smoke
+    # test (Kilo 6.4 s, Cline 3.6 s) and Cline's is its ONLY usable free model
+    # now. Its score is NOT settled: Artificial Analysis's launch article says 24,
+    # comparison pages say 13 and 16, and the model page says 6. 16 (the middle
+    # reading that is not the outlier) puts it level with DeepSeek V3.2 and just
+    # above the Gemma 4 31B (15). Kilo first (200 an hour), Cline second (no
+    # published quota). Move it by the live AA page, not by this guess.
+    KILO_NEMOTRON_3_5_LIGHTNING,
+    CLINE_NEMOTRON_3_5_LIGHTNING,
+    # (Gemma 4 31B on Google moved to NOT_TRUSTED on 2026-11-17. Requesty's route
+    # of it answered 5 of 5 in 8 to 11 s, so it stays trusted.)
     REQUESTY_GEMMA_4_31B,
     # ADDED 2026-10-18, UNSCORED, so below the measured Gemma 4 31B. Qwen first:
     # it is the fast one (3s against 6-12s) and its tools, JSON and big prompts
@@ -1603,10 +1738,10 @@ CHAIN = _ordered(
     CODESTRAL,
     # ADDED 2026-11-02, UNSCORED: AA shows 6 to 24 for Nemotron 3.5 Lightning
     # depending on the page, and none of the Qwen3 Coder pages is on v4.3.2.
-    CLINE_NEMOTRON_3_5_LIGHTNING,
-    KILO_NEMOTRON_3_5_LIGHTNING,
     LITEROUTER_QWEN3_CODER_NEXT,
-    LITEROUTER_QWEN3_CODER,
+    LITEROUTER_QWEN3_NEXT_80B,
+    # ADDED 2026-11-16, UNSCORED (no AA page was found for MiMo V2.5).
+    TOKEN_HARBOR_MIMO_V2_5,
     # UNSCORED community finetunes, below the measured Gemma 4 31B on purpose.
     *ROUTEWAY_GEMMA_VARIANTS,
     KILO_NORTH_MINI_CODE,
@@ -1620,7 +1755,21 @@ CHAIN = _ordered(
     # Unscored and the worst on the one question asked of it, so it goes
     # last of the unscored. Then the weakest scored tier we have (AA 9).
     LITEROUTER_DEEPSEEK_V3_1,
-    LITEROUTER_MISTRAL_LARGE_3,
+    # (Mistral Large 3 left LiteRouter's free list on 2026-11-15.)
+    # NOT TRUSTED - see NOT_TRUSTED below. They answer, but not every time: after
+    # every trusted tier and before every dead one.
+    # Gemma 4 31B on Google, all three keys, moved here 2026-11-17 (three
+    # sittings: it passed 2 of 4, then 1 of 3, then 5 of 5, but each call took 36
+    # to 66 s, with 500 and 503 "high demand" in the first two sittings). It is
+    # trusted in 1 of 3 sittings only. The 26B was trusted again in 2 of 3.
+    GEMMA_4_31B,
+    *_other_accounts(GEMMA_4_31B),
+    ORCAROUTER_GLM_5_3_FLASH,
+    ORCAROUTER_DEEPSEEK_V4_1_FLASH,
+    ORCAROUTER_DEEPSEEK_V4_FLASH,
+    ORCAROUTER_HY3,
+    REQUESTY_MUSE_GLIMMER,
+    ROUTEWAY_MUSE_GLIMMER,
     # KNOWN DEAD, KEPT ON PURPOSE - see KNOWN_DEAD below. Kilo before its
     # OpenRouter twin even here, so the day one revives the order is right.
     CLINE_GLM_5_3_FLASH,
@@ -1648,6 +1797,46 @@ CHAIN = _ordered(
     MISTRAL_MEDIUM,
     MAGISTRAL_SMALL,
     DEVSTRAL_2,
+    # 2026-11-15: nine LiteRouter ids that left its free list.
+    LITEROUTER_GLM_5_3_CHEAP,
+    LITEROUTER_QWEN_3_8_FLASH,
+    LITEROUTER_QWEN_3_8_FLASH_STABLE,
+    LITEROUTER_MIMO_V2_6_FLASH,
+    LITEROUTER_GLM_5_2_CHEAP,
+    LITEROUTER_GLM_5_1_CHEAP,
+    LITEROUTER_HY3,
+    LITEROUTER_QWEN3_CODER,
+    LITEROUTER_MISTRAL_LARGE_3,
+    CLINE_BEAM_1_0,
+    KILO_LING_3_1_FLASH,
+)
+
+# NOT TRUSTED (defined by the user, 2026-11-16). A tier that is not dead, because
+# it DOES answer sometimes, but whose answers FLUCTUATE: it answers once and
+# refuses five times, so no route can count on it. Examples: Routeway's Muse
+# Glimmer (71 s once, a closed connection the next time) and OrcaRouter's four
+# capacity-limited models (429 "free model capacity is limited", Retry-After
+# about 3 hours, while the same key got a 200 from Hy4 in the same minute).
+#
+# The rule is about RELIABILITY, not about the size of the quota: a provider with
+# a small but steady allowance is trusted, and a big allowance that is often shut
+# is not. Trusted examples: Gemini Flash-Lite, LiteRouter's models, the Mistral
+# models, Groq, Cloudflare. A tier enters this list when it answered in some
+# calls and failed in others on the smoke test; it leaves after it answers
+# reliably on two different days (5 of 5, the way Hy4 did before it was added).
+#
+# A route uses these tiers LAST: after every trusted tier and before KNOWN_DEAD.
+# Never first. As of 2026-11-16, from one smoke test and some direct calls.
+NOT_TRUSTED = (
+    *(p.name for p in (GEMMA_4_31B, *_other_accounts(GEMMA_4_31B))),
+    ORCAROUTER_GLM_5_3_FLASH.name,
+    ORCAROUTER_DEEPSEEK_V4_1_FLASH.name,
+    ORCAROUTER_DEEPSEEK_V4_FLASH.name,
+    ORCAROUTER_HY3.name,
+    # Requesty's route answered 4 of 5 on 2026-11-16 but in 170, 101, 36 and 24 s,
+    # plus a 504 after 303 s (2.3 s on 2026-11-02): too uneven for any route.
+    REQUESTY_MUSE_GLIMMER.name,
+    ROUTEWAY_MUSE_GLIMMER.name,
 )
 
 # Tiers that answer 404 on every call, KEPT so they can come back. Both free
@@ -1743,4 +1932,23 @@ KNOWN_DEAD = (
     MISTRAL_MEDIUM.name,
     MAGISTRAL_SMALL.name,
     DEVSTRAL_2.name,
+    # 2026-11-15: LiteRouter's GET /v1/models lists 37 ":free" ids and none of
+    # these nine is among them (the dashboard agrees). Most were revived on
+    # 2026-11-02 or 2026-11-08 and have left again. Qwen3.8 Flash may have been
+    # renamed to "qwen-3.8-27b:free"; that id is not probed or added yet.
+    LITEROUTER_GLM_5_3_CHEAP.name,
+    LITEROUTER_QWEN_3_8_FLASH.name,
+    LITEROUTER_QWEN_3_8_FLASH_STABLE.name,
+    LITEROUTER_MIMO_V2_6_FLASH.name,
+    LITEROUTER_GLM_5_2_CHEAP.name,
+    LITEROUTER_GLM_5_1_CHEAP.name,
+    LITEROUTER_HY3.name,
+    LITEROUTER_QWEN3_CODER.name,
+    LITEROUTER_MISTRAL_LARGE_3.name,
+    # 2026-11-15 (smoke test of every tier): Cline moved Beam 1.0 off its free
+    # list (402 insufficient_credits) and Kilo answers 404 for Ling 3.1 Flash.
+    # Ling still has a live route on Requesty; Beam has none we use (Kilo lists
+    # reflection/beam-free, which is NOT probed or added).
+    CLINE_BEAM_1_0.name,
+    KILO_LING_3_1_FLASH.name,
 )

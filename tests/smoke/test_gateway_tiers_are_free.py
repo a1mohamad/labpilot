@@ -40,6 +40,7 @@ CATALOGUES = {
     "ORCAROUTER_API_KEY": "https://api.orcarouter.ai/v1/models",
     "ROUTEWAY_API_KEY": "https://api.routeway.ai/v1/models",
     "BAZAARLINK_API_KEY": "https://api.bazaarlink.ai/v1/models",
+    "TOKEN_HARBOR_API_KEY": "https://tokenharbor.ai/v1/models",
 }
 
 
