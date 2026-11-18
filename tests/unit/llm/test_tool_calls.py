@@ -420,9 +420,7 @@ def test_a_tier_whose_answer_cannot_be_read_hands_over_to_the_next_tier():
     responses.post(OPENAI_URL, json=openai_text("Let me think about that."))
     responses.post(GEMINI_URL, json=gemini_call(ARGS))
 
-    result = LLMClient(chain=(openai(), gemini()), base_delay=0.0).generate(
-        "choose", tool=TOOL
-    )
+    result = LLMClient(chain=(openai(), gemini())).generate("choose", tool=TOOL)
 
     assert result.arguments == ARGS
     assert result.tier == 2
