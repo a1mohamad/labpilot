@@ -123,5 +123,8 @@ def bounded(client: Any, *, read: float, budget: float, retries: int = 1) -> Any
         for tier in chain
     )
     return replace(
-        client, chain=limited, total_budget=budget, max_retries_per_tier=retries
+        client,
+        chain=limited,
+        total_budget=budget,
+        retry_delays=client.retry_delays if retries else (),
     )
