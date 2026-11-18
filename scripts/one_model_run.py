@@ -155,7 +155,7 @@ def one_model_generate(self, prompt, **kwargs):
     read = 600.0 if step == "respond" else 300.0
     single = LLMClient(
         chain=(replace(provider, timeout=(10.0, read)),),
-        max_retries_per_tier=0,
+        retry_delays=(),
         total_budget=1200.0,
         max_rejected_answers=1,
     )

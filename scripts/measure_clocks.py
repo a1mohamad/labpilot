@@ -106,7 +106,7 @@ def seen_generate(self, prompt, **kwargs):
                 "prompt": prompt,
                 "chain_first": self.chain[0].name if self.chain else None,
                 "chain_len": len(self.chain),
-                "retries": self.max_retries_per_tier,
+                "retries": len(self.retry_delays),
                 "budget": self.total_budget,
             }
         )

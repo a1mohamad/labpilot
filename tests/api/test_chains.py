@@ -141,7 +141,7 @@ def test_a_bounded_client_limits_every_tier_and_the_whole_call():
     limited = bounded(client, read=40.0, budget=150.0, retries=0)
 
     assert {provider.timeout for provider in limited.chain} == {(10.0, 40.0)}
-    assert (limited.total_budget, limited.max_retries_per_tier) == (150.0, 0)
+    assert (limited.total_budget, limited.retry_delays) == (150.0, ())
     assert [p.name for p in limited.chain] == [p.name for p in CHAIN]
     assert client.total_budget == 900.0
     assert bounded("client", read=1.0, budget=1.0) == "client"

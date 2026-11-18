@@ -69,6 +69,9 @@ GOOGLE_OUTPUT = 65_536
 # the pattern that got an account flagged on 2026-08-11, so do not add a fourth
 # without a decision.
 GOOGLE_KEYS = ("GOOGLE_API_KEY", "GOOGLE_API_KEY_2", "GOOGLE_API_KEY_3")
+# Both Gemma models take 30 requests a minute for each (key, model), read from the
+# AI Studio rate-limit page. The 16,000 input tokens a minute are max_input_tokens.
+GEMMA_REQUESTS_PER_MINUTE = 30
 
 
 def _gemini(
@@ -80,6 +83,7 @@ def _gemini(
     context_window: int = GOOGLE_CONTEXT,
     max_output_tokens: int = GOOGLE_OUTPUT,
     max_input_tokens: int | None = None,
+    requests_per_minute: int | None = None,
     thinking: str | None = "MEDIUM",
 ) -> GeminiProvider:
     return GeminiProvider(
@@ -92,6 +96,7 @@ def _gemini(
         context_window=context_window,
         max_output_tokens=max_output_tokens,
         max_input_tokens=max_input_tokens,
+        requests_per_minute=requests_per_minute,
         thinking=thinking,
     )
 
@@ -393,6 +398,7 @@ GEMMA_4_31B = _gemini(
     context_window=262_144,
     max_output_tokens=32_768,
     max_input_tokens=16_000,
+    requests_per_minute=GEMMA_REQUESTS_PER_MINUTE,
     thinking=None,
 )
 
@@ -446,6 +452,7 @@ GEMMA_4_26B = _gemini(
     context_window=262_144,
     max_output_tokens=32_768,
     max_input_tokens=16_000,
+    requests_per_minute=GEMMA_REQUESTS_PER_MINUTE,
     thinking="MINIMAL",
 )
 
@@ -696,6 +703,13 @@ KILO_NEMOTRON_3_5_LIGHTNING = _kilo(
 #
 # It exposes NO usage or credits endpoint (both 404), so the remaining daily
 # allowance cannot be read - the same blindness as Kilo and Cline.
+
+# One request at a time for the whole organisation: three calls at the same moment
+# gave one answer and two 429 "reached its limit of concurrent requests"
+# (measured 2026-11-16, and the same message in both sittings).
+REQUESTY_MAX_CONCURRENT = 1
+
+
 def _requesty(
     *,
     name: str,
@@ -711,6 +725,7 @@ def _requesty(
         api_key_env="REQUESTY_API_KEY",
         # ONE pool: the 200/day is account-wide across every free model.
         quota_pool="REQUESTY_API_KEY",
+        max_concurrent=REQUESTY_MAX_CONCURRENT,
         context_window=context_window,
         max_output_tokens=max_output_tokens,
         extra_body=OPENROUTER_REASONING,
@@ -823,6 +838,9 @@ def _gateway(
     max_output_tokens: int,
     quota_pool: str | None = None,
     seconds_between_calls: float = 0.0,
+    seconds_after_call: float = 0.0,
+    max_concurrent: int | None = None,
+    requests_per_minute: int | None = None,
 ) -> OpenAICompatibleProvider:
     return OpenAICompatibleProvider(
         name=name,
@@ -834,6 +852,9 @@ def _gateway(
         context_window=context_window,
         max_output_tokens=max_output_tokens,
         seconds_between_calls=seconds_between_calls,
+        seconds_after_call=seconds_after_call,
+        max_concurrent=max_concurrent,
+        requests_per_minute=requests_per_minute,
         # glm-5.3-flash returns EMPTY content without an explicit effort on
         # Cline and on OrcaRouter - a property of the model, not the host.
         extra_body=OPENROUTER_REASONING,
@@ -852,6 +873,14 @@ def _gateway(
 #                 answered when spaced 8 seconds apart. 8 is the measured
 #                 value that worked, 7 is the number the error states.
 LITEROUTER_SECONDS_BETWEEN_CALLS = 8.0
+# One request at a time for the whole account (403 "Too many concurrent requests",
+# 2026-10-11 and again with the product's own parallel nodes, 2026-11-11). The gap
+# above does not stop it, because a call can run for a minute.
+LITEROUTER_MAX_CONCURRENT = 1
+# A call that started 0 s after another one ENDED was refused 403 although its
+# start was 9 s after the other's start (measured 2026-11-16, 12 of 13 LiteRouter
+# refusals were this text). So the account is also closed for a moment after a call.
+LITEROUTER_QUIET_AFTER_CALL = 1.0
 
 
 def _literouter(*, model: str, **kwargs) -> OpenAICompatibleProvider:
@@ -861,12 +890,23 @@ def _literouter(*, model: str, **kwargs) -> OpenAICompatibleProvider:
         model=model,
         quota_pool=f"LITEROUTER_API_KEY:{model}",
         seconds_between_calls=LITEROUTER_SECONDS_BETWEEN_CALLS,
+        seconds_after_call=LITEROUTER_QUIET_AFTER_CALL,
+        max_concurrent=LITEROUTER_MAX_CONCURRENT,
         **kwargs,
     )
 
 
+# Its own free-package page: 10 requests a minute, 50 a day, for the account.
+ORCAROUTER_REQUESTS_PER_MINUTE = 10
+
+
 def _orcarouter(**kwargs) -> OpenAICompatibleProvider:
-    return _gateway(url=ORCAROUTER_URL, key="ORCAROUTER_API_KEY", **kwargs)
+    return _gateway(
+        url=ORCAROUTER_URL,
+        key="ORCAROUTER_API_KEY",
+        requests_per_minute=ORCAROUTER_REQUESTS_PER_MINUTE,
+        **kwargs,
+    )
 
 
 LITEROUTER_GLM_5_3_FLASH = _literouter(
@@ -1293,6 +1333,9 @@ ORCAROUTER_HY4_PREVIEW = _orcarouter(
 # temperature is 0 here, so a repeated prompt can be served without a model.
 ROUTEWAY_DEEPSEEK_TIMEOUT = (10.0, 120.0)
 ROUTEWAY_GEMMA_TIMEOUT = (10.0, 180.0)
+# Its response headers: x-ratelimit-limit-minute 5 and limit-day 200 for the account
+# (read 2026-09-29 and again 2026-11-16).
+ROUTEWAY_REQUESTS_PER_MINUTE = 5
 
 
 def _routeway(
@@ -1310,6 +1353,7 @@ def _routeway(
         api_key_env="ROUTEWAY_API_KEY",
         # ONE pool: 5 a minute and 200 a day are account-wide across models.
         quota_pool="ROUTEWAY_API_KEY",
+        requests_per_minute=ROUTEWAY_REQUESTS_PER_MINUTE,
         context_window=context_window,
         # No separate output cap exists. The server checks prompt PLUS output
         # against one window, and that window is what _check_fits enforces.
@@ -1479,6 +1523,9 @@ BAZAARLINK_DEEPSEEK_V4_FLASH_0731 = _bazaarlink(
 TOKEN_HARBOR_URL = "https://tokenharbor.ai/v1/chat/completions"
 TOKEN_HARBOR_MAX_OUTPUT = 16_384
 TOKEN_HARBOR_TIMEOUT = (10.0, 120.0)
+# 60 requests a minute for the whole account (its own FAQ), and NO limit on how
+# many are open at once, so max_concurrent stays None.
+TOKEN_HARBOR_REQUESTS_PER_MINUTE = 60
 
 
 def _token_harbor(
@@ -1492,6 +1539,7 @@ def _token_harbor(
         api_key_env="TOKEN_HARBOR_API_KEY",
         # ONE pool: the 7-day allowance and the 60-a-minute limit are account-wide.
         quota_pool="TOKEN_HARBOR_API_KEY",
+        requests_per_minute=TOKEN_HARBOR_REQUESTS_PER_MINUTE,
         context_window=context_window,
         max_output_tokens=TOKEN_HARBOR_MAX_OUTPUT,
         timeout=TOKEN_HARBOR_TIMEOUT,
@@ -1549,10 +1597,15 @@ TOKEN_HARBOR_MIMO_V2_5 = _token_harbor(
 # field. ONE POOL PER MODEL: Mistral's console shows its per-minute limits per
 # model. The account's monthly cap, if it binds, takes all of them at once.
 MISTRAL_SMALL_MAX_OUTPUT = 8_192
+# 2 requests and 40,000 tokens a minute for EACH model (headers
+# x-ratelimit-limit-req-minute: 2, measured 2026-11-16). The old 30 to 750 a minute
+# came from the console page and was wrong. Mistral Nemo is Ministral 8B: every
+# answer says ministral-8b-2512 and it shares that bucket, so it shares the pool.
+MISTRAL_SMALL_REQUESTS_PER_MINUTE = 2
 
 
 def _mistral_small(
-    *, name: str, model: str, context_window: int
+    *, name: str, model: str, context_window: int, pool_model: str | None = None
 ) -> OpenAICompatibleProvider:
     return OpenAICompatibleProvider(
         name=name,
@@ -1560,7 +1613,8 @@ def _mistral_small(
         url=MISTRAL_URL,
         model=model,
         api_key_env="MISTRAL_API_KEY",
-        quota_pool=f"MISTRAL_API_KEY:{model}",
+        quota_pool=f"MISTRAL_API_KEY:{pool_model or model}",
+        requests_per_minute=MISTRAL_SMALL_REQUESTS_PER_MINUTE,
         context_window=context_window,
         max_output_tokens=MISTRAL_SMALL_MAX_OUTPUT,
     )
@@ -1570,7 +1624,10 @@ MINISTRAL_8B = _mistral_small(
     name="Ministral 8B", model="ministral-8b-2512", context_window=262_144
 )
 MISTRAL_NEMO = _mistral_small(
-    name="Mistral Nemo", model="open-mistral-nemo", context_window=128_000
+    name="Mistral Nemo",
+    model="open-mistral-nemo",
+    context_window=128_000,
+    pool_model=MINISTRAL_8B.model,
 )
 MINISTRAL_14B = _mistral_small(
     name="Ministral 14B", model="ministral-14b-2512", context_window=262_144

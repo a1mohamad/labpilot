@@ -103,7 +103,7 @@ def test_the_summary_chain_is_the_short_one_with_time_limits():
 
     assert {p.model for p in short.chain} == set(SUMMARY_MODELS)
     assert short.total_budget == SUMMARY_TOTAL_SECONDS
-    assert short.max_retries_per_tier == 0
+    assert short.retry_delays == ()
     timed = [p for p in short.chain if hasattr(p, "timeout")]
     assert timed
     assert all(p.timeout[1] == SUMMARY_READ_SECONDS for p in timed)

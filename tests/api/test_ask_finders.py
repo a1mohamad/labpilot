@@ -73,7 +73,7 @@ def test_every_finder_call_has_a_time_limit_and_a_small_call_no_second_try(
         assert {tier.timeout for tier in client.chain} == {(10.0, 120.0)}
     for client in (small, trace):
         assert client.total_budget == 150.0
-        assert client.max_retries_per_tier == 0
+        assert client.retry_delays == ()
         assert {tier.timeout for tier in client.chain} == {(10.0, 40.0)}
 
 
