@@ -9,6 +9,7 @@ from labpilot.llm.registry import (
     CHAIN,
     GOOGLE_KEYS,
     KNOWN_DEAD,
+    NOT_TRUSTED,
 )
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "tiers",
     "CHAIN",
     "KNOWN_DEAD",
+    "NOT_TRUSTED",
     "GOOGLE_KEYS",
     "Attempt",
     "ClineProvider",
