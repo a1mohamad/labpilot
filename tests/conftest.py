@@ -53,6 +53,21 @@ def no_real_pool(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def empty_rooms():
+    """Start every test with empty rooms, and no account resting or open.
+
+    A room, the rest of an account and the calls open on it are kept for the whole
+    process (the minute and the account are shared by every call), so without this
+    a test that sends a call through a real Gemma, Token Harbor or LiteRouter tier
+    would leave tokens booked or a call "open" for the next test.
+    """
+    from labpilot.llm import _pacing, _rooms
+
+    _rooms._forget()
+    _pacing.forget()
+
+
+@pytest.fixture(autouse=True)
 def no_live_rerankers(request, monkeypatch):
     """Keep the rerank chain EMPTY for every test that is not a smoke test.
 
