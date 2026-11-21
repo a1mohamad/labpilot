@@ -41,7 +41,7 @@ from labpilot.tokens import estimate_tokens
 EMBEDDING_MINUTES_BUDGET = 6.0
 
 # WHAT THE INGEST ESTIMATE WAS MISSING, measured 2026-09-19 by
-# scripts/bench_ingest.py over five real corpora, 213 to 1,506 chunks:
+# scripts/timing/bench_ingest.py over five real corpora, 213 to 1,506 chunks:
 #
 #   corpus      chunks   MEASURED  PREDICTED  ratio   gap per chunk
 #   websocket      213     18.3s      10.2s   1.8x        0.038s
