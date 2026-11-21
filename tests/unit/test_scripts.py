@@ -16,7 +16,7 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SCRIPTS = sorted((ROOT / "scripts").glob("*.py"))
+SCRIPTS = sorted((ROOT / "scripts").rglob("*.py"))
 
 
 def _missing_imports(path: pathlib.Path) -> list[str]:
@@ -44,13 +44,15 @@ def _missing_imports(path: pathlib.Path) -> list[str]:
     return missing
 
 
-@pytest.mark.parametrize("path", SCRIPTS, ids=lambda p: p.name)
+@pytest.mark.parametrize(
+    "path", SCRIPTS, ids=lambda p: p.relative_to(ROOT / "scripts").as_posix()
+)
 def test_every_name_a_script_takes_from_labpilot_still_exists(path):
     missing = _missing_imports(path)
 
     assert not missing, (
-        f"scripts/{path.name} imports {missing}, which no longer exist in "
-        f"labpilot/. Update the script, or delete it if it is finished."
+        f"{path.relative_to(ROOT).as_posix()} imports {missing}, which no longer "
+        f"exist in labpilot/. Update the script, or delete it if it is finished."
     )
 
 
@@ -60,7 +62,7 @@ def test_every_function_the_end_to_end_benchmark_times_still_exists():
     It timed `searching.rerank_and_cut` until slice 5 removed it; the script
     would have crashed on its first run after that.
     """
-    path = ROOT / "scripts" / "bench_end_to_end.py"
+    path = ROOT / "scripts" / "timing" / "bench_end_to_end.py"
     spec = importlib.util.spec_from_file_location("bench_end_to_end", path)
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
