@@ -1,4 +1,4 @@
-"""The logic behind scripts/measure_latency.py.
+"""The logic behind scripts/models/measure_latency.py.
 
 The script spends real quota, so everything that decides WHAT it reports is kept
 pure and pinned here. A slip in it does not fail loudly: a wrong token count or
@@ -15,7 +15,7 @@ import requests
 
 from labpilot.llm import CHAIN, KNOWN_DEAD, LLMError
 from labpilot.llm.contracts import LLMResult
-from scripts import measure_latency as ml
+from scripts.models import measure_latency as ml
 
 
 def sample(
