@@ -27,7 +27,7 @@ GOOGLE_MAX_BATCH_SIZE = 40
 
 # THE PACE. A batch that fits the minute is not enough - the MINUTE must fit
 # too, or the second batch is refused (the third line of the table above).
-# 0.9 is measured headroom, not a guess: scripts/warm_embeddings.py paced
+# 0.9 is measured headroom, not a guess: scripts/setup/warm_embeddings.py paced
 # Google at 90% of both limits and ran 943 chunks with no minute refusal on
 # 2026-09-18, which also says chars/3 does not under-count Google's tokens
 # by more than that.
