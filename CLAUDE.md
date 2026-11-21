@@ -175,7 +175,7 @@ text, so it never holds LESS than CLAUDE.md and may hold more.
 *Rule added 2026-11-10, at the user's request, after Claude made a second file.*
 
 When the user asks for commit messages, Claude REWRITES `artifacts/commit_messages.txt`
-(one line for each file, `path|message`, the format `scripts/merge_per_file.py --messages`
+(one line for each file, `path|message`, the format `scripts/repo/merge_per_file.py --messages`
 reads). The old content is not needed any more, so it is simply overwritten. Claude never
 creates a new messages file (no `commit_messages_lesson4.txt` and the like).
 
@@ -700,6 +700,8 @@ API — one service, no separate worker — so a 20-minute embed occupies the sa
 
 ## Current Status
 
+**Status of 2026-11-21 (routing, lesson 2 and the tools): lesson 2 (one computed route for every task, the bench of every model on every task) is built and measured in a scratch copy and handed to the user to type; the repository does not have it yet. `scripts/` was reorganised into folders by job, and the measuring tools are in `scripts/routing/`. Nothing is committed. See [section 33](#33-slice-11-lesson-2-one-computed-route-for-every-task-and-the-tools-that-keep-it-up-to-date--2026-11-20-and-21).**
+
 **Status of 2026-11-19 (routing, lesson 1 DONE): the user typed lesson 1 on branch `feat/routing` (made from `feat/stored-summaries`): the spreader (rooms, skip a busy tier, no waiting), the retry rule of 1 s and 3 s, the stop of a hung call, and the labels on the tiers. It is checked and tested: 329 tests of `tests/unit/llm` and the four api and script test files that touch it pass, 8 deliberate breaks were all caught, `ruff` is clean. The full suite was NOT run. The routes (`labpilot/llm/routes.py`) and the wiring are lesson 2 and are not in the repository yet. Nothing is committed. See [section 31.22](#3122-routing-lesson-1-typed-checked-and-tested--2026-11-19).**
 
 **Status of 2026-11-16 (the spreader and the routes): the spreader and one route for each of the 20 tasks are built and tested in a scratch copy ([section 31.20](#3120-the-spreader-and-the-routing-chain-built-in-a-scratch-copy-2026-11-16-lesson-1-follows-the-repository-has-none-of-this-code-yet)); the repository has none of that code yet and nothing is committed. The rules (D112 to D116): a tier is asked again after 1 s and after 3 s and then the walk goes to the next tier at once; a busy tier (a full minute room, one call already open, an account that must rest) is skipped and never waited for; every task has its own route with the stop of a hung call; the tiers that may be read by the provider (Token Harbor) are left out by default. NEXT: the user types lesson 1 (the spreader), then lesson 2 (the routes and the wiring); the Gemma models on Google are measured again.**
@@ -790,7 +792,7 @@ generation-time problem below — it cannot generate.
 > **815 passed, 5 skipped** unit + api; 216 passed integration + api. **11
 > mutations, all fire** - one (a window forgotten per call) survived first
 > because its test ended side A on an EMPTY minute; the premise is now asserted.
-> `scripts/warm_embeddings.py` now uses this too - its private copy of the
+> `scripts/setup/warm_embeddings.py` now uses this too - its private copy of the
 > batching and pacing was deleted on 2026-09-28.
 
 > ### ⚠⚠⚠ STEP 2's FIRST PROBLEM IS GENERATION TIME — 400 SECONDS, MEASURED
@@ -902,7 +904,7 @@ generation-time problem below — it cannot generate.
 > | merged vs per-side rerank | per-side ships on the structural-coverage argument, not on evidence |
 > | how many chunks to SEND | a GENERATION property; `recall@N` is monotone and cannot have an optimum |
 > | a fourth language | 20 corpora beats 13, and is still one zoo |
-> | `scripts/score_answers.py` retry loop | re-asks a spent quota five times; burned five hours on 2026-09-19 |
+> | `scripts/answers/score_answers.py` retry loop | re-asks a spent quota five times; burned five hours on 2026-09-19 |
 
 > ### ⚠ SLICE 8 WAS RE-RUN TWICE. READ `docs/slice8v2/` BEFORE ANY NUMBER BELOW
 >
@@ -930,7 +932,7 @@ generation-time problem below — it cannot generate.
 > | **the routing signal** | **DEAD.** Weighted over 286 queries every question kind is POSITIVE. `structure` — slice 6's −0.534, which became a design principle — is **+0.169**, and its worst case was **one query** scored −0.500 |
 > | **reranking** | still ships, restated against each fixture's RESOLUTION: **9 REAL gains, 1 REAL loss, 3 nothing measurable**. "Helped 10, hurt 3" overstated both sides |
 > | **chain 3's order** | **rests on ONE corpus.** On three more, Cohere beats flash-lite 2–1 and has never hurt a corpus, while flash-lite hurts on 3 of 13. Their means are +6.0q and +6.1q — indistinguishable. Flash-lite belongs first for **budget** (1,000/day against 1,000/month), not for quality, and **Cohere does not belong at tier 7** |
-> | **the splitter decides the rerank tier** | a language with no AST splitter gives chunks ~2× larger, so one rerank call is ~2× the tokens. At `SEARCH_LIMIT = 50` **Voyage serves 0 of 13 corpora and both Gemma tiers serve 4 of 13**; at a window of 30 Gemma serves **all 13** — 28,800 calls a day against Flash-Lite's 1,000. `scripts/tier_reach.py` |
+> | **the splitter decides the rerank tier** | a language with no AST splitter gives chunks ~2× larger, so one rerank call is ~2× the tokens. At `SEARCH_LIMIT = 50` **Voyage serves 0 of 13 corpora and both Gemma tiers serve 4 of 13**; at a window of 30 Gemma serves **all 13** — 28,800 calls a day against Flash-Lite's 1,000. `scripts/retrieval/tier_reach.py` |
 >
 > **THE ONE METHODOLOGICAL RULE THIS SESSION EARNED, because the same error
 > produced three different wrong conclusions:**
@@ -956,7 +958,7 @@ generation-time problem below — it cannot generate.
 > small corpus to Google first, so the shipped routing could not finish an ingest. (2)
 > `embedding_minutes()` counted HTTP calls where Google counts TEXTS, reporting ~118 minutes
 > for a 10,000-chunk Google ingest against a truth of **ten days**. The fix first existed only
-> in `scripts/warm_embeddings.py`, which hid the product's defect. Both are now fixed in the
+> in `scripts/setup/warm_embeddings.py`, which hid the product's defect. Both are now fixed in the
 > product (the text budget by `daily_text_budget`, the batch by `max_batch_size` plus pacing —
 > see the Google embed block above), and the script's private copy was deleted on 2026-09-28.
 
@@ -1108,7 +1110,7 @@ branches — never resume there:** `feat/reranking` (it holds an OLDER `test_llm
 `feat/selector` (an older squashed variant; the work lives on `main`, re-committed piece by piece), and `feat/jev-probe`
 (byte-identical to `main`). This project re-commits work onto `main` piece by piece instead of merging, so hashes differ
 while the content is the same. The branches of finished slices (`feat/parallel-nodes`, `refactor/split-services`,
-`feat/planner`) are kept. **Slice 5 is on `feat/plan-to-run`** (made by the user from `main` at `0ac80d4`). It holds the toy file of lesson 1 (`00cb059`), lessons 2 and 3 as the user's commits `3a46eb3` to `839ca21`, and the move to `search_one` only, the closing review and these docs as commits made by Claude on 2026-10-21 at the user's request (commit to this branch only, nothing on `main`). Whether the branch is pushed was not checked. Claude suggested a NEW branch from `main` and not `feat/planner`, because `feat/planner` is 47 commits behind `main` (they split at `08a355d`) and holds slice 4 as 6 older commits. **Slice 6 is on `feat/follow-ups`** (made by the user from the tip of `feat/plan-to-run`: the user's commits `4661ea0` and `2a1d812`, a fix and tests by Claude `dbdff35` and `2bef413`, and the closing review, the door and these docs by Claude on 2026-10-22 at the user's request, pushed to `origin/feat/follow-ups`). **Slice 7, lesson 1, was typed on `feat/claims-check`** (made by the user from `main` on 2026-10-22) and re-committed on `main` one file per commit, together with the key 3 change (registry, rerank chain, embedders, `.env.example`, `smoke.yaml`, six tests), `scripts/measure_claim_sizes.py`, `docs/step2/slice7/` and the docs of section 23 (the last of them `b22a40f`). **Lessons 2 and 3 are on `feat/check-claims`** (made by the user from `main`; lesson 2, its tests and the notes of D73 are ONE commit, `4c90193`; lesson 3 and section 24 are ONE commit, `bd46262`). On 2026-10-24 `main` was an ancestor of this branch and the branch was 2 commits ahead, so it can go to `main` one file per commit with `merge_per_file.py` (43 files in the dry run). That script was not in the repository then: keep a copy outside it, because it wants a clean working tree. The user commits; DETAILS.md goes before CLAUDE.md.
+`feat/planner`) are kept. **Slice 5 is on `feat/plan-to-run`** (made by the user from `main` at `0ac80d4`). It holds the toy file of lesson 1 (`00cb059`), lessons 2 and 3 as the user's commits `3a46eb3` to `839ca21`, and the move to `search_one` only, the closing review and these docs as commits made by Claude on 2026-10-21 at the user's request (commit to this branch only, nothing on `main`). Whether the branch is pushed was not checked. Claude suggested a NEW branch from `main` and not `feat/planner`, because `feat/planner` is 47 commits behind `main` (they split at `08a355d`) and holds slice 4 as 6 older commits. **Slice 6 is on `feat/follow-ups`** (made by the user from the tip of `feat/plan-to-run`: the user's commits `4661ea0` and `2a1d812`, a fix and tests by Claude `dbdff35` and `2bef413`, and the closing review, the door and these docs by Claude on 2026-10-22 at the user's request, pushed to `origin/feat/follow-ups`). **Slice 7, lesson 1, was typed on `feat/claims-check`** (made by the user from `main` on 2026-10-22) and re-committed on `main` one file per commit, together with the key 3 change (registry, rerank chain, embedders, `.env.example`, `smoke.yaml`, six tests), `scripts/answers/measure_claim_sizes.py`, `docs/step2/slice7/` and the docs of section 23 (the last of them `b22a40f`). **Lessons 2 and 3 are on `feat/check-claims`** (made by the user from `main`; lesson 2, its tests and the notes of D73 are ONE commit, `4c90193`; lesson 3 and section 24 are ONE commit, `bd46262`). On 2026-10-24 `main` was an ancestor of this branch and the branch was 2 commits ahead, so it can go to `main` one file per commit with `merge_per_file.py` (43 files in the dry run). That script was not in the repository then: keep a copy outside it, because it wants a clean working tree. The user commits; DETAILS.md goes before CLAUDE.md.
 
 **2026-10-24:** slice 7 is on `main` (moved one file per commit with `merge_per_file.py`, `origin/main` equal) and on `feat/check-claims` (`d0463dd`); `git diff main feat/check-claims` is empty. The work of section 25 is in the working tree of `feat/check-claims` as documentation only; the tests and patches of 25.10 are in `artifacts/slice7-review/` and are not committed.
 
@@ -2211,9 +2213,9 @@ Boundaries moved (`B_train.py` 78 → 79 chunks), so slice 1's numbers described
 nothing was embedded yet** (four embedding requests); after slice 4 the same change would mean re-embedding every corpus.
 **Fix chunk boundaries before pgvector exists, or not at all.**
 
-### `scripts/score_retrieval.py` is now committed
+### `scripts/retrieval/score_retrieval.py` is now committed
 
-Slice 1's scorer lived in a session scratchpad and was lost. `PYTHONPATH=. python scripts/score_retrieval.py` (four embedding
+Slice 1's scorer lived in a session scratchpad and was lost. `PYTHONPATH=. python scripts/retrieval/score_retrieval.py` (four embedding
 requests, no generation quota). **A measurement you cannot repeat is a number, not a result; the instrument belongs in the
 repository beside the fixture.**
 
@@ -2882,7 +2884,7 @@ has left to move.**
 ## SLICE 5 MEASURED — 2026-09-07: vector ships, wRRF is a named candidate
 
 *The user refused a decision taken on one fixture. Two corpora × two embedders = four runs, 62 graded queries, 82 fusion settings, no
-generation quota.* Reproduce with `scripts/score_hybrid.py` (**a measurement you cannot repeat is a number, not a result**).
+generation quota.* Reproduce with `scripts/retrieval/score_hybrid.py` (**a measurement you cannot repeat is a number, not a result**).
 
 ### What was built
 
@@ -3161,7 +3163,7 @@ Same corpus, window and instrument; only the model changed. So "does reranking h
 layer"): `contracts.py` (`Ranking`: an order, its scores, which model produced it), `errors.py` (`RerankError`), `defaults.py`
 (`MAX_DOCUMENTS` 100, `MAX_DOCUMENT_TOKENS` 510, `RERANK_TOP_N` 10), `base.py` (`HTTPReranker`, written from three live probes), `cohere.py` ·
 `voyage.py` · `cloudflare.py`, `registry.py` (`RERANK_CHAIN`) and `chain.py` (`rerank()` and `skip()`); plus **`retrieval/gate.py`**
-(`margin()`, `should_rerank()`, core, not the adapter) and `scripts/score_rerank.py` (the instrument, which validates itself).
+(`margin()`, `should_rerank()`, core, not the adapter) and `scripts/retrieval/score_rerank.py` (the instrument, which validates itself).
 
 ### Probing first found things the docs do not say
 
@@ -6795,7 +6797,7 @@ is good design regardless.
 
 #### A new instrument: `--cached-only`
 
-`scripts/score_rerank.py` can now re-derive a whole table from stored results
+`scripts/retrieval/score_rerank.py` can now re-derive a whole table from stored results
 and spend **nothing**. It exists because the pointwise probe costs **2 real
 calls per model**, so "just re-run from cache" would still have spent 2 of
 Cohere's 1,000 a month to reprint numbers we already had. A cache **miss
@@ -10528,7 +10530,7 @@ placement test; making an unset URL fall through to a request fires the
 
 *Raised by the user: section 10.5 recorded Routeway's DeepSeek as working and
 nothing ever wired it in, so it was a gap and not a rejection. Probed first with
-`scripts/probe_routeway.py`, then added on `feat/routeway` (merged: `main`,
+`scripts/models/probe_routeway.py`, then added on `feat/routeway` (merged: `main`,
 `origin/main` and `feat/routeway` were the same commit, checked 2026-09-29).
 Exit `91.107.152.24`, AS24940 Hetzner Online, Nuremberg, Google 200. Suite
 **839 passed, 5 skipped**, ruff clean; 6 registry mutations and 2 smoke
@@ -10624,7 +10626,7 @@ llm/registry.py         ROUTEWAY_URL · _routeway() · ROUTEWAY_DEEPSEEK_V4_FLAS
                         account-wide. max_output_tokens = context_window, because
                         there is no separate output cap
                         a per-tier `timeout`: (10, 120) DeepSeek, (10, 180) Gemma
-scripts/probe_routeway.py   the instrument - ping, context, output, tools stages
+scripts/models/probe_routeway.py   the instrument - ping, context, output, tools stages
 tests/unit/llm/test_registry.py    CONTEXT_TOO_SMALL + a "costs no request" test,
                         the short-timeout test, GATEWAYS, the reasoning excuse
 tests/smoke/test_gateway_tiers_are_free.py   Routeway's NESTED pricing
@@ -10786,7 +10788,7 @@ tests must not do.
 ### 15. SLICE 1 IS MEASURED — every tier ranked by speed, 2026-09-30
 
 *Full write-up: `docs/step2/slice1/RESULTS.md`. Instrument:
-`scripts/measure_latency.py` with `tests/unit/test_measure_latency.py`.
+`scripts/models/measure_latency.py` with `tests/unit/test_measure_latency.py`.
 **COMMITTED on `main`** (script `b4fa84a`, its tests `2f0ce0b`, the results
 `0cc24d8`; this line said "NOT COMMITTED" after they were). The raw data is
 `artifacts/step2/latency/2026-09-29_18-29.jsonl` (git-ignored).*
@@ -11263,7 +11265,7 @@ are estimates, not promises.
 **How a new session continues (updated 2026-10-22):** slices 0 to 6 are DONE. Read the Phase paragraph of Current Status and the last section of 17 (17.24), check git (branch, status, `git log -5`), and continue with slice 7 (claims, check, retry; D4, D39, D40). The prompt that the last session gave the user is the best start (Working Rules, "Review pass after every slice, and a hand-off prompt at the end of every session"). **Two rules the user set (17.13) still hold: they type ALL product code
 (only tests are copy-paste), and a step is given WHOLE in one message.** Lessons call no model, so
 the exit-ISP check is not needed until the first live test. The chat tables must exist in the
-database the app uses: run `python -m scripts.setup_checkpoints` once from the repository root
+database the app uses: run `python -m scripts.setup.setup_checkpoints` once from the repository root
 (17.14). Since 2026-10-14 that script also locks the four tables (17.15). **The lesson scripts named
 in 17.9 to 17.13 as `scripts/<name>.py` now live in `examples/langgraph/`.**
 
@@ -11691,9 +11693,9 @@ is closed. Slice 3 is next.** `feat/agent-nodes` is kept.
   A prune failure is only logged (D35). The unused helper `_cut` was deleted at the same time.
 - `POST /compare` (D38), `schemas.py` (`thread_id` optional in the request, required in the reply),
   `connect(url=None, *, autocommit=False)` in `store/connection.py`, and `web/app.js`.
-- `scripts/setup_checkpoints.py` creates the four tables once: `checkpoints`, `checkpoint_blobs`,
+- `scripts/setup/setup_checkpoints.py` creates the four tables once: `checkpoints`, `checkpoint_blobs`,
   `checkpoint_writes`, `checkpoint_migrations`. **Run it from the repository root as
-  `python -m scripts.setup_checkpoints`.** `python scripts/setup_checkpoints.py` fails with
+  `python -m scripts.setup.setup_checkpoints`.** `python scripts/setup/setup_checkpoints.py` fails with
   `ModuleNotFoundError`, because Python then puts the script's folder on the path and not the repository
   root. It needs an autocommit connection, because the library builds three indexes with
   `CREATE INDEX CONCURRENTLY`. It was run once on the real database (the tables are in `public`). Tests get
@@ -11794,10 +11796,10 @@ open to that API.
 |---|---|
 | `d0492d4` | `labpilot/api/checkpoints.py`: `CHAT_TABLES` (the four names) and `lock_tables(conn)`, which runs `alter table <name> enable row level security` for each one. The list is needed because the saver library creates the chat tables, not our `schema.sql`, so we lock them by name afterwards |
 | `520470d` | `labpilot/store/schema.sql`: the same switch for `artifacts` and `chunks`. It runs every time `create_schema` runs, and repeating it changes nothing |
-| `b6c6735` | `scripts/setup_checkpoints.py` calls `lock_tables` after `setup()`, on the same autocommit connection |
+| `b6c6735` | `scripts/setup/setup_checkpoints.py` calls `lock_tables` after `setup()`, on the same autocommit connection |
 | `88e217b` | `tests/integration/test_chat_tables.py`, 2 tests: the list names exactly the tables the saver creates (so a new table in a library update turns the test red), and `lock_tables` turns RLS on for all four |
 | `d99e005` | `tests/unit/store/test_schema.py`, 1 test: it reads `schema.sql` and checks that every `create table` has a matching `enable row level security`. It also fails when the file creates no table at all, so it cannot pass on an empty read |
-| `6a32137` | the five lesson scripts (`intro_to_graph.py`, `graph_with_reducer.py`, `graph_with_memory.py`, `graph_with_tools.py`, `graph_with_branch.py`) moved from `scripts/` to `examples/langgraph/`. Only the path changed. `scripts/setup_checkpoints.py` stays in `scripts/`, because it is a real tool and not a lesson |
+| `6a32137` | the five lesson scripts (`intro_to_graph.py`, `graph_with_reducer.py`, `graph_with_memory.py`, `graph_with_tools.py`, `graph_with_branch.py`) moved from `scripts/` to `examples/langgraph/`. Only the path changed. `scripts/setup/setup_checkpoints.py` stays in `scripts/`, because it is a real tool and not a lesson |
 
 **Checked in this session (2026-10-14).** Unit and api tests: 1039 passed, 5 skipped. The three new tests: 3 passed
 in 12.6 s against the real Supabase (in a throwaway schema), none skipped. The whole `tests/integration` folder
@@ -11806,7 +11808,7 @@ and the new unit test, run together: 116 passed, none skipped, in 236 s. Those t
 
 **NOT checked.** (1) Mutation checks of the three new tests were not run, so it is not shown that each one fails
 when its rule is broken. (2) Whether RLS is ON in the tables of the real project now. It is only on after
-`create_schema` and `scripts.setup_checkpoints` have been run against it, and nothing in the files says they were.
+`create_schema` and `scripts.setup.setup_checkpoints` have been run against it, and nothing in the files says they were.
 (3) That the app reads and writes fine with the lock is shown in a throwaway schema. It was not tried on the real
 `public` tables, and that the web API (`anon`) really sees nothing was not tried at all.
 
@@ -12199,7 +12201,7 @@ the same branch: `b47987f` (the move to `search_one` only), `511b63f` (the saver
 - **The skip gate is now unused.** `retrieval/gate.py` (`should_rerank`, `margin`, `SKIP_MARGIN`)
   has no caller in `labpilot/`; its own tests stay. Slice 13 decides: delete it, or give it a
   caller. The test that forced the gate to say NO was deleted with the function it tested.
-- `scripts/bench_end_to_end.py` times `asking.rank_pile` now.
+- `scripts/timing/bench_end_to_end.py` times `asking.rank_pile` now.
 
 **The closing review of slice 5 (2026-10-21).** Looked at from above, the new slice joined four
 things that no test crossed together. Four tests were added, and the old ones were moved.
@@ -12861,7 +12863,7 @@ merge step keeps one copy. Whether the planner chunks should also reach the chec
 | **D58** | **The last answer goes into every prompt, and it is saved as ONE excerpt** (the user's question, 2026-10-21: "yes do it" and "select the second option" point at what the tool said, and the chat kept only the questions). State key `last_answer` with the REPLACE rule, written by `remember` as the END of the answer (at most 2,000 characters, a leading "…" when cut, so a second cut does not grow it). It is read by the rewrite (so "do the second one" becomes a standalone question) and by every answer prompt: after the parts and before the question, behind one label from one function (`last_answer_block`). **This amends D21**, which kept old reports out of the prompt: ONE excerpt of the LAST answer is allowed, old reports still are not, and the history still holds only the questions. Nothing in the database changed. **Measured: no clear gain yet for two files** (17.24): the rewrite already covers "do the second one", and a follow-up that needs the exact words showed no visible difference on two tiers. It stays because it costs about 700 tokens and 0 and 1 files need it |
 | **D59** | **ONE prompt function for 0, 1 and 2 files, and it is required** (the user's idea, 2026-10-22; it amends D56, which planned a second function). `build_answer_prompt(chunks, *, question, files, totals, summaries, last_answer)` in `api/prompting.py` is handed to `build_graph` as `make_prompt`. `respond` counts the files from the two ids and calls it with keywords. 0 files returns the chat prompt and selects nothing. 1 and 2 files take the same steps with `instructions_for(files)`. It has no default, so no graph can be built with the wrong prompt for 0 files (the shape D57 chose for `search_one`) |
 | **D60** | **Three instructions, chosen by the number of files** (`prompts/answer.py`). `CHAT` (0 files) answers plainly, writes code when asked, and asks for a missing file instead of guessing (8 of 8 runs on two tiers). `ONE_FILE` (1) writes ANSWER first, then PROBLEMS with the corrected code or a better algorithm, and leaves out a design choice the code states on purpose (a check that raises on purpose was reported 4 times in 12 answers without that sentence, 0 times in 11 with it). `TWO_FILES` (2; "R3" in the measurements) writes ANSWER first. For "why do the results differ" it says whether the numbers are comparable, gives the largest causes with their sizes, ADDS THE SIZES UP and says whether the sum fits the gap, and is complete in DIFFERENCES. Then COMPARABLE, PROBLEMS IN B and NEXT STEP. **All three are samples (17.24).** `TWO_FILES` is 2,914 bytes with its own size guard of 3,000. The 2,200 guard stays for the lean report templates, and `REPORT` is kept only as the frozen baseline of the smoke tests. M18 re-measures all three in slice 13 |
-| **D61** | **`PROMPT_BUDGET` is 30,000 (it was 26,000), the outline is priced by its shape, and a "fits" verdict keeps every part** (the budget is the user's decision, 2026-10-22; Claude had recommended 28,000). (1) The six Routeway Gemma finetunes (62,000 window) can no longer serve a report. They are the ONLY tiers a budget between 26,000 and 33,000 turns away (checked on all 75 tiers), and they could not finish a report anyway (22 tokens a second, a dropped request after about 121 seconds). (2) A cost of that number: the committed sample pair needs 28,557 tokens, so at 30,000 it is read whole. The smoke test lowers the "fits" limit for its own run to force the search path, `test_pipeline.py` has its own budget of 24,000, and `scripts/bench_end_to_end.py` stuffs the committed pair. (3) `fits_whole` no longer charges a flat 4,000 for the outline. When everything is sent the outline is a plain list, a heading and a row per file, so each artifact costs `(files + 1) x FILE_ROW_TOKENS`. `FILE_ROW_TOKENS` is 24 (measured: mean 17.6, p95 20, max 22 over 129 rows of this repository, 15.5 on the sample pair), 0 artifacts cost 0, and `StoredArtifact.files` comes from `count(distinct source)` in the same round trip. A flat 4,000 over-charged what fits and under-charged a repository of many tiny files. `PROMPT_EXTRAS_TOKENS` is 2,000 and reserves what the prompt carries that `fits_whole` cannot see (two summaries of at most 150 words and the last answer excerpt). (4) **A defect the exact charge would have widened:** a probe found a pair (140 parts a side, 230 characters each) that `fits_whole` accepted and whose stuffed prompt then lost 2 of 280 parts, silently, because the budgeted selection charged the long outline of a prompt that sends nothing. When `totals is None` (everything was read) `build_answer_prompt` now sends everything if the finished prompt fits, and falls back to the budgeted selection only if it does not |
+| **D61** | **`PROMPT_BUDGET` is 30,000 (it was 26,000), the outline is priced by its shape, and a "fits" verdict keeps every part** (the budget is the user's decision, 2026-10-22; Claude had recommended 28,000). (1) The six Routeway Gemma finetunes (62,000 window) can no longer serve a report. They are the ONLY tiers a budget between 26,000 and 33,000 turns away (checked on all 75 tiers), and they could not finish a report anyway (22 tokens a second, a dropped request after about 121 seconds). (2) A cost of that number: the committed sample pair needs 28,557 tokens, so at 30,000 it is read whole. The smoke test lowers the "fits" limit for its own run to force the search path, `test_pipeline.py` has its own budget of 24,000, and `scripts/timing/bench_end_to_end.py` stuffs the committed pair. (3) `fits_whole` no longer charges a flat 4,000 for the outline. When everything is sent the outline is a plain list, a heading and a row per file, so each artifact costs `(files + 1) x FILE_ROW_TOKENS`. `FILE_ROW_TOKENS` is 24 (measured: mean 17.6, p95 20, max 22 over 129 rows of this repository, 15.5 on the sample pair), 0 artifacts cost 0, and `StoredArtifact.files` comes from `count(distinct source)` in the same round trip. A flat 4,000 over-charged what fits and under-charged a repository of many tiny files. `PROMPT_EXTRAS_TOKENS` is 2,000 and reserves what the prompt carries that `fits_whole` cannot see (two summaries of at most 150 words and the last answer excerpt). (4) **A defect the exact charge would have widened:** a probe found a pair (140 parts a side, 230 characters each) that `fits_whole` accepted and whose stuffed prompt then lost 2 of 280 parts, silently, because the budgeted selection charged the long outline of a prompt that sends nothing. When `totals is None` (everything was read) `build_answer_prompt` now sends everything if the finished prompt fits, and falls back to the budgeted selection only if it does not |
 | **D62** | **The door takes no id, one id or two** (D56, finished on 2026-10-22). `CompareRequest.a` and `.b` are optional. A missing, null or blank id counts as none, and the router trims it. The reply's `chunks` lists only the sides that really had a file (a chat question gives `{}`). **A lone artifact must sit in the slot of its own side:** the graph reads slot `a` as side A, so a subject sent alone in slot `a` was searched as a side A that did not exist and failed on a missing key. `ask()` now moves a lone id to the slot its prefix names (`A-` or `B-`). With two ids, or none, nothing moves. An unknown id stays and answers 404. No new error type. The page (version 2) enables the button for 0, 1 or 2 stored sides, sends `null` for an empty slot, prefills the question by count ("Ask a question, or add files to compare." / "Summarize this and find likely bugs." / "Compare these and explain why the results diverge.") until the person types, and lists coverage only for the sides in the reply. The button says "Ask". The page was checked for 0, 1 and 2 sides in a real browser against a stub server. Its rendering has no automated test (one deliberate break survived, 17.24). **Added later the same day:** the page keeps the stored files in `localStorage` (`labpilot.artifacts`) and restores them after a refresh, and it empties a slot whose id the server answers with `404 unknown_artifact`; an empty id now clears the old summary of that side in the saved chat, so a message that sends fewer files than an earlier one carries no summary of the missing file |
 | **D63** | **Cleaning the question: two ideas of the user (2026-10-22). NOTHING is built, and a measurement decides.** (1) *Clean the FIRST question too.* The follow-up rewrite already returns the question unchanged when it is good, and the same rule can hold for a first question. The cheapest version: the PLANNER returns a cleaned question in the same call, so there is no extra call. It is asked FIRST in the output, so the queries can use it (a model writes in order). The safe design: the cleaned text is used for the SEARCH only, and `respond` answers the user's own words (the follow-up rewrite must replace the question, because "do the second one" cannot be answered alone; a first question does not have that problem). The raw question is searched too (D54). A separate call on a fast tier with quota (Flash-Lite or Gemma, about 1 to 2 seconds for a short job) would also work, but it sees less than the planner (no map). The check in code must refuse a cleaned question that is empty, has more than one line or is much longer (the rules of the follow-up rewrite, D50). Reasons for care: research F3 (rewriting a good question can hurt, -10.8 NDCG@5), our slice 6 sample is small, and a fallback tier writes a different cleaned question, so it is logged beside the report (D47, rule 6). With 0 files nothing is searched, so nothing needs cleaning. (2) *An "Optimize prompt" button* in the page (Step 3), see "Notes for Step 3". With the planner version there is no second rewrite to skip when the button was used, so the page needs no flag. **Measure first (M4 and M5, slice 13):** an arm "planner queries plus a cleaned question", and a set of good questions that must come back unchanged. Do not add the planner field (and bump `PLANNER_VERSION`) before M5 |
 
@@ -13107,7 +13109,7 @@ The 20K and 28K sizes are estimated from the ratio of the 14,804 test (a refused
 
 One tiny call to every text model. **ANSWER (200), and NONE of them was in our chain (Ministral 8B, Nemo and 14B were added on 2026-10-23, see 23.9):** `codestral-2508` (also `codestral-latest` and `mistral-code-latest`: the same limits, 256K, 125 requests a minute, 625K tokens a minute), `ministral-14b-2512` (262K, 30 a minute, 937.5K), `ministral-8b-2512` (262K, 188 a minute, 625K), `ministral-3b-2512` (131K, 750 a minute, 1.3M) and `open-mistral-nemo` (188 a minute, 625K). **Refused:** `mistral-medium-latest`, `mistral-small-2603`, `mistral-small-latest`, `magistral-*` and `devstral-2512` (429, limit 0), `mistral-large-*`, `mistral-large-4`, `glm-5-2`, **`zai-glm-5-3`** and `zai-glm-5-2` (403, "not available in your subscription tier"), `labs-leanstral-1-5-1` (403: a Labs model needs an admin to enable Labs models; it is a Lean-proof specialist, so it was not pursued). **Selected for measurement: codestral, ministral 14B, 8B, 3B and open-mistral-nemo** (done in 23.6).
 
-#### 23.6 THE SIZE TEST — one big call, or parts? (quick, 2026-10-22; `scripts/measure_claim_sizes.py`, results in `docs/step2/slice7/`)
+#### 23.6 THE SIZE TEST — one big call, or parts? (quick, 2026-10-22; `scripts/answers/measure_claim_sizes.py`, results in `docs/step2/slice7/`)
 
 **Proxy:** 85 files of `labpilot/` (without `llm/registry.py`), about 90K estimated tokens, 434 chunks. The task "list every top-level `CAPITAL_NAME = value`" has a true list from the AST: **68 constants**. A hit needs the name AND the value. This measures attention over a long input, NOT the quality of real claims. One run for each cell, temperature 0, one corpus (Python, our own code). **The rule was written BEFORE the run** (in the script): C (always parts, fixed 12K) if for at least 60% of the models that can do the big call recall(12K) is within 0.05 of the best of {ALL, 28K}; B (a size per model) otherwise; A only if ALL beats 28K by more than 0.05; a gap under 0.05 is a tie.
 
@@ -13482,7 +13484,7 @@ The user asked whether every idea and correction was in the docs. It was not: tw
 | R19 | The report instruction: every statement about A or about B needs a quote from that file (R9 only covers the matched lines of B). In D74 the report said A "keeps embeddings frozen" while A unfreezes at epoch 3, so its first cause was partly a misreading | `prompts/answer.py` (`TWO_FILES`) | 25.6 fault 3 | D74 re-run read by hand; citations that resolve |
 | R20 | **The parts that the claim checks found must reach the report writer.** Today a `Finding` carries one quote and a header, and the writer sees only the 10 parts of the plain pile. The design (21.1 step 9, D42) says the chunks of the claim searches are merged into the pile with duplicates removed and the budget kept. This was never built | `agent/respond.py` or a merge step after `check_one`, `agent/finding.py`, `api/prompting.py` (`checks_text`) | 25.6: 7 of 10 countable misses never reached the writer | D74 re-run: how many of the absent findings now have their code in the prompt; a test that the deciding part of a finding is in the prompt once |
 | R21 | When the pair fits and is read whole, the claim checks could read the stuffed parts and skip the embedder and the database search (fewer failure points, nothing wasted). An idea to test, not a decision | `agent/graph.py` (`after_search`, `fan_out_claims`), `agent/check_one.py` | the checks search B even when all of B is already in the prompt | grid arm E2 and E5 below |
-| R22 | Put the impact column into `data/samples/quora_siamese/EXPECTED.md` (the proposal is in 25.6 and in `artifacts/slice7-review/impact_column_proposal.md`). **Read `scripts/score_answers.py` and `scripts/score_topn.py` first: they read this file and must not break** | `data/samples/quora_siamese/EXPECTED.md` | the score of 25.6 needs it to be repeatable | run both scripts before and after |
+| R22 | Put the impact column into `data/samples/quora_siamese/EXPECTED.md` (the proposal is in 25.6 and in `artifacts/slice7-review/impact_column_proposal.md`). **Read `scripts/answers/score_answers.py` and `scripts/retrieval/score_topn.py` first: they read this file and must not break** | `data/samples/quora_siamese/EXPECTED.md` | the score of 25.6 needs it to be repeatable | run both scripts before and after |
 | R23 | How many parts the writer sees on the search path. `RERANK_TOP_N = 10`, `VECTOR_TOP_N = 15` and `RERANK_WINDOW = 20` per side were set on retrieval measurements, never on report quality; in D74 the writer saw 10 of 82 parts of B. The "how many to send" question of Step 1 is still open | `api/searching.py` | 25.6 | grid arm: 10 against 20 against 40 per side, search path forced |
 | R24 | The group size and the wording of R1 are open: 1, 3 and 9 parts for each call; groups plus wording E; sizes between 2K and 4K. The harness takes the size: `python run_m10c.py MODEL REPS GROUP`. Count the cost in calls and seconds for each size, and read G31, G32 and G33 each time | `harness/run_m10c.py`, `harness/extract.py` | the three story facts of the key | the same score with the key (`harness/gold.py`), read by hand |
 
@@ -13632,7 +13634,7 @@ Real searches with the planner queries of F4w and F3, the real merge, ONE real r
 | R15 | built (9761758) |
 | R18 | built: the planner may list only steps that a node runs (53e1be6) |
 | **R21** | **built (eee0a70)**: on the stuffed path no claims and no scan |
-| R22 | built (2c502d6): the impact column; `scripts/score_answers.py` and `scripts/score_topn.py` were read first |
+| R22 | built (2c502d6): the impact column; `scripts/answers/score_answers.py` and `scripts/retrieval/score_topn.py` were read first |
 | R11 | slice 14 (Jev). M15 measured Jev at 27-29 of 32 as a checker; tonight's LLM checker 28-29 is the baseline it must beat |
 | R12 | slice 12 (ranking claims of a big A) |
 
@@ -13708,7 +13710,7 @@ This is the same open item as "the scan, the rerank window and a cap on the part
 | Joins that no test crosses | **(1)** `whole_side` (decision 12) was tested only with fakes: no test went through `ask()` over a real store with a small A and a big B (the other big-B tests use an A of 60 parts, too big to be read whole). **(2)** `respond` was tested only for the `evidence` argument, never for the `chunks` list it saves, which the page resolves the citations against (decision 14). **(3)** the cap of 48 method claims was tested with the constant itself (`MAX_CLAIMS + 5`), the self-fulfilling shape this project knows. **(4)** nothing pinned the CHECK v4 sentence. Not added: a citation test from a real store through `ask()` with evidence outside the pile |
 | Break one line for each invariant | 18 deliberate breaks of decisions 1, 2, 5, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 22 and CHECK v4, each on a kept copy of the file. **15 were caught** by an existing test. **3 were NOT caught: decision 14 (the missing parts put in FRONT of the list), decision 2 (the cap raised to 4800) and the CHECK v4 sentence.** They match gaps (2), (3) and (4). Gap (1) was found by reading, not by a break |
 | New tests | **5 tests in 4 files**, written in a scratch copy and NOT yet in the repository: `artifacts/slice7-review/tests2/` (a README and the four whole files). Each was proved to fail on its own break (`harness/run_new_breaks.py`) and passes on the clean code; `ruff` is clean; the four files give 90 passed. The user pastes them in |
-| Dead code and scripts | `checks_text` and `code_findings_text` in `api/prompting.py` are used only by tests since `prior_text` replaced them: a candidate to delete (the user types it). `lock_tables` is used by `scripts/setup_checkpoints.py`. The script-name tests pass |
+| Dead code and scripts | `checks_text` and `code_findings_text` in `api/prompting.py` are used only by tests since `prior_text` replaced them: a candidate to delete (the user types it). `lock_tables` is used by `scripts/setup/setup_checkpoints.py`. The script-name tests pass |
 | The whole suite | **2008 passed, 5 skipped, 0 failed** (unit, api and database tests, 10 minutes, `--run-smoke` not used), after the CHECK v4 edit. `ruff check .` and `ruff format --check .` clean |
 | Docs | this block, 26.12, section 27 |
 
@@ -13995,7 +13997,7 @@ The reasons were read by hand: plain, they name what each side is about. A gate 
 
 - A typo in an error text, `labpilot/api/gate.py` line 48: `f"no tier could judge it ({len(exc.attempts)}"` has no closing bracket. Proposed: `f"no tier could judge it ({len(exc.attempts)} tiers tried)"`. It only changes a log line.
 - **The fake clients of `tests/integration/test_ask.py` and `test_the_two_doors_together.py` answer EVERY tool with the plan's arguments**, so the gate reads `{"steps": ..., "queries": ...}`, refuses it and fails open with a warning. Those tests pass, but they run the gate on its fail-open path every time, not on a real verdict. Harmless, and worth fixing when those files are touched next (answer `judge_correspondence` with `PARTIAL`).
-- **Dead or nearly dead code (unchanged since 26.11):** `checks_text` and `code_findings_text` in `api/prompting.py` are used only by tests. `retrieval/gate.py` (the old skip gate for reranking, `should_rerank`, `margin`, `SKIP_MARGIN`) has no caller in `labpilot/` (D57), only `scripts/score_rerank.py` and its tests. Its name now clashes with `agent/gate.py` and `api/gate.py` (the correspondence gate): rename it (for example `retrieval/skip_gate.py`) or delete it in slice 13.
+- **Dead or nearly dead code (unchanged since 26.11):** `checks_text` and `code_findings_text` in `api/prompting.py` are used only by tests. `retrieval/gate.py` (the old skip gate for reranking, `should_rerank`, `margin`, `SKIP_MARGIN`) has no caller in `labpilot/` (D57), only `scripts/retrieval/score_rerank.py` and its tests. Its name now clashes with `agent/gate.py` and `api/gate.py` (the correspondence gate): rename it (for example `retrieval/skip_gate.py`) or delete it in slice 13.
 - No script names a removed function (`tests/unit/test_scripts.py` passes).
 
 **Not done:** the weekly smoke run (it spends quota; `test_gate_answers.py` is the live gate test). The design limits of 28.8 and 28.9 stay (one real matching pair; no "compare anyway" switch).
@@ -14316,7 +14318,7 @@ Count for every arm: the known findings whose code is sent, the findings the ans
 - **One part numbering.** `numbered_parts` (`prompts/_groups.py`) writes `[part 0]`, `[part 1]`, ... for the six prompts that use it (audit, bugs, checklists, claims, review, scan). A test fails if a prompt file numbers its parts by hand again, because the code reads the number back from the answer.
 - **`respond` passes every keyword every time:** `differences`, `bugs`, `evidence` and `reference`, empty or `False` when there is nothing. The old rule "hand them over only when there are some" existed only so that old strict fake functions kept working; those fakes now take `**_`.
 - **The database test fakes answer each tool by its name** (`tests/integration/test_ask.py`, `test_the_two_doors_together.py`). Before, every tool got the planner's plan, so the gate could not read its answer and always took its fail-open path (noted in 28.10). Now the gate gets a real `PARTIAL` verdict and a new test checks that it judged. Any other tool (the finders' claims, audit, hunts and checklists) gets "no tier answered", so those finders take their fail-open path on purpose, as in a real outage.
-- **The old rerank skip gate is deleted** (`retrieval/gate.py` and its test: `should_rerank`, `margin`, `SKIP_MARGIN`). Nothing in the product called it since D57, and its name was confusing next to the correspondence gate. `scripts/score_rerank.py` keeps its own `margin` for the measurement.
+- **The old rerank skip gate is deleted** (`retrieval/gate.py` and its test: `should_rerank`, `margin`, `SKIP_MARGIN`). Nothing in the product called it since D57, and its name was confusing next to the correspondence gate. `scripts/retrieval/score_rerank.py` keeps its own `margin` for the measurement.
 - **Kept on purpose:** the frozen `FULL`, `CORE` and `REPORT` templates, which the weekly smoke run compares against.
 
 #### 29.17 D104 is BUILT: saved findings, the whole last answer, and what the reply says (2026-11-10)
@@ -14435,7 +14437,7 @@ Also related and already planned: routing for each node (slice 11), M8 (slice 13
 
 A call must know its step. The step name is kept in a *context variable* (a variable whose value belongs to the current piece of work). A new thread starts with an empty context, so every thread-pool job in `api/` is wrapped by `in_this_context(...)`. LangGraph's own threads keep the name by themselves (tested on LangGraph 1.2.12). A test reads the `api/` source and fails if a `pool.submit` or `pool.map` job is given without the wrapper.
 
-**Files (scratch copy).** `labpilot/timing.py` (new, in the SHARED layer, so `test_architecture.py` lists `timing`), `agent/graph.py`, `llm/chain.py`, `api/tool_calls.py`, `api/claims.py`, `api/difference_finder.py`, `api/bug_hunt.py`; `scripts/time_one_question.py` (runs a real question, prints the steps, the calls grouped by step and tool, and the chain of steps that decided the wall clock); tests `tests/unit/test_timing.py`, `tests/unit/agent/test_graph_timing.py`, `tests/unit/test_time_one_question.py`.
+**Files (scratch copy).** `labpilot/timing.py` (new, in the SHARED layer, so `test_architecture.py` lists `timing`), `agent/graph.py`, `llm/chain.py`, `api/tool_calls.py`, `api/claims.py`, `api/difference_finder.py`, `api/bug_hunt.py`; `scripts/timing/time_one_question.py` (runs a real question, prints the steps, the calls grouped by step and tool, and the chain of steps that decided the wall clock); tests `tests/unit/test_timing.py`, `tests/unit/agent/test_graph_timing.py`, `tests/unit/test_time_one_question.py`.
 
 **The server log switch.** The app never configured logging, so INFO lines (the new ones and the old ones) are hidden in a running server. The environment variable `LABPILOT_LOG=info` now turns on the INFO lines of the `labpilot` loggers only (`configure_logging` in `api/main.py`, `ApiConfig.LOG_LEVEL`, a line in `.env.example`, `tests/api/test_logging_switch.py`). It is off by default.
 
@@ -14890,7 +14892,7 @@ The new design alone did NOT beat the old one; it fails on a different kind of q
 **2. What was built.**
 - **Lesson 1, the stored summary.** `SUMMARY_VERSION = 1` in `prompts/summary.py`. In `api/saved.py`: `summary_key` (`summary:<id>:v<version>`) and `saved_summary(saved, make)`. `get_or_make` got a keyword `quiet`: a quiet step is kept out of `reused` and `made`, so the page line "from the earlier analysis" does not name a summary or a verdict. The user disliked a flag argument that only hides a word in the UI; the open alternative is to split `get_or_make` into two methods (`make_once`, and `get_or_make` that adds the name to the list). A summary that cannot be made raises, so nothing is saved and the next message tries again.
 - **The chain of the summary and the gate.** `SUMMARY_MODELS` and `for_summary` in `api/chains.py`, built with a new `only(chain, models)` that keeps ONLY the named models (it leaves KNOWN_DEAD tiers out; `lead_with` keeps the rest of the chain). The order: Gemini 3.1 Flash-Lite on 3 accounts, Qwen3.8 27B on Groq (its minute budget is 8,000 tokens, so a 12,000-token summary is refused locally for free and only the gate can use it), Qwen3.8 Flash on LiteRouter and its "stable" twin, Qwen 3.7 Flash on Bazaarlink, Gemma 4 26B on 3 accounts last (14,400 a day for each, so the chain cannot run out). Cloudflare's Qwen is left out (about 41 such calls a day). `summary_chain(client)` in `api/summaries.py` adds the time limits `SUMMARY_READ_SECONDS = 60` and `SUMMARY_TOTAL_SECONDS = 120` and no retry.
-- **The `tiers` namespace (the user's rule).** `labpilot/llm/__init__.py` has `from labpilot.llm import registry as tiers` and `"tiers"` in `__all__`; the 18 individual tier constants were REMOVED from the front door. Code writes `tiers.GEMINI_3_5_FLASH_LITE`. A pro does this for a catalogue of 100 or more entries: a small curated `__all__` plus a namespace (`torch.nn`, `sklearn.metrics`). Nine of the 18 names had no user outside `llm/`. A test file `tests/unit/llm/test_tiers_namespace.py` pins it. Files changed by the rename: `api/chains.py`, `api/reranking.py`, `rerank/llm.py` (a docstring), `scripts/score_report_tier.py`, `tests/api/test_ask_finders.py`, `tests/api/test_chains.py`. Scripts that import from `labpilot.llm.registry` directly were left alone.
+- **The `tiers` namespace (the user's rule).** `labpilot/llm/__init__.py` has `from labpilot.llm import registry as tiers` and `"tiers"` in `__all__`; the 18 individual tier constants were REMOVED from the front door. Code writes `tiers.GEMINI_3_5_FLASH_LITE`. A pro does this for a catalogue of 100 or more entries: a small curated `__all__` plus a namespace (`torch.nn`, `sklearn.metrics`). Nine of the 18 names had no user outside `llm/`. A test file `tests/unit/llm/test_tiers_namespace.py` pins it. Files changed by the rename: `api/chains.py`, `api/reranking.py`, `rerank/llm.py` (a docstring), `scripts/answers/score_report_tier.py`, `tests/api/test_ask_finders.py`, `tests/api/test_chains.py`. Scripts that import from `labpilot.llm.registry` directly were left alone.
 - **Lesson 2, the upload.** `POST /artifacts` takes the model client (`LLMClientDep`) and, after the file is stored, calls `_keep_summary`, which opens its OWN autocommit connection (one failed statement must not poison the committed upload) and calls `store_summary(conn, client, artifact_id)` in `api/summaries.py`. `store_summary` returns True when the summary is saved or already there, and False when every model failed or the database could not be read (a warning is written, nothing is saved, and the first question makes it). It catches only `ApiError` and `psycopg.Error`: a bug of ours is not hidden. The route ignores the return value; the upload never fails because of a summary. The upload waits for the summary (the answer of the route and the page are unchanged).
 - **Lesson 3, the verdict.** `gate_key(a, b, summary_a, summary_b)` = `gate:<A>:<B>:g<GATE_VERSION>:<hash>`, where the hash is made from the length of the first summary, the first summary and the second (a verdict never goes with summaries it did not read, and ("ab","c") differs from ("a","bc")). `saved_gate(saved, gate)` wraps the unchanged two-argument `make_gate`. The injected gate function of the graph now takes FOUR arguments, `gate(a_id, b_id, summary_a, summary_b)`, and `agent/gate.py` passes `state["a"]` and `state["b"]` first. `asking.py` builds `gate=saved_gate(saved, make_gate(summary_chain(client)))`: the gate uses the same short chain as the summaries and no longer the claims chain. The verdict is made at the FIRST message that sends both ids, even when that message is a chat question (the gate runs beside the planner and does not know the question type yet); every later message of the pair reads it. A re-stored file drops its rows (cascade).
 - **Existing tests changed** for the four-argument gate: `tests/unit/agent/test_gate.py`, `test_graph_gate.py`, `test_graph_has_no_dead_node.py`, `test_plan_focus.py`, and `tests/api/test_ask_wiring.py` (the old test of the claims chain became `test_the_gate_asks_the_short_summary_chain`). New tests: `tests/api/test_saved.py` (summary and verdict), `test_chains.py`, `test_ask_summaries.py`, `test_store_summary.py` (new file), `test_artifacts.py`.
@@ -15265,7 +15267,7 @@ The new design alone did NOT beat the old one; it fails on a different kind of q
 
 **What lesson 1 is.** D112 to D113 of 31.20: no waiting for a busy tier. Files: `labpilot/llm/_rooms.py` (new: `book`, `with_margin`, `_forget`; one room for each quota pool, an empty room always admits, a failed call stays booked), `_pacing.py` (`enter`, `leave`, `forget`: calls open at once, the gap between starts, the quiet after a call, a rest longer than `TURN_WAIT_MAX` is a skip), `chain.py` (one walk, `worth_a_second_try`, `wait_before_retry`, `_call_with_stop`, `LLMClient(call_stop=, retry_delays=)`), `defaults.py` (`RETRY_DELAYS` 1 s and 3 s, `DEFAULT_CALL_STOP` 300 s, `ROOM_*`, `TURN_WAIT_MAX`), `errors.py` (`LLMError.retryable`), `base.py` (a local refusal is `retryable=False`; the pacing moved out of `complete`), `_calls.py` (an unreadable answer is not retried), `registry.py` (the labels: `requests_per_minute`, `max_concurrent`, `seconds_after_call`; Requesty one at a time, Mistral small 2 a minute and Nemo in the pool of Ministral 8B, Routeway 5, OrcaRouter 10, Token Harbor 60, LiteRouter one at a time and 1 s quiet, Gemma 30 a minute), `api/chains.py` (`bounded` uses `retry_delays`) and two scripts that named the old field. `max_retries_per_tier`, `base_delay`, `max_delay`, `delay_for` and `SERVER_ERROR_DELAYS` are gone.
 
-**Two mistakes found in the typed code, both fixed:** `retry_dalyas=()` in `scripts/one_model_run.py` (a typo that would stop the script) and the type `deque[float, int]` in `_rooms.py` (a deque takes one type; it is now `deque[tuple[float, int]]`; it did not fail at run time because of `from __future__ import annotations`). The rest of the code is the same as the checked scratch copy.
+**Two mistakes found in the typed code, both fixed:** `retry_dalyas=()` in `scripts/timing/one_model_run.py` (a typo that would stop the script) and the type `deque[float, int]` in `_rooms.py` (a deque takes one type; it is now `deque[tuple[float, int]]`; it did not fail at run time because of `from __future__ import annotations`). The rest of the code is the same as the checked scratch copy.
 
 **Tests.** New or replaced: `tests/unit/llm/conftest.py` (the `no_sleep` fixture), `test_rooms.py`, `test_chain_rooms.py`, `test_pacing.py`, `test_chain.py` (rewritten for the new rules), and the autouse fixture `empty_rooms` in `tests/conftest.py`. One-line follow-ups for the removed names: `tests/api/test_chains.py`, `test_ask_finders.py`, `test_store_summary.py` (`retry_delays` instead of `max_retries_per_tier`), `test_openai_compatible.py` and `test_tool_calls.py` (no `base_delay`; the first uses `no_sleep`). **Run: `tests/unit/llm` plus those api files and `tests/unit/test_scripts.py`: 329 passed.** `ruff check` and `ruff format --check` clean.
 
@@ -15296,6 +15298,70 @@ The new design alone did NOT beat the old one; it fails on a different kind of q
 
 **Open:** the exact path of the free API endpoint (the pages disagree), whether the free plan returns every model we use, what to do when a provider drops a whole family, and who confirms a proposed place if nobody is looking at the pull request.
 
+
+### 33. SLICE 11, LESSON 2: ONE COMPUTED ROUTE FOR EVERY TASK, AND THE TOOLS THAT KEEP IT UP TO DATE — 2026-11-20 and 21
+
+*Lesson 2 was built and measured in the scratch copy `l2` and handed to the user to type (the routes, the wiring, two data tables). The repository does NOT have lesson 2 yet. The measuring tools were moved into the repository at the user's request (`scripts/routing/`), and every older script was moved into a folder for its job. Nothing is committed.*
+
+#### 33.1 The design (D123 to D127)
+
+| # | decision |
+|---|---|
+| **D123** | **A route is COMPUTED, never written by hand.** `labpilot/llm/routes.py` holds `TASKS` (20 tasks: kind, minimum strength, biggest prompt, the tokens it asks for, calls a question makes, the stop). `labpilot/llm/ratings.py` holds one row for each live tier (family, provider, strength 1-5 from AA v5.0.1, seconds, calls a day, penalty). `labpilot/llm/accuracy.py` holds the bench result of each model family on each task (accuracy, seconds, cases). Both data files are written by scripts (33.4). A new tier needs a row; the routes follow |
+| **D124** | **Two steps. FILTER** (`why_not`): too weak for the task; output cap below the answer; prompt plus answer over the window; a per-minute input cap too small (Gemma); scarce (20 a day) and the task reads no file; a many-call task and a tier that takes one call at a time or under 10 a minute; too slow for the stop. **ORDER** by one score: `accuracy - w*log2(1 + seconds/T) + 0.08*quota - 0.03*penalty`. `w` and `T` depend on the kind of task (small 0.05 and 5 s, many 0.04 and 5 s, serial 0.04 and 20 s, hidden 0.02 and 20 s, answer 0.03 and 20 s, the two-file report 0.02 and 30 s), so a little more accuracy never buys a much slower model and a lot more can (the user's trade-off rule). The weights are first guesses. **Balanced 2026-11-21 (after a first try that let LiteRouter climb):** the time of a tier on a task is the bench time of its model FAMILY (`accuracy.py`, so a whole task keeps its real length), scaled by how fast its provider is against the family's other tiers in the speed test (`ratings.py`), held inside 0.5 to 2 times (`PROVIDER_FACTOR`). A tier that takes one call at a time for its whole account (LiteRouter, Requesty) loses `BUSY_PENALTY` = 0.10 in a step that runs beside other steps (claims, scan, audit, the bug hunt, the judges), because they share its one slot; the steps that run alone (rewrite, plan, gate, the three answers) carry the flag `alone` and keep it. Result: a one-at-a-time tier is first in 8 of 20 routes and in 4 of the 14 parallel steps (only where it is clearly the most accurate: method, skeptic, concept, checklist audit), against 15 and 11 before; the mean accuracy of the first tier of the parallel steps fell by about 0.02. Failed calls are counted once (routes never read `valid`; it is inside `penalty`). No pool rule was added: the provider and model diversity already covers it. **Three fixes (2026-11-22, after a review):** `plan` is not `alone` any more (when the summaries were not stored at upload they run in its step); in the family median each PROVIDER has one vote (its own tiers are joined first), so three ids of one model on LiteRouter cannot move the others' scale; and the test "at most a third of the parallel steps" was replaced by fixed examples (a close tier that is often busy drops below a free one; a much stronger one still leads). Only `plan` changed in its top 3 (Token Harbor and Routeway in place of two LiteRouter tiers behind Flash-Lite) |
+| **D125** | **A result on few cases is pulled toward a guess:** `(n*a + 3*g) / (n + 3)` with `g = 0.15 + 0.12*strength`; a model with no result gets `g`. Four groups, in order: strong tiers; strong tiers whose calls a day feed fewer than 20 questions of the task (backups: Bazaarlink, Cloudflare, Token Harbor on many-call tasks); weak tiers (only a simple task keeps them, at the end); not-trusted tiers. Inside a group a provider or model already placed loses 0.02 or 0.03, and the three keys of one Google model stay together |
+| **D126** | **The answer asks for as many tokens as its kind needs:** chat 8,000, one file 16,000, two files 32,000 (`ANSWER_MAX_TOKENS` in `prompts/builder.py`), so tiers with an 8,192 or 16,384 output cap can write the shorter answers |
+| **D127** | Gemini 4 Hydrogen joins on 3 keys (no thinking level sent, strength 5, scarce). Five LiteRouter ids left the free list (V4 Pro stable, V4 Flash 0731 stable, 0731, 0731 cheap, V3.1) and moved to `KNOWN_DEAD`; Hy3 came back. Cohere's chat models are NOT added now (the user's call); they are a candidate for a later slice |
+
+#### 33.2 The bench (lesson 3): what was measured
+
+The product prompts and readers, each model family alone (its own tiers, no fallback), the product retry rule, 19 tasks (merge_strong not benched), the cases and keys of slices 7 to 10 plus new keys written before the runs (`scripts/routing/bench_keys.py`). Round 1 ran about half the cases; round 2 ran the rest for the finalists, with twice the product stop. 1,648 rows (`artifacts/routing-bench/logs/bench.jsonl`). A case refused for quota or lost to the network counts neither way; a case where some calls gave up is left out of accuracy.
+
+- **Many models are equally right on the simple tasks** (gate, fresh, rewrite, chat): speed and quota decide there.
+- **DeepSeek V4.1 Flash is the strongest model across the board; Ling 3.1 Flash (Requesty) is a close, fast second.**
+- **Concept and checklist are hard for every model** (best about 0.6 to 0.7).
+- **LiteRouter cannot serve a step that sends several calls at once** (one call at a time): its calls waited in line until the stop. So LiteRouter only leads tasks of one call, and many-call tasks are led by Flash-Lite and Gemma.
+- MiMo V2.6 Flash hangs on the checklist tasks. North Mini Code answered 404 on Kilo (it left Kilo). Cloudflare's daily neurons did not reset at 00:00 UTC on this account (probed 6 times until 03:40 UTC). Bazaarlink blocks the account for minutes after a burst of failed calls ("slow down", Retry-After 230).
+- **Cut on purpose:** LiteRouter round 2 ran 17 cases, not 343 (only where its models are real candidates). Hy3, MiniMax M2.5 and Qwen3.8 Flash were measured and are not tiers (weak, or beaten everywhere).
+
+**Limits:** three pairs, a few cases a cell, regex keys read by hand only for the best and the worst answers, one run per cell, speeds that depend on the hour (Token Harbor took 75 s a call in one period and 2 s later). Slice 13 repeats it on many pairs (27.1).
+
+#### 33.3 The routes (first models; every route has 15 to 57 models)
+
+| task | first models |
+|---|---|
+| gate | Flash-Lite 3.5, DeepSeek V4 Flash (LiteRouter), Nemotron 3.5 Lightning (Kilo), Flash-Lite 3.1 |
+| plan | Flash-Lite 3.5, DeepSeek V4.1 Flash 1017 (LiteRouter), MiniMax M3.1 Flash (LiteRouter) |
+| claims, scan | Flash-Lite 3.5, Nemotron 3 Ultra (Kilo), then backups |
+| trace | Gemma 4 26B, Flash-Lite 3.5, Flash-Lite 3.1 |
+| audit | DeepSeek V4.1 Flash 1017 (LiteRouter), Hy4 (OrcaRouter), DeepSeek V4.1 Flash (Token Harbor) |
+| method, concept, skeptic, checklist audit | DeepSeek V4.1 Flash (several routes), Ling 3.1 Flash, MiniMax M3.1 Flash, GLM-5.3 Flash |
+| one-file answer | Ling 3.1 Flash, Gemini 4 Hydrogen, DeepSeek V4.1 Flash 1017 |
+| two-file report | DeepSeek V4.1 Flash 1017, Ling 3.1 Flash, DeepSeek V4.1 Flash (LiteRouter), Gemini 4 Hydrogen |
+
+Checks in the scratch copy: 2,350 unit and api tests, `ruff` clean, 14 deliberate breaks each caught by its own test (two tests were added for the two that survived first: not-trusted tiers dropped, and the answer size not following the number of files). Open: several LiteRouter tiers stand in a row at the top of the hard routes (a busy one is skipped at once, so it costs no time, but more mixing of providers would be safer); the weights of D124 are not swept.
+
+#### 33.4 `scripts/` reorganised, and the routing tools (2026-11-21, the user's request)
+
+All 39 scripts moved from one flat folder into folders by job; imports, the tests that name them, the comments in `labpilot/` and the paths in both docs were changed with them (`scripts/README.md`):
+
+| folder | scripts |
+|---|---|
+| `setup/` | setup_checkpoints, load_corpus, warm_embeddings |
+| `routing/` | NEW: the tools below |
+| `models/` | measure_latency, probe_routeway, probe_tools |
+| `retrieval/` | aggregate, bench_index, bench_merged, combine_topn, corpora, draft_queries, jev_reranker, local_reranker, query_difficulty, score_content_kinds, score_hybrid, score_real_ingest, score_rerank, score_retrieval, score_topn, sweep_chunking, sweep_fusion, tier_reach, validate_fixture, zoo |
+| `answers/` | score_answers, regrade_answers, score_report_tier, measure_claim_sizes, dilution |
+| `timing/` | bench_end_to_end, bench_ingest, measure_clocks, verify_clocks, time_one_question, one_model_run, verify_one_model |
+| `repo/` | merge_per_file |
+
+Run them as modules from the root: `python -m scripts.setup.setup_checkpoints`. `tests/unit/test_scripts.py` now walks the subfolders. Two older scripts fail on import, as they did before the move: `answers/score_answers.py` names a rerank tier deleted in slice 8, and `timing/one_model_run.py` needs its arguments.
+
+**`scripts/routing/`** (its README has the weekly routine): `free_lists.py` (each gateway's free list against the chain: GONE, BACK, NEW; no quota); `speed_check.py` (availability, speed and trust of every live tier, `--quick` = one call each, the 20-a-day models and the second and third Google keys always quick); `write_ratings.py` (proposes `ratings.py` from the speed logs, the newest log of a tier wins); `collect_data.py` (gathers the labelled cases into `artifacts/routing-bench/data/`); `bench.py` (the accuracy bench of 33.2); `analyze_bench.py` (table, round 2 plan, proposes `accuracy.py`); `compare_routes.py` (how the first 3 models of each task would change). Every script that calls a model checks the exit and probes Google first. Nothing writes into `labpilot/` without `--apply`; nothing moves a tier to `KNOWN_DEAD` by itself. Checked: run with lesson 2 in place, the scripts reproduce the lesson 2 tables number for number (0 of 20 routes change).
+
+**The routine (the user's plan, from advice the user got):** every week `free_lists`, `speed_check --quick`, `write_ratings`, `compare_routes`, review the first 3 models of each task, then `--apply`; the full speed check every two weeks; the accuracy bench when a model, a prompt or a task changes. Later (end of Step 3, section 32) these steps become an Airflow job that opens a pull request, never a commit on `main`. **A guard to add, ask first:** skip Token Harbor tiers when its header `x-th-free-used-pct` is over 90%.
+
+**The first free-list run (2026-11-21):** GONE: North Mini Code on Kilo and OpenRouter, MiniMax M2.7 on LiteRouter (and the five ids of D127). BACK on LiteRouter: Kimi K2.6 cheap, Mistral Large 3, Qwen3 Coder. These were not acted on.
 
 ---
 
