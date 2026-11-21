@@ -108,7 +108,7 @@ def test_a_notebook_checkpoint_directory_is_never_walked():
 def test_both_top_n_constants_are_in_PER_SIDE_units():
     """The measurement counts the WHOLE PROMPT. These count ONE SIDE.
 
-    `scripts/score_answers.py` chooses N chunks from one corpus and puts them in
+    `scripts/answers/score_answers.py` chooses N chunks from one corpus and puts them in
     one prompt. The product sends TWO sides, so the prompt holds 2x the
     constant, and reading a measured N straight into a constant DOUBLES it.
 

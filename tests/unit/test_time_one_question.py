@@ -1,8 +1,8 @@
-"""The reading of the two clocks in scripts/time_one_question.py."""
+"""The reading of the two clocks in scripts/timing/time_one_question.py."""
 
 import pytest
 
-from scripts.time_one_question import (
+from scripts.timing.time_one_question import (
     call_table,
     critical_path,
     render,

@@ -11,7 +11,7 @@ from labpilot.llm.errors import LLMError
 
 def _upper_types(schema: object) -> object:
     # Gemini's schema dialect is not JSON Schema: "string" is refused and
-    # "STRING" is accepted (measured by scripts/probe_tools.py). Only the VALUE
+    # "STRING" is accepted (measured by scripts/models/probe_tools.py). Only the VALUE
     # of a "type" key changes, so a property that is itself called "type" stays.
     if isinstance(schema, dict):
         return {
