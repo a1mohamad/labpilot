@@ -1288,7 +1288,7 @@ ORCAROUTER_HY4_PREVIEW = _orcarouter(
 
 
 # ROUTEWAY — a fourth free gateway, probed LIVE 2026-09-29 with
-# scripts/probe_routeway.py before any line here was written.
+# scripts/models/probe_routeway.py before any line here was written.
 #
 # THE LIMITS ARE THE DECISION. Every number is from the API, not a docs page:
 #
