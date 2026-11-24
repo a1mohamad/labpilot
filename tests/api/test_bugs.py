@@ -88,14 +88,11 @@ def says(*verdicts):
     return answer
 
 
-def finder(monkeypatch, client, parts, skeptic=None, trace=None):
+def finder(monkeypatch, client, parts, **own):
+    """The bug finder with `client` for every step, unless a step is given its own."""
     monkeypatch.setattr(file_parts, "read_chunks", lambda conn, artifact_id: parts)
-    return make_bug_finder(
-        "conn",
-        client=client,
-        skeptic_client=skeptic or client,
-        trace_client=trace or client,
-    )
+    steps = ("trace", "method", "concept", "checklist", "checklist_audit", "skeptic")
+    return make_bug_finder("conn", **{s: own.get(s, client) for s in steps})
 
 
 PARTS = (part(0, "bias2 = 1 - beta1**step"),)
@@ -285,6 +282,49 @@ def test_the_trace_question_goes_to_the_trace_chain_and_no_other(monkeypatch):
     assert any(METHOD.header in p for _, p in client.prompts)
 
 
+def test_every_step_of_the_hunt_walks_its_own_client(monkeypatch):
+    # One client for each step: what each one is asked shows which step used it.
+    steps = ("trace", "method", "concept", "checklist", "checklist_audit", "skeptic")
+    own = {s: FakeClient(lambda p: {"defects": []}, votes=says("real")) for s in steps}
+    own["method"] = FakeClient(
+        lambda p: {
+            "defects": [
+                {
+                    "kind": "logic",
+                    "part": 0,
+                    "quote": "beta1**step",
+                    "text": "uses beta1",
+                }
+            ]
+        },
+    )
+    shared = FakeClient(lambda p: {"defects": []})
+
+    finder(monkeypatch, shared, PARTS, **own)("B-1", "")
+
+    def headers(client):
+        return {
+            header
+            for header in (
+                TRACE.header,
+                METHOD.header,
+                CONCEPT.header,
+                STANDARDS.header,
+                PITFALLS.header,
+                AUDIT.header,
+            )
+            if any(header in p for _, p in client.prompts)
+        }
+
+    assert shared.prompts == []
+    assert headers(own["trace"]) == {TRACE.header}
+    assert headers(own["method"]) == {METHOD.header}
+    assert headers(own["concept"]) == {CONCEPT.header}
+    assert headers(own["checklist"]) == {STANDARDS.header, PITFALLS.header}
+    assert headers(own["checklist_audit"]) == {AUDIT.header}
+    assert {tool for tool, _ in own["skeptic"].prompts} == {SKEPTIC_TOOL_NAME}
+
+
 def test_a_file_that_does_not_fit_is_skipped_and_never_read_in_part(
     monkeypatch, caplog
 ):
@@ -338,9 +378,8 @@ def test_a_dropped_connection_stops_the_hunt_and_not_the_answer(monkeypatch):
 
     monkeypatch.setattr(file_parts, "read_chunks", dead)
     client = FakeClient(one_defect)
-    find = make_bug_finder(
-        "conn", client=client, skeptic_client=client, trace_client=client
-    )
+    steps = ("trace", "method", "concept", "checklist", "checklist_audit", "skeptic")
+    find = make_bug_finder("conn", **dict.fromkeys(steps, client))
 
     with pytest.raises(BugsError, match="could not read B-1"):
         find("B-1", "")
@@ -425,4 +464,18 @@ def test_a_syntax_claim_the_parser_cannot_disprove_is_kept(monkeypatch, source, 
 
     (got,) = finder(monkeypatch, client, (part(0, text, source),))("B-1", "")
 
+    assert got.verdict == "real"
+
+
+def test_a_fast_hunt_asks_the_three_questions_and_no_checklist(monkeypatch):
+    client = FakeClient(one_defect, says("real"))
+    monkeypatch.setattr(file_parts, "read_chunks", lambda conn, artifact_id: PARTS)
+    steps = ("trace", "method", "concept", "checklist", "checklist_audit", "skeptic")
+    find = make_bug_finder("conn", **dict.fromkeys(steps, client), fast=True)
+
+    (got,) = find("B-1", "")
+
+    asked = {name for name, _ in client.prompts}
+    assert asked == {BUGS_TOOL_NAME, SKEPTIC_TOOL_NAME}
+    assert sum(name == BUGS_TOOL_NAME for name, _ in client.prompts) == 3
     assert got.verdict == "real"
