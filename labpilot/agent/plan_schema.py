@@ -1,7 +1,7 @@
 from labpilot.agent.errors import PlanError
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.plan_check import allowed_steps
-from labpilot.ingest import Side
+from labpilot.ingest import SIDES, Side
 
 PLAN_TOOL_NAME = "make_plan"
 
@@ -26,7 +26,7 @@ def plan_schema(sides: tuple[Side, ...]) -> dict[str, object]:
                 },
             },
             "ask": {"type": "string"},
-            "about": {"type": "string", "enum": ["A", "B", "both"]},
+            "about": {"type": "string", "enum": [*SIDES, "both"]},
             "files": {"type": "boolean"},
             "fresh": {"type": "boolean"},
         },
