@@ -1,12 +1,11 @@
-import logging
 from collections.abc import Callable
+from functools import partial
 from typing import TypedDict
 
+from labpilot.agent._safety_net import or_nothing
 from labpilot.agent.difference import Difference
 from labpilot.agent.errors import DifferencesError
 from labpilot.agent.state import State
-
-logger = logging.getLogger(__name__)
 
 # (question, id of B) -> the findings of ONE new check of B (D104 path b, D107).
 FreshCheck = Callable[[str, str], tuple[Difference, ...]]
@@ -30,13 +29,7 @@ def make_fresh_node(
     check: FreshCheck,
 ) -> Callable[[FreshTask], dict[str, list[Difference]]]:
     def fresh_node(task: FreshTask) -> dict[str, list[Difference]]:
-        # A safety net, like the other finders: when it fails, the answer goes on
-        # from the parts the search found.
-        try:
-            found = check(task["question"], task["b"])
-        except DifferencesError as exc:
-            logger.warning("no new check, the answer goes on: %s", exc)
-            found = ()
-        return {"differences": list(found)}
+        run = partial(check, task["question"], task["b"])
+        return {"differences": or_nothing(run, DifferencesError, "new check")}
 
     return fresh_node
