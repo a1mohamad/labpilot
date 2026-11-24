@@ -13,6 +13,7 @@ class LLMError(Exception):
         reset_at: float | None = None,
         rate_limit: float | None = None,
         retryable: bool | None = None,
+        slow: bool = False,
     ) -> None:
         super().__init__(message)
         self.status = status
@@ -22,6 +23,8 @@ class LLMError(Exception):
         # None = decide from the status. False = a second try cannot change it
         # (a call refused locally, a hang that was cut off).
         self.retryable = retryable
+        # The tier was silent, or stopped in the middle: it rests (_health.py).
+        self.slow = slow
 
 
 class AllFreeTiersExhausted(Exception):
