@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from functools import partial
+from typing import Any
 
 from labpilot.agent import Bug, Difference
 from labpilot.api.errors import ArtifactsTooLargeToCompare
@@ -22,6 +24,7 @@ from labpilot.tokens import estimate_tokens
 # and the outline, came to more than a 12,000-token budget, and the answer was
 # refused with ArtifactsTooLargeToCompare. The lines that tell the most are kept.
 PRIOR_SHARE = 0.25
+PRIOR_LIMIT = int(PROMPT_BUDGET * PRIOR_SHARE)
 # What the block around the finding lines adds to the prompt (its title and
 # the blank lines), kept free when the lines are fitted into the room left.
 PRIOR_LABEL_TOKENS = 200
@@ -59,77 +62,78 @@ def build_answer_prompt(
     instructions = instructions_for(files, reference=reference)
     # The findings ride in the block that already carries what an earlier pass
     # found, so `build_prompt` and `reserve` both count them.
-    prior = prior_text(differences, bugs, int(PROMPT_BUDGET * PRIOR_SHARE))
-
+    common = {
+        "question": question,
+        "instructions": instructions,
+        "summaries": summaries,
+        "last_answer": last_answer,
+    }
+    findings = partial(prior_text, differences, bugs)
     if totals is None:
-        # Everything was read, so send everything whenever the whole prompt fits.
-        # Going through `reserve` first would charge the outline as if nothing
-        # were sent - the long list with a row for every part - and then drop
-        # real parts that `fits_whole` had just promised would fit. With every
-        # part included the outline is only a short list of files.
-        #
-        # THE PARTS COME FIRST: the lines of what was found get only the room
-        # the parts leave. On 2026-10-24 the findings of a stuffed run (F5) cut
-        # B from 82 parts to 65; the code is the evidence, a finding line is a
-        # hint about it.
-        bare = build_prompt(
-            chunks,
-            chunks,
-            question=question,
-            instructions=instructions,
-            summaries=summaries,
-            last_answer=last_answer,
-        )
-        room = PROMPT_BUDGET - estimate_tokens(bare) - PRIOR_LABEL_TOKENS
-        limit = min(int(PROMPT_BUDGET * PRIOR_SHARE), room)
-        fitted = prior_text(differences, bugs, limit) if limit > 0 else ""
-        prompt = build_prompt(
-            chunks,
-            chunks,
-            question=question,
-            instructions=instructions,
-            prior=fitted,
-            summaries=summaries,
-            last_answer=last_answer,
-        )
+        prompt = _whole_prompt(chunks, findings, common)
         if estimate_tokens(prompt) <= PROMPT_BUDGET:
             return prompt, chunks
 
-    # On the search path the parts behind the findings go FIRST on their side,
-    # so the cut for room drops a search hit before the code a finding is
-    # about (R20). The selector keeps the order it is given. The IDS stay on
-    # `chunks` with any missing deciding part at the end (`respond` saves that
-    # same list), or the page would resolve every citation against a list
-    # numbered differently.
-    order = chunks
-    if evidence:
-        order = _first(evidence, chunks)
-        held = {(chunk.artifact_id, chunk.chunk_index) for chunk in chunks}
-        chunks = (
-            *chunks,
-            *(c for c in order if (c.artifact_id, c.chunk_index) not in held),
-        )
-
-    overhead = reserve(
-        chunks,
-        question=question,
-        instructions=instructions,
-        prior=prior,
-        summaries=summaries,
-        last_answer=last_answer,
+    order, chunks = _evidence_first(evidence, chunks)
+    return _fitted_prompt(
+        order, chunks, findings(PRIOR_LIMIT), common, totals=totals, files=files
     )
+
+
+def _whole_prompt(
+    chunks: tuple[Chunk, ...], findings: Callable[[int], str], common: dict[str, Any]
+) -> str:
+    """The prompt with every part, when everything was read.
+
+    Going through `reserve` first would charge the outline as if nothing were
+    sent - the long list with a row for every part - and then drop real parts
+    that `fits_whole` had just promised would fit. With every part included the
+    outline is only a short list of files.
+
+    THE PARTS COME FIRST: the lines of what was found get only the room the parts
+    leave. On 2026-10-24 the findings of a stuffed run (F5) cut B from 82 parts
+    to 65; the code is the evidence, a finding line is a hint about it.
+    """
+    bare = build_prompt(chunks, chunks, **common)
+    room = PROMPT_BUDGET - estimate_tokens(bare) - PRIOR_LABEL_TOKENS
+    limit = min(PRIOR_LIMIT, room)
+    prior = findings(limit) if limit > 0 else ""
+    return build_prompt(chunks, chunks, prior=prior, **common)
+
+
+def _evidence_first(
+    evidence: Sequence[Chunk], chunks: tuple[Chunk, ...]
+) -> tuple[tuple[Chunk, ...], tuple[Chunk, ...]]:
+    """(the order for the cut, the list the ids are counted on).
+
+    The parts behind the findings go FIRST on their side, so the cut for room
+    drops a search hit before the code a finding is about (R20). The selector
+    keeps the order it is given. The IDS stay on `chunks` with any missing
+    deciding part at the end (`respond` saves that same list), or the page would
+    resolve every citation against a list numbered differently.
+    """
+    if not evidence:
+        return chunks, chunks
+    order = _first(evidence, chunks)
+    held = {(chunk.artifact_id, chunk.chunk_index) for chunk in chunks}
+    missing = (c for c in order if (c.artifact_id, c.chunk_index) not in held)
+    return order, (*chunks, *missing)
+
+
+def _fitted_prompt(
+    order: tuple[Chunk, ...],
+    chunks: tuple[Chunk, ...],
+    prior: str,
+    common: dict[str, Any],
+    *,
+    totals: dict[str, int] | None,
+    files: int,
+) -> tuple[str, tuple[Chunk, ...]]:
+    """The prompt with the parts that fit the budget, in `order`."""
+    overhead = reserve(chunks, prior=prior, **common)
     room = PROMPT_BUDGET - overhead
     selected = select(order, budget=room) if room > 0 else ()
-    prompt = build_prompt(
-        chunks,
-        selected,
-        question=question,
-        instructions=instructions,
-        prior=prior,
-        totals=totals,
-        summaries=summaries,
-        last_answer=last_answer,
-    )
+    prompt = build_prompt(chunks, selected, prior=prior, totals=totals, **common)
 
     if not selected or estimate_tokens(prompt) > PROMPT_BUDGET:
         verb = "compare" if files == 2 else "read"
