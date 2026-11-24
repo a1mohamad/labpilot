@@ -2,6 +2,7 @@ import logging
 from collections.abc import Sequence
 
 from labpilot.agent._quote import has_quote
+from labpilot.agent._schema import index, is_located, list_schema
 from labpilot.agent.claim import CLAIM_KINDS, METHOD, RESULT, Claim
 from labpilot.agent.errors import ClaimsError
 
@@ -13,33 +14,18 @@ CLAIMS_TOOL_NAME = "list_claims"
 # More than this from ONE group is a runaway, not a careful list.
 MAX_CLAIMS_PER_ANSWER = 80
 
-# How many method claims are checked, after the groups are joined. Every one is
-# a search and a check, and an "absent" one up to two more of each, so this is a
-# cost limit: about 70 short calls for a question. Measured: two groups of the
-# sample paper gave about 45 method claims, so nothing was cut there.
-MAX_CLAIMS = 48
-
 
 def claims_schema() -> dict[str, object]:
-    return {
-        "type": "object",
-        "properties": {
-            "claims": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "text": {"type": "string"},
-                        "part": {"type": "integer"},
-                        "quote": {"type": "string"},
-                        "kind": {"type": "string", "enum": list(CLAIM_KINDS)},
-                    },
-                    "required": ["text", "part", "quote"],
-                },
-            },
+    return list_schema(
+        "claims",
+        {
+            "text": {"type": "string"},
+            "part": {"type": "integer"},
+            "quote": {"type": "string"},
+            "kind": {"type": "string", "enum": list(CLAIM_KINDS)},
         },
-        "required": ["claims"],
-    }
+        ["text", "part", "quote"],
+    )
 
 
 def read_claims(
@@ -56,22 +42,16 @@ def read_claims(
 
     claims: list[Claim] = []
     for item in items:
-        if not (
-            isinstance(item, dict)
-            and isinstance(item.get("text"), str)
-            and isinstance(item.get("part"), int)
-            and not isinstance(item.get("part"), bool)
-            and isinstance(item.get("quote"), str)
-        ):
+        if not is_located(item):
             raise ClaimsError(
-                "every claim needs a 'text', a 'part'(a number) and a 'quote'"
+                "every claim needs a 'text', a 'part' (a number) and a 'quote'"
             )
 
         text = item["text"].strip()
         if not text:
             raise ClaimsError("a claim is blank")
         part = item["part"]
-        if not 0 <= part < len(sources):
+        if index(part, len(sources)) is None:
             raise ClaimsError(
                 f"a claim names part {part}, but the parts are 0 to {len(sources) - 1}"
             )
@@ -97,16 +77,15 @@ def read_claims(
 
 
 def join_claims(answers: Sequence[Sequence[Claim]]) -> tuple[Claim, ...]:
-    """The claims of every group, taken in turn, without repeats, capped.
+    """The claims of every group, taken in turn, without repeats.
 
     Round-robin: the first claim of each group, then the second of each, and so
-    on, so no group is starved and none fills the list alone. A claim whose
-    text repeats an earlier one (ignoring case and spaces) is dropped. Only
-    method claims count toward MAX_CLAIMS, because only they are checked.
+    on. A claim whose text repeats an earlier one (ignoring case and spaces) is
+    dropped. Nothing else is: the list is kept whole (D85, D140), and the limit
+    that fits a big A belongs to the step that checks the claims.
     """
     joined: list[Claim] = []
     seen: set[str] = set()
-    methods = 0
     for rank in range(max(map(len, answers), default=0)):
         for answer in answers:
             if rank >= len(answer):
@@ -115,10 +94,6 @@ def join_claims(answers: Sequence[Sequence[Claim]]) -> tuple[Claim, ...]:
             key = " ".join(claim.text.split()).casefold()
             if key in seen:
                 continue
-            if claim.kind == METHOD:
-                if methods >= MAX_CLAIMS:
-                    continue
-                methods += 1
             seen.add(key)
             joined.append(claim)
     return tuple(joined)

@@ -60,6 +60,8 @@ ALLOWED_TO_ESCAPE: dict[str, str] = {
     # file or no tier answers, and their nodes catch them, so the answer goes
     # on without the findings.
     "DifferencesError": "the find_differences node catches it inside the graph",
+    "ClaimsError": "the claims node catches it inside the graph",
+    "GateError": "the gate node catches it inside the graph",
     "BugsError": "the find_bugs node catches it inside the graph",
 }
 

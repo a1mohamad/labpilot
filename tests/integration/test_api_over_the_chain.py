@@ -20,8 +20,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from labpilot.agent import Plan
 from labpilot.api import ApiConfig, app, get_client
-from labpilot.llm import GeminiProvider, LLMClient
-from labpilot.prompts import REPORT_MAX_TOKENS
+from labpilot.llm import GeminiProvider, LLMClient, routes
 from labpilot.store import ArtifactRecord, StoredArtifact, StoredChunk
 
 COMPARE = f"{ApiConfig.PREFIX}/compare"
@@ -260,4 +259,5 @@ def test_the_provider_is_asked_for_a_full_length_report(client):
     post(client)
 
     sent = json.loads(responses.calls[0].request.body)
-    assert sent["generationConfig"]["maxOutputTokens"] == REPORT_MAX_TOKENS
+    asked = routes.TASKS["respond_two"].max_tokens
+    assert sent["generationConfig"]["maxOutputTokens"] == asked

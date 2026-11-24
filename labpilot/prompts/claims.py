@@ -7,7 +7,7 @@ from labpilot.tokens import estimate_tokens
 # The wording below is FIXED. Change it only together with this number, and the
 # number is logged beside every list of claims, so a list can be tied to its
 # wording.
-CLAIMS_VERSION = 4
+CLAIMS_VERSION = 5
 
 # The reference is read WHOLE or not at all: a fact we cut off is a question we
 # never ask. A reference larger than this gets no claims (a big A is slice 12).

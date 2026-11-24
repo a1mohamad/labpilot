@@ -5,6 +5,8 @@ from uuid import uuid4
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from labpilot.api.headers import RAW_REQUEST_ID_HEADER
+
 
 class RequestBodyLimitMiddleware:
     def __init__(self, app: ASGIApp, max_body_bytes: int) -> None:
@@ -84,7 +86,7 @@ class RequestBodyLimitMiddleware:
                 "headers": [
                     (b"content-type", b"application/json"),
                     (b"content-length", str(len(body)).encode("ascii")),
-                    (b"x-request-id", request_id.encode("ascii")),
+                    (RAW_REQUEST_ID_HEADER, request_id.encode("ascii")),
                 ],
             }
         )

@@ -2,7 +2,7 @@
 
 [Docs home](../README.md)
 
-*Written 2026-11-24 from the older notes. Nothing of slice 12 is built. The plan says 2 lessons, maybe more
+*Updated 2026-11-24 after the cleanup ([34](34-cleanup-before-slice-12.md)). Written 2026-11-24 from the older notes. Nothing of slice 12 is built. The plan says 2 lessons, maybe more
 ([the slice table](00-plan.md)).*
 
 ## The goal
@@ -23,6 +23,7 @@ measured before any fix.
 |---|---|---|
 | 1 | one `fits(side, budget)` check in TOKENS, used by claims, the outline, the bug hunt and the summary (D43, CC10) | [21.2](21-final-design.md) |
 | 2 | claims of a big A: rank the files, take files up to a total budget, parts of one fixed size, a round-robin join, a cut (D26 to D28, D68, D69). **Claims use groups of about 2K, not 12K** (25.2); the group size is open (M27) | [18](18-big-repository.md), [23](23-slice-7-design.md), [25](25-slice-7-measurements.md) |
+| 2b | **the limit of the claims of a big A** (D140, 2026-11-24): the old 48 is gone and the list is whole, so otp gives 102 to 132 method claims, which is 4 to 5 audit batches of 30, 2 votes each, for every group of B. Choose the limit HERE, with M12 and M13, and choose WHAT is cut (a claim is a fact the audit may need) | [34](34-cleanup-before-slice-12.md) |
 | 3 | the good summary of a big artifact (D46, M14). It replaces the stored simple one: raise `SUMMARY_VERSION` | [21.2](21-final-design.md), [31.16](31b-slice-10-built.md) |
 | 4 | the scan and the hunt of a big B: the 40,000-token limit, how files are chosen (by the question and `file_scores`, not by name), what the user is told ("12 of 161 files read") | [29.8](29a-slice-9-findings.md) |
 | 5 | keep the most important parts when B is cut: M34 first (the loss), then candidates K1 to K8 | [29.14](29b-slice-9-followups.md) |

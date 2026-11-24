@@ -25,29 +25,17 @@ SHAPE_ERRORS = (KeyError, TypeError, ValueError, AttributeError, IndexError)
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class HTTPReranker(ABC):
-    """The shared half of a cross-encoder call over HTTP.
+    """The shared half of a rerank call over HTTP.
 
-    Written only after all three providers were probed live on 2026-09-11, so
-    the seam is OBSERVED and not guessed - the same discipline that produced
-    llm/base.py and embed/base.py. The five abstract methods are exactly the
-    five places the three providers really disagreed:
-
-        model in the URL (Cloudflare) vs in the body (Voyage, Cohere)
-        contexts=[{"text": ...}] vs documents=[str]
-        results at result.response vs data vs results
-        id/score vs index/relevance_score
-        neurons vs tokens vs search_units - three units, never comparable
-
-    That last row is why usage is LOGGED and not returned. `LLMResult` only
-    gained a field once every provider could fill it honestly; a single
-    `usage` number here would have to pretend a neuron is a token.
+    A provider says only where it differs: its payload, where its answer keeps
+    the ranking, and its usage. Usage is LOGGED and not returned, because the
+    providers count in units that cannot be compared (tokens, search units).
     """
 
     name: str
     url: str
     model: str
     api_key_env: str
-    account_env: str | None = None
     max_documents: int = MAX_DOCUMENTS
     max_document_tokens: int = MAX_DOCUMENT_TOKENS
     timeout: tuple[float, float] = DEFAULT_TIMEOUT
@@ -179,28 +167,20 @@ class HTTPReranker(ABC):
     def _api_key(self) -> str:
         return self._required(self.api_key_env)
 
-    def _account_id(self) -> str:
-        if self.account_env is None:
-            raise RerankError(f"{self.name}: no account_env is configured")
-        return self._required(self.account_env)
-
     def _required(self, name: str) -> str:
         value = os.environ.get(name, "").strip()
         if not value:
             raise RerankError(f"{self.name}: {name} is not set")
         return value
 
-    def _bearer_headers(self) -> dict[str, str]:
+    def _endpoint(self) -> str:
+        return self.url
+
+    def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._api_key()}",
             "Content-Type": "application/json",
         }
-
-    @abstractmethod
-    def _endpoint(self) -> str: ...
-
-    @abstractmethod
-    def _headers(self) -> dict[str, str]: ...
 
     @abstractmethod
     def _payload(

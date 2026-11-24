@@ -1,6 +1,6 @@
 """The keyword channel is WIRED, not merely built.
 
-Slice 5 built `bm25_search` and `weighted_rrf` and gave them no caller. Slice 8
+Slice 5 built `bm25_search` and `score_fusion` and gave them no caller. Slice 8
 v1 then recorded "the keyword channel is switched ON ... it now has a caller",
 and that sentence was false for three sessions: grepping labpilot/ for
 `bm25_search` found the re-export in store/__init__.py and nothing else.

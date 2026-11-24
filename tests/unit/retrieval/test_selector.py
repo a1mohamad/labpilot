@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from labpilot.ingest import Chunk, chunk_file
+from labpilot.ingest import SIDES, Chunk, chunk_file
 from labpilot.ingest.defaults import MAX_CHUNK_TOKENS
 from labpilot.prompts import PROMPT_BUDGET
-from labpilot.retrieval import LABEL_TOKENS, SIDE_SHARE, SIDES, select
+from labpilot.retrieval import LABEL_TOKENS, SIDE_SHARE, select
 from labpilot.tokens import estimate_tokens
 
 # The budget the old default gave; the product always passes its own room.

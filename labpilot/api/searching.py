@@ -6,7 +6,9 @@ from collections.abc import Callable
 
 import psycopg
 import requests
+from psycopg_pool import ConnectionPool
 
+from labpilot.agent import Query
 from labpilot.api.errors import (
     ArtifactChanged,
     EmbeddingUnavailable,
@@ -126,6 +128,37 @@ def retrieve_query(
     artifact = sides[side].artifact
     hits = _searched(conn, sides, side=side, text=text, vector=vector)
     return tuple(as_chunk(hit, side, artifact.id) for hit in hits)
+
+
+def search_one(
+    conn: psycopg.Connection,
+    sides: dict[Side, StoredArtifact],
+    query: Query,
+    *,
+    pool: ConnectionPool | None = None,
+) -> tuple[Chunk, ...]:
+    """One query of the plan, on a connection of its own when there is a pool."""
+    if pool is None:
+        return retrieve_query(conn, sides, side=query.side, text=query.text)
+    # Embed BEFORE a connection is taken from the pool, so the pool is not held
+    # while the embedder answers (R16).
+    vector = embed_query(sides, side=query.side, text=query.text)
+    if pool.closed:
+        pool.open(wait=False)
+    for attempt in range(2):
+        try:
+            with pool.connection() as pooled:
+                return retrieve_query(
+                    pooled, sides, side=query.side, text=query.text, vector=vector
+                )
+        except psycopg.OperationalError:
+            # A pooled connection the server closed in the middle of the search
+            # (seen on 2026-10-24: "SSL SYSCALL EOF"). The pool drops it, and the
+            # search is tried once on another (R10).
+            if attempt:
+                raise
+            logger.warning("a pooled connection died, searching again")
+    raise AssertionError("unreachable")
 
 
 def embed_query(

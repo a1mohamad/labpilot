@@ -1,13 +1,12 @@
-import logging
 from collections.abc import Callable, Sequence
+from functools import partial
 from typing import TypedDict
 
+from labpilot.agent._safety_net import or_nothing
 from labpilot.agent.claim import METHOD
 from labpilot.agent.difference import Difference
 from labpilot.agent.errors import DifferencesError
 from labpilot.agent.state import State
-
-logger = logging.getLogger(__name__)
 
 STEP = "find_differences"
 
@@ -35,12 +34,7 @@ def make_find_differences_node(
     find: FindDifferences,
 ) -> Callable[[DifferencesTask], dict[str, list[Difference]]]:
     def find_differences_node(task: DifferencesTask) -> dict[str, list[Difference]]:
-        # A safety net: when it fails, the answer goes on without it.
-        try:
-            found = find(task["a"], task["b"], task["facts"])
-        except DifferencesError as exc:
-            logger.warning("no differences, the answer goes on: %s", exc)
-            found = ()
-        return {"differences": list(found)}
+        run = partial(find, task["a"], task["b"], task["facts"])
+        return {"differences": or_nothing(run, DifferencesError, "differences")}
 
     return find_differences_node

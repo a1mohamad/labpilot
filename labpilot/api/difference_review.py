@@ -4,6 +4,7 @@ from itertools import product
 
 from labpilot.agent import (
     JUDGE_TOOL_NAME,
+    LINE_CHARS,
     MERGE_TOOL_NAME,
     Difference,
     DifferencesError,
@@ -36,9 +37,6 @@ MERGE_TOOL = Tool(
     parameters=merge_schema(),
 )
 
-# A finding is shown to the merge cut at this length: the point, not every
-# detail.
-MERGE_LINE_CHARS = 300
 
 Merge = Callable[[Mapping[int, str]], list[list[int]]]
 
@@ -94,7 +92,7 @@ def make_merger(*clients: LLMClient) -> Merge:
     def merge(findings: Mapping[int, str]) -> list[list[int]]:
         if len(findings) < 2:
             return []
-        shown = {n: line[:MERGE_LINE_CHARS] for n, line in findings.items()}
+        shown = {n: line[:LINE_CHARS] for n, line in findings.items()}
         read = partial(read_merge, allowed=list(shown))
         for client in clients:
             groups = ask_tool(

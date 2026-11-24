@@ -1,6 +1,6 @@
 import pytest
 
-from labpilot.api import asking
+from labpilot.api import answering, asking
 from labpilot.llm import CHAIN, LLMClient, routes
 
 
@@ -129,7 +129,7 @@ def test_the_answer_walks_the_route_of_the_number_of_files(monkeypatch):
     seen = capture(monkeypatch)
     tasks = []
     monkeypatch.setattr(
-        asking, "for_task", lambda client, task, **kw: tasks.append(task) or client
+        answering, "for_task", lambda client, task, **kw: tasks.append(task) or client
     )
 
     asking._ask_graph("conn", "client")
@@ -144,7 +144,7 @@ def test_two_files_is_the_route_of_the_plain_generate(monkeypatch):
     seen = capture(monkeypatch)
     tasks = []
     monkeypatch.setattr(
-        asking, "for_task", lambda client, task, **kw: tasks.append(task) or client
+        answering, "for_task", lambda client, task, **kw: tasks.append(task) or client
     )
 
     asking._ask_graph("conn", "client")
@@ -161,7 +161,7 @@ def test_the_answer_asks_for_as_many_tokens_as_its_kind_needs(monkeypatch):
         def generate(self, prompt, *, max_tokens):
             asked.append(max_tokens)
 
-    monkeypatch.setattr(asking, "for_task", lambda client, task, **kw: Client())
+    monkeypatch.setattr(answering, "for_task", lambda client, task, **kw: Client())
 
     asking._ask_graph("conn", "client")
     for files in (0, 1, 2, 3):

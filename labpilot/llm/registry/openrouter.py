@@ -27,7 +27,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # A tier that answers a quarter of the time strictly beats one that is dead.
 #
 # ⚠ 32,768 CONTEXT, so it can NEVER serve a report: PROMPT_BUDGET 30,000 plus
-# REPORT_MAX_TOKENS 32,000 is 62,000. _check_fits refuses it locally for
+# the 32,000 of the two-file answer is 62,000. _check_fits refuses it locally for
 # nothing, and it is here for Step 2's smaller jobs - where it is worth
 # having, at Code Arena #19 (1592), ahead of Gemini 3.6 Flash.
 GLM_5_2 = OpenAICompatibleProvider(

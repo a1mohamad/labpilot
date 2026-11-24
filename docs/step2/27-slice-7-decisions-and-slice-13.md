@@ -106,7 +106,7 @@
 | | `SCAN_GROUP_TOKENS`, `TRACE_GROUP_TOKENS` | 2,000 | `prompts/scan.py`, `prompts/bugs.py` | taken from the claims, not measured for these jobs |
 | | `AUDIT_GROUP_TOKENS`, `WHOLE_GROUP_TOKENS` | 24,000 | `prompts/audit.py`, `prompts/bugs.py` | guess (29.8) |
 | | `SKEPTIC_TOKENS` | 30,000 | `prompts/bugs.py` | guess |
-| counts and caps | `MAX_CLAIMS` | 48 | `agent/claims_schema.py` | guess, from the cost (25.11) |
+| counts and caps | `MAX_CLAIMS` (REMOVED 2026-11-24, D140) | 48 | `agent/claims_schema.py` | guess, from the cost (25.11) |
 | | `MAX_QUERIES` | 6 | `agent/plan_check.py` | guess (D54, M5) |
 | | `AUDIT_BATCH`, `JUDGE_BATCH`, `SKEPTIC_BATCH` | 30, 30, 25 | `prompts/audit.py`, `prompts/review.py`, `prompts/bugs.py` | guess |
 | | `AUDIT_VOTES`, `JUDGE_VOTES`, `SKEPTIC_VOTES` | 2 | same files | three cases (29.8: 2 votes kept) |

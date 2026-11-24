@@ -37,16 +37,6 @@ _TSQUERY = """
 
 _ARTIFACT = "select created_at from artifacts where id = %s"
 
-# ts_rank, never ts_rank_cd: cover density lost on every run of the sweep.
-_KEYWORD = f"""
-    select c.chunk_index, c.text, c.header, c.source, c.start_line, c.end_line,
-           ts_rank(c.tsv, q)::float8 as score
-    from chunks c, {_TSQUERY} as q
-    where c.artifact_id = %s and c.tsv @@ q
-    order by score desc, c.chunk_index
-    limit %s
-"""
-
 # N and L for one artifact. Cached, because an artifact is rewritten whole or
 # not at all -- see _corpus for why the cache cannot go stale.
 _CORPUS = """
@@ -111,33 +101,6 @@ class _Corpus:
 
 
 _CORPUS_CACHE: dict[tuple[str, datetime], _Corpus] = {}
-
-
-def keyword_search(
-    conn: psycopg.Connection,
-    artifact_id: str,
-    query: str,
-    *,
-    limit: int = SEARCH_LIMIT,
-) -> tuple[SearchHit, ...]:
-    _guard(conn, artifact_id, query, limit)
-
-    with conn.cursor() as cur:
-        cur.execute(_KEYWORD, (query, artifact_id, limit))
-        rows = cur.fetchall()
-
-    return tuple(
-        SearchHit(
-            chunk_index=chunk_index,
-            text=text,
-            header=header,
-            source=source,
-            start_line=start_line,
-            end_line=end_line,
-            score=score,
-        )
-        for chunk_index, text, header, source, start_line, end_line, score in rows
-    )
 
 
 def bm25_search(

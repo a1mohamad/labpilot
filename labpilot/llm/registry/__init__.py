@@ -33,10 +33,8 @@ from labpilot.llm.registry.cloudflare import (
 )
 from labpilot.llm.registry.google import (
     GEMINI_3_1_FLASH_LITE,
-    GEMINI_3_5_FLASH,
     GEMINI_3_5_FLASH_LITE,
     GEMINI_3_6_FLASH,
-    GEMINI_3_7_FLASH,
     GEMINI_3_8_FLASH,
     GEMINI_4_HYDROGEN,
     GEMMA_4_26B,
@@ -48,8 +46,6 @@ from labpilot.llm.registry.google import (
     GOOGLE_URL,
     _gemini,
     _other_accounts,
-    _second_account,
-    _third_account,
 )
 from labpilot.llm.registry.groq import (
     GPT_OSS_20B_GROQ,
@@ -201,10 +197,8 @@ __all__ = [
     "DEEPSEEK_V4_FLASH",
     "DEVSTRAL_2",
     "GEMINI_3_1_FLASH_LITE",
-    "GEMINI_3_5_FLASH",
     "GEMINI_3_5_FLASH_LITE",
     "GEMINI_3_6_FLASH",
-    "GEMINI_3_7_FLASH",
     "GEMINI_3_8_FLASH",
     "GEMINI_4_HYDROGEN",
     "GEMMA_4_26B",
@@ -335,7 +329,5 @@ __all__ = [
     "_requesty",
     "_routeway",
     "_routeway_gemma",
-    "_second_account",
-    "_third_account",
     "_token_harbor",
 ]

@@ -1,8 +1,9 @@
 from labpilot.ingest.chunker import chunk_bytes, chunk_file
-from labpilot.ingest.contracts import Chunk, Piece, Side
+from labpilot.ingest.contracts import SIDES, Chunk, Piece, Side
 from labpilot.ingest.errors import LoaderError, LooksGenerated, NotUtf8Text
 
 __all__ = [
+    "SIDES",
     "Chunk",
     "LoaderError",
     "LooksGenerated",

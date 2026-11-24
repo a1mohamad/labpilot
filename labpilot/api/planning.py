@@ -20,8 +20,9 @@ from labpilot.agent import (
     read_plan,
 )
 from labpilot.api.errors import UnknownArtifactId
+from labpilot.api.tool_calls import ask_tool
 from labpilot.ingest import Side
-from labpilot.llm import AllFreeTiersExhausted, LLMClient, LLMResult, Tool
+from labpilot.llm import LLMClient, Tool
 from labpilot.prompts import (
     OPENING_CHARS,
     PLANNER_MAX_TOKENS,
@@ -38,16 +39,15 @@ logger = logging.getLogger(__name__)
 TOOL_DESCRIPTION = "Choose the steps LabPilot runs and what to search for."
 
 
-def _plan_problem(
-    result: LLMResult, *, sides: tuple[Side, ...], question: str
-) -> str | None:
-    if result.arguments is None:
-        return "no arguments"
-    try:
-        made = read_plan(result.arguments)
-    except PlanError as exc:
-        return str(exc)
-    return problem_with(made, sides, question)
+def _read(
+    arguments: dict[str, object], *, sides: tuple[Side, ...], question: str
+) -> Plan:
+    """The plan of this answer. A plan that does not fit the question is refused."""
+    made = read_plan(arguments)
+    problem = problem_with(made, sides, question)
+    if problem is not None:
+        raise PlanError(problem)
+    return made
 
 
 def make_planner(
@@ -86,26 +86,19 @@ def make_planner(
             question, corpus_map, steps, max_queries=MAX_QUERIES
         )
 
-        try:
-            result = client.generate(
-                prompt,
-                max_tokens=PLANNER_MAX_TOKENS,
-                tool=tool,
-                problem_with=partial(_plan_problem, sides=sides, question=question),
-            )
-        except AllFreeTiersExhausted as exc:
-            raise PlanError(
-                f"no tier gave a good plan ({len(exc.attempts)} attempts)"
-            ) from exc
-        if result.arguments is None:
-            raise PlanError(f"{result.model} gave no arguments")
-
-        made = read_plan(result.arguments)
+        made = ask_tool(
+            client,
+            prompt,
+            tool=tool,
+            max_tokens=PLANNER_MAX_TOKENS,
+            read=partial(_read, sides=sides, question=question),
+            errors=(PlanError,),
+        )
+        if made is None:
+            raise PlanError("no tier gave a good plan")
         logger.info(
-            "plan v%d made by %s (tier %d): steps=%s, queries=%s",
+            "plan v%d: steps=%s, queries=%s",
             PLANNER_VERSION,
-            result.model,
-            result.tier,
             list(made.steps),
             [f"{query.side}: {query.text}" for query in made.queries],
         )

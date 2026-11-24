@@ -2,6 +2,9 @@
 
 [Docs home](../README.md)
 
+
+**UPDATE 2026-11-24 (D142):** the templates FULL, CORE, REPORT, SCAN and COMPARE and `REPORT_MAX_TOKENS` are deleted. The answer uses `TWO_FILES` (`prompts/answer.py`), and its tokens are in `routes.TASKS`. The text below is the history. See [the cleanup](../step2/34-cleanup-before-slice-12.md).
+
 ## The Comparison Template — designed 2026-08-14
 
 *Designed in session 6, before slice 4 was written. This is the output shape the

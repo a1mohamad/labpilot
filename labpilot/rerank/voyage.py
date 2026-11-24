@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
-from labpilot.rerank.base import HTTPReranker
+from labpilot.rerank.documents import DocumentsReranker
 
 # Voyage accepts up to 1,000 documents per call, but it bills by TOKEN, so a
 # wider call is a proportionally larger bill - the opposite of Cohere, where
@@ -30,7 +31,7 @@ MAX_DOCUMENTS = 30
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class VoyageReranker(HTTPReranker):
+class VoyageReranker(DocumentsReranker):
     """Probed live 2026-09-11 on a 200M one-time token grant.
 
     It is the strict one: an unknown field is a 400 naming the field, and a
@@ -46,31 +47,11 @@ class VoyageReranker(HTTPReranker):
     48 total tokens, which is what that formula predicts.
     """
 
+    TOP_FIELD: ClassVar[str] = "top_k"
+    HITS_FIELD: ClassVar[str] = "data"
+
     api_key_env: str = "VOYAGE_API_KEY"
     max_documents: int = MAX_DOCUMENTS
-
-    def _endpoint(self) -> str:
-        return self.url
-
-    def _headers(self) -> dict[str, str]:
-        return self._bearer_headers()
-
-    def _payload(
-        self, query: str, documents: list[str], top_n: int | None
-    ) -> dict[str, object]:
-        payload: dict[str, object] = {
-            "model": self.model,
-            "query": query,
-            "documents": documents,
-        }
-        if top_n is not None:
-            payload["top_k"] = top_n
-        return payload
-
-    def _raw_ranking(self, body: dict) -> list[tuple[int, float]]:
-        return [
-            (int(hit["index"]), float(hit["relevance_score"])) for hit in body["data"]
-        ]
 
     def _usage_summary(self, body: dict) -> str:
         return f"{body['usage']['total_tokens']} tokens"

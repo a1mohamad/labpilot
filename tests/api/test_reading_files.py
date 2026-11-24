@@ -89,3 +89,31 @@ def test_a_reference_alone_is_charged_for_the_reference_instruction(monkeypatch)
     assert reading.fits_whole({"A": stored("A-1", "A")}, question="hi") is True
     assert reading.fits_whole({"B": stored("B-1", "B")}, question="hi") is True
     assert asked == [(1, True), (1, False)]
+
+
+def whole(monkeypatch, side, characters):
+    kept = StoredArtifact(
+        artifact=ArtifactRecord(
+            id=f"{side}-1", name="m", side=side, embedding_model="m", dim=3
+        ),
+        chunks=2,
+        files=1,
+        characters=characters,
+    )
+    monkeypatch.setattr(reading, "stuffed_chunks", lambda conn, sides: tuple(sides))
+    return reading.whole_side(object(), {side: kept}, side)
+
+
+SMALL = reading.A_WHOLE_TOKENS * 3
+
+
+def test_a_small_reference_is_read_whole(monkeypatch):
+    assert whole(monkeypatch, "A", SMALL) == ("A",)
+
+
+def test_a_bigger_reference_is_not(monkeypatch):
+    assert whole(monkeypatch, "A", SMALL + 3) is None
+
+
+def test_the_subject_is_never_read_whole_on_the_search_path(monkeypatch):
+    assert whole(monkeypatch, "B", 10) is None

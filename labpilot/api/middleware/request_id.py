@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-REQUEST_ID_HEADER = b"x-request-id"
+from labpilot.api.headers import RAW_REQUEST_ID_HEADER as RAW
 
 
 class RequestIDMiddleware:
@@ -23,8 +23,8 @@ class RequestIDMiddleware:
             # Headers can only be changed before the response body starts.
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
-                if not any(name.lower() == REQUEST_ID_HEADER for name, _ in headers):
-                    headers.append((REQUEST_ID_HEADER, request_id.encode("ascii")))
+                if not any(name.lower() == RAW for name, _ in headers):
+                    headers.append((RAW, request_id.encode("ascii")))
                 message["headers"] = headers
 
             await send(message)

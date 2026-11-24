@@ -8,7 +8,8 @@ from labpilot.agent import (
     gate_schema,
     read_correspondence,
 )
-from labpilot.llm import AllFreeTiersExhausted, LLMClient, LLMResult, Tool
+from labpilot.api.tool_calls import ask_tool
+from labpilot.llm import LLMClient, LLMResult, Tool
 from labpilot.prompts import GATE_MAX_TOKENS, GATE_VERSION, build_gate_prompt
 
 logger = logging.getLogger(__name__)
@@ -19,16 +20,6 @@ TOOL_DESCRIPTION = "say whether two works correspond."
 HALT_MODEL = "correspondence gate"
 
 
-def _gate_problem(result: LLMResult) -> str | None:
-    if result.arguments is None:
-        return "no arguments"
-    try:
-        read_correspondence(result.arguments)
-    except GateError as exc:
-        return str(exc)
-    return None
-
-
 def make_gate(client: LLMClient) -> Callable[[str, str], Correspondence]:
     tool = Tool(
         name=GATE_TOOL_NAME,
@@ -37,26 +28,17 @@ def make_gate(client: LLMClient) -> Callable[[str, str], Correspondence]:
     )
 
     def gate(summary_a: str, summary_b: str) -> Correspondence:
-        try:
-            result = client.generate(
-                build_gate_prompt(summary_a, summary_b),
-                max_tokens=GATE_MAX_TOKENS,
-                tool=tool,
-                problem_with=_gate_problem,
-            )
-        except AllFreeTiersExhausted as exc:
-            raise GateError(f"no tier could judge it ({len(exc.attempts)}") from exc
-        if result.arguments is None:
-            raise GateError(f"{result.model} gave no arguments")
-
-        found = read_correspondence(result.arguments)
-        logger.info(
-            "gate v%d by %s (tier %s): %s",
-            GATE_VERSION,
-            result.model,
-            result.tier,
-            found.verdict,
+        found = ask_tool(
+            client,
+            build_gate_prompt(summary_a, summary_b),
+            tool=tool,
+            max_tokens=GATE_MAX_TOKENS,
+            read=read_correspondence,
+            errors=(GateError,),
         )
+        if found is None:
+            raise GateError("no tier could judge it")
+        logger.info("gate v%d: %s", GATE_VERSION, found.verdict)
         return found
 
     return gate

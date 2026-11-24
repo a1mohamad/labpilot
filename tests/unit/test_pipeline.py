@@ -6,7 +6,7 @@ import pytest
 
 from labpilot.ingest import chunk_bytes, chunk_file
 from labpilot.prompts import (
-    FULL,
+    TWO_FILES,
     build_context,
     build_prompt,
     reserve,
@@ -34,13 +34,13 @@ def chunks():
 
 @pytest.fixture(scope="module")
 def picked(chunks):
-    room = BUDGET - reserve(chunks, question=QUESTION, instructions=FULL)
+    room = BUDGET - reserve(chunks, question=QUESTION, instructions=TWO_FILES)
     return select(chunks, budget=room)
 
 
 @pytest.fixture(scope="module")
 def prompt(chunks, picked):
-    return build_prompt(chunks, picked, question=QUESTION, instructions=FULL)
+    return build_prompt(chunks, picked, question=QUESTION, instructions=TWO_FILES)
 
 
 def test_the_whole_prompt_fits_the_budget(prompt):
@@ -89,8 +89,8 @@ def test_an_id_shown_in_the_prompt_resolves_back_to_the_right_line(chunks, promp
 
 
 def test_the_pipeline_gives_the_same_prompt_every_time(chunks, picked):
-    first = build_prompt(chunks, picked, question=QUESTION, instructions=FULL)
-    second = build_prompt(chunks, picked, question=QUESTION, instructions=FULL)
+    first = build_prompt(chunks, picked, question=QUESTION, instructions=TWO_FILES)
+    second = build_prompt(chunks, picked, question=QUESTION, instructions=TWO_FILES)
 
     assert first == second
 

@@ -9,6 +9,7 @@ from langgraph.types import Command
 from psycopg_pool import ConnectionPool
 
 from labpilot.agent import ask_the_user, build_graph
+from labpilot.api.answering import answerer
 from labpilot.api.bugs import make_bug_finder
 from labpilot.api.chains import for_task
 from labpilot.api.checkpoints import open_saver, prune
@@ -16,13 +17,13 @@ from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison, Question
 from labpilot.api.difference_finder import make_find_differences
 from labpilot.api.difference_review import make_merger
-from labpilot.api.errors import GenerationUnavailable, InvalidQuestion, NothingToAnswer
+from labpilot.api.errors import InvalidQuestion, NothingToAnswer
 from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.fresh import make_fresh_check
 from labpilot.api.gate import halt_answer, make_gate
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
-from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
+from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks, whole_side
 from labpilot.api.saved import (
     SavedResults,
     saved_bugs,
@@ -33,10 +34,10 @@ from labpilot.api.saved import (
     saved_summary,
     with_saved_steps,
 )
-from labpilot.api.searching import embed_query, rank_pile, retrieve_query
-from labpilot.api.summaries import make_summarizer, summary_chain
-from labpilot.llm import AllFreeTiersExhausted, LLMClient, routes
-from labpilot.prompts import A_WHOLE_TOKENS
+from labpilot.api.searching import rank_pile, search_one
+from labpilot.api.summaries import make_summarizer, or_no_summary, summary_chain
+from labpilot.ingest import Side
+from labpilot.llm import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,18 @@ def _forget_old_copies(
         )
 
 
+def _fits(sides, question: str, last_answer: str) -> bool:
+    return fits_whole(sides, question=question, last_answer=last_answer)
+
+
+def _stuff(conn: psycopg.Connection, sides, question: str):
+    return stuffed_chunks(conn, sides), None
+
+
+def _totals_of(sides) -> dict[Side, int]:
+    return {side: found.chunks for side, found in sides.items()}
+
+
 def _ask_graph(
     conn: psycopg.Connection,
     client: LLMClient,
@@ -165,101 +178,29 @@ def _ask_graph(
     """The graph ask() runs, with the real functions handed to it.
 
     labpilot/agent/ may not import store/, llm/ or this module, so it receives
-    these six functions instead. Each one is a step ask() used to do inline, and
-    each keeps the conversion of errors that belongs to the API layer.
+    these functions instead. Each one keeps the conversion of errors that belongs
+    to the API layer.
     """
 
-    def fits(sides, question, last_answer):
-        return fits_whole(sides, question=question, last_answer=last_answer)
-
-    def stuff_sides(sides, question):
-        return stuffed_chunks(conn, sides), None
-
-    def search_one(sides, query):
-        if pool is None:
-            return retrieve_query(conn, sides, side=query.side, text=query.text)
-        # Embed BEFORE a connection is taken from the pool, so the pool is not
-        # held while the embedder answers (R16).
-        vector = embed_query(sides, side=query.side, text=query.text)
-        if pool.closed:
-            pool.open(wait=False)
-        for attempt in range(2):
-            try:
-                with pool.connection() as pooled:
-                    return retrieve_query(
-                        pooled,
-                        sides,
-                        side=query.side,
-                        text=query.text,
-                        vector=vector,
-                    )
-            except psycopg.OperationalError:
-                # A pooled connection the server closed in the middle of the
-                # search (seen on 2026-10-24: "SSL SYSCALL EOF"). The pool
-                # drops it, and the search is tried once on another (R10).
-                if attempt:
-                    raise
-                logger.warning("a pooled connection died, searching again")
-        raise AssertionError("unreachable")
-
-    def whole_side(sides, side):
-        # The reference is read whole when it is as small as the step that puts
-        # it beside B allows (A_WHOLE_TOKENS); B never is, on this path.
-        found = sides[side]
-        if side != "A" or found.characters / 3 > A_WHOLE_TOKENS:
-            return None
-        return stuffed_chunks(conn, {side: found})
-
-    def totals_of(sides):
-        return {side: found.chunks for side, found in sides.items()}
-
-    # A summary is a small job: the short chain of D110, with a time limit.
-    summarizer = make_summarizer(conn, summary_chain(client))
-
-    # D104 and D110: the stored objects, made once and read again.
+    # D104 and D110: the stored objects, made once and read again. A summary is a
+    # small job: the short chain of D110, with a time limit.
     saved = saved if saved is not None else SavedResults(conn)
-    stored_summary = saved_summary(saved, summarizer)
-
-    def summarize(artifact_id):
-        # A summary is a guide, not the evidence: when every tier fails the
-        # report is still written, from the parts alone.
-        try:
-            return stored_summary(artifact_id)
-        except GenerationUnavailable:
-            logger.warning(
-                "no summary of %s: every tier failed", artifact_id, exc_info=True
-            )
-            return ""
-
-    def generate_for_files(files):
-        task = ("respond_chat", "respond_one", "respond_two")[min(files, 2)]
-        routed = for_task(client, task)
-        max_tokens = routes.TASKS[task].max_tokens
-
-        def generate(prompt):
-            try:
-                return routed.generate(prompt, max_tokens=max_tokens)
-            except AllFreeTiersExhausted as exc:
-                raise GenerationUnavailable(
-                    "every free tier failed", attempts=exc.attempts
-                ) from exc
-
-        return generate
+    summarizer = saved_summary(saved, make_summarizer(conn, summary_chain(client)))
 
     audit = for_task(client, "audit")
     merge = for_task(client, "merge")
 
     return build_graph(
         measure=partial(measure_sides, conn),
-        fits=fits,
-        stuff=stuff_sides,
-        search_one=search_one,
-        totals_of=totals_of,
+        fits=_fits,
+        stuff=partial(_stuff, conn),
+        search_one=partial(search_one, conn, pool=pool),
+        totals_of=_totals_of,
         rank_side=rank_pile,
         plan=with_saved_steps(
             saved, make_planner(conn, for_task(client, "plan")), fast=fast
         ),
-        summarize=summarize,
+        summarize=or_no_summary(summarizer),
         extract_claims=saved_claims(
             saved, make_claims_extractor(conn, for_task(client, "claims"))
         ),
@@ -293,13 +234,13 @@ def _ask_graph(
         ),
         final_merge=make_merger(merge),
         ask=ask_the_user if thread_id else None,
-        whole_side=whole_side,
+        whole_side=partial(whole_side, conn),
         make_prompt=build_answer_prompt,
         rewrite=make_rewriter(for_task(client, "rewrite")),
         answer_text=last_answer_text,
         gate=saved_gate(saved, make_gate(for_task(client, "gate"))),
         halt_answer=halt_answer,
-        generate=generate_for_files(2),
-        generate_for_files=generate_for_files,
+        generate=answerer(client, 2),
+        generate_for_files=partial(answerer, client),
         checkpointer=open_saver(_saving_place(conn, pool)) if thread_id else None,
     )

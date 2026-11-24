@@ -3,6 +3,7 @@ import re
 from collections.abc import Sequence
 
 from labpilot.agent._quote import place_quote
+from labpilot.agent._schema import index, is_located, list_schema
 from labpilot.agent.bug import BUG_KINDS, SEVERITIES, Bug
 from labpilot.agent.errors import BugsError
 from labpilot.ingest import Chunk
@@ -17,38 +18,24 @@ MAX_BUGS_PER_ANSWER = 40
 
 
 def bugs_schema() -> dict[str, object]:
-    return {
-        "type": "object",
-        "properties": {
-            "defects": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "kind": {"type": "string", "enum": list(BUG_KINDS)},
-                        "part": {"type": "integer"},
-                        "quote": {"type": "string"},
-                        "text": {"type": "string"},
-                        "severity": {"type": "string", "enum": list(SEVERITIES)},
-                    },
-                    "required": ["kind", "part", "quote", "text"],
-                },
-            },
+    return list_schema(
+        "defects",
+        {
+            "kind": {"type": "string", "enum": list(BUG_KINDS)},
+            "part": {"type": "integer"},
+            "quote": {"type": "string"},
+            "text": {"type": "string"},
+            "severity": {"type": "string", "enum": list(SEVERITIES)},
         },
-        "required": ["defects"],
-    }
+        ["kind", "part", "quote", "text"],
+    )
 
 
 def _complete(item: object, parts: int) -> bool:
-    # A bool is an int in Python; a model that writes true is not naming a part.
     return (
-        isinstance(item, dict)
-        and isinstance(item.get("text"), str)
+        is_located(item)
         and bool(item["text"].strip())
-        and isinstance(item.get("part"), int)
-        and not isinstance(item.get("part"), bool)
-        and 0 <= item["part"] < parts
-        and isinstance(item.get("quote"), str)
+        and index(item["part"], parts) is not None
     )
 
 

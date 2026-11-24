@@ -8,6 +8,7 @@ from labpilot.agent.state import State
 Merge = Callable[[Mapping[int, str]], list[list[int]]]
 
 # A line is cut at this length for the merge: the point, not every detail.
+# The longest line of one finding that a model is shown.
 LINE_CHARS = 300
 
 

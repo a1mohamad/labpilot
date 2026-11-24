@@ -7,17 +7,10 @@ from labpilot.store import (
     ChunkRecord,
     UnknownArtifact,
     bm25_search,
-    keyword_search,
     write_artifact,
 )
 
 pytestmark = pytest.mark.database
-
-# Both doors, wherever the invariant belongs to the query and not to the
-# ranking. They share _TSQUERY, so a break there must show up on both.
-BOTH = pytest.mark.parametrize(
-    "search_fn", [keyword_search, bm25_search], ids=["ts_rank", "bm25"]
-)
 
 # Made-up words on purpose: none of them is an English stopword, and none
 # stems into another, so the only thing that moves a score is the rule under
@@ -87,8 +80,7 @@ def test_a_chunk_matches_on_a_word_from_its_header(db):
     assert [hit.chunk_index for hit in hits] == [0]
 
 
-@BOTH
-def test_the_query_words_are_joined_with_or_so_a_partial_match_counts(db, search_fn):
+def test_the_query_words_are_joined_with_or_so_a_partial_match_counts(db):
     """AND scored recall@5 of 0.000 on all 17 quora queries; OR scored 0.824.
 
     No chunk of 500 tokens holds every word of a sentence, so joining the
@@ -97,7 +89,7 @@ def test_the_query_words_are_joined_with_or_so_a_partial_match_counts(db, search
     """
     stored(db, "orq", ["alpha nothing else", "bravo nothing else"])
 
-    hits = search_fn(db, "orq", "alpha bravo charlie")
+    hits = bm25_search(db, "orq", "alpha bravo charlie")
 
     assert {hit.chunk_index for hit in hits} == {0, 1}
 
@@ -143,8 +135,7 @@ def test_a_longer_chunk_scores_lower_at_the_same_word_count(db):
     assert hits[0].chunk_index == 1
 
 
-@BOTH
-def test_a_query_holding_an_operator_lexeme_does_not_crash(db, search_fn):
+def test_a_query_holding_an_operator_lexeme_does_not_crash(db):
     """Found by probing real input 2026-09-07, and it was a CRASH.
 
     A lexeme may contain ':' - "api.github.com:443" is one token - and
@@ -154,13 +145,12 @@ def test_a_query_holding_an_operator_lexeme_does_not_crash(db, search_fn):
     """
     stored(db, "ops", ["connecting to a host and a port"])
 
-    hits = search_fn(db, "ops", "connect to api.github.com:443 now")
+    hits = bm25_search(db, "ops", "connect to api.github.com:443 now")
 
     assert isinstance(hits, tuple)
 
 
-@BOTH
-def test_a_word_whose_stem_would_drift_still_matches(db, search_fn):
+def test_a_word_whose_stem_would_drift_still_matches(db):
     """The query is built with 'simple', never 'english', and this is why.
 
     to_tsvector('english', ...) already stemmed these words. Stemming them a
@@ -170,13 +160,12 @@ def test_a_word_whose_stem_would_drift_still_matches(db, search_fn):
     """
     stored(db, "stem", ["please read the configuration"])
 
-    hits = search_fn(db, "stem", "please")
+    hits = bm25_search(db, "stem", "please")
 
     assert [hit.chunk_index for hit in hits] == [0]
 
 
-@BOTH
-def test_only_the_named_artifact_is_searched(db, search_fn):
+def test_only_the_named_artifact_is_searched(db):
     """bm25 filters by artifact TWICE - once when it gathers the term counts,
     and again when it fetches the rows to return.
 
@@ -189,39 +178,36 @@ def test_only_the_named_artifact_is_searched(db, search_fn):
     stored(db, "mine", ["alpha one", "alpha two"])
     stored(db, "other", ["alpha alpha alpha"] * 5, first=10)
 
-    hits = search_fn(db, "mine", "alpha", limit=2)
+    hits = bm25_search(db, "mine", "alpha", limit=2)
 
     assert {hit.chunk_index for hit in hits} == {0, 1}
 
 
-@BOTH
-def test_an_unknown_artifact_is_refused_rather_than_returning_nothing(db, search_fn):
+def test_an_unknown_artifact_is_refused_rather_than_returning_nothing(db):
     """Empty and absent are different facts. Returning () for an artifact that
     was never stored reads as "nothing matched", and the corpus is missing."""
     with pytest.raises(UnknownArtifact, match="nope"):
-        search_fn(db, "nope", "alpha")
+        bm25_search(db, "nope", "alpha")
 
 
-@BOTH
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [({"limit": 0}, "limit"), ({"limit": -1}, "limit")],
     ids=["limit-zero", "limit-negative"],
 )
-def test_a_limit_that_returns_nothing_is_a_caller_bug(db, search_fn, kwargs, message):
+def test_a_limit_that_returns_nothing_is_a_caller_bug(db, kwargs, message):
     # Store it first, so the limit guard is the ONLY thing that can refuse.
     stored(db, "lim", ["alpha"])
 
     with pytest.raises(ValueError, match=message):
-        search_fn(db, "lim", "alpha", **kwargs)
+        bm25_search(db, "lim", "alpha", **kwargs)
 
 
-@BOTH
-def test_a_blank_query_is_a_caller_bug(db, search_fn):
+def test_a_blank_query_is_a_caller_bug(db):
     stored(db, "blank", ["alpha"])
 
     with pytest.raises(ValueError, match="empty"):
-        search_fn(db, "blank", "   ")
+        bm25_search(db, "blank", "   ")
 
 
 def test_a_query_of_only_stopwords_returns_nothing_rather_than_everything(db):
@@ -273,13 +259,13 @@ def test_the_two_channels_rank_the_same_id_space_and_fuse(db):
     Vector search and BM25 are different queries over different columns, and
     fusion only means anything if the numbers they return are the SAME
     identifiers. Nothing else in the suite checks that: each channel is tested
-    alone, and `weighted_rrf` is pure arithmetic that never sees a database.
+    alone, and `score_fusion` is pure arithmetic that never sees a database.
 
     The chunk indexes start at 100 on purpose. A layer that ever returned a
     row POSITION instead of a chunk_index would hand back 0..3 here, and every
     downstream citation would point at the wrong lines while still resolving.
     """
-    from labpilot.retrieval import weighted_rrf
+    from labpilot.retrieval import score_fusion
     from labpilot.store import search
 
     # Deliberate geometry, so the vector order is arithmetic and not a guess:
@@ -294,9 +280,14 @@ def test_the_two_channels_rank_the_same_id_space_and_fuse(db):
         vectors=list(places.values()),
     )
 
-    dense = [hit.chunk_index for hit in search(db, "seam", (1.0, 0.0, 0.0), model="m")]
-    sparse = [hit.chunk_index for hit in bm25_search(db, "seam", "alpha")]
-    fused = weighted_rrf(dense, sparse)
+    near = search(db, "seam", (1.0, 0.0, 0.0), model="m")
+    words = bm25_search(db, "seam", "alpha")
+    dense = [hit.chunk_index for hit in near]
+    sparse = [hit.chunk_index for hit in words]
+    fused = score_fusion(
+        [(hit.chunk_index, hit.score) for hit in near],
+        [(hit.chunk_index, hit.score) for hit in words],
+    )
 
     assert dense == list(places), "vector search must rank every chunk, nearest first"
     assert sparse == [100, 101], "only the two chunks holding `alpha` may match"

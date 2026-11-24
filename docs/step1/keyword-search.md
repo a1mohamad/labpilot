@@ -2,6 +2,9 @@
 
 [Docs home](../README.md)
 
+
+**UPDATE 2026-11-24 (D142):** `keyword_search` (`ts_rank`) and `weighted_rrf` are deleted: only `bm25_search` and `score_fusion` run. The text below is the history. See [the cleanup](../step2/34-cleanup-before-slice-12.md).
+
 ## Slice 5 — the theory, recorded 2026-09-06
 
 > **UPDATE (slice 8, 2026-09-16/19): the decision recorded below was OVERTURNED.** Slice 5's "not one fusion setting improved

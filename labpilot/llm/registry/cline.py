@@ -94,7 +94,7 @@ CLINE_GLM_5_3_FLASH = _cline(
 # "too closely tuned to Poolside's agent harness" and "can stray from the
 # required format" - and our citation contract is parsed, so drift breaks the
 # anti-hallucination mechanism rather than merely the prose. And the FREE
-# variant caps output at 32,768 against REPORT_MAX_TOKENS of 32,000: 768 tokens
+# variant caps output at 32,768 against the 32,000 of the two-file answer: 768 tokens
 # of headroom. The PAID id `poolside/laguna-s-2.1` has 131,072 and would spend
 # credits, which is why the `:free` suffix is load-bearing.
 CLINE_LAGUNA_S_2_1 = _cline(

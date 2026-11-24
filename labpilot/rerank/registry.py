@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from labpilot.rerank.cloudflare import CloudflareReranker
 from labpilot.rerank.cohere import CohereReranker
 from labpilot.rerank.jev import JevReranker
 from labpilot.rerank.voyage import VoyageReranker
 
 COHERE_URL = "https://api.cohere.com/v2/rerank"
 VOYAGE_URL = "https://api.voyageai.com/v1/rerank"
-CLOUDFLARE_URL = "https://api.cloudflare.com/client/v4/accounts"
 # Jev is absent from GET /api/v1/models - 447 chat models, zero hits -
 # because its modality is `text->decisions`, and /chat/completions refuses
 # it. That refusal is what named this route.
@@ -98,14 +96,6 @@ JEV_NETLIFY_RERANK = JevReranker(
     url_env="JEV_PROXY_URL",
     api_key_env="JEV_PROXY_SECRET",
     model="jev-1.13.0",
-)
-
-# ~2,840 calls a DAY, which is the largest renewing budget here by a wide
-# margin, and the instrument the slice 6 measurement actually ran on.
-CLOUDFLARE_RERANK = CloudflareReranker(
-    name="BGE Reranker Base",
-    url=CLOUDFLARE_URL,
-    model="@cf/baai/bge-reranker-base",
 )
 
 # THE ORDER IS MEASURED NOW, not argued from quota shape. Scored on quora at a

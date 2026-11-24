@@ -3,11 +3,12 @@ from collections.abc import Callable
 
 import psycopg
 
+from labpilot.api.answering import generate
 from labpilot.api.chains import for_task
 from labpilot.api.errors import ApiError, GenerationUnavailable, StorageUnavailable
 from labpilot.api.file_parts import read_parts
 from labpilot.api.saved import SavedResults, saved_summary
-from labpilot.llm import AllFreeTiersExhausted, LLMClient
+from labpilot.llm import LLMClient
 from labpilot.prompts import SUMMARY_MAX_TOKENS, build_summary_prompt
 
 logger = logging.getLogger(__name__)
@@ -24,15 +25,28 @@ def make_summarizer(
     def summarize(artifact_id: str) -> str:
         read = read_parts(conn, artifact_id, limit=None, error=StorageUnavailable)
         prompt = build_summary_prompt(read.texts)
-
-        try:
-            return client.generate(prompt, max_tokens=SUMMARY_MAX_TOKENS).text
-        except AllFreeTiersExhausted as exc:
-            raise GenerationUnavailable(
-                "every free tier failed", attempts=exc.attempts
-            ) from exc
+        return generate(client, prompt, max_tokens=SUMMARY_MAX_TOKENS).text
 
     return summarize
+
+
+def or_no_summary(summarize: Callable[[str], str]) -> Callable[[str], str]:
+    """The same summary, or "" when every tier failed.
+
+    A summary is a guide, not the evidence, so the report is still written, from
+    the parts alone.
+    """
+
+    def softly(artifact_id: str) -> str:
+        try:
+            return summarize(artifact_id)
+        except GenerationUnavailable:
+            logger.warning(
+                "no summary of %s: every tier failed", artifact_id, exc_info=True
+            )
+            return ""
+
+    return softly
 
 
 def store_summary(

@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 import psycopg
@@ -14,7 +13,8 @@ from labpilot.agent import (
     read_claims,
 )
 from labpilot.api.file_parts import read_parts
-from labpilot.llm import AllFreeTiersExhausted, LLMClient, LLMResult, Tool
+from labpilot.api.tool_calls import ask_tool, at_once
+from labpilot.llm import LLMClient, Tool
 from labpilot.prompts import (
     CLAIMS_MAX_TOKENS,
     CLAIMS_VERSION,
@@ -22,26 +22,10 @@ from labpilot.prompts import (
     claims_fit,
     claims_groups,
 )
-from labpilot.timing import in_this_context
 
 logger = logging.getLogger(__name__)
 
 TOOL_DESCRIPTION = "List the checkable facts that the reference states."
-
-# The groups are asked at the same time, at most this many at once.
-CLAIMS_AT_ONCE = 6
-
-
-def _claims_problem(
-    result: LLMResult, *, sources: Sequence[str], texts: Sequence[str]
-) -> str | None:
-    if result.arguments is None:
-        return "no arguments"
-    try:
-        read_claims(result.arguments, sources, texts)
-    except ClaimsError as exc:
-        return str(exc)
-    return None
 
 
 def make_claims_extractor(
@@ -54,29 +38,21 @@ def make_claims_extractor(
     )
 
     def one_group(parts: list[str], sources: list[str]) -> tuple[Claim, ...] | None:
-        try:
-            result = client.generate(
-                build_claims_prompt(parts),
-                max_tokens=CLAIMS_MAX_TOKENS,
-                tool=tool,
-                problem_with=partial(_claims_problem, sources=sources, texts=parts),
-            )
-        except AllFreeTiersExhausted as exc:
-            logger.warning("no tier gave claims for a group (%d)", len(exc.attempts))
-            return None
-        if result.arguments is None:
-            logger.warning("%s gave no arguments for a group", result.model)
-            return None
-
-        claims = read_claims(result.arguments, sources, parts)
-        logger.info(
-            "claims v%d made by %s (tier %s): %d claims from %d parts",
-            CLAIMS_VERSION,
-            result.model,
-            result.tier,
-            len(claims),
-            len(parts),
+        claims = ask_tool(
+            client,
+            build_claims_prompt(parts),
+            tool=tool,
+            max_tokens=CLAIMS_MAX_TOKENS,
+            read=partial(read_claims, sources=sources, texts=parts),
+            errors=(ClaimsError,),
         )
+        if claims is not None:
+            logger.info(
+                "claims v%d: %d claims from %d parts",
+                CLAIMS_VERSION,
+                len(claims),
+                len(parts),
+            )
         return claims
 
     def extract(artifact_id: str) -> tuple[Claim, ...]:
@@ -93,18 +69,10 @@ def make_claims_extractor(
         sources = list(read.sources)
         groups = claims_groups(parts)
 
-        with ThreadPoolExecutor(min(len(groups), CLAIMS_AT_ONCE)) as pool:
-            answers = list(
-                pool.map(
-                    in_this_context(
-                        lambda ids: one_group(
-                            [parts[i] for i in ids], [sources[i] for i in ids]
-                        )
-                    ),
-                    groups,
-                )
-            )
+        def read_group(ids: Sequence[int]) -> tuple[Claim, ...] | None:
+            return one_group([parts[i] for i in ids], [sources[i] for i in ids])
 
+        answers = at_once(read_group, groups)
         given = [answer for answer in answers if answer is not None]
         if not given:
             raise ClaimsError(f"no tier gave claims for any of {len(groups)} groups")

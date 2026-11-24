@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 from labpilot.agent._quote import has_quote
+from labpilot.agent._schema import index, list_schema, number
 from labpilot.agent.difference import (
     AUDIT,
     DIFFERS,
@@ -27,25 +28,9 @@ JUDGE_VERDICTS = (REAL, MINOR, FALSE)
 RELATIONS = ("silent", "differs", "same", "none")
 
 
-def _answers(properties: dict, required: list[str], key: str) -> dict:
-    return {
-        "type": "object",
-        "properties": {
-            key: {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
-                },
-            }
-        },
-        "required": [key],
-    }
-
-
 def audit_schema() -> dict[str, object]:
-    return _answers(
+    return list_schema(
+        "answers",
         {
             "n": {"type": "integer"},
             "verdict": {"type": "string", "enum": list(AUDIT_VERDICTS)},
@@ -54,12 +39,12 @@ def audit_schema() -> dict[str, object]:
             "why": {"type": "string"},
         },
         ["n", "verdict"],
-        "answers",
     )
 
 
 def scan_schema() -> dict[str, object]:
-    return _answers(
+    return list_schema(
+        "items",
         {
             "part": {"type": "integer"},
             "quote": {"type": "string"},
@@ -67,12 +52,12 @@ def scan_schema() -> dict[str, object]:
             "why": {"type": "string"},
         },
         ["part", "quote", "what"],
-        "items",
     )
 
 
 def judge_schema() -> dict[str, object]:
-    return _answers(
+    return list_schema(
+        "answers",
         {
             "n": {"type": "integer"},
             "verdict": {"type": "string", "enum": list(JUDGE_VERDICTS)},
@@ -80,7 +65,6 @@ def judge_schema() -> dict[str, object]:
             "why": {"type": "string"},
         },
         ["n", "verdict", "relation"],
-        "answers",
     )
 
 
@@ -97,13 +81,6 @@ def merge_schema() -> dict[str, object]:
     }
 
 
-def _number(value: object) -> int | None:
-    # bool is an int in Python; a model that writes true is not naming a part.
-    if isinstance(value, bool) or not isinstance(value, int):
-        return None
-    return value
-
-
 def _placed(
     part: object, quote: str, sources: Sequence[str], texts: Sequence[str]
 ) -> tuple[str, str] | None:
@@ -113,8 +90,8 @@ def _placed(
     """
     if not quote.strip():
         return None
-    named = _number(part)
-    order = [named] if named is not None and 0 <= named < len(texts) else []
+    named = index(part, len(texts))
+    order = [] if named is None else [named]
     order += [i for i in range(len(texts)) if i != named]
     for i in order:
         if has_quote(texts[i], quote):
@@ -144,7 +121,7 @@ def read_audit(
     for answer in answers:
         if not isinstance(answer, dict):
             continue
-        n = _number(answer.get("n"))
+        n = number(answer.get("n"))
         verdict = answer.get("verdict")
         if n is None or n not in asked or verdict not in AUDIT_VERDICTS:
             continue
@@ -208,10 +185,10 @@ def read_judge(arguments: dict, count: int) -> dict[int, tuple[str, str, str]]:
     for answer in answers:
         if not isinstance(answer, dict):
             continue
-        n = _number(answer.get("n"))
+        n = index(answer.get("n"), count)
         verdict = answer.get("verdict")
         relation = answer.get("relation")
-        if n is None or not 0 <= n < count or verdict not in JUDGE_VERDICTS:
+        if n is None or verdict not in JUDGE_VERDICTS:
             continue
         if relation not in RELATIONS:
             relation = "none"
@@ -235,7 +212,7 @@ def read_merge(arguments: dict, allowed: Sequence[int]) -> list[list[int]]:
         if not isinstance(group, list):
             continue
         members = sorted(
-            {n for n in (_number(x) for x in group) if n in ok and n not in taken}
+            {n for n in (number(x) for x in group) if n in ok and n not in taken}
         )
         if len(members) >= 2:
             out.append(members)

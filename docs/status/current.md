@@ -7,8 +7,9 @@ the size gate and big repositories → [the brief](../step2/slice-12-brief.md).*
 
 | | |
 |---|---|
-| branch | `feat/routing` (last commit `d561d4a`; the slice 11 closing work and the docs split are in the working tree, NOT committed) |
+| branch | `feat/routing` (last commit `db93447`; the cleanup of 2026-11-24 is in the working tree, NOT committed) |
 | last tests by Claude | unit and api: 2,517 passed, 5 skipped (before the docs split); the related database tests passed. The FULL suite is run by the user |
+| cleanup | dead code out, repeats in one place, claims list whole (D140 to D142, M35) → [34](../step2/34-cleanup-before-slice-12.md) |
 | closed last | slice 11, routing → [33.8](../step2/33-slice-11-routing.md#338-slice-11-is-closed-the-last-work-and-the-closing-review--2026-11-24) |
 
 ## The flow of one question today

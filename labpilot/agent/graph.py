@@ -4,33 +4,21 @@ from typing import Any
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import Send
 
+from labpilot.agent.choices import FinderChoices, after_gate, after_measure
 from labpilot.agent.claim import Claim
 from labpilot.agent.correspondence import Correspondence
 from labpilot.agent.extract_claims import make_claims_node
-from labpilot.agent.fan_out import fan_out
 from labpilot.agent.final_merge import Merge, make_final_merge_node
-from labpilot.agent.find_bugs import (
-    FindBugs,
-    bugs_task,
-    make_find_bugs_node,
-    wants_bugs,
-)
+from labpilot.agent.find_bugs import FindBugs, make_find_bugs_node
 from labpilot.agent.find_differences import (
     FindDifferences,
-    differences_task,
     make_find_differences_node,
-    wants_differences,
 )
-from labpilot.agent.fresh import (
-    FreshCheck,
-    fresh_task,
-    make_fresh_node,
-    wants_fresh,
-)
+from labpilot.agent.fresh import FreshCheck, make_fresh_node
 from labpilot.agent.gate import make_gate_node
-from labpilot.agent.halt import halted, make_halt_node
+from labpilot.agent.halt import make_halt_node
+from labpilot.agent.measure import make_measure_node, make_stuff_node
 from labpilot.agent.merge import make_merge_node
 from labpilot.agent.plan import Plan, Query
 from labpilot.agent.planner import make_planner_node
@@ -76,132 +64,114 @@ def build_graph(
     if gate is None and halt_answer is not None:
         raise ValueError("'halt_answer' is only used with a gate")
 
-    # Where the two finders lead: the last cheap merge when there is one.
-    after_finders = "final_merge" if final_merge is not None else "respond"
-
-    def measure_node(state: State) -> dict[str, Any]:
-        sides = measure(state["a"], state["b"])
-        # The last answer is counted too: the answer prompt carries it whole.
-        fitted = fits(sides, state["question"], state.get("last_answer", ""))
-        return {"sides": sides, "fits": fitted}
-
-    def stuff_node(state: State) -> dict[str, Any]:
-        chunks, totals = stuff(state["sides"], state["question"])
-        return {"chunks": chunks, "totals": totals}
-
-    def pick(state: State) -> str | list[Send]:
-        if not state["plan"].files:
-            return "respond"
-        return "stuff" if state["fits"] else fan_out(state)
-
-    def after_gate(state: State) -> str:
-        return "halt" if halted(state) else "measure"
-
-    def bug_hunt(state: State) -> list[Send]:
-        task = bugs_task(state) if find_bugs is not None else None
-        if task is None or not wants_bugs(state):
-            return []
-        return [Send("find_bugs", task)]
-
-    def new_check(state: State) -> list[Send]:
-        # D107: a question the first analysis did not cover gets ONE new check.
-        if fresh is None or not wants_fresh(state):
-            return []
-        return [Send("fresh", fresh_task(state))]
-
-    def finders(state: State) -> str | list[Send]:
-        # The differences and the bug hunt run at the same time, and the next
-        # node runs once, after both of them.
-        sends = bug_hunt(state) + new_check(state)
-        if find_differences is not None and wants_differences(state):
-            sends.append(Send("find_differences", differences_task(state)))
-        return sends or "respond"
-
-    def after_search(state: State) -> str | list[Send]:
-        # R21: when everything was read, the answer sees all of both files, and
-        # the claims and the differences only cost time (measured 2026-10-24:
-        # the stuffed answer alone scored 30 of 39 in 35 s). The bug hunt still
-        # runs: one call over a whole file found about half of what the hunt
-        # finds (section 29).
-        if state["totals"] is None:
-            return bug_hunt(state) + new_check(state) or "respond"
-        if extract_claims is not None and wants_differences(state):
-            return "extract_claims"
-        return finders(state)
-
+    choices = FinderChoices(
+        claims=extract_claims is not None,
+        differences=find_differences is not None,
+        bugs=find_bugs is not None,
+        fresh=fresh is not None,
+    )
     builder = StateGraph(State)
+    _add(builder, "plan", make_planner_node(plan))
+    _add(builder, "measure", make_measure_node(measure, fits))
+    _add(builder, "stuff", make_stuff_node(stuff))
+    _add(builder, "search_one", make_one_search_node(search_one))
+    _add(builder, "merge", make_merge_node(totals_of, rank_side, whole_side))
+    _add(
+        builder,
+        "respond",
+        make_respond_node(make_prompt, generate, ask, generate_for_files),
+    )
+    _add(builder, "remember", make_remember_node(answer_text))
 
-    def add(name: str, node: Callable[..., Any]) -> None:
-        # Every node reports its own seconds (S1), and names itself for the
-        # model calls it makes.
-        builder.add_node(name, timed(name, node))
+    _wire_start(builder, rewrite, summarize, gate, halt_answer)
+    builder.add_conditional_edges("measure", after_measure)
+    builder.add_edge("search_one", "merge")
+    if find_differences is not None:
+        node = make_find_differences_node(find_differences)
+        _add(builder, "find_differences", node)
+    if find_bugs is not None:
+        _add(builder, "find_bugs", make_find_bugs_node(find_bugs))
+    if fresh is not None:
+        _add(builder, "fresh", make_fresh_node(fresh))
+    _wire_finders(builder, choices, final_merge, extract_claims)
+    builder.add_edge("respond", "remember")
+    builder.add_edge("remember", END)
+    return builder.compile(checkpointer=checkpointer)
 
-    add("plan", make_planner_node(plan))
-    add("measure", measure_node)
-    add("stuff", stuff_node)
-    add("search_one", make_one_search_node(search_one))
-    add("merge", make_merge_node(totals_of, rank_side, whole_side))
-    add("respond", make_respond_node(make_prompt, generate, ask, generate_for_files))
-    add("remember", make_remember_node(answer_text))
 
+def _add(builder: StateGraph, name: str, node: Callable[..., Any]) -> None:
+    # Every node reports its own seconds (S1), and names itself for the model
+    # calls it makes.
+    builder.add_node(name, timed(name, node))
+
+
+def _wire_start(
+    builder: StateGraph,
+    rewrite: Callable[[str, list[str], str], str] | None,
+    summarize: Callable[[str], str] | None,
+    gate: Callable[[str, str, str, str], Correspondence] | None,
+    halt_answer: Callable[[str, str, str], Any] | None,
+) -> None:
+    """Everything before `measure`: rewrite, plan, the two summaries, the gate."""
     # A follow-up is rewritten first, so the planner, the searches, the rerank
     # and the answer all read the standalone question.
     first = START
     if rewrite is not None:
-        add("rewrite", make_rewrite_node(rewrite))
+        _add(builder, "rewrite", make_rewrite_node(rewrite))
         builder.add_edge(first, "rewrite")
         first = "rewrite"
+
     # The planner and the two summaries start together, and measure waits for
     # all of them, so respond can read the summaries whichever way it was reached.
-    first_steps = ["plan"]
     summaries = []
     if summarize is not None:
         for slot in ("a", "b"):
             name = f"summarize_{slot}"
-            add(name, make_summarize_node(slot, summarize))
-            first_steps.append(name)
+            _add(builder, name, make_summarize_node(slot, summarize))
             summaries.append(name)
+    first_steps = ["plan", *summaries]
     for step in first_steps:
         builder.add_edge(first, step)
+
     if gate is None:
         builder.add_edge(first_steps, "measure")
-    else:
-        # The gate waits for both summaries; the planner runs beside them. When
-        # the verdict is NONE the run ends with an answer made from the two
-        # summaries, and nothing after this point runs (D78 to D80).
-        add("gate", make_gate_node(gate))
-        add("halt", make_halt_node(halt_answer))
-        builder.add_edge(summaries, "gate")
-        builder.add_conditional_edges("gate", after_gate, ["measure", "halt"])
-        builder.add_edge("halt", "remember")
-    builder.add_conditional_edges("measure", pick)
-    builder.add_edge("search_one", "merge")
+        return
+    # The gate waits for both summaries; the planner runs beside them. When the
+    # verdict is NONE the run ends with an answer made from the two summaries,
+    # and nothing after this point runs (D78 to D80).
+    _add(builder, "gate", make_gate_node(gate))
+    _add(builder, "halt", make_halt_node(halt_answer))
+    builder.add_edge(summaries, "gate")
+    builder.add_conditional_edges("gate", after_gate, ["measure", "halt"])
+    builder.add_edge("halt", "remember")
 
-    # The plan decides which finders run: the differences between A and B
-    # (after the claims, which give it A's facts) and the bugs of one file.
-    found_by = []
-    if find_differences is not None:
-        add("find_differences", make_find_differences_node(find_differences))
-        found_by.append("find_differences")
-    if find_bugs is not None:
-        add("find_bugs", make_find_bugs_node(find_bugs))
-        found_by.append("find_bugs")
-    if fresh is not None:
-        add("fresh", make_fresh_node(fresh))
-        found_by.append("fresh")
+
+def _wire_finders(
+    builder: StateGraph,
+    choices: FinderChoices,
+    final_merge: Merge | None,
+    extract_claims: Callable[[str], tuple[Claim, ...]] | None,
+) -> None:
+    """From the search to the answer: the claims, the finders, the last merge.
+
+    The plan decides which finders run: the differences between A and B (after
+    the claims, which give it A's facts) and the bugs of one file.
+    """
+    # Where the finders lead: the last cheap merge when there is one.
+    after_finders = "respond"
+    if final_merge is not None:
+        _add(builder, "final_merge", make_final_merge_node(final_merge))
+        builder.add_edge("final_merge", "respond")
+        after_finders = "final_merge"
+
+    found_by = choices.names()
     for name in found_by:
         builder.add_edge(name, after_finders)
-    if final_merge is not None:
-        add("final_merge", make_final_merge_node(final_merge))
-        builder.add_edge("final_merge", "respond")
 
     after = ["respond", *found_by]
     if extract_claims is not None:
-        add("extract_claims", make_claims_node(extract_claims))
-        builder.add_conditional_edges("extract_claims", finders, after)
-        after.append("extract_claims")
+        _add(builder, "extract_claims", make_claims_node(extract_claims))
+        builder.add_conditional_edges("extract_claims", choices.finders, after)
+        after = [*after, "extract_claims"]
     for searched in ("stuff", "merge"):
-        builder.add_conditional_edges(searched, after_search, after)
-    builder.add_edge("respond", "remember")
-    builder.add_edge("remember", END)
-    return builder.compile(checkpointer=checkpointer)
+        builder.add_conditional_edges(searched, choices.after_search, after)

@@ -8,11 +8,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from labpilot.api.errors import ApiError, GenerationUnavailable
+from labpilot.api.headers import REQUEST_ID_HEADER
 from labpilot.api.schemas import AttemptOut, ErrorBody, ErrorEnvelope
 
 logger = logging.getLogger(__name__)
-
-REQUEST_ID_HEADER = "X-Request-ID"
 
 
 def error_response(

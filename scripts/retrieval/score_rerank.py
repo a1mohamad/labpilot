@@ -14,9 +14,8 @@ same pair needed by a different candidate set is already paid for. A LISTWISE
 reranker has no score to cache - it returns an order - so it is cached per
 candidate SET instead, and an unseen set is a fresh call rather than a guess.
 
-The instrument is Cloudflare's bge-reranker-base: ~3.52 neurons per 50-document
-call against 10,000 a DAY, which is the largest renewing budget we have. Cohere
-is deliberately NOT used - its 1,000 a month is the chain primary's own bucket.
+The instrument is Flash-Lite 3.5, the first rerank tier of the product. Cohere is
+opt-in: its 1,000 calls a month are the product's own.
 
 What this run may NOT conclude, carried forward from slice 5: which provider is
 best (slice 8), that the chain-3 order is settled (slice 8), or that fusion is
@@ -45,7 +44,6 @@ from labpilot.llm.registry import (
     GEMMA_4_31B,
 )
 from labpilot.rerank import (
-    CLOUDFLARE_RERANK,
     COHERE_RERANK,
     VOYAGE_RERANK_3,
     VOYAGE_RERANK_3_LITE,
@@ -107,10 +105,6 @@ CACHE = Path(".cache/rerank")
 EMBED_CACHE = Path(".cache/hybrid")
 
 
-# Cloudflare is the default because ~2,840 calls a day cannot realistically run
-# out. Voyage and Cohere answer the question Cloudflare cannot - whether a bad
-# result is about RERANKING or about one cheap 2023-era base model.
-#
 # COHERE IS THE EXPENSIVE ONE AND IS OPT-IN. Its 1,000 calls a MONTH are the
 # chain primary's own bucket, shared with chat and embed, so the script prints
 # the bill before spending it: 45 queries is 4.5% of a month, 17 at --window=30
@@ -138,7 +132,6 @@ RERANKERS = {
     "gemma": listwise(GEMMA_4_31B),
     "gemma26": listwise(GEMMA_4_26B),
     "flashlite31": listwise(GEMINI_3_1_FLASH_LITE),
-    "cloudflare": CLOUDFLARE_RERANK,
     "voyage": VOYAGE_RERANK_3_LITE,
     "voyage3": VOYAGE_RERANK_3,
     "cohere": COHERE_RERANK,
@@ -146,7 +139,7 @@ RERANKERS = {
 
 # Cohere's trial header reports 10 requests/minute, so pace just under it.
 BUDGET_WARNING = {"rerank-v4.0-fast": "1,000 calls a MONTH, shared with chat and embed"}
-RERANKER = CLOUDFLARE_RERANK  # main() replaces this from the command line
+RERANKER = RERANKERS["flashlite"]  # main() replaces this from the command line
 
 # --cached-only: re-derive a table from what is already stored and spend
 # NOTHING. It exists because the pointwise probe costs 2 REAL calls per model,

@@ -9,9 +9,13 @@ from labpilot.llm import (
     GeminiProvider,
     LLMError,
     OpenAICompatibleProvider,
+    routes,
 )
 from labpilot.llm.registry import GOOGLE_KEYS, NOT_TRUSTED
-from labpilot.prompts import PROMPT_BUDGET, REPORT_MAX_TOKENS
+from labpilot.prompts import PROMPT_BUDGET
+
+# What the two-file answer asks for, the biggest of all the tasks.
+ANSWER_MAX_TOKENS = routes.TASKS["respond_two"].max_tokens
 
 ROOT = Path(__file__).resolve().parents[3]
 ENV_EXAMPLE = ROOT / ".env.example"
@@ -228,7 +232,7 @@ def test_no_single_pool_can_stop_a_full_report():
         survivors = [
             p.name
             for p in CHAIN
-            if p.api_key_env != dead and p.max_output_tokens >= REPORT_MAX_TOKENS
+            if p.api_key_env != dead and p.max_output_tokens >= ANSWER_MAX_TOKENS
         ]
         assert survivors, dead
 
@@ -355,7 +359,7 @@ def test_only_known_tiers_cannot_serve_a_full_report():
     unable = [
         provider.name
         for provider in CHAIN
-        if provider.max_output_tokens < REPORT_MAX_TOKENS
+        if provider.max_output_tokens < ANSWER_MAX_TOKENS
     ]
 
     assert unable == list(OUTPUT_TOO_SMALL), unable
@@ -382,7 +386,7 @@ def test_every_tier_we_believe_can_serve_a_report_really_can():
     """OUTPUT_TOO_SMALL names them by FIELD. This checks the RULE.
 
     test_only_known_tiers_cannot_serve_a_full_report compares
-    max_output_tokens against REPORT_MAX_TOKENS, which is one field and not
+    max_output_tokens against ANSWER_MAX_TOKENS, which is one field and not
     what the chain applies. `_check_fits` enforces the SUM - prompt plus
     reserved output against the context window - so a tier with a generous
     max_output and a small CONTEXT passes that test and still cannot serve a
@@ -404,7 +408,7 @@ def test_every_tier_we_believe_can_serve_a_report_really_can():
     for provider in CHAIN:
         if provider.name in excused:
             continue
-        provider._check_fits(prompt, REPORT_MAX_TOKENS)
+        provider._check_fits(prompt, ANSWER_MAX_TOKENS)
 
 
 def test_a_tier_with_too_small_a_window_costs_no_request():
@@ -419,7 +423,7 @@ def test_a_tier_with_too_small_a_window_costs_no_request():
 
     for name in CONTEXT_TOO_SMALL:
         with pytest.raises(LLMError, match="context"):
-            by_name[name]._check_fits(prompt, REPORT_MAX_TOKENS)
+            by_name[name]._check_fits(prompt, ANSWER_MAX_TOKENS)
 
 
 def test_the_two_qwen_hosts_do_not_share_a_reasoning_value():

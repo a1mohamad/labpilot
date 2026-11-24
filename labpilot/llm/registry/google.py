@@ -66,29 +66,20 @@ def _gemini(
     )
 
 
-def _second_account(provider: GeminiProvider) -> GeminiProvider:
-    """The same model on the other key, as its own tier with its own pool."""
+def _account(provider: GeminiProvider, n: int) -> GeminiProvider:
+    """The same model on key `n` (1 is the first): its own tier, its own pool."""
+    key = GOOGLE_KEYS[n - 1]
     return dataclasses.replace(
         provider,
-        name=f"{provider.name} (key 2)",
-        api_key_env=GOOGLE_KEYS[1],
-        quota_pool=f"{GOOGLE_KEYS[1]}:{provider.model}",
-    )
-
-
-def _third_account(provider: GeminiProvider) -> GeminiProvider:
-    """The same model on the third key: its own tier, its own pool."""
-    return dataclasses.replace(
-        provider,
-        name=f"{provider.name} (key 3)",
-        api_key_env=GOOGLE_KEYS[2],
-        quota_pool=f"{GOOGLE_KEYS[2]}:{provider.model}",
+        name=f"{provider.name} (key {n})",
+        api_key_env=key,
+        quota_pool=f"{key}:{provider.model}",
     )
 
 
 def _other_accounts(provider: GeminiProvider) -> tuple[GeminiProvider, ...]:
     """The same model on every account after the first, in key order."""
-    return (_second_account(provider), _third_account(provider))
+    return tuple(_account(provider, n) for n in range(2, len(GOOGLE_KEYS) + 1))
 
 
 # ADDED 2026-09-19. AA v4.3 = 41 at 297.8 tok/s, which puts it SECOND -
@@ -115,13 +106,7 @@ GEMINI_4_HYDROGEN = _gemini(
 )
 
 
-GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", model="gemini-3.7-flash")
-
-
 GEMINI_3_6_FLASH = _gemini(name="Gemini 3.6 Flash", model="gemini-3.6-flash")
-
-
-GEMINI_3_5_FLASH = _gemini(name="Gemini 3.5 Flash", model="gemini-3.5-flash")
 
 
 GEMINI_3_5_FLASH_LITE = _gemini(

@@ -20,7 +20,7 @@ from labpilot.api.schemas import (
     QuestionResponse,
     SideChunks,
 )
-from labpilot.ingest import Chunk
+from labpilot.ingest import SIDES, Chunk
 from labpilot.prompts import find_citations, resolve
 from labpilot.store import (
     ConnectionFailed,
@@ -141,7 +141,7 @@ def _sides_read(comparison: Comparison) -> list[str]:
 
     return [
         side
-        for side in ("A", "B")
+        for side in SIDES
         if side in held or any(chunk.side == side for chunk in comparison.chunks)
     ]
 

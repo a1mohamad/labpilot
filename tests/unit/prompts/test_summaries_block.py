@@ -1,5 +1,5 @@
 from labpilot.ingest import Chunk
-from labpilot.prompts import REPORT, build_prompt, reserve
+from labpilot.prompts import TWO_FILES, build_prompt, reserve
 from labpilot.prompts.builder import PRIOR_HEADING, SUMMARIES_NOTE
 from labpilot.tokens import estimate_tokens
 
@@ -19,7 +19,7 @@ SUMMARIES = {"A": "A is a paper about duplicates.", "B": "B trains an LSTM."}
 
 def prompt(summaries):
     return build_prompt(
-        CHUNKS, CHUNKS, question="why?", instructions=REPORT, summaries=summaries
+        CHUNKS, CHUNKS, question="why?", instructions=TWO_FILES, summaries=summaries
     )
 
 
@@ -35,7 +35,7 @@ def test_each_summary_gets_its_own_heading_and_one_note_comes_before_them():
 def test_the_summaries_sit_between_the_instructions_and_the_parts():
     text = prompt(SUMMARIES)
 
-    assert text.index(REPORT.header) < text.index("SUMMARY OF SIDE A")
+    assert text.index(TWO_FILES.header) < text.index("SUMMARY OF SIDE A")
     assert text.index("SUMMARY OF SIDE B") < text.index("loss = bce(out, y)")
 
 
@@ -47,7 +47,7 @@ def test_a_blank_summary_is_left_out():
 
 
 def test_no_summaries_leaves_the_prompt_as_it_was():
-    plain = build_prompt(CHUNKS, CHUNKS, question="why?", instructions=REPORT)
+    plain = build_prompt(CHUNKS, CHUNKS, question="why?", instructions=TWO_FILES)
 
     assert prompt(None) == plain
     assert prompt({}) == plain
@@ -55,9 +55,9 @@ def test_no_summaries_leaves_the_prompt_as_it_was():
 
 
 def test_the_reserve_counts_the_summaries():
-    without = reserve(CHUNKS, question="why?", instructions=REPORT)
+    without = reserve(CHUNKS, question="why?", instructions=TWO_FILES)
     with_summaries = reserve(
-        CHUNKS, question="why?", instructions=REPORT, summaries=SUMMARIES
+        CHUNKS, question="why?", instructions=TWO_FILES, summaries=SUMMARIES
     )
 
     assert with_summaries - without >= estimate_tokens(SUMMARIES["A"])
@@ -80,7 +80,7 @@ def test_the_findings_of_an_earlier_pass_still_come_after_the_parts():
         CHUNKS,
         CHUNKS,
         question="why?",
-        instructions=REPORT,
+        instructions=TWO_FILES,
         prior="a finding",
         summaries=SUMMARIES,
     )

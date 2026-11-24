@@ -13,6 +13,7 @@ from labpilot.ingest import (
     Side,
 )
 from labpilot.prompts import (
+    A_WHOLE_TOKENS,
     FILE_ROW_TOKENS,
     KEPT_ANSWER_CHARS,
     PROMPT_BUDGET,
@@ -111,6 +112,19 @@ def stuffed_chunks(
         )
 
     return tuple(chunks)
+
+
+def whole_side(
+    conn: psycopg.Connection, sides: dict[Side, StoredArtifact], side: Side
+) -> tuple[Chunk, ...] | None:
+    """The whole reference when it is small enough to stand beside B, else None.
+
+    Small means A_WHOLE_TOKENS or less. B is never read whole on the search path.
+    """
+    found = sides[side]
+    if side != "A" or found.characters / CHARS_PER_TOKEN > A_WHOLE_TOKENS:
+        return None
+    return stuffed_chunks(conn, {side: found})
 
 
 def as_chunk(stored: SearchHit | StoredChunk, side: Side, artifact_id: str) -> Chunk:

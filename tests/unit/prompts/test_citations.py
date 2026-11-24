@@ -1,7 +1,7 @@
 import re
 
 from labpilot.ingest import Chunk
-from labpilot.prompts import COMPARE, CORE, FULL, REPORT, SCAN, find_citations, resolve
+from labpilot.prompts import ONE_FILE, REFERENCE, TWO_FILES, find_citations, resolve
 from labpilot.prompts.citations import unescape
 
 BODY = "def fit():\n    loss.backward()\n    step()"
@@ -87,7 +87,9 @@ def test_a_quote_that_spans_a_wrapped_line_still_resolves():
 
 
 def test_our_own_example_citation_can_be_parsed():
-    assert find_citations(FULL.header) == [("B-17", "count = count + 1")]
+    assert find_citations(TWO_FILES.header) == [
+        ("B-17", "one line copied exactly from that part"),
+    ]
 
 
 def test_a_quote_escaped_for_a_markdown_table_still_resolves():
@@ -123,7 +125,7 @@ def test_the_citation_shape_each_template_teaches_is_the_shape_we_parse():
     That is not hypothetical: cutting this rule to one line on 2026-08-17 made a
     whole run unresolvable, because the model wrote the id without the quote.
     """
-    for instructions in (FULL, CORE, REPORT, SCAN, COMPARE):
+    for instructions in (ONE_FILE, REFERENCE, TWO_FILES):
         taught = find_citations(instructions.header)
 
         assert taught, f"{instructions.name} teaches a shape we cannot parse"

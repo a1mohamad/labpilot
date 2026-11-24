@@ -67,7 +67,7 @@ def test_when_every_tier_fails_the_error_is_the_gates_own():
 
 
 def test_an_answer_with_no_arguments_is_a_gate_error():
-    with pytest.raises(GateError, match="no arguments"):
+    with pytest.raises(GateError, match="no tier"):
         make_gate(FakeClient(None))("a", "b")
 
 

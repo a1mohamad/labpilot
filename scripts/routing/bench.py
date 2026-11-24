@@ -36,6 +36,7 @@ import re
 import sys
 import threading
 import time
+from functools import partial
 from pathlib import Path
 
 from scripts.routing._common import DATA, LOGS, check_network, load_env
@@ -548,7 +549,8 @@ def t_plan(cl):
 
 def t_claims(cl):
     import labpilot.api.claims as C
-    from labpilot.agent import read_claims
+    from labpilot.agent import ClaimsError, read_claims
+    from labpilot.api.tool_calls import ask_tool
 
     parts = [f"{c.header}\n{c.text}" for c in case_parts("quora", "A")]
     sources = [c.header or c.source for c in case_parts("quora", "A")]
@@ -570,21 +572,15 @@ def t_claims(cl):
         got = []
         for ids in claims_groups(parts):
             ps, ss = [parts[i] for i in ids], [sources[i] for i in ids]
-            try:
-                res = cl.generate(
-                    build_claims_prompt(ps),
-                    max_tokens=CLAIMS_MAX_TOKENS,
-                    tool=tool,
-                    problem_with=lambda r, ss=ss, ps=ps: C._claims_problem(
-                        r, sources=ss, texts=ps
-                    ),
-                )
-                got += [
-                    {"text": c.text, "quote": c.quote}
-                    for c in read_claims(res.arguments, ss, ps)
-                ]
-            except AllFreeTiersExhausted:
-                pass
+            claims = ask_tool(
+                cl,
+                build_claims_prompt(ps),
+                tool=tool,
+                max_tokens=CLAIMS_MAX_TOKENS,
+                read=partial(read_claims, sources=ss, texts=ps),
+                errors=(ClaimsError,),
+            )
+            got += [{"text": c.text, "quote": c.quote} for c in claims or ()]
         cov = G7.cover(got)
         mm, m = len(cov["covered_mismatch"]), len(cov["covered_match"])
         return (2 * mm + m) / (
