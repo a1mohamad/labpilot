@@ -46,8 +46,6 @@ def test_every_reranker_refuses_without_credentials_and_costs_no_request(
     reranker, monkeypatch
 ):
     monkeypatch.delenv(reranker.api_key_env, raising=False)
-    if reranker.account_env:
-        monkeypatch.delenv(reranker.account_env, raising=False)
 
     with pytest.raises(RerankError, match="is not set"):
         reranker.rank("why", ["a document"])
@@ -179,11 +177,7 @@ def _env_names(tier) -> set[str]:
         f"{tier!r} is neither an LLMReranker nor an HTTPReranker, so this test "
         f"cannot tell which secrets it needs - teach _env_names about it"
     )
-    return {
-        name
-        for name in (tier.api_key_env, tier.account_env, getattr(tier, "url_env", None))
-        if name
-    }
+    return {name for name in (tier.api_key_env, getattr(tier, "url_env", None)) if name}
 
 
 def test_every_env_var_the_shipped_rerank_chain_reads_is_mapped_in_the_smoke_workflow():
@@ -230,8 +224,6 @@ def test_every_reranker_reports_the_http_status_as_a_field(
     quota, and it can only do that if the error says which one it was.
     """
     monkeypatch.setenv(reranker.api_key_env, "test-key")
-    if reranker.account_env:
-        monkeypatch.setenv(reranker.account_env, "test-account")
     responses.add(responses.POST, reranker._endpoint(), json={"e": "x"}, status=status)
 
     with pytest.raises(RerankError) as raised:
