@@ -272,14 +272,14 @@ def test_an_error_inside_a_200_keeps_the_providers_words_and_its_status(provider
 
 
 @responses.activate
-def test_a_503_hidden_in_a_200_is_retried_on_the_same_tier_by_the_chain(
+def test_a_502_hidden_in_a_200_is_retried_on_the_same_tier_by_the_chain(
     provider, no_sleep
 ):
-    """The reason the status matters: the chain retries 503, but only an
-    LLMError that carries the status can be retried."""
+    """The reason the status matters: the chain decides by the status, and only
+    an LLMError that carries it can be retried."""
     from labpilot.llm import LLMClient
 
-    responses.post(URL, json=HIDDEN_503)
+    responses.post(URL, json={"error": {"message": "bad gateway", "code": 502}})
     responses.post(URL, json=ok_body("recovered"))
 
     result = LLMClient(chain=(provider,)).generate("hi")
@@ -289,10 +289,21 @@ def test_a_503_hidden_in_a_200_is_retried_on_the_same_tier_by_the_chain(
 
 
 @responses.activate
+def test_a_503_hidden_in_a_200_goes_to_the_next_tier(provider, no_sleep):
+    from labpilot.llm import AllFreeTiersExhausted, LLMClient
+
+    responses.post(URL, json=HIDDEN_503)
+
+    with pytest.raises(AllFreeTiersExhausted):
+        LLMClient(chain=(provider,)).generate("hi")
+    assert len(responses.calls) == 1
+
+
+@responses.activate
 def test_a_429_hidden_in_a_200_with_a_daily_reset_retires_the_pool(provider):
     """Its metadata carries the same headers a real 429 would, so the daily-cap
     rule works on it too."""
-    from labpilot.llm.chain import pool_is_exhausted
+    from labpilot.llm._failures import pool_is_exhausted
 
     tomorrow_ms = (time.time() + 86_400) * 1000
     responses.post(
@@ -368,3 +379,15 @@ def test_an_empty_error_field_changes_nothing(provider, empty):
 
     with pytest.raises(LLMError, match="unexpected response shape"):
         provider.complete("hi")
+
+
+@responses.activate
+def test_a_daily_429_hidden_in_a_200_says_so_in_its_body_and_rests_long(provider):
+    responses.post(
+        URL, json={"error": {"message": "daily limit of 60 units", "code": 429}}
+    )
+
+    with pytest.raises(LLMError) as raised:
+        provider.complete("hi")
+
+    assert raised.value.retry_after == 3600.0
