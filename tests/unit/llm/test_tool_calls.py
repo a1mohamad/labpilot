@@ -17,7 +17,7 @@ from labpilot.llm._calls import read_arguments, read_object
 
 OPENAI_URL = "https://provider.test/v1/chat/completions"
 GEMINI_BASE = "https://provider.test/v1beta/models"
-GEMINI_URL = f"{GEMINI_BASE}/test-model:generateContent"
+GEMINI_URL = f"{GEMINI_BASE}/test-model:streamGenerateContent?alt=sse"
 CLINE_URL = "https://api.cline.test/api/v1/chat/completions"
 
 TOOL = Tool(
