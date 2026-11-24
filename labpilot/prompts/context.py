@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from labpilot.ingest import Chunk
+from labpilot.ingest import SIDES, Chunk
 from labpilot.prompts._ids import assign_ids
 from labpilot.tokens import estimate_tokens
 
-SIDES = ("A", "B")
 INCLUDED = "text included"
 DROPPED = "text NOT included"
 NOTHING_SENT = "(no part of this side was included)"
