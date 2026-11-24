@@ -13,15 +13,19 @@ from labpilot.prompts.checklists import (
 )
 
 
-def test_the_three_hunts_are_the_trace_the_method_and_the_concept():
-    assert [hunt.instructions for hunt in HUNTS] == [TRACE, METHOD, CONCEPT]
+def test_the_two_long_questions_are_asked_before_the_many_short_ones():
+    assert [hunt.instructions for hunt in HUNTS] == [METHOD, CONCEPT, TRACE]
 
 
-def test_only_the_trace_is_small_and_only_the_method_reads_no_summary():
-    small = [hunt.instructions for hunt in HUNTS if hunt.small]
+def test_each_hunt_names_its_own_route_and_only_the_method_reads_no_summary():
+    tasks = {hunt.instructions.name: hunt.task for hunt in HUNTS}
     no_summary = [hunt.instructions for hunt in HUNTS if not hunt.with_summary]
 
-    assert small == [TRACE]
+    assert tasks == {
+        TRACE.name: "trace",
+        METHOD.name: "method",
+        CONCEPT.name: "concept",
+    }
     assert no_summary == [METHOD]
 
 
