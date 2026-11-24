@@ -8,8 +8,9 @@
 ## The goal
 
 LabPilot must work well when A or B (or both) is a big repository. Today a big file is read only in part:
-the first parts that fit (the summary), 40,000 tokens (`find_bugs`, `find_differences`), 28,000 (claims), and
-about 60 parts of the search reach the answer.
+the first parts that fit (the summary), 40,000 tokens (`find_bugs`, `find_differences`), and
+about 60 parts of the search reach the answer. **The claims are not cut: a reference over 28,000 tokens (`CLAIMS_BUDGET`)
+gets NO claims at all**, because it is refused before any model call (corrected 2026-11-24).
 
 ## First job: a test pair
 
