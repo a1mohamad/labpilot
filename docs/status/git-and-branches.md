@@ -1,6 +1,6 @@
 # Git state and branches
 
-*2026-11-24: slice 11 is on `feat/routing` (`d561d4a`, made from `feat/stored-summaries`). What `main` holds was not checked (it is at `99f4dc6`). The notes below are older.*
+*UPDATE 2026-11-24: slice 11, the docs split and the cleanup are on `main` (`c4eb693`, from `99f4dc6` with 313 one-file commits by `merge_per_file.py`) and on `feat/routing` (`125e54e`); `git diff main feat/routing` was empty right after the merge. The notes below are older.*
 
 [Docs home](../README.md)
 
