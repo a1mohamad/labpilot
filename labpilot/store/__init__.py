@@ -1,4 +1,5 @@
 from labpilot.store.connection import (
+    PooledConnection,
     connect,
     create_schema,
     database_url,
@@ -22,7 +23,7 @@ from labpilot.store.errors import (
     StoreError,
     UnknownArtifact,
 )
-from labpilot.store.keyword import bm25_search, keyword_search
+from labpilot.store.keyword import bm25_search
 from labpilot.store.reader import measure, read_chunks, read_headers
 from labpilot.store.saved import read_saved, write_saved
 from labpilot.store.vector_search import file_scores, search
@@ -33,11 +34,11 @@ __all__ = [
     "bm25_search",
     "ChunkRecord",
     "ConnectionFailed",
-    "keyword_search",
     "measure",
     "ModelMismatch",
     "NotConfigured",
     "POOL_SIZE",
+    "PooledConnection",
     "read_chunks",
     "read_saved",
     "write_saved",
