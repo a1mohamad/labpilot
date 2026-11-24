@@ -35,14 +35,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from labpilot.ingest import chunk_file
+from labpilot.llm import routes
 from labpilot.llm.registry import (
-    GEMINI_3_5_FLASH,
     GEMINI_3_5_FLASH_LITE,
     GEMINI_3_6_FLASH,
 )
 from labpilot.prompts import (
-    REPORT,
-    REPORT_MAX_TOKENS,
+    TWO_FILES,
     build_prompt,
     find_citations,
     resolve,
@@ -58,11 +57,11 @@ CACHE = Path(".cache/hybrid")
 # different wording would be a different retrieval query AND a different task,
 # and CLAUDE.md's rule is that the default prompt is versioned for exactly
 # that reason.
+ANSWER_TOKENS = routes.TASKS["respond_two"].max_tokens
 QUESTION = "Compare these and explain why the results diverge."
 
 MODELS = {
     "flash36": GEMINI_3_6_FLASH,
-    "flash35": GEMINI_3_5_FLASH,
     "flashlite": GEMINI_3_5_FLASH_LITE,
 }
 
@@ -113,12 +112,12 @@ def run(n: int | None, model_key: str) -> dict:
         chunks,
         selected,
         question=QUESTION,
-        instructions=REPORT,
+        instructions=TWO_FILES,
         totals={"A": len(a), "B": len(b)},
     )
     provider = MODELS[model_key]
     started = time.time()
-    result = provider.complete(prompt, max_tokens=REPORT_MAX_TOKENS)
+    result = provider.complete(prompt, max_tokens=ANSWER_TOKENS)
     took = time.time() - started
 
     found = find_citations(result.text)
