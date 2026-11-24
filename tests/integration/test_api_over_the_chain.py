@@ -20,8 +20,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from labpilot.agent import Plan
 from labpilot.api import ApiConfig, app, get_client
-from labpilot.llm import GeminiProvider, LLMClient
-from labpilot.prompts import REPORT_MAX_TOKENS
+from labpilot.llm import GeminiProvider, LLMClient, routes
 from labpilot.store import ArtifactRecord, StoredArtifact, StoredChunk
 
 COMPARE = f"{ApiConfig.PREFIX}/compare"
@@ -54,7 +53,7 @@ CHAIN = (
 
 
 def url(model: str) -> str:
-    return f"{BASE}/{model}:generateContent"
+    return f"{BASE}/{model}:streamGenerateContent?alt=sse"
 
 
 def answered(model: str, text: str = "A and B agree.") -> dict:
@@ -168,15 +167,15 @@ def test_a_healthy_first_tier_answers_and_no_other_tier_is_called(client):
 
 
 @responses.activate
-def test_a_503_is_retried_on_the_same_tier_rather_than_falling_through(client):
+def test_a_503_goes_on_to_the_next_tier_at_once(client):
     responses.add(responses.POST, url("first"), json={}, status=503)
-    responses.add(responses.POST, url("first"), json=answered("first-001"))
+    responses.add(responses.POST, url("third"), json=answered("third-001"))
 
     body = post(client).json()
 
-    assert body["tier"] == 1, "503 means try again, not give up on the tier"
-    assert body["attempts"] == []
-    assert len(responses.calls) == 2
+    asked = [call.request.url for call in responses.calls]
+    assert body["tier"] == 3
+    assert asked.count(url("first")) == 1
 
 
 @responses.activate
@@ -260,4 +259,5 @@ def test_the_provider_is_asked_for_a_full_length_report(client):
     post(client)
 
     sent = json.loads(responses.calls[0].request.body)
-    assert sent["generationConfig"]["maxOutputTokens"] == REPORT_MAX_TOKENS
+    asked = routes.TASKS["respond_two"].max_tokens
+    assert sent["generationConfig"]["maxOutputTokens"] == asked
