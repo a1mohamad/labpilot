@@ -1,11 +1,10 @@
 from collections.abc import Sequence
 
-from labpilot.agent import DIFFERS, MISSING, SILENT, Bug, Difference
+from labpilot.agent import DIFFERS, LINE_CHARS, MISSING, SILENT, Bug, Difference
 from labpilot.tokens import estimate_tokens
 
 # A finding line is cut at this length, so twenty of them stay near 2,000
 # tokens whatever the model wrote.
-LINE_CHARS = 300
 
 DIFFERENCES_NOTE = (
     "A's facts were checked against B, and B was read beside A. [B differs] "
