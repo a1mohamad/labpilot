@@ -9,25 +9,21 @@ from langgraph.types import Command
 from psycopg_pool import ConnectionPool
 
 from labpilot.agent import ask_the_user, build_graph
+from labpilot.api.answering import answerer
 from labpilot.api.bugs import make_bug_finder
-from labpilot.api.chains import (
-    bounded,
-    for_claims,
-    for_skeptic,
-    for_trace,
-)
+from labpilot.api.chains import for_task
 from labpilot.api.checkpoints import open_saver, prune
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison, Question
 from labpilot.api.difference_finder import make_find_differences
 from labpilot.api.difference_review import make_merger
-from labpilot.api.errors import GenerationUnavailable, InvalidQuestion, NothingToAnswer
+from labpilot.api.errors import InvalidQuestion, NothingToAnswer
 from labpilot.api.followups import last_answer_text, make_rewriter
 from labpilot.api.fresh import make_fresh_check
 from labpilot.api.gate import halt_answer, make_gate
 from labpilot.api.planning import make_planner
 from labpilot.api.prompting import build_answer_prompt
-from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks
+from labpilot.api.reading import fits_whole, measure_sides, stuffed_chunks, whole_side
 from labpilot.api.saved import (
     SavedResults,
     saved_bugs,
@@ -38,13 +34,10 @@ from labpilot.api.saved import (
     saved_summary,
     with_saved_steps,
 )
-from labpilot.api.searching import embed_query, rank_pile, retrieve_query
-from labpilot.api.summaries import make_summarizer, summary_chain
-from labpilot.llm import AllFreeTiersExhausted, LLMClient
-from labpilot.prompts import (
-    A_WHOLE_TOKENS,
-    REPORT_MAX_TOKENS,
-)
+from labpilot.api.searching import rank_pile, search_one
+from labpilot.api.summaries import make_summarizer, or_no_summary, summary_chain
+from labpilot.ingest import Side
+from labpilot.llm import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +52,7 @@ def ask(
     thread_id: str | None = None,
     pool: ConnectionPool | None = None,
     reply: str | None = None,
+    fast: bool = False,
 ) -> Comparison | Question:
     """Answer a question about up to two STORED artifacts.
 
@@ -81,7 +75,7 @@ def ask(
 
     a_id, b_id = _in_their_own_slots(a_id, b_id)
     saved = SavedResults(conn)
-    graph = _ask_graph(conn, client, thread_id, pool, saved=saved)
+    graph = _ask_graph(conn, client, thread_id, pool, saved=saved, fast=fast)
     start = {"question": question, "a": a_id, "b": b_id}
     if thread_id is None:
         final = graph.invoke(start)
@@ -160,6 +154,18 @@ def _forget_old_copies(
         )
 
 
+def _fits(sides, question: str, last_answer: str) -> bool:
+    return fits_whole(sides, question=question, last_answer=last_answer)
+
+
+def _stuff(conn: psycopg.Connection, sides, question: str):
+    return stuffed_chunks(conn, sides), None
+
+
+def _totals_of(sides) -> dict[Side, int]:
+    return {side: found.chunks for side, found in sides.items()}
+
+
 def _ask_graph(
     conn: psycopg.Connection,
     client: LLMClient,
@@ -167,133 +173,74 @@ def _ask_graph(
     pool: ConnectionPool | None = None,
     *,
     saved: SavedResults | None = None,
+    fast: bool = False,
 ) -> CompiledStateGraph:
     """The graph ask() runs, with the real functions handed to it.
 
     labpilot/agent/ may not import store/, llm/ or this module, so it receives
-    these six functions instead. Each one is a step ask() used to do inline, and
-    each keeps the conversion of errors that belongs to the API layer.
+    these functions instead. Each one keeps the conversion of errors that belongs
+    to the API layer.
     """
 
-    def fits(sides, question, last_answer):
-        return fits_whole(sides, question=question, last_answer=last_answer)
-
-    def stuff_sides(sides, question):
-        return stuffed_chunks(conn, sides), None
-
-    def search_one(sides, query):
-        if pool is None:
-            return retrieve_query(conn, sides, side=query.side, text=query.text)
-        # Embed BEFORE a connection is taken from the pool, so the pool is not
-        # held while the embedder answers (R16).
-        vector = embed_query(sides, side=query.side, text=query.text)
-        if pool.closed:
-            pool.open(wait=False)
-        for attempt in range(2):
-            try:
-                with pool.connection() as pooled:
-                    return retrieve_query(
-                        pooled,
-                        sides,
-                        side=query.side,
-                        text=query.text,
-                        vector=vector,
-                    )
-            except psycopg.OperationalError:
-                # A pooled connection the server closed in the middle of the
-                # search (seen on 2026-10-24: "SSL SYSCALL EOF"). The pool
-                # drops it, and the search is tried once on another (R10).
-                if attempt:
-                    raise
-                logger.warning("a pooled connection died, searching again")
-        raise AssertionError("unreachable")
-
-    def whole_side(sides, side):
-        # The reference is read whole when it is as small as the step that puts
-        # it beside B allows (A_WHOLE_TOKENS); B never is, on this path.
-        found = sides[side]
-        if side != "A" or found.characters / 3 > A_WHOLE_TOKENS:
-            return None
-        return stuffed_chunks(conn, {side: found})
-
-    def totals_of(sides):
-        return {side: found.chunks for side, found in sides.items()}
-
-    # A summary is a small job: the short chain of D110, with a time limit.
-    summarizer = make_summarizer(conn, summary_chain(client))
-
-    # D104 and D110: the stored objects, made once and read again.
+    # D104 and D110: the stored objects, made once and read again. A summary is a
+    # small job: the short chain of D110, with a time limit.
     saved = saved if saved is not None else SavedResults(conn)
-    stored_summary = saved_summary(saved, summarizer)
+    summarizer = saved_summary(saved, make_summarizer(conn, summary_chain(client)))
 
-    def summarize(artifact_id):
-        # A summary is a guide, not the evidence: when every tier fails the
-        # report is still written, from the parts alone.
-        try:
-            return stored_summary(artifact_id)
-        except GenerationUnavailable:
-            logger.warning(
-                "no summary of %s: every tier failed", artifact_id, exc_info=True
-            )
-            return ""
-
-    def generate(prompt):
-        try:
-            return client.generate(prompt, max_tokens=REPORT_MAX_TOKENS)
-        except AllFreeTiersExhausted as exc:
-            raise GenerationUnavailable(
-                "every free tier failed", attempts=exc.attempts
-            ) from exc
-
-    claims_client = for_claims(client)
-    # Time limits (D102): a call that reads a big group waits at most 120 s for
-    # a tier and 300 s in all, a small call 40 s and 150 s with no second try,
-    # so one slow provider cannot use up the answer.
-    whole = bounded(claims_client, read=120.0, budget=300.0)
-    small = bounded(claims_client, read=40.0, budget=150.0, retries=0)
-    # The merge of the differences: a strong model first with a short limit,
-    # then Flash-Lite (the Flash-Lite merge alone missed obvious repeats).
-    strong_merge = bounded(client, read=40.0, budget=60.0, retries=0)
+    audit = for_task(client, "audit")
+    merge = for_task(client, "merge")
 
     return build_graph(
         measure=partial(measure_sides, conn),
-        fits=fits,
-        stuff=stuff_sides,
-        search_one=search_one,
-        totals_of=totals_of,
+        fits=_fits,
+        stuff=partial(_stuff, conn),
+        search_one=partial(search_one, conn, pool=pool),
+        totals_of=_totals_of,
         rank_side=rank_pile,
-        plan=with_saved_steps(saved, make_planner(conn, client)),
-        summarize=summarize,
-        extract_claims=saved_claims(saved, make_claims_extractor(conn, claims_client)),
+        plan=with_saved_steps(
+            saved, make_planner(conn, for_task(client, "plan")), fast=fast
+        ),
+        summarize=or_no_summary(summarizer),
+        extract_claims=saved_claims(
+            saved, make_claims_extractor(conn, for_task(client, "claims"))
+        ),
         find_differences=saved_differences(
             saved,
             make_find_differences(
                 conn,
-                whole=whole,
-                small=small,
-                merge=make_merger(strong_merge, small),
+                audit=audit,
+                scan=for_task(client, "scan"),
+                judge_client=for_task(client, "judge"),
+                merge=make_merger(for_task(client, "merge_strong"), merge),
             ),
         ),
         find_bugs=saved_bugs(
             saved,
             make_bug_finder(
                 conn,
-                client=bounded(client, read=120.0, budget=300.0),
-                skeptic_client=bounded(for_skeptic(client), read=120.0, budget=300.0),
-                trace_client=bounded(
-                    for_trace(client), read=40.0, budget=150.0, retries=0
-                ),
+                trace=for_task(client, "trace"),
+                method=for_task(client, "method"),
+                concept=for_task(client, "concept"),
+                checklist=for_task(client, "checklist"),
+                checklist_audit=for_task(client, "checklist_audit"),
+                skeptic=for_task(client, "skeptic"),
+                fast=fast,
             ),
+            fast=fast,
         ),
-        fresh=saved_fresh(saved, make_fresh_check(conn, whole=whole, small=small)),
-        final_merge=make_merger(small),
+        fresh=saved_fresh(
+            saved,
+            make_fresh_check(conn, statement=for_task(client, "fresh"), audit=audit),
+        ),
+        final_merge=make_merger(merge),
         ask=ask_the_user if thread_id else None,
-        whole_side=whole_side,
+        whole_side=partial(whole_side, conn),
         make_prompt=build_answer_prompt,
-        rewrite=make_rewriter(client),
+        rewrite=make_rewriter(for_task(client, "rewrite")),
         answer_text=last_answer_text,
-        gate=saved_gate(saved, make_gate(summary_chain(client))),
+        gate=saved_gate(saved, make_gate(for_task(client, "gate"))),
         halt_answer=halt_answer,
-        generate=generate,
+        generate=answerer(client, 2),
+        generate_for_files=partial(answerer, client),
         checkpointer=open_saver(_saving_place(conn, pool)) if thread_id else None,
     )
