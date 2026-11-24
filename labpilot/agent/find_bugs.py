@@ -1,12 +1,11 @@
-import logging
 from collections.abc import Callable
+from functools import partial
 from typing import TypedDict
 
+from labpilot.agent._safety_net import or_nothing
 from labpilot.agent.bug import Bug
 from labpilot.agent.errors import BugsError
 from labpilot.agent.state import State
-
-logger = logging.getLogger(__name__)
 
 STEP = "find_bugs"
 
@@ -34,12 +33,7 @@ def bugs_task(state: State) -> BugsTask | None:
 
 def make_find_bugs_node(find: FindBugs) -> Callable[[BugsTask], dict[str, list[Bug]]]:
     def find_bugs_node(task: BugsTask) -> dict[str, list[Bug]]:
-        # A safety net, like the scan: when it fails, the answer goes on.
-        try:
-            found = find(task["artifact"], task["summary"])
-        except BugsError as exc:
-            logger.warning("no bugs, the answer goes on: %s", exc)
-            found = ()
-        return {"bugs": list(found)}
+        hunt = partial(find, task["artifact"], task["summary"])
+        return {"bugs": or_nothing(hunt, BugsError, "bugs")}
 
     return find_bugs_node
