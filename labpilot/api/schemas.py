@@ -71,6 +71,11 @@ class CompareRequest(BaseModel):
         "it with the same thread_id and question. The empty text skips the "
         "question. Leave it out on a normal message.",
     )
+    fast: bool = Field(
+        default=False,
+        description="A shorter bug hunt: the checklists and their audit are left "
+        "out. Quicker, and it finds less.",
+    )
 
 
 class CitationReport(BaseModel):
