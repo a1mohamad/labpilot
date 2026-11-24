@@ -37,7 +37,6 @@ from labpilot.prompts.builder import (
     PRIOR_HEADING,
     PROMPT_BUDGET,
     PROMPT_EXTRAS_TOKENS,
-    REPORT_MAX_TOKENS,
     build_prompt,
     reserve,
 )
@@ -78,14 +77,7 @@ from labpilot.prompts.fresh import (
     build_fresh_claim_prompt,
 )
 from labpilot.prompts.gate import GATE, GATE_MAX_TOKENS, GATE_VERSION, build_gate_prompt
-from labpilot.prompts.instructions import (
-    COMPARE,
-    CORE,
-    FULL,
-    REPORT,
-    SCAN,
-    Instructions,
-)
+from labpilot.prompts.instructions import Instructions
 from labpilot.prompts.planner import (
     PLANNER,
     PLANNER_INPUT_LIMIT,
@@ -152,26 +144,20 @@ __all__ = [
     "CLAIMS_MAX_TOKENS",
     "CLAIMS_GROUP_TOKENS",
     "CLAIMS_VERSION",
-    "COMPARE",
-    "CORE",
     "FOLLOW_UP",
     "FOLLOW_UP_MAX_TOKENS",
     "FILE_ROW_TOKENS",
     "FOLLOW_UP_VERSION",
-    "FULL",
     "OUTLINE_BUDGET",
     "OPENING_CHARS",
     "PLANNER_BUDGET",
     "PRIOR_HEADING",
-    "REPORT",
-    "SCAN",
     "SUMMARY",
     "SUMMARY_BUDGET",
     "SUMMARY_MAX_TOKENS",
     "SUMMARY_VERSION",
     "PROMPT_BUDGET",
     "PROMPT_EXTRAS_TOKENS",
-    "REPORT_MAX_TOKENS",
     "Citation",
     "Instructions",
     "MapPart",
