@@ -55,15 +55,45 @@ def test_a_write_through_the_pool_is_really_committed(db, pool):
     assert read_saved(db, "bugs:w") == ("msgpack", b"kept")
 
 
-def test_no_connection_is_out_while_a_model_answers(db, pool):
+@pytest.fixture
+def borrowed(pool, monkeypatch):
+    """The connections that are taken now.
+
+    Counted at the two doors of the pool. `pool_size - pool_available` also
+    counts a connection the pool is still opening, which nobody has taken.
+    """
+    taken = set()
+    take, give_back = pool.getconn, pool.putconn
+
+    def getconn(*args, **kwargs):
+        conn = take(*args, **kwargs)
+        taken.add(id(conn))
+        return conn
+
+    def putconn(conn):
+        taken.discard(id(conn))
+        give_back(conn)
+
+    monkeypatch.setattr(pool, "getconn", getconn)
+    monkeypatch.setattr(pool, "putconn", putconn)
+    return taken
+
+
+def test_the_counter_sees_a_connection_that_is_taken(pool, borrowed):
+    pool.open(wait=True)
+    with pool.connection():
+        assert len(borrowed) == 1
+    assert not borrowed
+
+
+def test_no_connection_is_out_while_a_model_answers(db, pool, borrowed):
     a = stored(db, "A", parts=3, words=20)
     b = stored(db, "B", parts=3, words=20)
     out = []
 
     class Watching(FakeClient):
         def generate(self, *args, **kwargs):
-            stats = pool.get_stats()
-            out.append(stats["pool_size"] - stats["pool_available"])
+            out.append(len(borrowed))
             return super().generate(*args, **kwargs)
 
     answer = asking.ask(
