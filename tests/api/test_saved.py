@@ -383,3 +383,35 @@ def test_a_database_that_fails_still_gives_the_verdict(monkeypatch):
     assert gate("A-1", "B-1", "a", "b") == VERDICT
     assert gate("A-1", "B-1", "a", "b") == VERDICT
     assert len(calls) == 2
+
+
+def test_a_fast_hunt_never_answers_a_full_one(monkeypatch):
+    FakeStore(monkeypatch)
+    fast, _ = counting(())
+    full, calls = counting((BUG,))
+
+    saved_bugs(SavedResults("conn"), fast, fast=True)("B-1", "")
+
+    assert saved_bugs(SavedResults("conn"), full)("B-1", "") == (BUG,)
+    assert len(calls) == 1
+
+
+def test_a_saved_full_hunt_answers_a_fast_question(monkeypatch):
+    FakeStore(monkeypatch)
+    saved_bugs(SavedResults("conn"), counting((BUG,))[0])("B-1", "")
+    fast, calls = counting(())
+
+    assert saved_bugs(SavedResults("conn"), fast, fast=True)("B-1", "") == (BUG,)
+    assert calls == []
+
+
+def test_a_saved_fast_hunt_is_planned_for_fast_questions_only(monkeypatch):
+    store = FakeStore(monkeypatch)
+    store.put(bugs_key("B-1", fast=True), (BUG,))
+
+    def steps(fast):
+        saved = SavedResults("conn")
+        return with_saved_steps(saved, planner, fast=fast)("why?", "", "B-1").steps
+
+    assert steps(True) == ("find_bugs",)
+    assert steps(False) == ()
