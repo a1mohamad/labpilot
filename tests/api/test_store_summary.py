@@ -4,16 +4,13 @@ import pytest
 
 from labpilot.api import saved as saved_module
 from labpilot.api import summaries
-from labpilot.api.chains import SUMMARY_MODELS
 from labpilot.api.errors import GenerationUnavailable, StorageUnavailable
 from labpilot.api.saved import summary_key
 from labpilot.api.summaries import (
-    SUMMARY_READ_SECONDS,
-    SUMMARY_TOTAL_SECONDS,
     store_summary,
     summary_chain,
 )
-from labpilot.llm import CHAIN, LLMClient
+from labpilot.llm import CHAIN, LLMClient, routes
 
 
 def a_database(monkeypatch):
@@ -98,15 +95,13 @@ def test_a_bug_in_our_own_code_is_not_hidden(monkeypatch):
         store_summary("conn", "client", "A-1")
 
 
-def test_the_summary_chain_is_the_short_one_with_time_limits():
+def test_the_summary_chain_is_the_route_of_a_summary():
     short = summary_chain(LLMClient(chain=CHAIN))
 
-    assert {p.model for p in short.chain} == set(SUMMARY_MODELS)
-    assert short.total_budget == SUMMARY_TOTAL_SECONDS
-    assert short.retry_delays == ()
-    timed = [p for p in short.chain if hasattr(p, "timeout")]
-    assert timed
-    assert all(p.timeout[1] == SUMMARY_READ_SECONDS for p in timed)
+    assert [p.name for p in short.chain] == [
+        p.name for p in routes.resolve("summary", CHAIN)
+    ]
+    assert short.call_stop == routes.ROUTES["summary"].stop
 
 
 def test_the_summary_after_the_upload_uses_the_short_chain(monkeypatch):
@@ -120,5 +115,6 @@ def test_the_summary_after_the_upload_uses_the_short_chain(monkeypatch):
 
     store_summary("conn", LLMClient(chain=CHAIN), "A-1")
 
-    assert {p.model for p in clients[0].chain} == set(SUMMARY_MODELS)
-    assert clients[0].total_budget == SUMMARY_TOTAL_SECONDS
+    assert [p.name for p in clients[0].chain] == [
+        p.name for p in routes.resolve("summary", CHAIN)
+    ]
