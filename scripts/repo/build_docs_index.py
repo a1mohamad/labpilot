@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2] / "docs"
@@ -59,11 +60,20 @@ def title(path: Path) -> str:
     return headings(path)[0] if headings(path) else path.stem
 
 
+def in_order(paths: Iterable[Path]) -> list[Path]:
+    """The paths in one order on every system.
+
+    Windows sorts a Path without looking at capital letters and Linux puts
+    capitals first, so a plain sort gave CI another page than the one committed.
+    """
+    return sorted(paths, key=lambda path: path.as_posix())
+
+
 def pages() -> list[Path]:
     """Every hand-kept page (not the archive, which repeats older text)."""
     # slice8*: those reports number their own decisions D1.. and M1.. again.
     skip = {"archive", "reference", "slice8", "slice8v2", "slice8v3"}
-    return sorted(
+    return in_order(
         path
         for path in ROOT.rglob("*.md")
         if path.relative_to(ROOT).parts[0] not in skip and path.parent != ROOT
@@ -74,7 +84,7 @@ def summary() -> str:
     lines = ["# Summary", "", NOTE, "[Docs home](README.md)", ""]
     for folder, name in FOLDERS:
         lines += [f"## {name}", ""]
-        for path in sorted((ROOT / folder).rglob("*.md")):
+        for path in in_order((ROOT / folder).rglob("*.md")):
             link = path.relative_to(ROOT).as_posix()
             lines.append(f"- [{title(path)}]({link})")
         lines.append("")

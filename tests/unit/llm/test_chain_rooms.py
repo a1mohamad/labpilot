@@ -32,6 +32,9 @@ def clock(monkeypatch):
     fake = FakeClock()
     monkeypatch.setattr(_rooms, "time", fake)
     monkeypatch.setattr("labpilot.llm._race.time", fake)
+    # The stop time is counted in chain.py, so it needs the same clock. Without
+    # this line the tests failed on a machine that started minutes ago (CI).
+    monkeypatch.setattr("labpilot.llm.chain.time", fake)
     return fake
 
 
