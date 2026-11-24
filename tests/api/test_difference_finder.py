@@ -92,7 +92,11 @@ def stored(monkeypatch):
 
 def find(client, facts=FACTS, merge=None):
     run = finder.make_find_differences(
-        "conn", whole=client, small=client, merge=merge or make_merger(client)
+        "conn",
+        audit=client,
+        scan=client,
+        judge_client=client,
+        merge=merge or make_merger(client),
     )
     return run("A-1", "B-1", facts)
 
@@ -208,3 +212,20 @@ def test_the_merge_tries_the_next_client_and_with_no_answer_hides_nothing():
     assert make_merger(bad, good)(lines) == [[1, 2]]
     assert make_merger(bad)(lines) == []
     assert make_merger(good)({1: "alone"}) == []
+
+
+def test_the_audit_the_scan_and_the_judge_each_walk_their_own_client():
+    audit = Client(**{AUDIT_TOOL_NAME: lambda p: {"answers": [breaks()]}})
+    scan, judge_client, merge = Client(), Client(), Client()
+
+    finder.make_find_differences(
+        "conn",
+        audit=audit,
+        scan=scan,
+        judge_client=judge_client,
+        merge=make_merger(merge),
+    )("A-1", "B-1", FACTS)
+
+    assert set(audit.prompts) == {AUDIT_TOOL_NAME}
+    assert set(scan.prompts) == {SCAN_TOOL_NAME}
+    assert set(judge_client.prompts) == {JUDGE_TOOL_NAME}

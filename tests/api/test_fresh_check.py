@@ -61,7 +61,7 @@ def audited(monkeypatch):
 def test_the_question_becomes_one_statement_and_the_audit_checks_it(audited):
     small = Small()
 
-    found = make_fresh_check("conn", whole=object(), small=small)(
+    found = make_fresh_check("conn", audit=object(), statement=small)(
         "Does the code clip the gradient norm?", "B-1"
     )
 
@@ -71,7 +71,7 @@ def test_the_question_becomes_one_statement_and_the_audit_checks_it(audited):
 
 
 def test_the_finding_is_not_a_fact_of_a_and_carries_its_evidence(audited):
-    (found,) = make_fresh_check("conn", whole=object(), small=Small())("Q?", "B-1")
+    (found,) = make_fresh_check("conn", audit=object(), statement=Small())("Q?", "B-1")
 
     assert found.fact == ""
     assert found.text.startswith('Asked "Q?":')
@@ -81,14 +81,16 @@ def test_the_finding_is_not_a_fact_of_a_and_carries_its_evidence(audited):
 def test_a_code_that_does_what_the_question_says_gives_no_finding(audited):
     audited["result"] = ([], True)
 
-    assert make_fresh_check("conn", whole=object(), small=Small())("Q?", "B-1") == ()
+    assert (
+        make_fresh_check("conn", audit=object(), statement=Small())("Q?", "B-1") == ()
+    )
 
 
 def test_no_answer_from_the_audit_is_an_error_not_a_yes(audited):
     audited["result"] = ([], False)
 
     with pytest.raises(DifferencesError):
-        make_fresh_check("conn", whole=object(), small=Small())("Q?", "B-1")
+        make_fresh_check("conn", audit=object(), statement=Small())("Q?", "B-1")
 
 
 def test_no_tier_for_the_statement_is_an_error(audited):
@@ -97,12 +99,14 @@ def test_no_tier_for_the_statement_is_an_error(audited):
             raise AllFreeTiersExhausted([])
 
     with pytest.raises(DifferencesError):
-        make_fresh_check("conn", whole=object(), small=Down())("Q?", "B-1")
+        make_fresh_check("conn", audit=object(), statement=Down())("Q?", "B-1")
 
 
 def test_an_empty_statement_is_an_error(audited):
     with pytest.raises(DifferencesError):
-        make_fresh_check("conn", whole=object(), small=Small(text="  "))("Q?", "B-1")
+        make_fresh_check("conn", audit=object(), statement=Small(text="  "))(
+            "Q?", "B-1"
+        )
 
 
 def test_the_statement_prompt_says_to_write_only_the_statement():

@@ -5,10 +5,9 @@ import pytest
 from labpilot.agent import Correspondence
 from labpilot.api import asking
 from labpilot.api import saved as saved_module
-from labpilot.api.chains import SUMMARY_MODELS
 from labpilot.api.errors import GenerationUnavailable, UnknownArtifactId
 from labpilot.api.prompting import build_answer_prompt
-from labpilot.llm import CHAIN, LLMClient
+from labpilot.llm import CHAIN, LLMClient, routes
 
 
 def capture(monkeypatch):
@@ -132,7 +131,9 @@ def test_the_summarizer_is_given_the_short_summary_chain(monkeypatch):
     )
     asking._ask_graph("conn", LLMClient(chain=CHAIN))
 
-    assert {p.model for p in clients[0].chain} == set(SUMMARY_MODELS)
+    assert [p.name for p in clients[0].chain] == [
+        p.name for p in routes.resolve("summary", CHAIN)
+    ]
     assert callable(seen["summarize"])
 
 

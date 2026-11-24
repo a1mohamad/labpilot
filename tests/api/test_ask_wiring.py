@@ -4,6 +4,8 @@ from types import SimpleNamespace
 from labpilot.agent import Query
 from labpilot.api import asking, gate
 from labpilot.api.searching import rank_pile
+from labpilot.llm import CHAIN, LLMClient, routes
+from labpilot.llm.ratings import RATINGS
 
 
 class FakePool:
@@ -222,21 +224,23 @@ def test_the_graph_gets_the_gate_and_the_halt_answer(monkeypatch):
     assert seen["halt_answer"] is gate.halt_answer
 
 
-def test_the_gate_asks_the_short_summary_chain(monkeypatch):
-    # The gate is a small call that compares two summaries, so it uses the same
-    # short chain of cheap models as the summaries (D110) and never a scarce tier.
+def test_the_gate_walks_the_route_of_the_gate(monkeypatch):
+    # The gate compares two short summaries, so it walks the cheap route of the
+    # gate and never a scarce tier.
     capture(monkeypatch)
     clients = []
-    monkeypatch.setattr(asking, "summary_chain", lambda client: ("short", client))
     monkeypatch.setattr(
         asking,
         "make_gate",
         lambda client: clients.append(client) or (lambda summary_a, summary_b: None),
     )
 
-    asking._ask_graph("conn", "client")
+    asking._ask_graph("conn", LLMClient())
 
-    assert clients == [("short", "client")]
+    assert [p.name for p in clients[0].chain] == [
+        p.name for p in routes.resolve("gate", CHAIN)
+    ]
+    assert not any(RATINGS[p.name].scarce for p in clients[0].chain)
 
 
 def test_the_graph_gets_the_new_check_for_a_fresh_question(monkeypatch):
