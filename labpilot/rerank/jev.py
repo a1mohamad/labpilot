@@ -67,9 +67,6 @@ class JevReranker(HTTPReranker):
             return self._required(self.url_env)
         return self.url
 
-    def _headers(self) -> dict[str, str]:
-        return self._bearer_headers()
-
     def _payload(
         self, query: str, documents: list[str], top_n: int | None
     ) -> dict[str, object]:
