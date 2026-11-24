@@ -2,8 +2,10 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from labpilot.agent import Query
-from labpilot.api import asking, gate
+from labpilot.api import asking, gate, searching
 from labpilot.api.searching import rank_pile
+from labpilot.llm import CHAIN, LLMClient, routes
+from labpilot.llm.ratings import RATINGS
 
 
 class FakePool:
@@ -24,7 +26,7 @@ def look_through_saved(monkeypatch):
     # The saved-results wrappers (D104) are tested in test_saved.py; here the
     # wiring is checked through them, so each wrapper hands back what it wraps.
     for name in ("saved_claims", "saved_differences", "saved_bugs", "with_saved_steps"):
-        monkeypatch.setattr(asking, name, lambda saved, made: made)
+        monkeypatch.setattr(asking, name, lambda saved, made, **_: made)
 
 
 def capture(monkeypatch):
@@ -39,7 +41,7 @@ def capture(monkeypatch):
     monkeypatch.setattr(
         asking, "make_planner", lambda conn, client: ("planner", conn, client)
     )
-    monkeypatch.setattr(asking, "embed_query", lambda sides, *, side, text: (1.0,))
+    monkeypatch.setattr(searching, "embed_query", lambda sides, *, side, text: (1.0,))
     return seen
 
 
@@ -62,7 +64,7 @@ def test_without_a_pool_a_search_uses_the_shared_connection(monkeypatch):
         calls.append((conn, sides, side, text))
         return ("found",)
 
-    monkeypatch.setattr(asking, "retrieve_query", fake_retrieve)
+    monkeypatch.setattr(searching, "retrieve_query", fake_retrieve)
     asking._ask_graph("conn", "client")
 
     found = seen["search_one"]("the sides", Query("B", "clip"))
@@ -77,7 +79,7 @@ def test_with_a_pool_a_search_takes_a_pooled_connection_and_not_the_shared_one(
     seen = capture(monkeypatch)
     used = []
     monkeypatch.setattr(
-        asking,
+        searching,
         "retrieve_query",
         lambda conn, sides, *, side, text, vector: used.append(conn) or ("found",),
     )
@@ -114,8 +116,8 @@ def test_the_query_is_embedded_before_a_pooled_connection_is_taken(monkeypatch):
         events.append(("search", vector))
         return ()
 
-    monkeypatch.setattr(asking, "embed_query", embed)
-    monkeypatch.setattr(asking, "retrieve_query", retrieve)
+    monkeypatch.setattr(searching, "embed_query", embed)
+    monkeypatch.setattr(searching, "retrieve_query", retrieve)
     asking._ask_graph("conn", "client", pool=EventPool(events))
 
     seen["search_one"]("the sides", Query("A", "lr"))
@@ -135,7 +137,7 @@ def test_a_pooled_connection_that_dies_mid_search_is_replaced_once(monkeypatch):
             raise psycopg.OperationalError("SSL SYSCALL error: EOF detected")
         return ("found",)
 
-    monkeypatch.setattr(asking, "retrieve_query", retrieve)
+    monkeypatch.setattr(searching, "retrieve_query", retrieve)
     asking._ask_graph("conn", "client", pool=EventPool([]))
 
     assert seen["search_one"]("the sides", Query("A", "lr")) == ("found",)
@@ -151,7 +153,7 @@ def test_a_second_dead_connection_is_raised(monkeypatch):
     def retrieve(conn, sides, *, side, text, vector):
         raise psycopg.OperationalError("server closed the connection")
 
-    monkeypatch.setattr(asking, "retrieve_query", retrieve)
+    monkeypatch.setattr(searching, "retrieve_query", retrieve)
     asking._ask_graph("conn", "client", pool=EventPool([]))
 
     with pytest.raises(psycopg.OperationalError):
@@ -160,7 +162,7 @@ def test_a_second_dead_connection_is_raised(monkeypatch):
 
 def test_a_closed_pool_is_opened_on_the_first_search_without_waiting(monkeypatch):
     seen = capture(monkeypatch)
-    monkeypatch.setattr(asking, "retrieve_query", lambda *a, **k: ())
+    monkeypatch.setattr(searching, "retrieve_query", lambda *a, **k: ())
     pool = FakePool(closed=True)
     asking._ask_graph("conn", "client", pool=pool)
 
@@ -172,7 +174,7 @@ def test_a_closed_pool_is_opened_on_the_first_search_without_waiting(monkeypatch
 
 def test_an_open_pool_is_not_opened_again(monkeypatch):
     seen = capture(monkeypatch)
-    monkeypatch.setattr(asking, "retrieve_query", lambda *a, **k: ())
+    monkeypatch.setattr(searching, "retrieve_query", lambda *a, **k: ())
     pool = FakePool(closed=False)
     asking._ask_graph("conn", "client", pool=pool)
 
@@ -222,21 +224,23 @@ def test_the_graph_gets_the_gate_and_the_halt_answer(monkeypatch):
     assert seen["halt_answer"] is gate.halt_answer
 
 
-def test_the_gate_asks_the_short_summary_chain(monkeypatch):
-    # The gate is a small call that compares two summaries, so it uses the same
-    # short chain of cheap models as the summaries (D110) and never a scarce tier.
+def test_the_gate_walks_the_route_of_the_gate(monkeypatch):
+    # The gate compares two short summaries, so it walks the cheap route of the
+    # gate and never a scarce tier.
     capture(monkeypatch)
     clients = []
-    monkeypatch.setattr(asking, "summary_chain", lambda client: ("short", client))
     monkeypatch.setattr(
         asking,
         "make_gate",
         lambda client: clients.append(client) or (lambda summary_a, summary_b: None),
     )
 
-    asking._ask_graph("conn", "client")
+    asking._ask_graph("conn", LLMClient())
 
-    assert clients == [("short", "client")]
+    assert [p.name for p in clients[0].chain] == [
+        p.name for p in routes.resolve("gate", CHAIN)
+    ]
+    assert not any(RATINGS[p.name].scarce for p in clients[0].chain)
 
 
 def test_the_graph_gets_the_new_check_for_a_fresh_question(monkeypatch):
