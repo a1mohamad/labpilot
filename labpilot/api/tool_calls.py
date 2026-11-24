@@ -9,7 +9,7 @@ from labpilot.timing import in_this_context
 logger = logging.getLogger(__name__)
 
 # The calls of one step are made at the same time, at most this many at once.
-CALLS_AT_ONCE = 4
+CALLS_AT_ONCE = 6
 
 Answer = TypeVar("Answer")
 Job = TypeVar("Job")
