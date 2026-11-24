@@ -13,7 +13,7 @@ from labpilot.llm.defaults import DEFAULT_TIMEOUT, DEFAULT_TOTAL_BUDGET
 def url_for(provider):
     """Gemini puts the model in the PATH; everyone else posts to a fixed URL."""
     if isinstance(provider, GeminiProvider):
-        return f"{provider.url}/{provider.model}:generateContent"
+        return f"{provider.url}/{provider.model}:streamGenerateContent?alt=sse"
     return provider.url
 
 
