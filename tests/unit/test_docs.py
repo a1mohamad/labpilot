@@ -8,7 +8,7 @@ short front page and the text lives in docs/, each fact on one page.
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
@@ -72,6 +72,14 @@ def test_the_generated_pages_are_up_to_date():
         assert written == text, f"run python -m scripts.repo.build_docs_index ({name})"
     tree = (ROOT / "docs" / "SUMMARY.md").read_text(encoding="utf-8")
     assert tree == index.summary(), "run python -m scripts.repo.build_docs_index"
+
+
+def test_the_order_of_the_pages_is_the_same_on_windows_and_on_linux():
+    names = ["docs/README.md", "docs/archive/a.md", "docs/Zoo.md", "docs/agent/b.md"]
+    order = [*map(str, index.in_order(map(PurePosixPath, names)))]
+
+    assert order == [p.as_posix() for p in index.in_order(map(PureWindowsPath, names))]
+    assert order == sorted(names)
 
 
 def test_every_folder_of_docs_is_in_the_tree():
