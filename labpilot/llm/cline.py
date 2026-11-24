@@ -22,6 +22,10 @@ class ClineProvider(OpenAICompatibleProvider):
     "unexpected response shape" on every single call.
     """
 
+    # Its stream wraps every piece in {"data": ...}, which _stream.py does not
+    # read, so Cline keeps the plain call.
+    stream: bool = False
+
     def _inner(self, body: dict) -> dict:
         """The envelope, or a loud error naming what we actually got."""
         if not isinstance(body, dict):
