@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -107,13 +108,21 @@ def _audit(
 
 
 def find_suspects(
-    parts: FileParts, summary: str, *, client: LLMClient, trace_client: LLMClient
+    parts: FileParts,
+    summary: str,
+    *,
+    clients: Mapping[str, LLMClient],
+    fast: bool = False,
 ) -> list[Bug]:
     """Every suspect of the three hunts and the checklist audit (D87, D90).
 
     The checklists are asked first, so the audit does not wait behind the
-    hunts: the hunts run while the checklists are written. A small hunt (the
-    trace) is many calls on a cheap chain (D93).
+    hunts: the hunts run while the checklists are written. Each step uses its
+    own route.
+
+    `fast` (D103) leaves the checklists and their audit out. They are two steps
+    in a row before the skeptic, so they set the time of the hunt; the price is
+    the defects only a checklist finds (29.7).
     """
     jobs = [
         (hunt, group)
@@ -123,14 +132,18 @@ def find_suspects(
     with ThreadPoolExecutor(CALLS_AT_ONCE) as pool:
         written = [
             pool.submit(
-                in_this_context(_checklist), client, instructions, summary, parts
+                in_this_context(_checklist),
+                clients["checklist"],
+                instructions,
+                summary,
+                parts,
             )
-            for instructions in CHECKLISTS
+            for instructions in (() if fast else CHECKLISTS)
         ]
         hunted = [
             pool.submit(
                 in_this_context(_hunt),
-                trace_client if hunt.small else client,
+                clients[hunt.task],
                 hunt,
                 group,
                 summary,
@@ -139,7 +152,12 @@ def find_suspects(
         ]
         obligations = merge_obligations([future.result() for future in written])
         audited = [
-            pool.submit(in_this_context(_audit), client, obligations, group)
+            pool.submit(
+                in_this_context(_audit),
+                clients["checklist_audit"],
+                obligations,
+                group,
+            )
             for group in parts.groups(WHOLE_GROUP_TOKENS, by_file=True)
             if obligations
         ]
