@@ -18,6 +18,7 @@ ACCURACY: dict[str, dict[str, tuple[float, float, int]]] = {
         "Ling 3.1 Flash": (0.00, 999.0, 1),
         "DeepSeek V4 Pro": (0.00, 999.0, 1),
         "MiniMax M3.1 Flash": (0.00, 999.0, 1),
+        "Gemini 3.5 Flash-Lite": (0.95, 25.9, 3),
     },
     "checklist": {
         "Nemotron 3 Ultra": (0.65, 35.8, 3),
@@ -35,13 +36,14 @@ ACCURACY: dict[str, dict[str, tuple[float, float, int]]] = {
     "checklist_audit": {
         "Gemini 3.6 Flash": (1.00, 320.1, 1),
         "DeepSeek V4 Flash": (0.91, 273.7, 3),
-        "GLM-5.3 Flash": (0.81, 102.1, 2),
+        "GLM-5.3 Flash": (0.59, 59.7, 2),
         "DeepSeek V4.1 Flash": (0.78, 121.1, 3),
         "Hy4": (0.67, 299.5, 3),
         "DeepSeek V4 Pro": (0.00, 999.0, 1),
         "MiMo V2.6 Flash": (0.00, 999.0, 3),
         "MiniMax M3.1 Flash": (0.00, 999.0, 1),
         "MiMo V2.5": (0.00, 999.0, 1),
+        "Gemini 3.5 Flash-Lite": (0.73, 17.1, 1),
     },
     "claims": {
         "Gemini 3.5 Flash-Lite": (0.92, 23.2, 2),
@@ -67,6 +69,7 @@ ACCURACY: dict[str, dict[str, tuple[float, float, int]]] = {
         "DeepSeek V4 Pro": (0.00, 999.0, 1),
         "MiniMax M3.1 Flash": (0.00, 999.0, 1),
         "MiMo V2.5": (0.00, 999.0, 1),
+        "Gemini 3.5 Flash-Lite": (0.00, 7.2, 3),
     },
     "fresh": {
         "Ling 3.1 Flash": (1.00, 2.8, 18),
@@ -199,6 +202,7 @@ ACCURACY: dict[str, dict[str, tuple[float, float, int]]] = {
         "Ling 3.1 Flash": (0.00, 999.0, 1),
         "MiniMax M3.1 Flash": (0.00, 999.0, 1),
         "MiMo V2.5": (0.00, 999.0, 1),
+        "Gemini 3.5 Flash-Lite": (0.08, 6.2, 3),
     },
     "plan": {
         "DeepSeek V4.1 Flash": (1.00, 7.6, 24),
@@ -247,7 +251,7 @@ ACCURACY: dict[str, dict[str, tuple[float, float, int]]] = {
         "North Mini Code": (0.00, 999.0, 3),
     },
     "respond_one": {
-        "GLM-5.3 Flash": (1.00, 315.3, 1),
+        "GLM-5.3 Flash": (0.82, 16.6, 1),
         "Gemini 4 Hydrogen": (0.82, 234.1, 1),
         "DeepSeek V4 Pro": (0.82, 486.8, 1),
         "Gemini 3.5 Flash-Lite": (0.55, 12.2, 1),
@@ -262,13 +266,14 @@ ACCURACY: dict[str, dict[str, tuple[float, float, int]]] = {
     },
     "respond_two": {
         "Gemini 4 Hydrogen": (1.00, 238.3, 1),
-        "DeepSeek V4.1 Flash": (0.93, 134.4, 2),
-        "GLM-5.3 Flash": (0.91, 67.3, 2),
+        "DeepSeek V4.1 Flash": (0.93, 76.9, 2),
+        "GLM-5.3 Flash": (0.97, 78.0, 2),
         "DeepSeek V4 Pro": (0.86, 136.2, 2),
         "Gemini 3.6 Flash": (0.77, 76.1, 1),
         "Hy4": (0.00, 999.0, 3),
         "DeepSeek V4 Flash": (0.00, 999.0, 1),
         "MiniMax M3.1 Flash": (0.00, 999.0, 1),
+        "Gemini 3.5 Flash-Lite": (0.47, 15.6, 2),
     },
     "rewrite": {
         "Ling 3.1 Flash": (1.00, 4.0, 12),
@@ -329,6 +334,7 @@ ACCURACY: dict[str, dict[str, tuple[float, float, int]]] = {
         "DeepSeek V4 Flash": (0.51, 306.9, 2),
         "Hy4": (0.20, 240.1, 3),
         "MiMo V2.6 Flash": (0.15, 240.1, 4),
+        "Gemini 3.5 Flash-Lite": (0.80, 39.0, 3),
     },
     "summary": {
         "Nemotron 3 Ultra": (1.00, 10.3, 6),
