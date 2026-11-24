@@ -10,12 +10,7 @@ from psycopg_pool import ConnectionPool
 
 from labpilot.agent import ask_the_user, build_graph
 from labpilot.api.bugs import make_bug_finder
-from labpilot.api.chains import (
-    bounded,
-    for_claims,
-    for_skeptic,
-    for_trace,
-)
+from labpilot.api.chains import for_task
 from labpilot.api.checkpoints import open_saver, prune
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.contracts import Comparison, Question
@@ -40,11 +35,8 @@ from labpilot.api.saved import (
 )
 from labpilot.api.searching import embed_query, rank_pile, retrieve_query
 from labpilot.api.summaries import make_summarizer, summary_chain
-from labpilot.llm import AllFreeTiersExhausted, LLMClient
-from labpilot.prompts import (
-    A_WHOLE_TOKENS,
-    REPORT_MAX_TOKENS,
-)
+from labpilot.llm import AllFreeTiersExhausted, LLMClient, routes
+from labpilot.prompts import A_WHOLE_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -237,23 +229,23 @@ def _ask_graph(
             )
             return ""
 
-    def generate(prompt):
-        try:
-            return client.generate(prompt, max_tokens=REPORT_MAX_TOKENS)
-        except AllFreeTiersExhausted as exc:
-            raise GenerationUnavailable(
-                "every free tier failed", attempts=exc.attempts
-            ) from exc
+    def generate_for_files(files):
+        task = ("respond_chat", "respond_one", "respond_two")[min(files, 2)]
+        routed = for_task(client, task)
+        max_tokens = routes.TASKS[task].max_tokens
 
-    claims_client = for_claims(client)
-    # Time limits (D102): a call that reads a big group waits at most 120 s for
-    # a tier and 300 s in all, a small call 40 s and 150 s with no second try,
-    # so one slow provider cannot use up the answer.
-    whole = bounded(claims_client, read=120.0, budget=300.0)
-    small = bounded(claims_client, read=40.0, budget=150.0, retries=0)
-    # The merge of the differences: a strong model first with a short limit,
-    # then Flash-Lite (the Flash-Lite merge alone missed obvious repeats).
-    strong_merge = bounded(client, read=40.0, budget=60.0, retries=0)
+        def generate(prompt):
+            try:
+                return routed.generate(prompt, max_tokens=max_tokens)
+            except AllFreeTiersExhausted as exc:
+                raise GenerationUnavailable(
+                    "every free tier failed", attempts=exc.attempts
+                ) from exc
+
+        return generate
+
+    audit = for_task(client, "audit")
+    merge = for_task(client, "merge")
 
     return build_graph(
         measure=partial(measure_sides, conn),
@@ -262,38 +254,46 @@ def _ask_graph(
         search_one=search_one,
         totals_of=totals_of,
         rank_side=rank_pile,
-        plan=with_saved_steps(saved, make_planner(conn, client)),
+        plan=with_saved_steps(saved, make_planner(conn, for_task(client, "plan"))),
         summarize=summarize,
-        extract_claims=saved_claims(saved, make_claims_extractor(conn, claims_client)),
+        extract_claims=saved_claims(
+            saved, make_claims_extractor(conn, for_task(client, "claims"))
+        ),
         find_differences=saved_differences(
             saved,
             make_find_differences(
                 conn,
-                whole=whole,
-                small=small,
-                merge=make_merger(strong_merge, small),
+                audit=audit,
+                scan=for_task(client, "scan"),
+                judge_client=for_task(client, "judge"),
+                merge=make_merger(for_task(client, "merge_strong"), merge),
             ),
         ),
         find_bugs=saved_bugs(
             saved,
             make_bug_finder(
                 conn,
-                client=bounded(client, read=120.0, budget=300.0),
-                skeptic_client=bounded(for_skeptic(client), read=120.0, budget=300.0),
-                trace_client=bounded(
-                    for_trace(client), read=40.0, budget=150.0, retries=0
-                ),
+                trace=for_task(client, "trace"),
+                method=for_task(client, "method"),
+                concept=for_task(client, "concept"),
+                checklist=for_task(client, "checklist"),
+                checklist_audit=for_task(client, "checklist_audit"),
+                skeptic=for_task(client, "skeptic"),
             ),
         ),
-        fresh=saved_fresh(saved, make_fresh_check(conn, whole=whole, small=small)),
-        final_merge=make_merger(small),
+        fresh=saved_fresh(
+            saved,
+            make_fresh_check(conn, statement=for_task(client, "fresh"), audit=audit),
+        ),
+        final_merge=make_merger(merge),
         ask=ask_the_user if thread_id else None,
         whole_side=whole_side,
         make_prompt=build_answer_prompt,
-        rewrite=make_rewriter(client),
+        rewrite=make_rewriter(for_task(client, "rewrite")),
         answer_text=last_answer_text,
-        gate=saved_gate(saved, make_gate(summary_chain(client))),
+        gate=saved_gate(saved, make_gate(for_task(client, "gate"))),
         halt_answer=halt_answer,
-        generate=generate,
+        generate=generate_for_files(2),
+        generate_for_files=generate_for_files,
         checkpointer=open_saver(_saving_place(conn, pool)) if thread_id else None,
     )

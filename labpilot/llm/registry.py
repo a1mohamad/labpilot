@@ -236,6 +236,15 @@ CLINE_NEMOTRON_3_5_LIGHTNING = _cline(
 # ITS FREE QUOTA IS UNVERIFIED. Do NOT assume 3.7's 20/day - Google publishes
 # limits per model and this one is new. Read AI Studio before budgeting on it.
 GEMINI_3_8_FLASH = _gemini(name="Gemini 3.8 Flash", model="gemini-3.8-flash")
+# Gemini 4 Hydrogen (2026-11-17, 31.21): AA v5.0.1 51 at "high" against 31 for
+# Gemini 3.8 Flash. 20 requests a day for each key (the AI Studio panel), 29 to
+# 117 s for a one-line answer, 503 "high demand" on about 4 requests of 9. No
+# thinking level is sent: the model thinks by itself. Argon, Carbon and Neon
+# answer 429 (limit 0) on this account. The window and output cap are Google's
+# own figures for this model (GET /v1beta/models, 2026-11-20).
+GEMINI_4_HYDROGEN = _gemini(
+    name="Gemini 4 Hydrogen", model="gemini-4-hydrogen", thinking=None
+)
 GEMINI_3_7_FLASH = _gemini(name="Gemini 3.7 Flash", model="gemini-3.7-flash")
 GEMINI_3_6_FLASH = _gemini(name="Gemini 3.6 Flash", model="gemini-3.6-flash")
 GEMINI_3_5_FLASH = _gemini(name="Gemini 3.5 Flash", model="gemini-3.5-flash")
@@ -1678,6 +1687,8 @@ CHAIN = _ordered(
     # scored on that page above it, and it is in no score table. Move it by the
     # live AA page.
     ORCAROUTER_HY4_PREVIEW,
+    GEMINI_4_HYDROGEN,
+    *_other_accounts(GEMINI_4_HYDROGEN),
     GEMINI_3_8_FLASH,
     *_other_accounts(GEMINI_3_8_FLASH),
     # ADDED 2026-11-02: Ling 3.1 Flash, AA v4.3.2 = 41 (a tie with Gemini 3.8
@@ -1713,7 +1724,6 @@ CHAIN = _ordered(
     LITEROUTER_DEEPSEEK_V4_PRO_CHEAP,
     # ADDED 2026-11-15: two more builds of V4 Pro, after its cheap id.
     LITEROUTER_DEEPSEEK_V4_PRO_0813,
-    LITEROUTER_DEEPSEEK_V4_PRO_STABLE,
     # --- ADDED 2026-09-19, placed on TWO independent sources ---------------
     # DeepSeek first of the three: it and Qwen TIE on AA (35 vs 34, inside
     # the +-1 interval), Qwen wins Code Arena by 13 Elo, and DeepSeek is
@@ -1729,9 +1739,6 @@ CHAIN = _ordered(
     TOKEN_HARBOR_DEEPSEEK_V4_FLASH,
     LITEROUTER_DEEPSEEK_V4_FLASH,
     LITEROUTER_DEEPSEEK_V4_FLASH_CHEAP,
-    LITEROUTER_DEEPSEEK_V4_FLASH_0731_STABLE,
-    LITEROUTER_DEEPSEEK_V4_FLASH_0731,
-    LITEROUTER_DEEPSEEK_V4_FLASH_0731_CHEAP,
     # ADDED 2026-11-16: MiMo V2.6 Flash = 27 on the AA v5.0.1 chart, two points
     # under MiniMax M3.1 Flash (29) and seven over Qwen3.8 27B (20). Its LiteRouter
     # route left the free list on 2026-11-15, so this is its only route.
@@ -1761,6 +1768,7 @@ CHAIN = _ordered(
     # AA 23, a tie with Flash-Lite, which has a measured allowance. (Hy3 has no
     # trusted route: LiteRouter's is dead and OrcaRouter's is in NOT_TRUSTED.)
     LITEROUTER_MINIMAX_M2_7,
+    LITEROUTER_HY3,
     # (Muse Glimmer has no trusted route: both Requesty's and Routeway's are in
     # NOT_TRUSTED, 2026-11-16.)
     # Gemma 4 26B A4B, AA 17. Moved to NOT_TRUSTED on 2026-11-17 and BACK to
@@ -1811,7 +1819,6 @@ CHAIN = _ordered(
     *_other_accounts(GEMINI_3_1_FLASH_LITE),
     # Unscored and the worst on the one question asked of it, so it goes
     # last of the unscored. Then the weakest scored tier we have (AA 9).
-    LITEROUTER_DEEPSEEK_V3_1,
     # (Mistral Large 3 left LiteRouter's free list on 2026-11-15.)
     # NOT TRUSTED - see NOT_TRUSTED below. They answer, but not every time: after
     # every trusted tier and before every dead one.
@@ -1861,11 +1868,15 @@ CHAIN = _ordered(
     LITEROUTER_MIMO_V2_6_FLASH,
     LITEROUTER_GLM_5_2_CHEAP,
     LITEROUTER_GLM_5_1_CHEAP,
-    LITEROUTER_HY3,
     LITEROUTER_QWEN3_CODER,
     LITEROUTER_MISTRAL_LARGE_3,
     CLINE_BEAM_1_0,
     KILO_LING_3_1_FLASH,
+    LITEROUTER_DEEPSEEK_V4_PRO_STABLE,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731_STABLE,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731_CHEAP,
+    LITEROUTER_DEEPSEEK_V3_1,
 )
 
 # NOT TRUSTED (defined by the user, 2026-11-16). A tier that is not dead, because
@@ -1999,7 +2010,6 @@ KNOWN_DEAD = (
     LITEROUTER_MIMO_V2_6_FLASH.name,
     LITEROUTER_GLM_5_2_CHEAP.name,
     LITEROUTER_GLM_5_1_CHEAP.name,
-    LITEROUTER_HY3.name,
     LITEROUTER_QWEN3_CODER.name,
     LITEROUTER_MISTRAL_LARGE_3.name,
     # 2026-11-15 (smoke test of every tier): Cline moved Beam 1.0 off its free
@@ -2008,4 +2018,12 @@ KNOWN_DEAD = (
     # reflection/beam-free, which is NOT probed or added).
     CLINE_BEAM_1_0.name,
     KILO_LING_3_1_FLASH.name,
+    # 2026-11-20: LiteRouter's free list (33 ids) no longer lists these five,
+    # and each answered 403 "not available or misspelled". Hy3 is back on the
+    # list and answered, so it left this list the same day.
+    LITEROUTER_DEEPSEEK_V4_PRO_STABLE.name,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731_STABLE.name,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731.name,
+    LITEROUTER_DEEPSEEK_V4_FLASH_0731_CHEAP.name,
+    LITEROUTER_DEEPSEEK_V3_1.name,
 )

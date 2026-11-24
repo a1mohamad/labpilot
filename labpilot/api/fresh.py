@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def make_fresh_check(
-    conn: psycopg.Connection, *, whole: LLMClient, small: LLMClient
+    conn: psycopg.Connection, *, statement: LLMClient, audit: LLMClient
 ) -> FreshCheck:
     """ONE new check of B for a question the first analysis did not cover.
 
@@ -33,7 +33,7 @@ def make_fresh_check(
             conn, b_id, limit=DIFFERENCES_READ_TOKENS, error=DifferencesError
         )
         try:
-            claim = small.generate(
+            claim = statement.generate(
                 build_fresh_claim_prompt(question), max_tokens=FRESH_MAX_TOKENS
             ).text.strip()
         except AllFreeTiersExhausted as exc:
@@ -41,7 +41,7 @@ def make_fresh_check(
         if not claim:
             raise DifferencesError("the question became an empty statement")
 
-        found, answered = run_audit(whole, [claim], b)
+        found, answered = run_audit(audit, [claim], b)
         if not answered:
             raise DifferencesError("no tier answered the new check")
         logger.info(

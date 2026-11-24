@@ -456,13 +456,30 @@ def test_the_two_qwen_hosts_do_not_share_a_reasoning_value():
     )
 
 
+# Gemini 4 Hydrogen sends no thinking level at all: its default is the setting
+# Artificial Analysis scored (51), and no level was ever tried on it (31.21).
+NO_THINKING_FIELD = ("gemini-4-hydrogen",)
+
+
 def _thinking_tiers():
     """The Gemini tiers that share one level. Gemma has its own levels."""
     return [
         provider
         for provider in CHAIN
-        if isinstance(provider, GeminiProvider) and provider.model not in GEMMA_MODELS
+        if isinstance(provider, GeminiProvider)
+        and provider.model not in GEMMA_MODELS
+        and provider.model not in NO_THINKING_FIELD
     ]
+
+
+def test_gemini_4_hydrogen_sends_no_thinking_level_on_any_key():
+    hydrogen = [p for p in CHAIN if getattr(p, "model", None) == "gemini-4-hydrogen"]
+    assert [p.name for p in hydrogen] == [
+        "Gemini 4 Hydrogen",
+        "Gemini 4 Hydrogen (key 2)",
+        "Gemini 4 Hydrogen (key 3)",
+    ]
+    assert all(p.thinking is None for p in hydrogen)
 
 
 def test_every_gemini_tier_uses_a_thinking_level_google_accepts():
@@ -962,6 +979,12 @@ NO_LIVE_ROUTE = (
     # 2026-11-15: Cline moved Beam off its free list (402). "Ling 3.1 Flash (Kilo)"
     # is NOT here because Requesty still serves Ling.
     "Beam 1.0 (Cline)",
+    # 2026-11-20: left LiteRouter's free list (403 "not available or misspelled").
+    # "DeepSeek V4 Flash 0731 (LiteRouter)" is NOT here: Bazaarlink still serves it.
+    "DeepSeek V4 Pro stable (LiteRouter)",
+    "DeepSeek V4 Flash 0731 stable (LiteRouter)",
+    "DeepSeek V4 Flash 0731 cheap (LiteRouter)",
+    "DeepSeek V3.1 (LiteRouter)",
 )
 
 

@@ -168,14 +168,14 @@ class Hunt:
     instructions: Instructions
     group_tokens: int
     with_summary: bool
-    small: bool = False
+    task: str
     by_file: bool = True
 
 
 HUNTS = (
-    Hunt(TRACE, TRACE_GROUP_TOKENS, with_summary=True, small=True, by_file=False),
-    Hunt(METHOD, WHOLE_GROUP_TOKENS, with_summary=False),
-    Hunt(CONCEPT, WHOLE_GROUP_TOKENS, with_summary=True),
+    Hunt(TRACE, TRACE_GROUP_TOKENS, with_summary=True, task="trace", by_file=False),
+    Hunt(METHOD, WHOLE_GROUP_TOKENS, with_summary=False, task="method"),
+    Hunt(CONCEPT, WHOLE_GROUP_TOKENS, with_summary=True, task="concept"),
 )
 
 

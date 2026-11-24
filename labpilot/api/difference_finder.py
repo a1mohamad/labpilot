@@ -26,8 +26,9 @@ logger = logging.getLogger(__name__)
 def make_find_differences(
     conn: psycopg.Connection,
     *,
-    whole: LLMClient,
-    small: LLMClient,
+    audit: LLMClient,
+    scan: LLMClient,
+    judge_client: LLMClient,
     merge: Merge,
 ) -> Callable[[str, str, Sequence[str]], tuple[Difference, ...]]:
     """The differences between A and B (section 29.9, D96 to D98).
@@ -51,21 +52,23 @@ def make_find_differences(
         # The audit (A to B) and the scan (B to A) do not need each other, so
         # they run at the same time.
         with ThreadPoolExecutor(2) as pool:
-            audit = (
-                pool.submit(in_this_context(run_audit), whole, facts, b)
+            audited_job = (
+                pool.submit(in_this_context(run_audit), audit, facts, b)
                 if facts
                 else None
             )
-            scan = pool.submit(in_this_context(run_scan), small, reference, b)
-            audited, audit_answered = audit.result() if audit else ([], False)
-            scanned, scan_answered = scan.result()
+            scanned_job = pool.submit(in_this_context(run_scan), scan, reference, b)
+            audited, audit_answered = (
+                audited_job.result() if audited_job else ([], False)
+            )
+            scanned, scan_answered = scanned_job.result()
         if not (audit_answered or scan_answered):
             raise DifferencesError("no tier answered the audit or the scan")
 
         found = [
             replace(d, evidence=b.chunk_for(d.source)) for d in [*audited, *scanned]
         ]
-        kept = judge(whole, found, b, reference) if found else []
+        kept = judge(judge_client, found, b, reference) if found else []
         groups = merge({n: finding_line(d) for n, d in enumerate(kept)})
         shown = merged_findings(kept, groups)
         logger.info(

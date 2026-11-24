@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 import psycopg
 
-from labpilot.api.chains import bounded, for_summary
+from labpilot.api.chains import for_task
 from labpilot.api.errors import ApiError, GenerationUnavailable, StorageUnavailable
 from labpilot.api.file_parts import read_parts
 from labpilot.api.saved import SavedResults, saved_summary
@@ -12,20 +12,10 @@ from labpilot.prompts import SUMMARY_MAX_TOKENS, build_summary_prompt
 
 logger = logging.getLogger(__name__)
 
-# D110: how long one model may take on a summary, and the whole call. First
-# guesses; lesson 4 measures them.
-SUMMARY_READ_SECONDS = 60.0
-SUMMARY_TOTAL_SECONDS = 120.0
-
 
 def summary_chain(client: LLMClient) -> LLMClient:
-    """The short chain of cheap models for a summary, with time limits."""
-    return bounded(
-        for_summary(client),
-        read=SUMMARY_READ_SECONDS,
-        budget=SUMMARY_TOTAL_SECONDS,
-        retries=0,
-    )
+    """Return the client for the summary route."""
+    return for_task(client, "summary")
 
 
 def make_summarizer(

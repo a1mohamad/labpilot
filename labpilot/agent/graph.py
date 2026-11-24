@@ -54,6 +54,7 @@ def build_graph(
     plan: Callable[[str, str, str], Plan],
     make_prompt: Callable[..., tuple[str, Chunks]],
     generate: Callable[[str], Any],
+    generate_for_files: Callable[[int], Callable[[str], Any]] | None = None,
     rewrite: Callable[[str, list[str], str], str] | None = None,
     summarize: Callable[[str], str] | None = None,
     extract_claims: Callable[[str], tuple[Claim, ...]] | None = None,
@@ -140,7 +141,7 @@ def build_graph(
     add("stuff", stuff_node)
     add("search_one", make_one_search_node(search_one))
     add("merge", make_merge_node(totals_of, rank_side, whole_side))
-    add("respond", make_respond_node(make_prompt, generate, ask))
+    add("respond", make_respond_node(make_prompt, generate, ask, generate_for_files))
     add("remember", make_remember_node(answer_text))
 
     # A follow-up is rewritten first, so the planner, the searches, the rerank

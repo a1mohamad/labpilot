@@ -47,6 +47,7 @@ def make_respond_node(
     make_prompt: Callable[..., tuple[str, Chunks]],
     generate: Callable[[str], Any],
     ask: Callable[[State], str] | None = None,
+    generate_for_files: Callable[[int], Callable[[str], Any]] | None = None,
 ) -> Callable[[State], dict[str, Any]]:
     def respond_node(state: State) -> dict[str, Any]:
         # D109: the person may be asked one question just before the answer is
@@ -98,7 +99,9 @@ def make_respond_node(
         return {
             "prompt": prompt,
             "selected": selected,
-            "result": generate(prompt),
+            "result": (generate_for_files(files) if generate_for_files else generate)(
+                prompt
+            ),
             "chunks": chunks,
             "totals": totals,
         }
