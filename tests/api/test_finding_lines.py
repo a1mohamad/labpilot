@@ -1,8 +1,7 @@
-from labpilot.agent import Bug, Difference
+from labpilot.agent import LINE_CHARS, Bug, Difference
 from labpilot.api.finding_lines import (
     BUGS_NOTE,
     DIFFERENCES_NOTE,
-    LINE_CHARS,
     bug_line,
     difference_line,
     prior_text,
