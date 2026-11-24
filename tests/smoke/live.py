@@ -37,7 +37,7 @@ import requests
 
 from labpilot.embed import EmbeddingError
 from labpilot.llm import KNOWN_DEAD, LLMError
-from labpilot.llm.chain import pool_is_exhausted
+from labpilot.llm._failures import pool_is_exhausted
 from labpilot.llm.defaults import RETRYABLE_STATUSES
 from labpilot.rerank import RerankError
 
@@ -90,7 +90,7 @@ def _llm_error(exc: BaseException) -> LLMError | None:
 def _is_transient(exc: BaseException) -> bool:
     status = getattr(exc, "status", None)
     if status is not None:
-        return status in RETRYABLE_STATUSES or status == BAD_GATEWAY
+        return status in (*RETRYABLE_STATUSES, 429, 503) or status == BAD_GATEWAY
     # No status: transient only if a real network fault sits underneath. A
     # missing key raises with no status AND no network cause, and must fail.
     return any(

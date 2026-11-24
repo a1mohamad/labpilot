@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import email.utils
+import re
 import time
 from collections.abc import Mapping
 
@@ -14,11 +15,28 @@ _PLAUSIBLE_EPOCH = 1e9
 _LIMIT_PREFIX = "x-ratelimit-limit-"
 
 
+# A 429 that says so in its BODY only (Google, Cloudflare, Token Harbor, Bazaarlink
+# send no header for it): the quota of the day is spent, so the pool rests for long.
+_DAILY = re.compile(r"per\s?day|daily|allowance", re.IGNORECASE)
+DAILY_REST = 3600.0
+
+
+def daily_rest(status: int | None, body: str, asked: float | None) -> float | None:
+    """What a 429 asks for, or a long rest when its body says the day is spent."""
+    if status == 429 and _DAILY.search(body):
+        return max(asked or 0.0, DAILY_REST)
+    return asked
+
+
 def error_from_response(response: requests.Response, source: str) -> LLMError:
     return LLMError(
         f"{source} HTTP {response.status_code}: {truncate(response.text)}",
         status=response.status_code,
-        retry_after=retry_after_seconds(response.headers),
+        retry_after=daily_rest(
+            response.status_code,
+            response.text,
+            retry_after_seconds(response.headers),
+        ),
         reset_at=reset_at_epoch(response.headers),
         rate_limit=rate_limit_ceiling(response.headers),
     )

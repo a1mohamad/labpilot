@@ -63,10 +63,62 @@ def test_some_route_holds_a_tier_that_is_not_trusted():
 
 
 @pytest.mark.parametrize("task", TASKS)
-def test_a_tier_that_is_not_trusted_comes_after_every_trusted_one(task):
+def test_a_tier_that_is_not_trusted_comes_after_every_quick_trusted_one(task):
     names = tiers(task)
-    flags = [n in NOT_TRUSTED for n in names]
+    flags = [
+        n in NOT_TRUSTED for n in names if n in NOT_TRUSTED or n in quick_ones(task)
+    ]
     assert flags == sorted(flags)
+
+
+def quick_ones(task):
+    """The strong trusted tiers that answer the task in its target time."""
+    t = routes.TASKS[task]
+    strong = [
+        n
+        for n in tiers(task)
+        if n not in NOT_TRUSTED and RATINGS[n].strength >= t.min_strength
+    ]
+    best = max(routes.accuracy(RATINGS[n], task) for n in strong)
+    return {
+        n
+        for n in strong
+        if routes.measured_or_short(RATINGS[n], task)
+        and routes.seconds(RATINGS[n], task) <= routes.TARGET[t.kind]
+        and routes.accuracy(RATINGS[n], task) >= best - routes.NEARLY_AS_GOOD
+    }
+
+
+@pytest.mark.parametrize("task", TASKS)
+def test_every_quick_good_tier_stands_before_every_slow_one(task):
+    quick = quick_ones(task)
+    flags = [n not in quick for n in tiers(task) if n not in NOT_TRUSTED]
+    assert flags == sorted(flags)
+
+
+def test_a_slow_model_never_leads_the_audit_although_it_is_the_most_accurate():
+    # Hy4: 1.00 right in 221 s. It stood second, and one question waited for it.
+    names = tiers("audit")
+    assert names[0] == "Gemini 3.5 Flash-Lite"
+    assert "Hy4 preview (OrcaRouter)" not in names[:6]
+
+
+@pytest.mark.parametrize("task", TASKS)
+def test_a_route_asks_for_help_before_it_gives_up_and_gives_up_in_time(task):
+    route = routes.ROUTES[task]
+    assert route.hedge < route.stop <= route.budget <= 300.0
+
+
+def test_only_the_answer_thinks_less():
+    def efforts(task):
+        return {
+            t.extra_body["reasoning"]["effort"]
+            for t in routes.resolve(task)
+            if "reasoning" in (getattr(t, "extra_body", None) or {})
+        }
+
+    assert efforts("respond_two") == {"low"}
+    assert "high" in efforts("method")
 
 
 @pytest.mark.parametrize("task", TASKS)
@@ -305,7 +357,7 @@ def test_no_two_tasks_walk_the_same_route():
 
 @pytest.mark.parametrize("task", TASKS)
 def test_a_model_placed_many_times_is_not_pushed_down_for_it(task):
-    # Inside the first group (strong, trusted, enough calls a day) the tiers stand
+    # Inside the first group (strong, trusted, quick, enough a day) the tiers stand
     # in the order of their score alone: no penalty for a model or a provider that
     # is already high in the route. The keys of one Google model stand together,
     # so only the first key of each such model is compared.
@@ -317,6 +369,7 @@ def test_a_model_placed_many_times_is_not_pushed_down_for_it(task):
         if name not in routes.NOT_TRUSTED
         and RATINGS[name].strength >= t.min_strength
         and RATINGS[name].per_day / t.calls >= routes.FEW_QUESTIONS
+        and name in quick_ones(task)
     ]
     leaders, seen = [], set()
     for name in first_group:

@@ -93,7 +93,7 @@ def provider(model, tier, *, pool):
 
 
 def url(model):
-    return f"{BASE}/{model}:generateContent"
+    return f"{BASE}/{model}:streamGenerateContent?alt=sse"
 
 
 def called(arguments, model="one"):

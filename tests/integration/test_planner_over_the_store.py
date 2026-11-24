@@ -61,7 +61,7 @@ def provider(model: str, tier: int, *, pool: str) -> GeminiProvider:
 
 
 def url(model: str) -> str:
-    return f"{BASE}/{model}:generateContent"
+    return f"{BASE}/{model}:streamGenerateContent?alt=sse"
 
 
 def called(arguments: dict, model: str = "planner-001") -> dict:

@@ -61,10 +61,11 @@ def empty_rooms():
     a test that sends a call through a real Gemma, Token Harbor or LiteRouter tier
     would leave tokens booked or a call "open" for the next test.
     """
-    from labpilot.llm import _pacing, _rooms
+    from labpilot.llm import _health, _pacing, _rooms
 
     _rooms._forget()
     _pacing.forget()
+    _health.forget()
 
 
 @pytest.fixture(autouse=True)

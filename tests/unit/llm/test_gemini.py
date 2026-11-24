@@ -7,7 +7,7 @@ import responses
 from labpilot.llm import GeminiProvider, LLMError, LLMResult
 
 BASE_URL = "https://provider.test/v1beta/models"
-URL = f"{BASE_URL}/test-model:generateContent"
+URL = f"{BASE_URL}/test-model:streamGenerateContent?alt=sse"
 
 
 def build_provider(**extra) -> GeminiProvider:

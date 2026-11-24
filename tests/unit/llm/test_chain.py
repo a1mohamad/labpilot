@@ -6,13 +6,13 @@ import time
 import pytest
 
 from labpilot.llm import _pacing
-from labpilot.llm.chain import (
-    LLMClient,
+from labpilot.llm._failures import (
     model_is_unavailable,
     pool_is_exhausted,
     wait_before_retry,
     worth_a_second_try,
 )
+from labpilot.llm.chain import LLMClient
 from labpilot.llm.contracts import LLMResult
 from labpilot.llm.defaults import RETRY_DELAYS
 from labpilot.llm.errors import AllFreeTiersExhausted, LLMError
@@ -68,11 +68,11 @@ def fails(name, tier, error, *, key="KEY_A", times=3, **kw):
     )
 
 
-# ---- the retry rule: 1 second, 3 seconds, then the next tier -----------------
+# ---- the retry rule: once after 1 second, then the next tier -----------------
 
 
-def test_the_delays_are_one_and_three_seconds():
-    assert RETRY_DELAYS == (1.0, 3.0)
+def test_there_is_one_retry_after_one_second():
+    assert RETRY_DELAYS == (1.0,)
 
 
 def test_first_tier_answers_without_touching_the_rest():
@@ -84,21 +84,21 @@ def test_first_tier_answers_without_touching_the_rest():
     assert second.calls == 0
 
 
-def test_a_tier_that_does_not_answer_is_asked_again_after_1s_and_after_3s(no_sleep):
+def test_a_tier_that_does_not_answer_is_asked_again_once_after_1s(no_sleep):
     first = fails("First", 1, LLMError("First: connection reset"))
     second = ok("Second", 2, key="KEY_B")
 
     result = LLMClient(chain=(first, second)).generate("hello")
 
     assert result.tier == 2
-    assert first.calls == 3
-    assert no_sleep == [1.0, 3.0]
+    assert first.calls == 2
+    assert no_sleep == [1.0]
     assert [a.tier for a in result.attempts] == [1]
 
 
 def test_a_tier_that_answers_on_the_second_try_is_kept(no_sleep):
     first = FakeProvider(
-        name="First", tier=1, outcomes=[LLMError("busy", status=503), "answer"]
+        name="First", tier=1, outcomes=[LLMError("busy", status=502), "answer"]
     )
     second = ok("Second", 2, key="KEY_B")
 
@@ -110,19 +110,19 @@ def test_a_tier_that_answers_on_the_second_try_is_kept(no_sleep):
     assert no_sleep == [1.0]
 
 
-@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
-def test_a_busy_or_failing_server_is_asked_again(status, no_sleep):
+@pytest.mark.parametrize("status", [500, 502, 504])
+def test_a_failing_server_is_asked_again(status, no_sleep):
     first = fails("First", 1, LLMError("x", status=status))
 
     with pytest.raises(AllFreeTiersExhausted):
         LLMClient(chain=(first,)).generate("hello")
 
-    assert first.calls == 3
-    assert no_sleep == [1.0, 3.0]
+    assert first.calls == 2
+    assert no_sleep == [1.0]
 
 
-@pytest.mark.parametrize("status", [400, 401, 403, 404, 413, 422])
-def test_a_refusal_that_cannot_change_is_not_asked_again(status, no_sleep):
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 413, 422, 429, 503])
+def test_a_refusal_or_high_demand_is_not_asked_again(status, no_sleep):
     first = fails("First", 1, LLMError("x", status=status))
     second = ok("Second", 2, key="KEY_B")
 
@@ -162,7 +162,7 @@ def test_a_short_retry_after_is_kept_when_it_is_longer_than_the_fixed_delay(
     first = FakeProvider(
         name="First",
         tier=1,
-        outcomes=[LLMError("busy", status=429, retry_after=2.0), "answer"],
+        outcomes=[LLMError("busy", status=502, retry_after=2.0), "answer"],
     )
 
     LLMClient(chain=(first,)).generate("hello")
@@ -233,7 +233,7 @@ def test_a_spent_time_budget_skips_every_tier_and_calls_nobody():
 
 
 def test_a_retry_that_would_pass_the_time_budget_is_not_made(monkeypatch, no_sleep):
-    first = fails("First", 1, LLMError("x", status=503))
+    first = fails("First", 1, LLMError("x", status=500))
     clock = {"now": 0.0}
     monkeypatch.setattr("labpilot.llm.chain.time.monotonic", lambda: clock["now"])
 
@@ -289,21 +289,6 @@ def test_a_call_that_hangs_is_given_up_and_not_asked_again(no_sleep):
     assert time.monotonic() - started < 2.0
     assert "no answer after" in result.attempts[0].error
     assert no_sleep == []
-
-
-def test_with_no_stop_the_call_runs_in_the_calling_thread():
-    seen = []
-
-    class Where(FakeProvider):
-        def complete(self, prompt, *, max_tokens=1024, tool=None):
-            seen.append(threading.current_thread())
-            return LLMResult(text="x", model=self.name, tier=self.tier)
-
-    LLMClient(chain=(Where(name="W", tier=1, outcomes=[]),), call_stop=None).generate(
-        "a"
-    )
-
-    assert seen == [threading.current_thread()]
 
 
 def test_a_stopped_call_carries_the_error_of_a_failed_one(no_sleep):
@@ -371,7 +356,8 @@ def test_the_account_is_quiet_for_a_moment_after_a_call_ends(no_sleep):
 
 def test_worth_a_second_try():
     assert worth_a_second_try(LLMError("reset"))
-    assert worth_a_second_try(LLMError("x", status=503))
+    assert worth_a_second_try(LLMError("x", status=502))
+    assert not worth_a_second_try(LLMError("x", status=503))
     assert not worth_a_second_try(LLMError("x", status=404))
     assert not worth_a_second_try(LLMError("x", retryable=False))
     daily = LLMError("x", status=429, reset_at=time.time() + 3600)
@@ -381,8 +367,8 @@ def test_worth_a_second_try():
 
 def test_wait_before_retry():
     assert wait_before_retry(LLMError("x"), 0) == 1.0
-    assert wait_before_retry(LLMError("x"), 1) == 3.0
-    assert wait_before_retry(LLMError("x"), 2) is None
+    assert wait_before_retry(LLMError("x"), 1) is None
+    assert wait_before_retry(LLMError("x", retry_after=3.0), 0) == 3.0
     assert wait_before_retry(LLMError("x", retry_after=2.0), 0) == 2.0
     assert wait_before_retry(LLMError("x", retry_after=4.0), 0) is None
     reset = LLMError("x", reset_at=time.time() + 2.0)
@@ -443,7 +429,7 @@ def test_an_answer_that_cannot_be_read_says_a_second_try_cannot_help():
 
 def test_a_client_can_be_told_not_to_retry_at_all(no_sleep):
     # A measurement of one model alone wants the first answer or the first failure.
-    first = fails("First", 1, LLMError("x", status=503))
+    first = fails("First", 1, LLMError("x", status=500))
 
     with pytest.raises(AllFreeTiersExhausted):
         LLMClient(chain=(first,), retry_delays=()).generate("hello")

@@ -13,8 +13,8 @@ from labpilot.prompts.checklists import (
 )
 
 
-def test_the_three_hunts_are_the_trace_the_method_and_the_concept():
-    assert [hunt.instructions for hunt in HUNTS] == [TRACE, METHOD, CONCEPT]
+def test_the_two_long_questions_are_asked_before_the_many_short_ones():
+    assert [hunt.instructions for hunt in HUNTS] == [METHOD, CONCEPT, TRACE]
 
 
 def test_each_hunt_names_its_own_route_and_only_the_method_reads_no_summary():

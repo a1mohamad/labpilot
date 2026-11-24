@@ -294,7 +294,7 @@ NEMOTRON_3_ULTRA = OpenAICompatibleProvider(
 )
 
 GEMINI_3_5_FLASH_LITE = _gemini(
-    name="Gemini 3.5 Flash-Lite", model="gemini-3.5-flash-lite"
+    name="Gemini 3.5 Flash-Lite", model="gemini-3.5-flash-lite", requests_per_minute=15
 )
 
 MISTRAL_MEDIUM = OpenAICompatibleProvider(
@@ -309,7 +309,7 @@ MISTRAL_MEDIUM = OpenAICompatibleProvider(
 )
 
 GEMINI_3_1_FLASH_LITE = _gemini(
-    name="Gemini 3.1 Flash-Lite", model="gemini-3.1-flash-lite"
+    name="Gemini 3.1 Flash-Lite", model="gemini-3.1-flash-lite", requests_per_minute=15
 )
 
 NEMOTRON_3_SUPER = OpenAICompatibleProvider(

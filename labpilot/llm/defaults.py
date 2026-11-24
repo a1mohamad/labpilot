@@ -9,20 +9,23 @@ HTTP_TOO_MANY_REQUESTS = 429
 HTTP_SERVICE_UNAVAILABLE = 503
 HTTP_INTERNAL_ERROR = 500
 
-# THE RETRY RULE (decided 2026-11-16, after the slice 11 measurement). A tier is
-# called; if it does not answer, it is asked again after 1 second, and once more
-# after 3 seconds, and then the walk goes to the NEXT tier at once. The old rule
-# (one or two retries, a backoff that grew from 1 s, a 3 s and 10 s wait for a 500,
-# a wait for whatever Retry-After said, and a 600 s read timeout) spent minutes
-# on one dead tier while tiers on other providers were free to answer.
-RETRY_DELAYS: tuple[float, ...] = (1.0, 3.0)
+# THE RETRY RULE (D129, decided 2026-11-23 on 497 streamed calls). A tier whose
+# call fails FAST is asked again once, after 1 second, and then the walk goes to
+# the NEXT tier. A 503 ("high demand") is not asked again: on an evening when
+# Google was overloaded the same key answered 22% of the first tries and 24% of
+# the retries, so a retry only spent time that the next key or model could use.
+RETRY_DELAYS: tuple[float, ...] = (1.0,)
+# A failure later than this came from a slow or stuck tier, and is not retried.
+FAST_FAILURE_SECONDS = 10.0
+# A provider that asks for a longer wait than this is left for the next tier.
+RETRY_WAIT_MAX = 3.0
 
 # A tier is retried for the failures a second try can cure: no answer at all (a
-# reset connection, an empty reply), a busy server (429 for a minute, 502, 503,
-# 504) and a failing server (500). It is NOT retried for a refusal that cannot
-# change: 400, 401, 403, 404, 413, 422, a daily 429, "not on this plan", a call
-# that was refused locally, or a hang that was cut off (see DEFAULT_CALL_STOP).
-RETRYABLE_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+# reset connection, a stream that broke), and a failing gateway (500, 502,
+# 504). It is NOT retried for a 429 or a 503 (the tier rests, _health.py), or for
+# a refusal that cannot change: 400, 401, 403, 404, 413, 422, "not on this plan", a
+# call that was refused locally, or a hang that was cut off (DEFAULT_CALL_STOP).
+RETRYABLE_STATUSES = frozenset({408, 425, 500, 502, 504})
 
 # A call that has not answered after this many seconds is given up and the walk
 # goes on. It is NOT a timeout in the old sense: normal calls take 2 to 10
@@ -50,3 +53,12 @@ TURN_WAIT_MAX = 2.0
 # real request, so without a limit one mistaken rule in the caller would walk
 # the whole chain on every call. 3 is a first guess, to be measured.
 DEFAULT_MAX_REJECTED_ANSWERS = 3
+
+# At most this many calls of one `generate` are open at the same time: the first,
+# and a helper for each time it is late again (LLMClient.hedge_after).
+MAX_OPEN = 3
+# A late call that found no free helper looks again after this many seconds.
+LOOK_AGAIN = 3.0
+# A resting tier is asked after all, when nothing else is left, if its rest ends
+# within this many seconds. A longer rest is a spent quota.
+LAST_RESORT_REST = 120.0

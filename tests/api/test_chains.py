@@ -18,7 +18,8 @@ def test_a_client_gets_a_copy_that_walks_the_route_of_the_task():
 
     assert names(led.chain) == names(routes.resolve("claims", CHAIN))
     assert led.call_stop == routes.ROUTES["claims"].stop
-    assert led.total_budget == 5.0
+    assert led.hedge_after == routes.ROUTES["claims"].hedge
+    assert led.total_budget == routes.ROUTES["claims"].budget
     assert client.chain == CHAIN  # the caller's client is not changed
 
 

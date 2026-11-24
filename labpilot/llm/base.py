@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -12,6 +13,7 @@ from labpilot._text import truncate
 from labpilot.llm._calls import json_fallback, read_object
 from labpilot.llm._http import error_from_response
 from labpilot.llm._rooms import with_margin
+from labpilot.llm._stream import IDLE_SECONDS, events, first_piece_limit, open_stream
 from labpilot.llm.contracts import LLMResult, Tool
 from labpilot.llm.defaults import (
     DEFAULT_MAX_TOKENS,
@@ -50,6 +52,9 @@ class HTTPProvider(ABC):
     # known). The matching limit on input tokens is `max_input_tokens`. Both are
     # booked by the chain before the call, see _rooms.py.
     requests_per_minute: int | None = None
+    # Ask for the answer in pieces, so a tier that stopped writing is found in
+    # seconds (_stream.py). False for a provider whose stream we cannot read.
+    stream: bool = True
 
     @property
     def pool(self) -> str:
@@ -77,25 +82,47 @@ class HTTPProvider(ABC):
         # kept by the chain BEFORE it calls (chain.py), because they decide
         # whether to call this tier at all or to go on to the next one.
 
-        try:
-            response = requests.post(
-                self._endpoint(),
-                headers=self._headers(),
-                json=self._payload(prompt, max_tokens, tool),
-                timeout=self.timeout,
+        payload = self._payload(prompt, max_tokens, tool)
+        endpoint = self._endpoint()
+        timeout = self.timeout
+        if self.stream:
+            payload = self._stream_payload(payload)
+            endpoint = self._stream_endpoint(endpoint)
+            # requests' read timeout is the longest gap between two bytes. The
+            # shorter waits (headers, first piece, silence) are in _stream.py.
+            timeout = (self.timeout[0], max(first_piece_limit.get(), IDLE_SECONDS))
+        headers = self._headers()
+
+        def post() -> requests.Response:
+            return requests.post(
+                endpoint,
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+                stream=self.stream,
             )
+
+        started = time.monotonic()
+        try:
+            response = open_stream(post, self.name) if self.stream else post()
         except requests.exceptions.RequestException as exc:
             raise LLMError(f"{self.name}: request failed: {exc}") from exc
 
         if response.status_code != 200:
             raise error_from_response(response, self.name)
 
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise LLMError(
-                f"{self.name}: response was not JSON: {truncate(response.text)}"
-            ) from exc
+        streamed = self.stream and "text/event-stream" in response.headers.get(
+            "content-type", ""
+        )
+        if streamed:
+            body = self._join(events(response, self.name, started=started))
+        else:
+            try:
+                body = response.json()
+            except ValueError as exc:
+                raise LLMError(
+                    f"{self.name}: response was not JSON: {truncate(response.text)}"
+                ) from exc
 
         if tool is not None:
             call = self._extract_call(body, tool)
@@ -173,6 +200,15 @@ class HTTPProvider(ABC):
 
     @abstractmethod
     def _endpoint(self) -> str: ...
+
+    def _stream_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        return {**payload, "stream": True}
+
+    def _stream_endpoint(self, endpoint: str) -> str:
+        return endpoint
+
+    def _join(self, pieces) -> dict:
+        raise NotImplementedError
 
     @abstractmethod
     def _headers(self) -> dict[str, str]: ...

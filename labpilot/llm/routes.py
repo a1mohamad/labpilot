@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from labpilot.llm.accuracy import ACCURACY
 from labpilot.llm.ratings import RATINGS, Rating
@@ -63,31 +63,31 @@ class Task:
 
 
 TASKS: dict[str, Task] = {
-    "rewrite": Task("small", 2, 8_000, 3_000, 1, 90, simple=True, alone=True),
+    "rewrite": Task("small", 2, 8_000, 3_000, 1, 30, simple=True, alone=True),
     # Not alone: when the two summaries were not stored at upload (D110), they
     # run in the same step as the planner and can want the same slot.
-    "plan": Task("small", 3, 14_500, 4_000, 1, 90),
-    "summary": Task("small", 2, 13_000, 4_000, 1, 90, simple=True),
-    "gate": Task("small", 2, 1_500, 3_000, 1, 90, simple=True, alone=True),
-    "checklist": Task("small", 3, 4_000, 6_000, 2, 90),
-    "fresh": Task("small", 2, 1_500, 1_000, 1, 90, simple=True),
-    "judge": Task("small", 2, 12_000, 12_000, 4, 90),
-    "merge": Task("small", 2, 5_000, 4_000, 2, 90, simple=True),
-    "merge_strong": Task("serial", 4, 5_000, 4_000, 1, 90),
-    "claims": Task("many", 3, 3_000, 6_000, 11, 90),
-    "trace": Task("many", 2, 4_000, 12_000, 20, 90),
-    "scan": Task("many", 3, 23_000, 8_000, 20, 90),
-    "audit": Task("serial", 4, 28_000, 12_000, 8, 240, reads_files=True),
-    "checklist_audit": Task("serial", 4, 28_000, 16_000, 2, 240, reads_files=True),
-    "skeptic": Task("serial", 4, 31_000, 8_000, 2, 240, reads_files=True),
-    "method": Task("hidden", 4, 25_000, 12_000, 2, 240, reads_files=True),
-    "concept": Task("hidden", 4, 25_000, 12_000, 2, 240, reads_files=True),
-    "respond_chat": Task("answer", 2, 8_000, 8_000, 1, 90, simple=True, alone=True),
+    "plan": Task("small", 3, 14_500, 4_000, 1, 30),
+    "summary": Task("small", 2, 13_000, 4_000, 1, 30, simple=True),
+    "gate": Task("small", 2, 1_500, 3_000, 1, 30, simple=True, alone=True),
+    "checklist": Task("serial", 3, 4_000, 6_000, 2, 50),
+    "fresh": Task("small", 2, 1_500, 1_000, 1, 30, simple=True),
+    "judge": Task("serial", 2, 12_000, 12_000, 4, 50),
+    "merge": Task("small", 2, 5_000, 4_000, 2, 30, simple=True),
+    "merge_strong": Task("small", 4, 5_000, 4_000, 1, 30),
+    "claims": Task("many", 2, 3_000, 6_000, 11, 45),
+    "trace": Task("many", 2, 4_000, 12_000, 20, 45),
+    "scan": Task("many", 2, 23_000, 8_000, 20, 45),
+    "audit": Task("serial", 3, 28_000, 12_000, 8, 50, reads_files=True),
+    "checklist_audit": Task("serial", 3, 28_000, 16_000, 2, 50, reads_files=True),
+    "skeptic": Task("serial", 3, 31_000, 8_000, 2, 50, reads_files=True),
+    "method": Task("hidden", 3, 25_000, 12_000, 2, 100, reads_files=True),
+    "concept": Task("hidden", 3, 25_000, 12_000, 2, 100, reads_files=True),
+    "respond_chat": Task("answer", 2, 8_000, 8_000, 1, 45, simple=True, alone=True),
     "respond_one": Task(
-        "answer", 3, 31_000, 16_000, 1, 600, reads_files=True, alone=True
+        "answer", 3, 31_000, 16_000, 1, 150, reads_files=True, alone=True
     ),
     "respond_two": Task(
-        "answer", 4, 31_000, 32_000, 1, 600, reads_files=True, alone=True
+        "answer", 4, 31_000, 32_000, 1, 180, reads_files=True, alone=True
     ),
 }
 
@@ -250,6 +250,20 @@ def _model(name: str) -> str:
     return name
 
 
+# The time a tier may take to count as QUICK for a kind of task, in seconds: a
+# little more than the quickest accurate family of the bench.
+TARGET = {"small": 15.0, "many": 40.0, "serial": 60.0, "hidden": 100.0, "answer": 100.0}
+NEARLY_AS_GOOD = 0.20  # how far below the best a quick tier may be
+
+
+def measured_or_short(rating: Rating, task_name: str) -> bool:
+    """Do we know its time? The speed test is one line of answer, so on a task
+    that writes a lot it says nothing about a family the bench did not measure."""
+    task = TASKS[task_name]
+    short = task.kind == "small" or (task.kind == "answer" and not task.reads_files)
+    return short or rating.family in ACCURACY.get(task_name, {})
+
+
 def route(task_name: str) -> tuple[str, ...]:
     """The names of the tiers this task walks, in order."""
     task = TASKS[task_name]
@@ -273,38 +287,78 @@ def route(task_name: str) -> tuple[str, ...]:
         return RATINGS[tier.name].per_day / task.calls < FEW_QUESTIONS
 
     trusted = [t for t in ok if t.name not in NOT_TRUSTED]
+    strong = [t for t in trusted if not weak(t)]
+    # FAST AND GOOD FIRST (D130). A tier that answers this task in its target time
+    # and is nearly as accurate as the best one goes before every slower tier: a
+    # route that begins with two slow models makes the person wait for both.
+    best = max((accuracy(RATINGS[t.name], task_name) for t in strong), default=0.0)
+
+    def quick(tier) -> bool:
+        rating = RATINGS[tier.name]
+        return (
+            measured_or_short(rating, task_name)
+            and seconds(rating, task_name) <= TARGET[task.kind]
+            and accuracy(rating, task_name) >= best - NEARLY_AS_GOOD
+        )
+
     placed: list[str] = []
     for group in (
-        [t for t in trusted if not weak(t) and not few(t)],
-        [t for t in trusted if not weak(t) and few(t)],  # strong, but a backup
+        [t for t in strong if quick(t) and not few(t)],
+        [t for t in strong if quick(t) and few(t)],
+        # A refusal of a tier that answers sometimes costs a second, and it rests
+        # after it; a slow model costs a minute.
+        [t for t in ok if t.name in NOT_TRUSTED and not weak(t) and quick(t)],
+        [t for t in strong if not quick(t) and not few(t)],
+        [t for t in strong if not quick(t) and few(t)],  # strong, but a backup
         [t for t in trusted if weak(t)],
-        [t for t in ok if t.name in NOT_TRUSTED],
+        [t for t in ok if t.name in NOT_TRUSTED and (weak(t) or not quick(t))],
     ):
         pool = list(group)
         while pool:
-            best = max(pool, key=lambda t: keys[t.name])
-            rating = RATINGS[best.name]
+            lead = max(pool, key=lambda t: keys[t.name])
+            rating = RATINGS[lead.name]
             # The keys of one Google model stay together, in key order.
             twins = [
                 t
                 for t in pool
-                if rating.provider == "google" and _model(t.name) == _model(best.name)
-            ] or [best]
+                if rating.provider == "google" and _model(t.name) == _model(lead.name)
+            ] or [lead]
             for t in sorted(twins, key=lambda t: t.name):
                 placed.append(t.name)
                 pool.remove(t)
     return tuple(placed)
 
 
+# When a call of this kind is LATE: a second tier is started beside it and the
+# first good answer wins (D130). A few seconds more than a normal answer.
+HEDGE = {"small": 6.0, "many": 12.0, "serial": 18.0, "hidden": 30.0, "answer": 10.0}
+HEDGE_REPORT = 40.0  # an answer about one or two files is long by nature
+# A whole `generate`, with every tier it walks, ends here. A step waits for its
+# slowest call, so one unlucky call must not hold the step: the caller goes on
+# without that answer (every step does that already when all tiers fail).
+BUDGET = {"small": 40.0, "many": 60.0, "serial": 60.0, "hidden": 100.0, "answer": 90.0}
+BUDGET_REPORT = 300.0
+
+
 @dataclass(frozen=True, slots=True)
 class Route:
     tiers: tuple[str, ...]
     stop: float
+    hedge: float
+    budget: float
 
 
-ROUTES: dict[str, Route] = {
-    name: Route(tiers=route(name), stop=task.stop) for name, task in TASKS.items()
-}
+def _route(name: str, task: Task) -> Route:
+    report = task.kind == "answer" and task.reads_files
+    return Route(
+        tiers=route(name),
+        stop=task.stop,
+        hedge=HEDGE_REPORT if report else HEDGE[task.kind],
+        budget=BUDGET_REPORT if report else BUDGET[task.kind],
+    )
+
+
+ROUTES: dict[str, Route] = {name: _route(name, task) for name, task in TASKS.items()}
 
 
 def left_out() -> dict[str, str]:
@@ -322,7 +376,23 @@ def left_out() -> dict[str, str]:
     }
 
 
+# How hard a tier thinks before the answer a person waits for. Measured 2026-11-24
+# on one real two-file prompt: DeepSeek V4.1 Flash wrote 9,934 thinking tokens at
+# "low" (77 s) and 15,764 at "medium" (121 s) for a report of 3,000 to 5,000.
+ANSWER_EFFORT = "low"
+
+
+def _thinking_less(tier):
+    body = getattr(tier, "extra_body", None) or {}
+    if "reasoning" not in body:
+        return tier
+    return replace(tier, extra_body={**body, "reasoning": {"effort": ANSWER_EFFORT}})
+
+
 def resolve(task_name: str, chain=CHAIN) -> tuple:
     """The tiers of `chain` that the route of this task names, in route order."""
     by_name = {getattr(t, "name", None): t for t in chain}
-    return tuple(by_name[n] for n in ROUTES[task_name].tiers if n in by_name)
+    found = tuple(by_name[n] for n in ROUTES[task_name].tiers if n in by_name)
+    if TASKS[task_name].kind == "answer":
+        return tuple(_thinking_less(t) for t in found)
+    return found

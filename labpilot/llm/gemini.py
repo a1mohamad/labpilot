@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from labpilot._text import truncate
 from labpilot.llm._calls import read_arguments
+from labpilot.llm._stream import join_gemini
 from labpilot.llm.base import HTTPProvider
 from labpilot.llm.contracts import Tool
 from labpilot.llm.errors import LLMError
@@ -32,6 +33,25 @@ class GeminiProvider(HTTPProvider):
 
     def _endpoint(self) -> str:
         return f"{self.url}/{self.model}:generateContent"
+
+    def _stream_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        # Ask Google to stream the thinking too, so a model that thinks for a
+        # long time still sends pieces and is not cut by the first-piece wait.
+        # join_gemini leaves the thought parts out of the answer. Gemma refuses
+        # some thinking settings, so it is left as it is (not tested yet).
+        if self.model.startswith("gemma"):
+            return payload
+        config = dict(payload["generationConfig"])  # type: ignore[arg-type]
+        thinking = dict(config.get("thinkingConfig") or {})  # type: ignore[arg-type]
+        thinking["includeThoughts"] = True
+        config["thinkingConfig"] = thinking
+        return {**payload, "generationConfig": config}
+
+    def _stream_endpoint(self, endpoint: str) -> str:
+        return endpoint.replace(":generateContent", ":streamGenerateContent?alt=sse")
+
+    def _join(self, pieces) -> dict:
+        return join_gemini(pieces)
 
     def _headers(self) -> dict[str, str]:
         return {
