@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from labpilot.ingest import Chunk
+from labpilot.ingest import SIDES, Chunk
 from labpilot.tokens import estimate_tokens
-
-SIDES = ("A", "B")
 
 # The evidence budget, and it is OURS - no provider enforces it.
 #
