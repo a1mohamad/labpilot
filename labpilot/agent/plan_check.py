@@ -2,7 +2,7 @@ import logging
 from dataclasses import replace
 
 from labpilot.agent.plan import Plan, Query
-from labpilot.ingest import Side
+from labpilot.ingest import SIDES, Side
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +75,9 @@ def problem_with(plan: Plan, sides: tuple[Side, ...], question: str = "") -> str
     # A long question is dropped by check_plan, and the plan stays.
     if repeats_with_question(plan.ask, question):
         return "the question for the user only repeats the user's own question"
-    if plan.about not in ("A", "B", "both"):
+    if plan.about not in (*SIDES, "both"):
         return f"'about' is {plan.about!r}, it must be A, B or both"
-    if plan.about in ("A", "B") and plan.about not in sides:
+    if plan.about in SIDES and plan.about not in sides:
         return f"the question is about side {plan.about!r}, which has no file"
     allowed = allowed_steps(sides)
     for step in plan.steps:
