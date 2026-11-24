@@ -6,7 +6,7 @@ support: session 10 measured model strength OUT as a cause of coverage, blind
 spots are per-model and disjoint rather than better-and-worse, and in slice 6
 the cheapest tier beat every purpose-built cross-encoder.
 
-But the honest gap is this: **the lean REPORT template has never once been
+But the honest gap is this: **the two-file instruction has never once been
 run on a cheap tier.** Every report number in the project came from
 `gemini-3.6-flash` or `gemini-3.5-flash`, both 20 requests a day.
 
@@ -30,10 +30,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from labpilot.ingest import chunk_file
-from labpilot.llm import tiers
+from labpilot.llm import routes, tiers
 from labpilot.prompts import (
-    REPORT,
-    REPORT_MAX_TOKENS,
+    TWO_FILES,
     build_prompt,
     find_citations,
     resolve,
@@ -58,7 +57,7 @@ TIERS = {
     # 26,000. Included so the refusal is measured rather than assumed.
     "gemma": tiers.GEMMA_4_31B,
     # The 20/day control. Only run this to re-establish the baseline.
-    "flash35": tiers.GEMINI_3_5_FLASH,
+    "flash36": tiers.GEMINI_3_6_FLASH,
 }
 
 
@@ -69,7 +68,7 @@ def main(name: str) -> int:
     chunks = tuple(
         chunk_file(SAMPLES / "A_paper.md", side="A", artifact_id="A")
     ) + tuple(chunk_file(SAMPLES / "B_train.py", side="B", artifact_id="B"))
-    prompt = build_prompt(chunks, chunks, question=QUESTION, instructions=REPORT)
+    prompt = build_prompt(chunks, chunks, question=QUESTION, instructions=TWO_FILES)
     print(
         f"{provider.name}: {len(chunks)} chunks stuffed, "
         f"~{estimate_tokens(prompt)} prompt tokens"
@@ -89,7 +88,7 @@ def main(name: str) -> int:
     )
 
     started = time.time()
-    result = tuned.complete(prompt, max_tokens=REPORT_MAX_TOKENS)
+    result = tuned.complete(prompt, max_tokens=routes.TASKS["respond_two"].max_tokens)
     elapsed = time.time() - started
 
     # find_citations returns (chunk_id, quote) PAIRS; resolve() is what
