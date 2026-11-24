@@ -102,7 +102,9 @@ def test_the_stored_parts_reach_the_provider_in_order_and_the_text_comes_back(db
     # written back to front on purpose: the order must come from chunk_index
     # and not from where Postgres happens to keep the rows
     artifact = store(db, "B", parts=3, reverse=True)
-    responses.post(f"{BASE}/one:generateContent", json=answered("It trains a model."))
+    responses.post(
+        f"{BASE}/one:streamGenerateContent?alt=sse", json=answered("It trains a model.")
+    )
 
     text = summaries.make_summarizer(db, LLMClient(chain=(provider(),)))(artifact)
 
@@ -117,7 +119,7 @@ def test_the_stored_parts_reach_the_provider_in_order_and_the_text_comes_back(db
 @responses.activate
 def test_a_big_artifact_is_cut_to_its_first_parts_and_the_prompt_says_so(db):
     artifact = store(db, "B", parts=150, words=120)
-    responses.post(f"{BASE}/one:generateContent", json=answered())
+    responses.post(f"{BASE}/one:streamGenerateContent?alt=sse", json=answered())
 
     summaries.make_summarizer(db, LLMClient(chain=(provider(),)))(artifact)
 
