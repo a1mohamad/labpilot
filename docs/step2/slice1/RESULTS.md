@@ -5,7 +5,7 @@ data is `artifacts/step2/latency/2026-09-29_18-29.jsonl` (git-ignored, like ever
 run file). The instrument is `scripts/measure_latency.py`; its tests are
 `tests/unit/test_measure_latency.py`.
 
-Read the [caveats](#what-this-does-not-tell-you) before quoting a number. The
+Read the [caveats](#5-what-this-does-not-tell-you) before quoting a number. The
 short version: **this is one afternoon, one exit, three samples per cell, and an
 answer of about 500 tokens.** It ranks the tiers. How long a report-sized answer
 takes was measured afterwards, on 26 tiers with two samples each (section 6).
