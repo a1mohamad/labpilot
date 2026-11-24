@@ -5,7 +5,13 @@ from dataclasses import dataclass
 
 from labpilot._text import truncate
 from labpilot.llm._calls import read_arguments
-from labpilot.llm._http import rate_limit_ceiling, reset_at_epoch, retry_after_seconds
+from labpilot.llm._http import (
+    daily_rest,
+    rate_limit_ceiling,
+    reset_at_epoch,
+    retry_after_seconds,
+)
+from labpilot.llm._stream import join_openai
 from labpilot.llm.base import HTTPProvider
 from labpilot.llm.contracts import Tool
 from labpilot.llm.errors import LLMError
@@ -54,7 +60,7 @@ def _error_inside(body: dict, source: str) -> LLMError | None:
     return LLMError(
         f"{source}: HTTP 200 carried an error{label}: {truncate(str(message))}",
         status=code,
-        retry_after=retry_after_seconds(headers),
+        retry_after=daily_rest(code, str(error), retry_after_seconds(headers)),
         reset_at=reset_at_epoch(headers),
         rate_limit=rate_limit_ceiling(headers),
     )
@@ -78,6 +84,9 @@ class OpenAICompatibleProvider(HTTPProvider):
     account_env: str | None = None
     extra_body: dict[str, object] | None = None
     extra_headers: dict[str, str] | None = None
+    # A stream carries no token counts unless it is asked for them. 9 gateways
+    # took the field on 2026-11-24; off where that could not be tried.
+    stream_usage: bool = True
 
     def _endpoint(self) -> str:
         if self.account_env is None:
@@ -87,6 +96,15 @@ class OpenAICompatibleProvider(HTTPProvider):
         if not account_id:
             raise LLMError(f"{self.name}: {self.account_env} is not set")
         return self.url.format(account_id=account_id)
+
+    def _stream_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        streamed: dict[str, object] = {**payload, "stream": True}
+        if self.stream_usage:
+            streamed["stream_options"] = {"include_usage": True}
+        return streamed
+
+    def _join(self, pieces) -> dict:
+        return join_openai(pieces)
 
     def _headers(self) -> dict[str, str]:
         # The credentials come last, so an extra header can never replace them.
