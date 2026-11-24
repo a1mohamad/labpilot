@@ -116,7 +116,7 @@ def test_a_wrong_answer_is_sent_back_so_the_next_tier_writes_a_new_one(monkeypat
         return {"claims": [{"text": "x", "part": part, "quote": quote}]}
 
     assert problem_with(result(GOOD)) is None
-    assert problem_with(result(None)) == "no arguments"
+    assert problem_with(result(None)) == "the answer has no arguments"
     assert "part 5" in problem_with(result(one(5, "mesh")))
     assert "quote" in problem_with(result(one(0, "it was never said")))
 
