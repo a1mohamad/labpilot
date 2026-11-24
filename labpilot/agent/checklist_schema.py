@@ -2,6 +2,7 @@ import re
 from collections.abc import Sequence
 
 from labpilot.agent._quote import place_quote
+from labpilot.agent._schema import index, list_schema
 from labpilot.agent.bug import Bug
 from labpilot.agent.errors import BugsError
 from labpilot.ingest import Chunk
@@ -50,32 +51,17 @@ def merge_obligations(lists: Sequence[Sequence[str]]) -> tuple[str, ...]:
 
 
 def checklist_audit_schema() -> dict[str, object]:
-    return {
-        "type": "object",
-        "properties": {
-            "answers": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "n": {"type": "integer"},
-                        "meets": {"type": "string", "enum": list(MEETS)},
-                        "part": {"type": "integer"},
-                        "quote": {"type": "string"},
-                        "text": {"type": "string"},
-                    },
-                    "required": ["n", "meets"],
-                },
-            },
+    return list_schema(
+        "answers",
+        {
+            "n": {"type": "integer"},
+            "meets": {"type": "string", "enum": list(MEETS)},
+            "part": {"type": "integer"},
+            "quote": {"type": "string"},
+            "text": {"type": "string"},
         },
-        "required": ["answers"],
-    }
-
-
-def _index(value: object, below: int) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int):
-        return None
-    return value if 0 <= value < below else None
+        ["n", "meets"],
+    )
 
 
 def read_checklist_audit(
@@ -102,11 +88,11 @@ def read_checklist_audit(
     for item in items:
         if not isinstance(item, dict):
             continue
-        number = _index(item.get("n"), len(obligations))
+        number = index(item.get("n"), len(obligations))
         if number is None or item.get("meets") not in MEETS:
             continue
         answered += 1
-        part, quote = _index(item.get("part"), len(texts)), item.get("quote")
+        part, quote = index(item.get("part"), len(texts)), item.get("quote")
         if item["meets"] != "no" or part is None or not isinstance(quote, str):
             continue
         placed = place_quote(part, quote, texts)
