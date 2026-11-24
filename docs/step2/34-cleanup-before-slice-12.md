@@ -63,6 +63,7 @@ New: `test_schema_helpers.py`, `test_choices.py`, `test_answering.py`, and `whol
 Deleted with their code: the tests of `usage`, the Cloudflare reranker, rank fusion, `keyword_search`, the old templates and
 the old baseline smoke test.
 
-**Checked:** unit and api 2,677 passed, 5 skipped; 60 related database tests passed; 24 deliberate breaks, all caught (two first
-survived, so `tests/api/test_evidence_first.py` was written). In one run of the whole database folder at the same time as
+**Checked:** unit and api 2,677 passed, 5 skipped; 60 related database tests passed; 22 deliberate breaks, 20 caught
+and 2 survived (the order of the evidence, the raw header name). `tests/api/test_evidence_first.py` was written for both, and it
+caught both when they were repeated, and one more break of the ids. In one run of the whole database folder at the same time as
 live calls, two tests of `test_ask.py` failed; they passed alone afterwards, and the reason was not read.
