@@ -20,7 +20,6 @@ from labpilot.agent.checklist_schema import (
 from labpilot.agent.claim import CLAIM_KINDS, METHOD, RESULT, Claim
 from labpilot.agent.claims_schema import (
     CLAIMS_TOOL_NAME,
-    MAX_CLAIMS,
     MAX_CLAIMS_PER_ANSWER,
     claims_schema,
     join_claims,
@@ -54,6 +53,7 @@ from labpilot.agent.errors import (
     GateError,
     PlanError,
 )
+from labpilot.agent.final_merge import LINE_CHARS
 from labpilot.agent.fresh import FreshCheck
 from labpilot.agent.gate_schema import GATE_TOOL_NAME, gate_schema, read_correspondence
 from labpilot.agent.graph import build_graph
@@ -75,6 +75,7 @@ from labpilot.agent.skeptic_schema import (
 from labpilot.agent.state import State
 
 __all__ = [
+    "LINE_CHARS",
     "AUDIT_TOOL_NAME",
     "BUG_KINDS",
     "BUGS_TOOL_NAME",
@@ -88,7 +89,6 @@ __all__ = [
     "HALT_VERDICT",
     "JUDGE_TOOL_NAME",
     "MAX_BUGS_PER_ANSWER",
-    "MAX_CLAIMS",
     "MAX_CLAIMS_PER_ANSWER",
     "MAX_OBLIGATIONS",
     "MAX_QUERIES",
