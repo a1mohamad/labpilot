@@ -111,7 +111,9 @@ def test_the_model_gets_the_tool_the_files_allow(monkeypatch):
 
 
 def test_one_file_means_a_smaller_tool(monkeypatch):
-    client = FakeClient({"steps": ["find_differences"], "queries": []})
+    client = FakeClient(
+        {"steps": ["find_bugs"], "queries": [{"side": "B", "text": "loss"}]}
+    )
 
     make(monkeypatch, client)(QUESTION, "", "B-1")
 
@@ -358,3 +360,12 @@ def test_the_log_names_the_queries_of_the_plan(monkeypatch, caplog):
         make(monkeypatch, client)(QUESTION, "A-1", "B-1")
 
     assert "queries=[" in caplog.text
+
+
+def test_a_plan_that_does_not_fit_the_files_is_never_used(monkeypatch):
+    # `find_differences` needs two files. The chain refuses such a plan, and a
+    # client that let it through would still not reach the graph.
+    client = FakeClient({"steps": ["find_differences"], "queries": []})
+
+    with pytest.raises(PlanError, match="no tier gave a good plan"):
+        make(monkeypatch, client)(QUESTION, "", "B-1")
