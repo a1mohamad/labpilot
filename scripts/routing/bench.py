@@ -43,6 +43,7 @@ from scripts.routing._common import DATA, LOGS, check_network, load_env
 load_env()
 
 import labpilot.api.tool_calls as tool_calls  # noqa: E402
+import labpilot.llm._race as race_mod  # noqa: E402
 import labpilot.llm.chain as chain_mod  # noqa: E402
 from labpilot.api.file_parts import FileParts  # noqa: E402
 from labpilot.ingest import chunk_bytes  # noqa: E402
@@ -68,8 +69,8 @@ LOCK = threading.Lock()
 # skip-when-busy is turned off (a single model is measured alone, so a skip
 # would be a failure of the bench, not of the model).
 tool_calls.CALLS_AT_ONCE = 1
-chain_mod.TURN_WAIT_MAX = 30.0
-chain_mod.book = lambda *a, **k: 0.0
+race_mod.TURN_WAIT_MAX = 30.0
+race_mod.book = lambda *a, **k: 0.0
 _last: dict[str, float] = {}
 _acct_lock: dict[str, threading.Lock] = {}
 _orig_complete = HTTPProvider.complete
@@ -339,7 +340,7 @@ def tiers_for(family, task):
 def client(tiers, stop):
     return LLMClient(
         chain=tuple(tiers),
-        retry_delays=(1.0, 3.0),
+        retry_delays=(1.0,),
         call_stop=stop,
         total_budget=stop * 2 + 30,
         max_rejected_answers=1,

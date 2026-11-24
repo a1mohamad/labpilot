@@ -72,8 +72,9 @@ def differences_key(a: str, b: str, facts: Sequence[str]) -> str:
     return f"{DIFFERENCES}:{a}:{b}:{versions}:{digest}"
 
 
-def bugs_key(b: str) -> str:
-    return f"{BUGS}:{b}:v{BUGS_VERSION}"
+def bugs_key(b: str, *, fast: bool = False) -> str:
+    # A fast hunt looks for less, so a full one is never answered from it.
+    return f"{BUGS}:{b}:v{BUGS_VERSION}{':fast' if fast else ''}"
 
 
 def fresh_key(b: str, question: str) -> str:
@@ -205,10 +206,15 @@ def saved_differences(
 
 
 def saved_bugs(
-    saved: SavedResults, find: Callable[[str, str], tuple[Bug, ...]]
+    saved: SavedResults,
+    find: Callable[[str, str], tuple[Bug, ...]],
+    *,
+    fast: bool = False,
 ) -> Callable[[str, str], tuple[Bug, ...]]:
     def bugs(artifact: str, summary: str) -> tuple[Bug, ...]:
-        key = bugs_key(artifact)
+        # A full hunt that is already saved answers a fast question too.
+        full = bugs_key(artifact)
+        key = full if not fast or saved.has(full) else bugs_key(artifact, fast=True)
         return saved.get_or_make(
             BUGS, key, (artifact,), lambda: find(artifact, summary)
         )
@@ -228,7 +234,7 @@ def saved_fresh(
 
 
 def with_saved_steps(
-    saved: SavedResults, plan: Callable[[str, str, str], Plan]
+    saved: SavedResults, plan: Callable[[str, str, str], Plan], *, fast: bool = False
 ) -> Callable[[str, str, str], Plan]:
     """A step whose result is already saved costs nothing, so it is always run.
 
@@ -240,7 +246,8 @@ def with_saved_steps(
     def planned(question: str, a: str, b: str) -> Plan:
         made = plan(question, a, b)
         steps = list(made.steps)
-        if b and "find_bugs" not in steps and saved.has(bugs_key(b)):
+        keys = [bugs_key(b), bugs_key(b, fast=True)] if fast else [bugs_key(b)]
+        if b and "find_bugs" not in steps and any(saved.has(key) for key in keys):
             steps.append("find_bugs")
         if a and b and "find_differences" not in steps:
             claims = saved.read(claims_key(a))

@@ -225,3 +225,12 @@ def test_the_pause_buttons_send_the_typed_answer_and_the_empty_text_for_a_skip()
     assert re.search(
         r'paused-skip"\)\.onclick = \(\) => send\(question, ""\)', source
     ), 'web/app.js: the Skip button of the pause must send the empty text "".'
+
+
+def test_the_fast_box_of_the_page_is_really_sent():
+    # The name alone is checked above; a page that always sent `false` passed it.
+    page = Path("web/index.html").read_text(encoding="utf-8")
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert re.search(r'<input id="fast" type="checkbox"', page)
+    assert 'fast: document.getElementById("fast").checked' in source

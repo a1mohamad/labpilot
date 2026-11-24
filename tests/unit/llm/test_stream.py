@@ -411,6 +411,6 @@ def test_a_request_cancelled_before_its_headers_ends_at_once(waits):
     token.cancel()
     try:
         with pytest.raises(LLMError, match="cancelled"):
-            open_stream(lambda: time.sleep(1), "T")
+            open_stream(lambda: time.sleep(1) or FakeResponse(), "T")
     finally:
         _stream.cancel_token.reset(reset)

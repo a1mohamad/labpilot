@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from labpilot.llm import _health
+from labpilot.llm._allowance import allowance_key
 from labpilot.llm._failures import (
     model_is_unavailable,
     note_failure,
@@ -234,6 +235,8 @@ class Race:
         if resting:
             if _health.left(provider.pool) > 0:
                 return f"{provider.pool} exhausted", 0.0
+            if _health.left(allowance_key(provider.pool)) > 0:
+                return f"{provider.pool} allowance is nearly used", 0.0
             seconds = _health.left(provider.name)
             if seconds > 0:
                 return f"resting for {seconds:.0f}s after a failure", 0.0
@@ -314,4 +317,8 @@ def _family(provider: Provider) -> str:
 
 
 def _rest_left(provider: Provider) -> float:
-    return max(_health.left(provider.name), _health.left(provider.pool))
+    return max(
+        _health.left(provider.name),
+        _health.left(provider.pool),
+        _health.left(allowance_key(provider.pool)),
+    )

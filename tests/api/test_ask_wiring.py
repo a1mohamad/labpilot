@@ -26,7 +26,7 @@ def look_through_saved(monkeypatch):
     # The saved-results wrappers (D104) are tested in test_saved.py; here the
     # wiring is checked through them, so each wrapper hands back what it wraps.
     for name in ("saved_claims", "saved_differences", "saved_bugs", "with_saved_steps"):
-        monkeypatch.setattr(asking, name, lambda saved, made: made)
+        monkeypatch.setattr(asking, name, lambda saved, made, **_: made)
 
 
 def capture(monkeypatch):

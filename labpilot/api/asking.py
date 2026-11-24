@@ -51,6 +51,7 @@ def ask(
     thread_id: str | None = None,
     pool: ConnectionPool | None = None,
     reply: str | None = None,
+    fast: bool = False,
 ) -> Comparison | Question:
     """Answer a question about up to two STORED artifacts.
 
@@ -73,7 +74,7 @@ def ask(
 
     a_id, b_id = _in_their_own_slots(a_id, b_id)
     saved = SavedResults(conn)
-    graph = _ask_graph(conn, client, thread_id, pool, saved=saved)
+    graph = _ask_graph(conn, client, thread_id, pool, saved=saved, fast=fast)
     start = {"question": question, "a": a_id, "b": b_id}
     if thread_id is None:
         final = graph.invoke(start)
@@ -159,6 +160,7 @@ def _ask_graph(
     pool: ConnectionPool | None = None,
     *,
     saved: SavedResults | None = None,
+    fast: bool = False,
 ) -> CompiledStateGraph:
     """The graph ask() runs, with the real functions handed to it.
 
@@ -254,7 +256,9 @@ def _ask_graph(
         search_one=search_one,
         totals_of=totals_of,
         rank_side=rank_pile,
-        plan=with_saved_steps(saved, make_planner(conn, for_task(client, "plan"))),
+        plan=with_saved_steps(
+            saved, make_planner(conn, for_task(client, "plan")), fast=fast
+        ),
         summarize=summarize,
         extract_claims=saved_claims(
             saved, make_claims_extractor(conn, for_task(client, "claims"))
@@ -279,7 +283,9 @@ def _ask_graph(
                 checklist=for_task(client, "checklist"),
                 checklist_audit=for_task(client, "checklist_audit"),
                 skeptic=for_task(client, "skeptic"),
+                fast=fast,
             ),
+            fast=fast,
         ),
         fresh=saved_fresh(
             saved,

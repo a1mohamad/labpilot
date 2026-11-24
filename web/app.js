@@ -261,6 +261,7 @@ async function send(question, reply) {
         question,
         thread_id: localStorage.getItem(THREAD_KEY),
         reply: reply,
+        fast: document.getElementById("fast").checked,
       }),
     });
     const payload = await response.json();

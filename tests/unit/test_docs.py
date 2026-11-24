@@ -1,11 +1,8 @@
-"""CLAUDE.md and DETAILS.md must not drift apart.
+"""The docs folder is one truth, every link in it works, and CLAUDE.md stays small.
 
-The rule (Working Rules, "Two files, one truth"): every change to CLAUDE.md is
-made to DETAILS.md too, in the same commit. It was broken on 2026-10-11, when a
-whole session of notes reached CLAUDE.md and never reached DETAILS.md, and it
-was found by hand. DETAILS.md is the full text and is laid out a little
-differently, so only SECTION HEADINGS are compared, which is enough to catch a
-new section that went into one file and not the other.
+CLAUDE.md is loaded at the start of every session. It grew to 1.4 MB, next to a
+DETAILS.md of 1.6 MB that had to hold the same words, until 2026-11-24. Now it is a
+short front page and the text lives in docs/, each fact on one page.
 """
 
 from __future__ import annotations
@@ -13,52 +10,77 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
+from scripts.repo import build_docs_index as index
+
 ROOT = Path(__file__).resolve().parents[2]
-
-# Blocks that exist only in the compact file, because DETAILS.md keeps the same
-# facts in its older layout. A heading is excused by its START, since several
-# carry a date that changes. A new name here needs a reason.
-ONLY_IN_THE_COMPACT_FILE = (
-    "### Where Step 2 stands",
-    "### Traps that still bite",
-    "### Git state and branches",
-    "### Older status notes",
-    "#### What step 3 builds",
-)
+CLAUDE = ROOT / "CLAUDE.md"
+MAX_CLAUDE_BYTES = 16_000
+PAGES = [CLAUDE, *sorted((ROOT / "docs").rglob("*.md"))]
+LINK = re.compile(r"\[[^\]\n]*\]\(([^)\s]+)\)")
 
 
-def headings(name: str) -> list[str]:
-    found: list[str] = []
-    in_code = False
-    for line in (ROOT / name).read_text(encoding="utf-8").splitlines():
-        if line.startswith("```"):
-            in_code = not in_code
-        elif not in_code and re.match(r"^#{2,4} ", line):
-            found.append(line.strip())
+def anchors(path: Path) -> set[str]:
+    found: set[str] = set()
+    for heading in index.headings(path):
+        name, n = index.slug(heading), 1
+        unique = name
+        while unique in found:
+            unique, n = f"{name}-{n}", n + 1
+        found.add(unique)
     return found
 
 
-def test_details_holds_every_section_heading_of_claude_md():
-    in_details = set(headings("DETAILS.md"))
+def prose(path: Path) -> str:
+    """The text without fenced code and code spans (they show links as examples)."""
+    text = re.sub(
+        r"^(```|~~~).*?^\1", "", path.read_text(encoding="utf-8"), flags=re.M | re.S
+    )
+    return re.sub(r"`[^`\n]*`", "", text)
 
-    missing = [
-        heading
-        for heading in headings("CLAUDE.md")
-        if heading not in in_details
-        and not heading.startswith(ONLY_IN_THE_COMPACT_FILE)
-    ]
 
-    assert not missing, (
-        f"{missing} are in CLAUDE.md and not in DETAILS.md. Make every change to "
-        f"both files, with the same words, in the same commit."
+def test_claude_md_stays_small_enough_to_load_in_every_session():
+    assert CLAUDE.stat().st_size <= MAX_CLAUDE_BYTES, (
+        "CLAUDE.md is the front page. Put the text in a page of docs/ and link it."
     )
 
 
-def test_the_compact_file_blocks_that_are_excused_still_exist():
-    # an excuse for a heading that is gone would hide the next real gap
-    present = headings("CLAUDE.md")
+def test_there_is_no_second_copy_of_the_docs():
+    assert not (ROOT / "DETAILS.md").exists()
 
-    for start in ONLY_IN_THE_COMPACT_FILE:
-        assert any(heading.startswith(start) for heading in present), (
-            f"{start!r} is excused above and CLAUDE.md has no such heading now"
-        )
+
+@pytest.mark.parametrize("page", PAGES, ids=lambda p: p.relative_to(ROOT).as_posix())
+def test_every_link_to_a_file_or_a_heading_works(page):
+    broken = []
+    for target in LINK.findall(prose(page)):
+        if re.match(r"[a-z]+:", target):
+            continue  # a web address
+        file, _, anchor = target.partition("#")
+        path = (page.parent / file).resolve() if file else page
+        if not path.exists():
+            broken.append(target)
+        elif anchor and path.suffix == ".md" and anchor not in anchors(path):
+            broken.append(target)
+
+    assert not broken, f"{page.name} links to {broken}"
+
+
+def test_the_generated_pages_are_up_to_date():
+    for name, text in index.generated().items():
+        written = (ROOT / "docs" / name).read_text(encoding="utf-8")
+        assert written == text, f"run python -m scripts.repo.build_docs_index ({name})"
+    tree = (ROOT / "docs" / "SUMMARY.md").read_text(encoding="utf-8")
+    assert tree == index.summary(), "run python -m scripts.repo.build_docs_index"
+
+
+def test_every_folder_of_docs_is_in_the_tree():
+    folders = {p.name for p in (ROOT / "docs").iterdir() if p.is_dir()}
+
+    assert folders <= {name for name, _ in index.FOLDERS}
+
+
+def test_the_pages_every_session_needs_are_linked_from_the_front_page():
+    front = CLAUDE.read_text(encoding="utf-8")
+    for needed in ("docs/README.md", "docs/status/current.md", "docs/rules/"):
+        assert needed in front

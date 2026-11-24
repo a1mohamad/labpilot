@@ -84,6 +84,9 @@ class OpenAICompatibleProvider(HTTPProvider):
     account_env: str | None = None
     extra_body: dict[str, object] | None = None
     extra_headers: dict[str, str] | None = None
+    # A stream carries no token counts unless it is asked for them. 9 gateways
+    # took the field on 2026-11-24; off where that could not be tried.
+    stream_usage: bool = True
 
     def _endpoint(self) -> str:
         if self.account_env is None:
@@ -93,6 +96,12 @@ class OpenAICompatibleProvider(HTTPProvider):
         if not account_id:
             raise LLMError(f"{self.name}: {self.account_env} is not set")
         return self.url.format(account_id=account_id)
+
+    def _stream_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        streamed: dict[str, object] = {**payload, "stream": True}
+        if self.stream_usage:
+            streamed["stream_options"] = {"include_usage": True}
+        return streamed
 
     def _join(self, pieces) -> dict:
         return join_openai(pieces)

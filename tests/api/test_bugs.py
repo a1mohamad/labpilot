@@ -465,3 +465,17 @@ def test_a_syntax_claim_the_parser_cannot_disprove_is_kept(monkeypatch, source, 
     (got,) = finder(monkeypatch, client, (part(0, text, source),))("B-1", "")
 
     assert got.verdict == "real"
+
+
+def test_a_fast_hunt_asks_the_three_questions_and_no_checklist(monkeypatch):
+    client = FakeClient(one_defect, says("real"))
+    monkeypatch.setattr(file_parts, "read_chunks", lambda conn, artifact_id: PARTS)
+    steps = ("trace", "method", "concept", "checklist", "checklist_audit", "skeptic")
+    find = make_bug_finder("conn", **dict.fromkeys(steps, client), fast=True)
+
+    (got,) = find("B-1", "")
+
+    asked = {name for name, _ in client.prompts}
+    assert asked == {BUGS_TOOL_NAME, SKEPTIC_TOOL_NAME}
+    assert sum(name == BUGS_TOOL_NAME for name, _ in client.prompts) == 3
+    assert got.verdict == "real"

@@ -166,8 +166,8 @@ MAX_MODULE_LINES = 400
 # A module past the limit is a SYMPTOM to investigate, not a crime, so the
 # exceptions are named here with the reason. A new name needs a reason too.
 LONG_MODULES = {
-    "llm/registry.py": "only data: the model tiers. It is split by gateway in "
-    "slice 11, when the routing work touches it anyway",
+    "llm/registry/order.py": "only data: the order of the tiers, and why",
+    "llm/registry/literouter.py": "only data: the tiers of one gateway",
 }
 
 

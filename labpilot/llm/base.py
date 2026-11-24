@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import requests
 
 from labpilot._text import truncate
+from labpilot.llm._allowance import note_allowance
 from labpilot.llm._calls import json_fallback, read_object
 from labpilot.llm._http import error_from_response
 from labpilot.llm._rooms import with_margin
@@ -55,6 +56,10 @@ class HTTPProvider(ABC):
     # Ask for the answer in pieces, so a tier that stopped writing is found in
     # seconds (_stream.py). False for a provider whose stream we cannot read.
     stream: bool = True
+    # The response header that says how much of a free allowance is used, in
+    # percent, and the one that says when it starts again (_allowance.py).
+    allowance_header: str | None = None
+    allowance_reset_header: str | None = None
 
     @property
     def pool(self) -> str:
@@ -108,6 +113,8 @@ class HTTPProvider(ABC):
         except requests.exceptions.RequestException as exc:
             raise LLMError(f"{self.name}: request failed: {exc}") from exc
 
+        # On a refusal too: a 429 also says how much is used.
+        note_allowance(self, response.headers)
         if response.status_code != 200:
             raise error_from_response(response, self.name)
 

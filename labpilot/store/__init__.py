@@ -1,4 +1,5 @@
 from labpilot.store.connection import (
+    PooledConnection,
     connect,
     create_schema,
     database_url,
@@ -38,6 +39,7 @@ __all__ = [
     "ModelMismatch",
     "NotConfigured",
     "POOL_SIZE",
+    "PooledConnection",
     "read_chunks",
     "read_saved",
     "write_saved",

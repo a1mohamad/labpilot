@@ -1,3 +1,5 @@
+import pytest
+
 from labpilot.api import asking
 from labpilot.llm import CHAIN, LLMClient, routes
 
@@ -6,7 +8,7 @@ def look_through_saved(monkeypatch):
     # The saved-results wrappers (D104) are tested in test_saved.py; here the
     # wiring is checked through them, so each wrapper hands back what it wraps.
     for name in ("saved_claims", "saved_differences", "saved_bugs", "with_saved_steps"):
-        monkeypatch.setattr(asking, name, lambda saved, made: made)
+        monkeypatch.setattr(asking, name, lambda saved, made, **_: made)
 
 
 def capture(monkeypatch):
@@ -25,6 +27,7 @@ def capture(monkeypatch):
         return "find_differences"
 
     def fake_bugs(conn, **clients):
+        clients.pop("fast")
         seen["bug_clients"] = clients
         return "find_bugs"
 
@@ -33,7 +36,7 @@ def capture(monkeypatch):
         return "fresh"
 
     look_through_saved(monkeypatch)
-    monkeypatch.setattr(asking, "saved_fresh", lambda saved, made: made)
+    monkeypatch.setattr(asking, "saved_fresh", lambda saved, made, **_: made)
     monkeypatch.setattr(asking, "build_graph", fake_build_graph)
     monkeypatch.setattr(asking, "make_planner", lambda conn, client: ("plan", client))
     monkeypatch.setattr(
@@ -165,3 +168,28 @@ def test_the_answer_asks_for_as_many_tokens_as_its_kind_needs(monkeypatch):
         seen["generate_for_files"](files)("a prompt")
 
     assert asked == [8_000, 16_000, 32_000, 32_000]
+
+
+@pytest.mark.parametrize("fast", [False, True])
+def test_the_fast_mode_reaches_the_hunt_and_the_saved_steps(monkeypatch, fast):
+    look_through_saved(monkeypatch)
+    seen = {}
+
+    def note(name):
+        def stand_in(*args, **kwargs):
+            seen[name] = kwargs.get("fast")
+            return name
+
+        return stand_in
+
+    for name in ("make_bug_finder", "saved_bugs", "with_saved_steps"):
+        monkeypatch.setattr(asking, name, note(name))
+    monkeypatch.setattr(asking, "build_graph", lambda **_: None)
+
+    asking._ask_graph("conn", LLMClient(), fast=fast)
+
+    assert seen == {
+        "make_bug_finder": fast,
+        "saved_bugs": fast,
+        "with_saved_steps": fast,
+    }

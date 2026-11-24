@@ -11,7 +11,7 @@ What it does
   1. Checks that the tree is clean and that main holds no work the branch lacks.
   2. Lists the files that differ between main and the branch.
   3. Orders them. Sources go in import order, each test goes right after the last
-     source it needs, documents go last (DETAILS.md before CLAUDE.md).
+     source it needs, documents go last (CLAUDE.md last).
   4. For each file: copy it from the branch, commit ONLY that file, push.
   5. At the end it checks that main and the branch are identical.
 
@@ -30,7 +30,7 @@ import subprocess
 import sys
 import time
 
-DOCS_FIRST = ["DETAILS.md", "CLAUDE.md"]  # the fuller document goes first
+FRONT_PAGE = "CLAUDE.md"  # the docs/ pages go before the front page
 
 
 def git(*args: str, check: bool = True) -> str:
@@ -144,7 +144,7 @@ def order_files(files: dict[str, str], branch: str) -> list[str]:
     alive = {p for p, status in files.items() if status != "D"}
     docs = sorted(
         (p for p in alive if p.endswith(".md")),
-        key=lambda p: (DOCS_FIRST.index(p) if p in DOCS_FIRST else len(DOCS_FIRST), p),
+        key=lambda p: (p == FRONT_PAGE, p),
     )
     tests = sorted(p for p in alive if is_test(p) and p not in docs)
     sources = sorted(alive - set(docs) - set(tests))

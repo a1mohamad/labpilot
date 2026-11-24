@@ -172,10 +172,12 @@ class Hunt:
     by_file: bool = True
 
 
+# The two long questions first: they are asked while the short ones run, and a
+# step waits for its slowest call.
 HUNTS = (
-    Hunt(TRACE, TRACE_GROUP_TOKENS, with_summary=True, task="trace", by_file=False),
     Hunt(METHOD, WHOLE_GROUP_TOKENS, with_summary=False, task="method"),
     Hunt(CONCEPT, WHOLE_GROUP_TOKENS, with_summary=True, task="concept"),
+    Hunt(TRACE, TRACE_GROUP_TOKENS, with_summary=True, task="trace", by_file=False),
 )
 
 

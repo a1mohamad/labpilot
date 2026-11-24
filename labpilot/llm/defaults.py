@@ -7,7 +7,6 @@ DEFAULT_TOTAL_BUDGET = 900.0
 RATE_LIMIT_WINDOW = 60.0
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_SERVICE_UNAVAILABLE = 503
-HTTP_INTERNAL_ERROR = 500
 
 # THE RETRY RULE (D129, decided 2026-11-23 on 497 streamed calls). A tier whose
 # call fails FAST is asked again once, after 1 second, and then the walk goes to

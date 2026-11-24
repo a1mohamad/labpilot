@@ -16,4 +16,4 @@ Run them from the repository root, for example
 | `repo/` | repository chores (`merge_per_file.py`) |
 
 Moved on 2026-11-21 from one flat folder; the map from the old paths is in
-CLAUDE.md section 33.
+`docs/step2/33-slice-11-routing.md`.

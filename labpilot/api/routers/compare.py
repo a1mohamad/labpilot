@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import AbstractContextManager, nullcontext
 
 from fastapi import APIRouter, status
+from psycopg_pool import ConnectionPool
 
 from labpilot.api import asking
 from labpilot.api.contracts import Comparison, Question
@@ -20,7 +22,12 @@ from labpilot.api.schemas import (
 )
 from labpilot.ingest import Chunk
 from labpilot.prompts import find_citations, resolve
-from labpilot.store import ConnectionFailed, NotConfigured, connect
+from labpilot.store import (
+    ConnectionFailed,
+    NotConfigured,
+    PooledConnection,
+    connect,
+)
 
 router = APIRouter(tags=["comparison"])
 
@@ -72,16 +79,17 @@ def compare(
     a FastAPI-sized repository. Ingest is paid once, at POST /artifacts, and
     what crosses the wire each turn is a question.
 
-    The connection is opened HERE, as it is for /artifacts, because every
-    function in store/ takes one - so the route is the layer that owns
-    reaching the database and mapping the two ways that fails.
+    The way to the database is chosen HERE, because every function in store/
+    takes one - so the route is the layer that owns reaching the database and
+    mapping the two ways that fails. With a pool no connection is held while a
+    model answers (R16).
     """
     thread_id = (body.thread_id or "").strip() or uuid.uuid4().hex
     a_id = (body.a or "").strip()
     b_id = (body.b or "").strip()
 
     try:
-        with connect(autocommit=True) as conn:
+        with _database(pool) as conn:
             comparison = asking.ask(
                 conn,
                 a_id,
@@ -91,6 +99,7 @@ def compare(
                 thread_id=thread_id,
                 pool=pool,
                 reply=body.reply,
+                fast=body.fast,
             )
     except (NotConfigured, ConnectionFailed) as exc:
         raise StorageUnavailable(str(exc)) from exc
@@ -99,6 +108,12 @@ def compare(
         return QuestionResponse(question=comparison.text, thread_id=thread_id)
 
     return _response(comparison, thread_id)
+
+
+def _database(pool: ConnectionPool | None) -> AbstractContextManager:
+    if pool is None:
+        return connect(autocommit=True)
+    return nullcontext(PooledConnection(pool))
 
 
 def _response(comparison: Comparison, thread_id: str) -> CompareResponse:

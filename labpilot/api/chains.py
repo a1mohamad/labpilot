@@ -11,4 +11,11 @@ def for_task(client: Any, task: str) -> Any:
         return client
 
     walk = routes.resolve(task, chain)
-    return replace(client, chain=walk or chain, call_stop=routes.ROUTES[task].stop)
+    found = routes.ROUTES[task]
+    return replace(
+        client,
+        chain=walk or chain,
+        call_stop=found.stop,
+        hedge_after=found.hedge,
+        total_budget=found.budget,
+    )

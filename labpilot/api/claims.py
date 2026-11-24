@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 TOOL_DESCRIPTION = "List the checkable facts that the reference states."
 
 # The groups are asked at the same time, at most this many at once.
-CLAIMS_AT_ONCE = 4
+CLAIMS_AT_ONCE = 6
 
 
 def _claims_problem(

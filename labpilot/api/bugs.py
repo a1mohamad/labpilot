@@ -22,6 +22,7 @@ def make_bug_finder(
     checklist: LLMClient,
     checklist_audit: LLMClient,
     skeptic: LLMClient,
+    fast: bool = False,
 ) -> Callable[[str, str], tuple[Bug, ...]]:
     """The defects of one file, read alone (section 29, D87 to D95).
 
@@ -40,7 +41,7 @@ def make_bug_finder(
 
     def find(artifact_id: str, summary: str) -> tuple[Bug, ...]:
         parts = read_parts(conn, artifact_id, limit=BUGS_SCAN_TOKENS, error=BugsError)
-        found = find_suspects(parts, summary, clients=clients)
+        found = find_suspects(parts, summary, clients=clients, fast=fast)
         suspects = [bug for bug in merge_bugs(found) if not parses(bug)]
         logger.info(
             "bugs v%d: %d suspects, %d after repeats and syntax claims",

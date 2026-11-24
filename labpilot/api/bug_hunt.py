@@ -108,13 +108,21 @@ def _audit(
 
 
 def find_suspects(
-    parts: FileParts, summary: str, *, clients: Mapping[str, LLMClient]
+    parts: FileParts,
+    summary: str,
+    *,
+    clients: Mapping[str, LLMClient],
+    fast: bool = False,
 ) -> list[Bug]:
     """Every suspect of the three hunts and the checklist audit (D87, D90).
 
     The checklists are asked first, so the audit does not wait behind the
-    hunts: the hunts run while the checklists are written.Each step uses
-    its own route.
+    hunts: the hunts run while the checklists are written. Each step uses its
+    own route.
+
+    `fast` (D103) leaves the checklists and their audit out. They are two steps
+    in a row before the skeptic, so they set the time of the hunt; the price is
+    the defects only a checklist finds (29.7).
     """
     jobs = [
         (hunt, group)
@@ -130,7 +138,7 @@ def find_suspects(
                 summary,
                 parts,
             )
-            for instructions in CHECKLISTS
+            for instructions in (() if fast else CHECKLISTS)
         ]
         hunted = [
             pool.submit(
