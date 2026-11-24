@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import replace
 
+from labpilot.agent._schema import index, list_schema
 from labpilot.agent.bug import (
     FALSE,
     INTENDED,
@@ -30,31 +31,16 @@ Vote = tuple[str, str] | None
 
 
 def skeptic_schema() -> dict[str, object]:
-    return {
-        "type": "object",
-        "properties": {
-            "verdicts": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "n": {"type": "integer"},
-                        "verdict": {"type": "string", "enum": list(SKEPTIC_VERDICTS)},
-                        "same_as": {"type": "integer"},
-                        "reason": {"type": "string"},
-                    },
-                    "required": ["n", "verdict"],
-                },
-            },
+    return list_schema(
+        "verdicts",
+        {
+            "n": {"type": "integer"},
+            "verdict": {"type": "string", "enum": list(SKEPTIC_VERDICTS)},
+            "same_as": {"type": "integer"},
+            "reason": {"type": "string"},
         },
-        "required": ["verdicts"],
-    }
-
-
-def _index(value: object, below: int) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int):
-        return None
-    return value if 0 <= value < below else None
+        ["n", "verdict"],
+    )
 
 
 def read_verdicts(arguments: dict[str, object] | None, count: int) -> list[Vote]:
@@ -66,12 +52,12 @@ def read_verdicts(arguments: dict[str, object] | None, count: int) -> list[Vote]
     for item in verdicts:
         if not isinstance(item, dict):
             continue
-        number, verdict = _index(item.get("n"), count), item.get("verdict")
+        number, verdict = index(item.get("n"), count), item.get("verdict")
         if number is None or verdict not in SKEPTIC_VERDICTS:
             continue
         # A repeat must name an EARLIER suspect, or two suspects could drop
         # each other.
-        if verdict == REPEAT and _index(item.get("same_as"), number) is None:
+        if verdict == REPEAT and index(item.get("same_as"), number) is None:
             continue
         reason = item.get("reason")
         got[number] = (verdict, reason.strip() if isinstance(reason, str) else "")
