@@ -12,7 +12,7 @@ import pytest
 from dotenv import load_dotenv
 
 from labpilot.agent import GATE_VERDICTS, HALT_VERDICT
-from labpilot.api.chains import for_claims
+from labpilot.api.chains import for_task
 from labpilot.api.gate import make_gate
 from labpilot.llm import LLMClient
 
@@ -37,7 +37,7 @@ OTHER = (
 
 @pytest.mark.smoke
 def test_the_gate_gives_a_readable_verdict_and_halts_only_on_a_clear_mismatch():
-    gate = make_gate(for_claims(LLMClient()))
+    gate = make_gate(for_task(LLMClient(), "gate"))
 
     same = gate(PAPER, CODE)
     different = gate(PAPER, OTHER)
