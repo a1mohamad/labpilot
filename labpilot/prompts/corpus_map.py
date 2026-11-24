@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Protocol
 
+from labpilot.ingest import SIDES
 from labpilot.prompts._hints import describe
 from labpilot.tokens import estimate_tokens
 
-SIDES = ("A", "B")
 SIDE_JOINER = "\n\n\n"
 
 # How much of the planner's prompt the map of BOTH artifacts may spend.
