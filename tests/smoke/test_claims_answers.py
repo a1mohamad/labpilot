@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 from labpilot.agent import DIFFERS, METHOD, MISSING, SILENT
 from labpilot.api import ingestion
 from labpilot.api.bugs import make_bug_finder
-from labpilot.api.chains import for_claims, for_skeptic, for_trace
+from labpilot.api.chains import for_task
 from labpilot.api.claims import make_claims_extractor
 from labpilot.api.difference_finder import make_find_differences
 from labpilot.api.difference_review import make_merger
@@ -47,7 +47,7 @@ def test_claims_differences_and_bugs_work_on_stored_files(db):
         db, (SAMPLES / "B_train.py").read_bytes(), name="B_train.py", side="B"
     )
     client = LLMClient()
-    cheap = for_claims(client)
+    cheap = for_task(client, "claims")
 
     claims = make_claims_extractor(db, cheap)(paper.artifact.id)
 
@@ -55,7 +55,13 @@ def test_claims_differences_and_bugs_work_on_stored_files(db):
     assert all(claim.text and claim.source and claim.quote for claim in claims)
 
     facts = [claim.text for claim in claims if claim.kind == METHOD]
-    find = make_find_differences(db, whole=cheap, small=cheap, merge=make_merger(cheap))
+    find = make_find_differences(
+        db,
+        audit=for_task(client, "audit"),
+        scan=for_task(client, "scan"),
+        judge_client=for_task(client, "judge"),
+        merge=make_merger(for_task(client, "merge")),
+    )
     differences = find(paper.artifact.id, code.artifact.id, facts)
 
     print(*differences, sep="\n")
@@ -66,9 +72,17 @@ def test_claims_differences_and_bugs_work_on_stored_files(db):
 
     bugs = make_bug_finder(
         db,
-        client=client,
-        skeptic_client=for_skeptic(client),
-        trace_client=for_trace(client),
+        **{
+            step: for_task(client, step)
+            for step in (
+                "trace",
+                "method",
+                "concept",
+                "checklist",
+                "checklist_audit",
+                "skeptic",
+            )
+        },
     )(code.artifact.id, "")
 
     print(*bugs, sep="\n")
