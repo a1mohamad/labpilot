@@ -6,7 +6,6 @@ from labpilot.ingest import Chunk
 DIFFERS = "differs"  # A states it and B does it differently
 MISSING = "missing"  # A states a rule and B never does it
 SILENT = "silent"  # B does it and A never says it
-KINDS = (DIFFERS, MISSING, SILENT)
 
 # Which request found it.
 AUDIT = "audit"  # A's facts checked against B
