@@ -31,7 +31,7 @@ class FakeClock:
 def clock(monkeypatch):
     fake = FakeClock()
     monkeypatch.setattr(_rooms, "time", fake)
-    monkeypatch.setattr("labpilot.llm.chain.time", fake)
+    monkeypatch.setattr("labpilot.llm._race.time", fake)
     return fake
 
 
@@ -129,7 +129,7 @@ def test_a_tier_with_no_limits_never_touches_a_room(clock):
     assert _rooms._ROOMS == {}
 
 
-def test_a_tier_that_failed_is_asked_up_to_three_times_and_a_full_room_not_at_all(
+def test_a_tier_that_failed_is_asked_again_once_and_a_full_room_not_at_all(
     clock,
 ):
     broken = RoomProvider("P1", tier=1, outcome=LLMError("P1: it failed"))
@@ -139,7 +139,7 @@ def test_a_tier_that_failed_is_asked_up_to_three_times_and_a_full_room_not_at_al
     with pytest.raises(AllFreeTiersExhausted):
         LLMClient(chain=(broken, full)).generate(PROMPT)
 
-    assert broken.calls == 3
+    assert broken.calls == 2
     assert full.calls == 0
 
 
