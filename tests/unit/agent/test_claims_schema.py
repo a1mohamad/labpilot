@@ -4,7 +4,6 @@ import pytest
 
 from labpilot.agent import (
     CLAIMS_TOOL_NAME,
-    MAX_CLAIMS,
     MAX_CLAIMS_PER_ANSWER,
     METHOD,
     RESULT,
@@ -137,14 +136,15 @@ def test_a_claim_said_twice_is_kept_once():
     assert [c.text for c in joined] == ["The mesh  has 200 cells"]
 
 
-def test_only_method_claims_count_toward_the_limit():
-    methods = tuple(made(f"m{n}") for n in range(MAX_CLAIMS + 5))
+def test_the_list_of_a_big_reference_is_kept_whole():
+    # D140: a 16K-token paper gives 91 to 133 claims, and none may be lost.
+    groups = [tuple(made(f"g{g} m{n}") for n in range(40)) for g in range(4)]
     results = tuple(made(f"r{n}", RESULT) for n in range(3))
 
-    joined = join_claims([methods, results])
+    joined = join_claims([*groups, results])
 
-    assert sum(c.kind == METHOD for c in joined) == MAX_CLAIMS
-    assert sum(c.kind == RESULT for c in joined) == 3
+    assert len(joined) == 163
+    assert sum(c.kind == METHOD for c in joined) == 160
 
 
 def test_no_groups_join_to_nothing():
@@ -189,12 +189,3 @@ def test_when_no_quote_is_in_its_part_the_whole_answer_is_refused():
 
     with pytest.raises(ClaimsError, match="quote"):
         read_claims(arguments, SOURCES, TEXTS)
-
-
-def test_the_cap_of_method_claims_is_forty_eight_whatever_the_constant_says():
-    methods = tuple(made(f"m{n}") for n in range(60))
-
-    joined = join_claims([methods])
-
-    assert MAX_CLAIMS == 48
-    assert len(joined) == 48
