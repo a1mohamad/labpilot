@@ -1,6 +1,5 @@
 from labpilot.rerank.base import HTTPReranker
 from labpilot.rerank.chain import Reranker, rerank, skip
-from labpilot.rerank.cloudflare import CloudflareReranker
 from labpilot.rerank.cohere import CohereReranker
 from labpilot.rerank.contracts import SKIP, Ranking
 from labpilot.rerank.defaults import (
@@ -13,7 +12,6 @@ from labpilot.rerank.errors import RerankError
 from labpilot.rerank.jev import JevReranker
 from labpilot.rerank.llm import LLMReranker
 from labpilot.rerank.registry import (
-    CLOUDFLARE_RERANK,
     COHERE_RERANK,
     JEV_NETLIFY_RERANK,
     JEV_RERANK,
@@ -25,9 +23,7 @@ from labpilot.rerank.registry import (
 from labpilot.rerank.voyage import VoyageReranker
 
 __all__ = [
-    "CLOUDFLARE_RERANK",
     "COHERE_RERANK",
-    "CloudflareReranker",
     "CohereReranker",
     "HTTPReranker",
     "JEV_NETLIFY_RERANK",
