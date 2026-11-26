@@ -7,9 +7,9 @@ the size gate and big repositories → [the brief](../step2/slice-12-brief.md).*
 
 | | |
 |---|---|
-| branch | slice 11 and the cleanup are on `main` (`c4eb693`, 313 one-file commits) and on `feat/routing` (`125e54e`, the same content). Slice 12 needs a NEW branch from `main`: ask first |
+| branch | slice 11, the cleanup and the CI fixes are on `main` (`461eb2a`, its CI is green) and on `feat/routing`. Slice 12 needs a NEW branch from `main`: ask first |
 | last tests by Claude | unit and api: 2,677 passed, 5 skipped, and 60 related database tests passed (2026-11-24, after the cleanup). The FULL suite is run by the user |
-| cleanup | dead code out, repeats in one place, claims list whole (D140 to D142, M35) → [34](../step2/34-cleanup-before-slice-12.md) |
+| cleanup | dead code out, repeats in one place, claims list whole (D140 to D142, M35), and CI green again → [34](../step2/34-cleanup-before-slice-12.md) |
 | closed last | slice 11, routing → [33.8](../step2/33-slice-11-routing.md#338-slice-11-is-closed-the-last-work-and-the-closing-review--2026-11-24) |
 
 ## The flow of one question today
@@ -30,6 +30,8 @@ model beside a late one (the race), a memory of failed models, a full room or bu
   are not really measured there.
 - **Live check of streaming** for Gemini 4 Hydrogen, Token Harbor and Cloudflare; one weekly smoke run.
 - The **fast mode** of `find_bugs` is built and NOT measured.
+- **The weekly Smoke run is red** and three database tests failed once with no known reason ([34](../step2/34-cleanup-before-slice-12.md#ci-after-the-merge-2026-11-24-to-26)).
+- The next free numbers are **D143** and **M36**.
 - **At the end of Step 2: make citations much better** (the user's plan), with the check that refuses an answer whose
   citations cannot be resolved ([29.20](../step2/29b-slice-9-followups.md)). Commit `63a0381` on `feat/agent-nodes` holds the old reminder.
 - Slice 13 measures everything on many pairs ([27.1 and 27.2](../step2/27-slice-7-decisions-and-slice-13.md), [33.5](../step2/33-slice-11-routing.md)); slice 14 tries Jev.
