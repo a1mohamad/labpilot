@@ -1,6 +1,6 @@
 # Git state and branches
 
-*UPDATE 2026-11-24: slice 11, the docs split and the cleanup are on `main` (`c4eb693`, from `99f4dc6` with 313 one-file commits by `merge_per_file.py`) and on `feat/routing` (`125e54e`); `git diff main feat/routing` was empty right after the merge. The notes below are older.*
+*UPDATE 2026-11-24: slice 11, the docs split and the cleanup are on `main` (`c4eb693`, from `99f4dc6` with 313 one-file commits by `merge_per_file.py`) and on `feat/routing` (`125e54e`); `git diff main feat/routing` was empty right after the merge. Since 2026-11-26 `main` is at `461eb2a` with the CI fixes (its CI is green), and `feat/routing` holds the same content. The notes below are older.*
 
 [Docs home](../README.md)
 
