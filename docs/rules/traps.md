@@ -34,6 +34,9 @@
 - **Never size a benchmark to the machine you wish you had.** A 30,000-row HNSW build with
   `maintenance_work_mem=512MB` took the Supabase free instance down on 2026-09-05. Run that class of
   work on a local container.
+- **CI runs on Linux, and we work on Windows.** A test or a script must not depend on the system: sort paths as text
+  (`path.as_posix()`), and give a fake clock to EVERY module that reads the time. Look at the CI run after a push
+  ([34](../step2/34-cleanup-before-slice-12.md#ci-after-the-merge-2026-11-24-to-26)).
 - **Check the exit ISP before any call that spends a model** — the rule and the two commands are in
   [the network precondition](sources-and-network.md#network-precondition--check-the-exit-isp-before-any-llm-work).
 
