@@ -67,3 +67,26 @@ the old baseline smoke test.
 and 2 survived (the order of the evidence, the raw header name). `tests/api/test_evidence_first.py` was written for both, and it
 caught both when they were repeated, and one more break of the ids. In one run of the whole database folder at the same time as
 live calls, two tests of `test_ask.py` failed; they passed alone afterwards, and the reason was not read.
+
+## CI after the merge (2026-11-24 to 26)
+
+After the merge every CI run on `main` was red, and 5 of the 7 last runs on `feat/routing` were red too. The tests passed on Windows,
+so nobody saw it: CI runs on Linux. Three causes, found in the logs:
+
+| cause | why it was red | the fix |
+|---|---|---|
+| the order of the docs pages | Windows sorts a path without looking at capital letters, Linux puts capitals first, so CI built another `SUMMARY.md` | `in_order` in `scripts/repo/build_docs_index.py` sorts by the path as text; a test compares the two systems |
+| the fake clock of `tests/unit/llm/test_chain_rooms.py` | `_race.py` got the fake clock (1,000 s) and `chain.py` kept the real one. The real clock counts from when the machine started, so on a new CI machine the stop time was already past | the fixture gives `chain.py` the same clock |
+| `test_no_connection_is_out_while_a_model_answers` | it counted `pool_size - pool_available`, which also counts a connection the pool is still opening (a guess: NOT proven) | it counts only the connections taken at `getconn` and given back at `putconn`; a new test checks the counter |
+
+Checked: the docs on real Linux (Ubuntu in WSL); the clock with a machine "started 60 s ago" (6 tests failed before, 0
+after); breaks of the sort and of the counter were caught. **The first green CI run on `main` after the merge is `461eb2a`.**
+The old red runs stay red.
+
+Still open:
+
+- **The weekly Smoke run is red** (the last three, 2026-11-09, 16 and 23, after 1.5 to 2 hours). Its log was not read.
+- `test_many_steps_at_once_wait_for_a_connection_and_none_fails` failed once here and then passed 5 times. The error was not read.
+- Two tests of `tests/integration/test_ask.py` (`test_many_queries_make_one_pile_per_side_with_no_duplicates` and
+  `test_a_follow_up_is_searched_as_the_standalone_question`) failed once beside live calls and passed alone. The reason is not known.
+
